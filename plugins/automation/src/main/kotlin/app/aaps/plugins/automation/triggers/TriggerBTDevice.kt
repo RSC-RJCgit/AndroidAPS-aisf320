@@ -66,7 +66,7 @@ class TriggerBTDevice(injector: HasAndroidInjector) : Trigger(injector) {
 
     override fun generateDialog(root: LinearLayout) {
         val pairedDevices = devicesPaired()
-        btDevice.setList(pairedDevices)
+        btDevice.setList(pairedDevices.map { it.toString() })
         LayoutBuilder()
             .add(StaticLabel(rh, R.string.btdevice, this))
             .add(btDevice)
