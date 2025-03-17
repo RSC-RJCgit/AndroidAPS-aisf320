@@ -34,21 +34,21 @@ interface AutomationStateInterface {
      * @return List of pairs containing state names and their values
      */
     fun getAllStates(): List<Pair<String, String>>
-    
+
     /**
      * Get the possible values for a state
      * @param stateName The name of the state
      * @return List of possibe values for the state
      */
     fun getStateValues(stateName: String): List<String>
-    
+
     /**
      * Set the possible values for a state
      * @param stateName The name of the state
      * @param values List of possible values for the state
      */
     fun setStateValues(stateName: String, values: List<String>)
-    
+
     /**
      * Check if a state exists
      * @param stateName The name of the state to check
@@ -61,4 +61,4 @@ interface AutomationStateInterface {
      * @param stateName The name of the state to delete
      */
     fun deleteState(stateName: String)
-} 
+}

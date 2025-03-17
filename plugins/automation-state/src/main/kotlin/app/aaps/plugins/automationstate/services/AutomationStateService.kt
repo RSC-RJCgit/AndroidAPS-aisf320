@@ -57,8 +57,6 @@ class AutomationStateService @Inject constructor(
 
     override fun getState(stateName: String):String {
         val trimmedName = stateName.trim()
-        // Validate that the state value is in the allowed list
-        //require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
         try {
             return automationStates[trimmedName]!!
         } catch (e: Exception) {
@@ -82,7 +80,7 @@ class AutomationStateService @Inject constructor(
    override fun setStateValues(stateName: String, values: List<String>) {
         val trimmedName = stateName.trim()
         val trimmedValues = values.map { it.trim() }
-        
+
         // If there's a current state value that's not in the new values list,
         // clear the current state
         val currentState = automationStates[trimmedName]

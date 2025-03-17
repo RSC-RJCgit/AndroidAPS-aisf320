@@ -20,4 +20,4 @@
     <string name="automation_states_enabled">Enable Automation States</string>
     <string name="automation_states_enabled_summary">Allow automations to use State triggers and actions. Off by default — enable after reviewing imported states.</string>
     <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
-</resources> 
+</resources>
