@@ -47,7 +47,7 @@ class AutomationStateService @Inject constructor(
         val trimmedState = state.trim()
 
         // Validate that the state value is in the allowed list
-        require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
+        require(stateValues.containsKey(trimmedName)) { "Invalid state name: $trimmedName" }
         require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
 
         automationStates[trimmedName] = trimmedState
