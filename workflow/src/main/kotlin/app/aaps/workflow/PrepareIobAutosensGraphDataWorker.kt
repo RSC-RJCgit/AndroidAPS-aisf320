@@ -320,6 +320,8 @@ class PrepareIobAutosensGraphDataWorker(
             })
         }
 
+
+
         // BGI
         data.overviewData.minusBgiSeries = FixedLineGraphSeries(Array(bgiArrayHist.size) { i -> bgiArrayHist[i] }).also {
             it.isDrawBackground = false
