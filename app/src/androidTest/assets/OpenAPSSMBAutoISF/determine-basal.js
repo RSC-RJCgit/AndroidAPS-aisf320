@@ -14,7 +14,7 @@
 */
 
 
-var round_basal = require('../round-basal')
+var round_basal = require ('../round-basal')
 
 // Rounds value to 'digits' decimal places
 function round(value, digits)
