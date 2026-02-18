@@ -1540,3 +1540,8 @@ var determine_basal = function determine_basal(glucose_status, currenttemp, iob_
 };
 
 module.exports = determine_basal;
+
+/*
+
+aisf320r000
+ */
