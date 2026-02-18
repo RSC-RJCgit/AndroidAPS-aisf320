@@ -861,7 +861,7 @@ class DetermineBasalAutoISF @Inject constructor(
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append("TOD: ${TOD} ;")
         rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
-        rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
 
         rT.reason.append("Delta: ${convert_bg(Delta )} ;")//Delta ${minDelta.toFixed2()}
@@ -876,7 +876,7 @@ class DetermineBasalAutoISF @Inject constructor(
         //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
         consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
-        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("Steps60M: ${Steps60M} ;")
         rT.reason.append("Steps30M: ${Steps30M} ;")
