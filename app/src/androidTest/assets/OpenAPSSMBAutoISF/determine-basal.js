@@ -47,7 +47,7 @@ function convert_bg(value, profile)
     }
 }
 
-function enable_smb (
+function enable_smb(
     profile,
     microBolusAllowed,
     meal_data,
