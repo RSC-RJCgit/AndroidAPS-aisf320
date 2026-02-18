@@ -16,9 +16,11 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.text.DecimalFormat
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -150,6 +152,9 @@ class DetermineBasalAutoISF @Inject constructor(
             return rT
         }
     }
+    fun isEven(value: Double): Boolean {
+        return value % 1 == 0.0 && value.toInt() % 2 == 0
+    }
 
 
     fun determine_basal(
@@ -216,13 +221,23 @@ class DetermineBasalAutoISF @Inject constructor(
         }
 
         // TODO eliminate
-        val max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        var max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        val iobThUser = profile.iob_threshold_percent
+        if ( iobThUser == 95 ) {
+            max_iob = max_iob * 1.2
+        }
+        else if ( iobThUser == 96 ) {
+            max_iob = max_iob * 1.5
+        }
+        else if ( iobThUser == 97 ) {
+            max_iob = max_iob * 2.0
+        }
 
         // if min and max are set, then set target to their average
         var target_bg = (profile.min_bg + profile.max_bg) / 2
         var min_bg = profile.min_bg
         var max_bg = profile.max_bg
-
+        val target_bgOrigmm: Double = convert_bg(target_bg).toDouble()
         val activityRatio = preferences.get(DoubleKey.ActivityMonitorRatio)    // activityMonitor(profile, bg, target_bg)
         val stepActivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsActive)
         val stepInactivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsInactive)
@@ -781,6 +796,327 @@ class DetermineBasalAutoISF @Inject constructor(
 
         rT.COB = meal_data.mealCOB
         rT.IOB = iob_data.iob
+        //==========================================================================================================
+        val Delta = glucose_status.delta
+        val IOB = iob_data.iob
+        val COB = meal_data.mealCOB
+        val SDelta = glucose_status.shortAvgDelta
+        val LDelta = glucose_status.longAvgDelta
+        val Steps5M = profile.recent_steps_5_minutes
+        val Steps10M = profile.recent_steps_10_minutes
+        val Steps15M = profile.recent_steps_15_minutes
+        val Steps30M = profile.recent_steps_30_minutes
+        val Steps60M = profile.recent_steps_60_minutes
+        //val Steps180M = profile.recent_steps_180_minutes
+
+        // Compute delta_accl using the same formula as the original JS
+        val delta_accl: Double = if (abs(SDelta) == 0.0) {
+            0.0
+        } else {
+            100 * round((Delta - SDelta) / abs(SDelta), 2)
+        }
+
+        var CR = round ( profile.carb_ratio , 2 )
+
+
+        //val bg_acce: Double = glucose_status.bgAcceleration
+        //var iobThUser = profile.iob_threshold_percent
+        val TwilightTimeAM =8
+        val TwilightTimeMins =0
+        val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append(
+            " Nrsn128 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+                round(profile.carb_ratio, 2)
+                    .withoutZeros()
+            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
+        )
+
+        rT.reason.append(" ================================== Delta: ${Delta }")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("IOB: ${round(IOB, 2)} ;")
+        rT.reason.append("iobThUser is ${iobThUser} ;;")
+        var TOD = "not set TOD"
+        if (iobThUser == 12 ) {
+            TOD = "Night"
+        } else if (iobThUser == 15 ) {
+            TOD = "Twilight"
+        } else if (iobThUser == 20 ) {
+            TOD = "SemiTwilight"
+        }else if (iobThUser == 15 ) {
+            TOD = "Evening"
+        } else if (iobThUser == 30 ) {
+            TOD = "PP90%"
+        } else if (iobThUser == 50 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 40 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 55 ) {
+            TOD = "Day PP110%"
+        } else if (iobThUser == 60 ) {
+            TOD = "Day PP130%"
+        }
+        //consoleError.add("TOD: ${TOD} ;")
+        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append("TOD: ${TOD} ;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+
+        rT.reason.append("Delta: ${convert_bg(Delta )} ;")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("SDelta: ${convert_bg(SDelta )} ;")
+        rT.reason.append("LDelta: ${convert_bg(LDelta )} ;")
+        consoleError.add("IOB: "+round(IOB, 2)+" ; ")
+        consoleError.add("Delta: "+convert_bg(Delta )+" ; ")
+        consoleError.add("SDelta: "+convert_bg(SDelta )+" ; ")
+        consoleError.add("LDelta: "+convert_bg(LDelta )+" ; ")
+        //consoleError.add("iobThUser: "+convert_bg(iobThUser )+" ; ")
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("profile_percentage: ${profile_percentage} ;")
+        rT.reason.append("Steps60M: ${Steps60M} ;")
+        rT.reason.append("Steps30M: ${Steps30M} ;")
+        rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
+        rT.reason.append("profile_percentage: ${profile_percentage} ;")
+        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
+        rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
+        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,2)} ;;")
+        rT.reason.append( "pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("Steps60M: "+Steps60M+" ; ")
+        consoleError.add("Steps30M: "+Steps30M+" ; ")
+        consoleError.add("TwilightTimeDec: "+TwilightTimeDec+" ; ")
+
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+
+        //rT.reason.append("iobThPercent ${iobThPercent} ;;")
+        //rT.reason.append("iobThEffective ${iobThEffective} ;;")
+        //rT.reason.append(
+        //   "TwilightTimeDec: ${round(TwilightTimeDec, 1).withoutZeros()}"
+        //)
+        //================================================================================/
+        //KOTLIN ChatGPT1
+        //================================================================================/
+
+
+        // Compute lastCarbAge
+        var lastCarbAge = 361.0
+        if (meal_data.carbs != null && meal_data.carbs > 0) {
+            lastCarbAge = round(((systemTime - meal_data.lastCarbTime) / 60000.0), 2)
+        }
+
+        var CarbAge = lastCarbAge
+
+
+        //var varOffset: Double = 27.0
+        var varOffset: Double = 9.0
+        val hour = LocalDateTime.now().hour
+
+
+        var targetBgOrig: Double = when {
+            !profile.temptargetSet && profile.min_bg != null -> profile.min_bg!!.toDouble()
+            hour >= 22 -> 5.2 * 18
+            hour in 20 until 22 -> 5.2 * 18
+            hour in 16 until 20 -> 5.0 * 18
+            hour in 10 until 16 -> 5.0 * 18
+            hour in 8 until 10  -> 4.4 * 18
+            hour in 6 until 8   -> 5.0 * 18
+            hour in 5 until 6   -> 5.0 * 18
+            else                -> 5.4 * 18
+        }
+
+
+        // Determine if the button should be enabled based on circadian ISF
+
+
+        // Automations for eating soon
+        var eatSoon = false
+        var stuckH = false
+        var high = false
+        var rising = false
+        var straightRise = false
+        var night4Ov = false
+        var day3Ov = false
+        var over6Ov = false
+
+        var offset1 = false
+        var offset2 = false
+        var offset3 = false
+
+        //val delta = GlucoseStatus.Delta
+        //val sDelta = GlucoseStatus.shortAvgDelta
+
+
+
+        // Check for eating soon based on temp target and BG thresholds
+        if (profile.temptargetSet && target_bg < 4.45 * 18 && target_bg > 4.35 * 18 && bg > 4.5 * 18 && Delta > 0.02 * 18) {
+            eatSoon = true
+        }
+
+        var highProfile = false
+        var carbsSugg = profile.carbsReqThreshold
+        var carbsSuggOrig = carbsSugg
+        var boostOrig = false
+
+        // Determine profileSwitch and adjust carbs suggestion and offsets
+        var profileSwitch = 100
+        /*if (carbsSugg == 9 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
+            profileSwitch = 220
+            highProfile = true
+        } else if (carbsSugg == 10 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
+            profileSwitch = 300
+            highProfile = true
+        } else */
+        if (carbsSugg == 1) {
+            carbsSugg = 5
+            offset1 = true
+        } else if (carbsSugg == 9) {
+            carbsSugg = 5
+            varOffset += 9
+        } else if (carbsSugg == 10) {
+            carbsSugg = 5
+            varOffset += 18
+        } else if (carbsSugg == 2) {
+            carbsSugg = 5
+            offset2 = true
+        } else if (carbsSugg == 3) {
+            carbsSugg = 5
+            offset3 = true
+        } else if (carbsSugg == 8) {
+            carbsSugg = 5
+            offset2 = true
+            offset3 = true
+        } else if (carbsSugg == 7) {
+            carbsSugg = 5
+            offset1 = true
+            offset3 = true
+        } else if (carbsSugg == 6) {
+            carbsSugg = 5
+            offset1 = true
+            offset2 = true
+        } else if (carbsSugg == 4) {
+            carbsSugg = 5
+            offset1 = true
+            offset2 = true
+            offset3 = true
+        }
+        var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+
+        var enableButton = false
+        //val maxIob = profile.max_iob
+        //if (profile.enableCircadianISF) {
+        //    enableButton = true
+        //}
+        if (!isEven(profile.max_iob)) {// odd
+            enableButton = true
+        }
+        //false
+        val nowHour = LocalDateTime.now().hour
+
+        // Initial offset and target calculations
+
+        if (enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset1 ${offset1} ;")
+            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        } else if (nowHour >= 8 && nowHour < 10 && offset2) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset2 ${offset2} ;")
+            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        }
+        if ( (enableButton && delta_accl < -10 ) || (nowHour >= 20  && offset3) ) {
+            varOffset = varOffset + 9
+            rT.reason.append("offset3 ${offset3} ;")
+            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset )} ;")
+        }
+// make sure varOffset is Double (e.g., val varOffset: Double = ...)
+
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        // Apply boost logic based on BG and COB
+        var offsetSoZeroSMB= false
+        if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
+            offsetSoZeroSMB= true
+            rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+        }
+        if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+        }
+        rT.reason.append("offset1 ${offset1} ;")
+        rT.reason.append("offset2 ${offset2} ;")
+        rT.reason.append("offset3 ${offset3} ;")
+        rT.reason.append("varOffset ${convert_bg(varOffset )} ;")
+        rT.reason.append("varOffset ${varOffset} ;")
+        consoleError.add("offset1 ${offset1} ;")
+        consoleError.add("offset2 ${offset2} ;")
+        consoleError.add("offset3 ${offset3} ;")
+        consoleError.add("varOffset ${convert_bg(varOffset )} ;")
+        consoleError.add("varOffset ${varOffset} ;")
+        // Ensure varOffset does not exceed 36
+        varOffset = min(36.0, varOffset ) // +9
+
+        // Log varOffset for debugging purposes
+        //System.err.println("varOffset ($varOffset)")
+        rT.reason.append("varOffset ($varOffset)")
+        targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+        rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset )} ;")
+        // Condition for disabling boost when BG is below the offset target and no/low COB
+        if (bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120))) {
+            //boostActive = false
+            offsetSoZeroSMB= true
+            //rT.reason += "bg < targetBgOffset && no/low COB: boostActive set to ($boostActive); "
+            rT.reason.append("bg un targetBgOffset && no/low COB: ")
+        }
+
+        consoleError.add("target_bgOrigmmcarbsSuggOrig: "+carbsSuggOrig+" ; ")
+        consoleError.add("target_bgOrigmm: "+target_bgOrigmm+" ; ")
+        consoleError.add("targetBgOrig: "+convert_bg(targetBgOrig )+" ; ")
+        consoleError.add("targetBgOffset: "+convert_bg(targetBgOffset )+" ; ")
+        consoleError.add("offsetSoZeroSMB: "+offsetSoZeroSMB+" ; ")
+        consoleError.add("enableButton: "+enableButton+" ; ")
+        rT.reason.append("carbsSuggOrig: "+carbsSuggOrig+" ; ")
+        rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
+        rT.reason.append("enableButton: ${enableButton} ;")
+        rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset )} ;")
+        rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig )} ;")
+        rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")
+
+
+        // Reset offsetSoZeroSMBand possibly restore boostActive if conditions improve
+        if (!(bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("offsetSoZeroSMBcleared: BG ov targetBgOffset, SMB restored; ")
+            if (bg > targetBgOffset) {
+                //boostActive = true
+                //rT.reason += "offsetSoZeroSMBcleared: BG ov targetBgOffset, boostActive restored; "
+
+            }
+        }
+        //var insulinReq = 2 * min(0.0, (eventualBG - target_bg) / sens)
+        if (profile.temptargetSet  && !isEven( target_bgOrigmm)  ){//target_bgOrigmm?
+            //if (profile.temptargetSet  && !isEven( target_bgOrigmm) && nowHour < 6 && target_bgOrigmm <= 4.4  ){//target_bgOrigmm?
+            //insulinReq = 1.5 * insulinReq
+            //rT.reason.append("(profile.temptargetSet  && !isEven( target_bgOrigmm && nowHour un 6  ); ODD 1.5 * insulinReq = "  + round(insulinReq, 2).withoutZeros() + " ")
+            rT.reason.append("(profile.temptargetSet  ODD 1.5 * insulinReq ;")
+            consoleError.add("(profile.temptargetSet  ODD 1.5 * insulinReq ")
+        } else {
+            rT.reason.append("Even ? target_bgOrigmm ")
+            rT.reason.append("Even ? insulinReq ")
+            consoleError.add("Even ? target_bgOrigmm ")
+            consoleError.add("Even ? insulinReq ")
+        }
+        //================================================================================/
+
         rT.reason.append(
             "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
@@ -1106,6 +1442,140 @@ class DetermineBasalAutoISF @Inject constructor(
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
+                var LibreTrue = 1.00
+                // Shower and no steps times in Twilight am
+                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 &&
+                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.2* 18 && COB <= 0 && iobThUser <71 ) {
+                    var iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARDshower microBolus = iobTHvirtualHARDshower - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE  for shower time ")//shower
+                }
+                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta &&
+                    COB <= 5  ) {// for sudden glitchy rises after gentle fall ; sensor swings
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for sudden glitchy rises after gentle fall ; sensor swings 0.5 smb ")
+                }
+
+                else if (Delta >=0.25 * 18  && SDelta >=0.25* 18
+                    && profile.temptargetSet && target_bg <= 4.1 *18 ) {// high Over6.0
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("Delta ov0.25  && SDeltaov0.25 && profile.temptargetSet && target_bg == 4.0 microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for highTT 0.5 smb? ")// highTT
+                }
+                //var LibreTrue = 0.33
+                else if ( Delta > 1.8 && LDelta < - 0.05*18 && bg < 162 ) {// glitch?
+                    microBolus = 0.0
+                    rT.reason.append("glitch 0.0 ")
+                    //rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                    //rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.05 * max_iob ${microBolus} ")
+                }// fast rise1
+
+
+                else if (bg > 6.0 * 18 && iobThUser <71 &&
+                    IOB > 0.15 * profile.max_iob && COB <= 0 && (Steps60M ?: 0) >= 10 ) {
+                    if (Delta >=1.0 * 18  && SDelta >=1.0* 18 && LDelta >=1.0* 18 ) {
+                        microBolus = microBolus * 0.3
+                        rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.3smb ") // fast rise 1.0
+                    }
+                    else if (Delta >=0.55 * 18  && SDelta >=0.55* 18 && LDelta >=0.55* 18&&
+                        Delta < 1.0 * 18  && SDelta < 1.0 * 18 && IOB > 0.15 * profile.max_iob ) {
+                        microBolus = microBolus * 0.5
+                        rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")// fast rise 0.55
+                    }
+                    else if (Delta >=0.35 * 18  && SDelta >=0.35* 18 && LDelta >=0.35* 18&& IOB > 0.30 * profile.max_iob &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.75 smb ") // fast rise 0.25
+                    }
+                    else if (Delta >=0.25 * 18  && SDelta >=0.25* 18 && IOB > 0.15 * profile.max_iob &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.75 smb ") // fast rise 0.25
+                    }
+                    else if (Delta >=0.50 * 18  && SDelta >=0.50* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&
+                        COB <= 5  ) {// any Do.6 day
+                        microBolus = microBolus * 0.6
+                        rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.60 smb ") // fast rise any 0.50
+                    }
+                }//fast rise bgl > 9.5
+                else if (Delta >=0.9 * 18  && SDelta >=0.9* 18 && (Steps60M ?: 0) >= 10 &&
+                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 0) {
+                    microBolus = microBolus * 0.15
+                    rT.reason.append("microBolus = microBolus * 0.15 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for fast rise 0.15smb ")//fast rise bgl > 9.5
+                }
+
+                else if (Delta >=0.3 * 18  && SDelta >=0.30* 18 && nowHour < 9 &&
+                    (Steps60M ?: 0) == 0  && iobThUser <30) {
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")//fast rise bgl > 9.5
+                }
+                else if ((( nowHour  >= 6 ) && ( nowHour <= 8 )) && bg < 9.0 * 18 &&
+                    Delta <1.0 * 18  && SDelta <1.0* 18 && COB <= 0 && (Steps60M ?: 0) < 10 ) {
+                    if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.05 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.05 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.05 * profile.max_iob ${microBolus} ")
+                    } else if ((Steps60M ?: 0) < 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.03 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("Twilight microBolus =  LibreTrue * 0.03 * profile.max_iob ${microBolus} ")
+                    }
+                    if (microBolus + IOB > 0.15 * profile.max_iob) {// SemiTwilight and SMB over 0.5
+                        microBolus =  0.15 * profile.max_iob - IOB
+                        rT.reason.append("microBolus = 0.15 * profile.max_iob - IOB ; 0.15 * profile.max_iob ${0.15 * profile.max_iob} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov 0.15 * profile.max_iob microBolus = 0.15 * profile.max_iob - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE SMB ")
+                }else {
+                    rT.reason.append(" NOT CHANGED SIZE SMB ")
+                }
+
+                //}
+                /*if ( SMBInterval == 60.0 && bg > 7.0 * 18  && LDelta > 0.1 * 18   && bg_acce > 0 &&
+                    lastBolusAge > 2 * SMBInterval - 6.0) {
+                    //microBolus = microBolus * 1.5
+                    rT.reason.append(" lastBolusAge ov 2 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 1.5 ${1.5 * microBolus}")
+                    rT.reason.append("  bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
+                }else if ( SMBInterval == 60.0 && bg > 7.0 * 18 && LDelta > 0.1 * 18   && bg_acce > 0
+                    && lastBolusAge > 3 * SMBInterval - 6.0) {
+                    //microBolus = microBolus * 2
+                    rT.reason.append(" lastBolusAge ov 3 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 2 ${2 * microBolus}")
+                    rT.reason.append(" bg ${convert_bg(bg)}   ; lastBolusAge  ${lastBolusAge} secs")
+                }else {
+                    //microBolus = microBolus
+                    rT.reason.append(" lastBolusAge un 2 * SMBInterval ${SMBInterval} secs;  microBolus * 1.0 ${ microBolus}")
+                    rT.reason.append(" bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
+                }*/
+                microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
+                if (offsetSoZeroSMB) {
+                    // offsetSoZeroSMBalready defined by tod, bgl, target
+                    microBolus = 0.0
+                    rT.reason.append(" offsetSoZeroSMB($offsetSoZeroSMB) Microbolusing := 0")
+                    //rT.reason = (rT.reason ?: "") + " offsetSoZeroSMB($offsetSoZeroSMB) Microbolusing := 0"
+                } else if (microBolus <= 0) {
+                    microBolus = 0.0
+                    //rT.reason = (rT.reason ?: "") + " (microBolus un = 0) Microbolusing := ($microBolus)"
+                } else {
+                    //rT.reason = (rT.reason ?: "") + " offsetSoZeroSMB($offsetSoZeroSMB) microBolus = ($microBolus)"
+                }
+
+
+
                 if (lastBolusAge > SMBInterval - 6.0) {   // 6s tolerance
                     if (microBolus > 0) {
                         rT.units = microBolus
