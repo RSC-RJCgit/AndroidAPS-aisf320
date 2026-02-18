@@ -83,6 +83,7 @@ import com.google.gson.Gson
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
+import java.time.LocalDateTime
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Provider
@@ -721,6 +722,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     fun autoISF(profile: Profile): Double {
+
+        var steps180min = StepService.getRecentStepCount180Min()
+
+        val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        consoleError.add("steps1800min is ${steps180min} ;;")
+
+        consoleError.add("nowHour is ${nowHour} ;;")
+
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?
 
@@ -809,6 +819,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // calculate acce_ISF from bg acceleration and adapt ISF accordingly
         val fit_corr: Double = glucose_status.corrSqu
         val bg_acce: Double = glucose_status.bgAcceleration
+
+        //val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        //consoleError.add("steps180min is ${steps180min} ;;")
+        consoleError.add("nowHour is ${nowHour} ;;")
+        //consoleError.add("nowDate is ${nowDate} ;;")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
+        consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        //consoleError.add("bg_acce  is $bg_acce ;;")
+        //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
+
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
         if (glucose_status.a2 != 0.0 && fit_corr >= 0.9) {
             var minmax_delta: Double = -glucose_status.a1 / 2 / glucose_status.a2 * 5      // back from 5min block to 1 min
@@ -1277,5 +1302,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-r001
+r002
  */
