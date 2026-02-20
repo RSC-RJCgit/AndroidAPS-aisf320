@@ -1063,7 +1063,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("varOffset ${convert_bg(varOffset )} ;")
         consoleError.add("varOffset ${varOffset} ;")
         // Ensure varOffset does not exceed 36
-        varOffset = min(36.0, varOffset ) // +9
+        varOffset =  min(36.0, varOffset ) // +9
 
         // Log varOffset for debugging purposes
         //System.err.println("varOffset ($varOffset)")
@@ -1630,5 +1630,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-r004
+r005
  */
