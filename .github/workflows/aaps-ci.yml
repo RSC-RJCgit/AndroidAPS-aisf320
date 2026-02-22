@@ -17,7 +17,9 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
-
+push:
+    branches:
+      - aisf320
 jobs:
   build:
     name: Build AAPS
