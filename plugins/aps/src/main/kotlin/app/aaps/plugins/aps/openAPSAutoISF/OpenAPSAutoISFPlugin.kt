@@ -83,6 +83,7 @@ import com.google.gson.Gson
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
+import java.time.LocalDateTime
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Provider
@@ -639,7 +640,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int): Double
     {
-       if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
+        if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
             val nowMillis = System.currentTimeMillis()
             val stepsCount = SC(
                 duration = 0,
@@ -671,7 +672,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val useSleepState = automationStateService.inState("Sleeping", "True")
         aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
         // really still sleeping?
-            if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
+        if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
             automationStateService.setState("query_got_up", "query_it")
         }
         aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
@@ -688,7 +689,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else if ( useSleepState && recentSteps60Minutes <= 200) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping state")
             } else if ( (( inactivity_idle_start>inactivity_idle_end && ( now>=inactivity_idle_start || now<inactivity_idle_end ) )  // includes midnight
-                || ( now>=inactivity_idle_start && now<inactivity_idle_end)  )                                                       // excludes midnight
+                    || ( now>=inactivity_idle_start && now<inactivity_idle_end)  )                                                       // excludes midnight
                 && recentSteps60Minutes <= 200 && ignore_inactivity_overnight && !existSleepState) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping hours")
             } else if ( recentSteps5Minutes > 300 || recentSteps10Minutes > 300  || recentSteps15Minutes > 300  || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500 ) {
@@ -721,6 +722,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     fun autoISF(profile: Profile): Double {
+
+        var steps180min = StepService.getRecentStepCount180Min()
+
+        val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        consoleError.add("steps180min is ${steps180min} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+
+
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?
 
@@ -809,6 +819,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // calculate acce_ISF from bg acceleration and adapt ISF accordingly
         val fit_corr: Double = glucose_status.corrSqu
         val bg_acce: Double = glucose_status.bgAcceleration
+
+        //val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        //consoleError.add("steps180min is ${steps180min} ;;")
+        consoleError.add("nowHour is ${nowHour} ;;")
+        //consoleError.add("nowDate is ${nowDate} ;;")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
+        consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        //consoleError.add("bg_acce  is $bg_acce ;;")
+        //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
+
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
         if (glucose_status.a2 != 0.0 && fit_corr >= 0.9) {
             var minmax_delta: Double = -glucose_status.a1 / 2 / glucose_status.a2 * 5      // back from 5min block to 1 min
@@ -1271,7 +1296,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
                 })
-             })
+            })
         }
     }
 }
+/*
+
+rsn015
+ */
