@@ -1302,5 +1302,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-r005
+r006
  */

@@ -1446,7 +1446,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
                 if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 &&
-                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.2* 18 && COB <= 0 && iobThUser <71 ) {
+                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18 && COB <= 0 && iobThUser <71 ) {
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1469,7 +1469,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append(" CHANGED SIZE  for highTT 0.5 smb? ")// highTT
                 }
                 //var LibreTrue = 0.33
-                else if ( Delta > 1.8 && LDelta < - 0.05*18 && bg < 162 ) {// glitch?
+                else if ( Delta > 0.10 * 18 && LDelta < - 0.05*18 && bg < 162 ) {// glitch?
                     microBolus = 0.0
                     rT.reason.append("glitch 0.0 ")
                     //rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
@@ -1484,39 +1484,39 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.3smb ") // fast rise 1.0
                     }
-                    else if (Delta >=0.55 * 18  && SDelta >=0.55* 18 && LDelta >=0.55* 18&&
-                        Delta < 1.0 * 18  && SDelta < 1.0 * 18 && IOB > 0.15 * profile.max_iob ) {
+                    else if (Delta >=0.55 * 18  && SDelta >=0.35* 18 &&
+                        Delta < 1.0 * 18  && SDelta < 1.0 * 18 ) { // && IOB > 0.15 * profile.max_iob // && LDelta >=0.55* 18
                         microBolus = microBolus * 0.5
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")// fast rise 0.55
                     }
-                    else if (Delta >=0.35 * 18  && SDelta >=0.35* 18 && LDelta >=0.35* 18&& IOB > 0.30 * profile.max_iob &&
-                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {
+                    else if (Delta >=0.35 * 18  && SDelta >=0.15* 18 &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {// && LDelta >=0.35* 18 // && IOB > 0.30 * profile.max_iob
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.75 smb ") // fast rise 0.25
                     }
-                    else if (Delta >=0.25 * 18  && SDelta >=0.25* 18 && IOB > 0.15 * profile.max_iob &&
-                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {
+                    else if (Delta >=0.25 * 18  && SDelta >=0.10 * 18  &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {// && IOB > 0.15 * profile.max_iob
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.75 smb ") // fast rise 0.25
                     }
-                    else if (Delta >=0.50 * 18  && SDelta >=0.50* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&
+                    else if (Delta >=0.50 * 18  && SDelta >=0.30* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&
                         COB <= 5  ) {// any Do.6 day
                         microBolus = microBolus * 0.6
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.60 smb ") // fast rise any 0.50
                     }
                 }//fast rise bgl > 9.5
-                else if (Delta >=0.9 * 18  && SDelta >=0.9* 18 && (Steps60M ?: 0) >= 10 &&
+                else if (Delta >=0.9 * 18  && SDelta >=0.7* 18 && (Steps60M ?: 0) >= 10 &&
                     bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 0) {
                     microBolus = microBolus * 0.15
                     rT.reason.append("microBolus = microBolus * 0.15 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for fast rise 0.15smb ")//fast rise bgl > 9.5
                 }
 
-                else if (Delta >=0.3 * 18  && SDelta >=0.30* 18 && nowHour < 9 &&
+                else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
                     (Steps60M ?: 0) == 0  && iobThUser <30) {
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
@@ -1524,18 +1524,18 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
                 else if ((( nowHour  >= 6 ) && ( nowHour <= 8 )) && bg < 9.0 * 18 &&
                     Delta <1.0 * 18  && SDelta <1.0* 18 && COB <= 0 && (Steps60M ?: 0) < 10 ) {
-                    if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.05 * profile.max_iob) {
-                        microBolus = LibreTrue * 0.05 * profile.max_iob
-                        rT.reason.append("nowHour ${nowHour} ")
-                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                        rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.05 * profile.max_iob ${microBolus} ")
-                    } else if ((Steps60M ?: 0) < 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
+                    if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
                         microBolus = LibreTrue * 0.03 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
                         rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                        rT.reason.append("Twilight microBolus =  LibreTrue * 0.03 * profile.max_iob ${microBolus} ")
+                        rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.03 * profile.max_iob ${microBolus} ")
+                    } else if ((Steps60M ?: 0) < 10 && microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("Twilight microBolus =  LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
                     }
-                    if (microBolus + IOB > 0.15 * profile.max_iob) {// SemiTwilight and SMB over 0.5
+                    if (microBolus + IOB > 0.15 * profile.max_iob) {//
                         microBolus =  0.15 * profile.max_iob - IOB
                         rT.reason.append("microBolus = 0.15 * profile.max_iob - IOB ; 0.15 * profile.max_iob ${0.15 * profile.max_iob} IOB ${IOB} ")
                         rT.reason.append("microBolus + IOB ov 0.15 * profile.max_iob microBolus = 0.15 * profile.max_iob - IOB ${microBolus} ")
@@ -1630,5 +1630,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-r005
+r006
  */
