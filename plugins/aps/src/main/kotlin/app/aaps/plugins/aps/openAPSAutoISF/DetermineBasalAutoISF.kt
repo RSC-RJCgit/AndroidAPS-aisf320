@@ -917,7 +917,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
 
         //var varOffset: Double = 27.0
-        var varOffset: Double = 9.0
+        var varOffset: Double = 18.0
         val hour = LocalDateTime.now().hour
 
 
@@ -927,7 +927,7 @@ class DetermineBasalAutoISF @Inject constructor(
             hour in 20 until 22 -> 5.2 * 18
             hour in 16 until 20 -> 5.0 * 18
             hour in 10 until 16 -> 5.0 * 18
-            hour in 8 until 10  -> 4.4 * 18
+            hour in 8 until 10  -> 5.0 * 18
             hour in 6 until 8   -> 5.0 * 18
             hour in 5 until 6   -> 5.0 * 18
             else                -> 5.4 * 18
@@ -1639,5 +1639,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-r007
+r008
  */
