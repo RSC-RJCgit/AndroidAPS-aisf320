@@ -1446,7 +1446,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
                 if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 &&
-                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18 && COB <= 0 && iobThUser <71 ) {
+                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18  && iobThUser <71 ) {//&& COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1456,7 +1456,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
                 else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 &&
-                    !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && COB <= 0 && iobThUser <71 ) {
+                    !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && iobThUser <71 ) {// && COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1465,9 +1465,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
-                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta &&
-                    COB <= 5  ) {// for sudden glitchy rises after gentle fall ; sensor swings
-                    microBolus = microBolus * 0.5
+                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta  ) {// for sudden glitchy rises after gentle fall ; sensor swings
+                    microBolus = microBolus * 0.5 //&& COB <= 5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for sudden glitchy rises after gentle fall ; sensor swings 0.5 smb ")
                 }
@@ -1488,7 +1487,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
 
                 else if (bg > 6.0 * 18 && iobThUser <71 &&
-                    IOB > 0.15 * profile.max_iob && COB <= 0 && (Steps60M ?: 0) >= 10 ) {
+                    IOB > 0.15 * profile.max_iob && (Steps60M ?: 0) >= 10 ) {// && COB <= 0
                     if (Delta >=1.0 * 18  && SDelta >=1.0* 18 && LDelta >=1.0* 18 ) {
                         microBolus = microBolus * 0.3
                         rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus}  ")
@@ -1533,7 +1532,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")//fast rise bgl > 9.5
                 }
                 else if ((( nowHour  >= 6 ) && ( nowHour <= 8 )) && bg < 9.0 * 18 &&
-                    Delta <1.0 * 18  && SDelta <1.0* 18 && COB <= 0 && (Steps60M ?: 0) < 10 ) {
+                    Delta <1.0 * 18  && SDelta <1.0* 18  && (Steps60M ?: 0) < 10 ) {// && COB <= 0
                     if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
                         microBolus = LibreTrue * 0.03 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
@@ -1640,5 +1639,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-r006
+r007
  */
