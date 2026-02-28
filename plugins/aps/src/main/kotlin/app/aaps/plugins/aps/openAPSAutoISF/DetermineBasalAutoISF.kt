@@ -1455,6 +1455,16 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
+                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 &&
+                    !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && COB <= 0 && iobThUser <71 ) {
+                    var iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARDshower microBolus = iobTHvirtualHARDshower - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE  for shower time ")//shower
+                }
                 else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta &&
                     COB <= 5  ) {// for sudden glitchy rises after gentle fall ; sensor swings
                     microBolus = microBolus * 0.5
