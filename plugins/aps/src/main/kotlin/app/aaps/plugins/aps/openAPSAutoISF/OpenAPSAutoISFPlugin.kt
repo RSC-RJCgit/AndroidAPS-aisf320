@@ -1184,7 +1184,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleLog.add("SMB delivery ratio set to interpolated value ${round(new_SMB, 2)}")
         return new_SMB
     }
-/*
+
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
         if (requiredKey != null &&
             requiredKey != "absorption_smb_advanced" &&
@@ -1302,5 +1302,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-r009
+r010
  */
