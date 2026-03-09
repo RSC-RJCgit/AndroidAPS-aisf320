@@ -387,7 +387,7 @@ class DetermineBasalAutoISF @Inject constructor(
             val adjustedMinBG = round(max(80.0, min_bg - (bg - min_bg) / 3.0), 0)
             val adjustedTargetBG = round(max(80.0, target_bg - (bg - target_bg) / 3.0), 0)
             val adjustedMaxBG = round(max(80.0, max_bg - (bg - max_bg) / 3.0), 0)
-            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedMinBG, don’t use it
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedMinBG, don t use it
             //console.error("naive_eventualBG:",naive_eventualBG+", eventualBG:",eventualBG);
             if (eventualBG > adjustedMinBG && naive_eventualBG > adjustedMinBG && min_bg > adjustedMinBG) {
                 consoleError.add("Adjusting targets for high BG: min_bg from $min_bg to $adjustedMinBG; ")
@@ -395,14 +395,14 @@ class DetermineBasalAutoISF @Inject constructor(
             } else {
                 consoleError.add("min_bg unchanged: $min_bg; ")
             }
-            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedTargetBG, don’t use it
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedTargetBG, don t use it
             if (eventualBG > adjustedTargetBG && naive_eventualBG > adjustedTargetBG && target_bg > adjustedTargetBG) {
                 consoleError.add("target_bg from $target_bg to $adjustedTargetBG; ")
                 target_bg = adjustedTargetBG
             } else {
                 consoleError.add("target_bg unchanged: $target_bg; ")
             }
-            // if eventualBG, naive_eventualBG, and max_bg aren't all above adjustedMaxBG, don’t use it
+            // if eventualBG, naive_eventualBG, and max_bg aren't all above adjustedMaxBG, don t use it
             if (eventualBG > adjustedMaxBG && naive_eventualBG > adjustedMaxBG && max_bg > adjustedMaxBG) {
                 consoleError.add("max_bg from $max_bg to $adjustedMaxBG")
                 max_bg = adjustedMaxBG
@@ -826,7 +826,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " Nrsn128 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " r010 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1639,5 +1639,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn01409
+rsn014
  */
