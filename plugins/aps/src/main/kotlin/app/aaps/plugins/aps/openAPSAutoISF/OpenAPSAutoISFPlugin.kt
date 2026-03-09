@@ -728,8 +728,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val nowHour = LocalDateTime.now().hour
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         consoleError.add("steps180min is ${steps180min} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
 
-        consoleError.add("nowHour is ${nowHour} ;;")
 
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?
@@ -1302,5 +1302,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-r010
+rsn011
  */
