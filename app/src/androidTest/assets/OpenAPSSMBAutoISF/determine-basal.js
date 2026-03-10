@@ -1533,10 +1533,15 @@ var determine_basal = function determine_basal(glucose_status, currenttemp, iob_
         }
 
         // required temp > existing temp basal
-        rT.reason += "temp " + (currenttemp.rate).toFixed(2) + " < " + round(rate, 2) + "U/hr. ";
+        rT.reason+= "temp " + (currenttemp.rate).toFixed(2) + " < " + round(rate, 2) + "U/hr. ";
         return tempBasalFunctions.setTempBasal(rate, 30, profile, rT, currenttemp);
     }
 
 };
 
 module.exports = determine_basal;
+
+/*
+
+r001
+ */

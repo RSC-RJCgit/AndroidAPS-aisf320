@@ -4,20 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       buildVariant:
-        description: 'Select Build Variant'
+        description: "Select Build Variant"
         required: true
-        default: 'fullRelease'
+        default: "fullRelease"
         type: choice
         options:
           - fullRelease
-          - fullDebug
-          - aapsclientRelease
-          - aapsclientDebug
           - aapsclient2Release
-          - aapsclient2Debug
-          - pumpcontrolRelease
-          - pumpcontrolDebug
 
+  push:
+    branches:
+      - aisf320
 jobs:
   build:
     name: Build AAPS
