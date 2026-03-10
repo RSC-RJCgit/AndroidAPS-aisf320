@@ -1526,7 +1526,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
-                    (Steps60M ?: 0) == 0  && iobThUser <30 && COB <= 20 )) {
+                    (Steps60M ?: 0) == 0  && iobThUser <30 && COB <= 20 ) {
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")//fast rise bgl > 9.5
