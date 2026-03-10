@@ -1,0 +1,43 @@
+Subject: [PATCH] Evaluate basal compensation only at cancelling temp basal
+---
+Index: pump/omnipod/dash/src/main/kotlin/app/aaps/pump/omnipod/dash/OmnipodDashPumpPlugin.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/pump/omnipod/dash/src/main/kotlin/app/aaps/pump/omnipod/dash/OmnipodDashPumpPlugin.kt b/pump/omnipod/dash/src/main/kotlin/app/aaps/pump/omnipod/dash/OmnipodDashPumpPlugin.kt
+--- a/pump/omnipod/dash/src/main/kotlin/app/aaps/pump/omnipod/dash/OmnipodDashPumpPlugin.kt	(revision 2f361f38aac829a88861fcb1642bc7c4443d662f)
++++ b/pump/omnipod/dash/src/main/kotlin/app/aaps/pump/omnipod/dash/OmnipodDashPumpPlugin.kt	(revision 824f4d19519a3248e39d1ec822a317e79bf1c9d2)
+@@ -498,19 +498,7 @@
+                 },
+                 fabricPrivacy::logException
+             )
+-        disposables += rxBus
+-            .toObservable(EventOmnipodDashPumpValuesChanged::class.java)
+-            .observeOn(aapsSchedulers.io)
+-            .subscribe(
+-                {
+-                    if (podStateManager.needsBasalCorrection() &&
+-                        !commandQueue.isCustomCommandInQueue(CommandDeliverBasalCorrection::class.java)
+-                    ) {
+-                        commandQueue.customCommand(CommandDeliverBasalCorrection(), null)
+-                    }
+-                },
+-                fabricPrivacy::logException
+-            )
++
+     }
+ 
+     override fun onStop() {
+@@ -1354,6 +1342,11 @@
+                     )
+                     aapsLogger.info(LTag.PUMP, "syncStopTemporaryBasalWithPumpId ret=$ret pumpId=${historyEntry.pumpId()}")
+                     podStateManager.tempBasal = null
++
++                    // Evaluate basal drift correction after confirmed temp basal cancel
++                    if (podStateManager.needsBasalCorrection()) {
++                        commandQueue.customCommand(CommandDeliverBasalCorrection(), null)
++                    }
+                 }
+                 rxBus.send(EventDismissNotification(Notification.OMNIPOD_TBR_ALERTS))
+             }
