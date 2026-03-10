@@ -1487,7 +1487,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
 
                 else if (bg > 6.0 * 18 && iobThUser <71 &&
-                    IOB > 0.15 * profile.max_iob && (Steps60M ?: 0) >= 10 ) {// && COB <= 0
+                    IOB > 0.15 * profile.max_iob && (Steps60M ?: 0) >= 10 && COB <= 20 ) {// && COB <= 0
                     if (Delta >=1.0 * 18  && SDelta >=1.0* 18 && LDelta >=1.0* 18 ) {
                         microBolus = microBolus * 0.2
                         rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus}  ")
@@ -1519,20 +1519,20 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                 }//fast rise bgl > 9.5
                 else if (Delta >=0.9 * 18  && SDelta >=0.7* 18 && (Steps60M ?: 0) >= 10 &&
-                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 0) {
+                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 20 ) {
                     microBolus = microBolus * 0.15
                     rT.reason.append("microBolus = microBolus * 0.15 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for fast rise 0.15smb ")//fast rise bgl > 9.5
                 }
 
                 else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
-                    (Steps60M ?: 0) == 0  && iobThUser <30) {
+                    (Steps60M ?: 0) == 0  && iobThUser <30 && COB <= 20 )) {
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")//fast rise bgl > 9.5
                 }
                 else if ((( nowHour  >= 6 ) && ( nowHour <= 8 )) && bg < 9.0 * 18 &&
-                    Delta <1.0 * 18  && SDelta <1.0* 18  && (Steps60M ?: 0) < 10 ) {// && COB <= 0
+                    Delta <1.0 * 18  && SDelta <1.0* 18  && (Steps60M ?: 0) < 10  && COB <= 20 ) {// && COB <= 0
                     if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
                         microBolus = LibreTrue * 0.03 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
