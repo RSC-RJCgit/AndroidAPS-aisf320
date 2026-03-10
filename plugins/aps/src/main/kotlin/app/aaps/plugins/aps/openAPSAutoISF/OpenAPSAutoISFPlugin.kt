@@ -1,479 +1,258 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-import android.content.Context
-import android.content.Intent
-import android.icu.util.Calendar
-import androidx.collection.LongSparseArray
-import androidx.collection.forEach
-import androidx.core.net.toUri
-import androidx.preference.PreferenceCategory
-import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceManager
-import androidx.preference.PreferenceScreen
-import androidx.preference.SwitchPreference
-import app.aaps.core.data.aps.SMBDefaults
-import app.aaps.core.data.configuration.Constants
-import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.SC
-import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.time.T
-import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
-import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.IobTotal
+import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
-import app.aaps.core.interfaces.automation.AutomationStateInterface
-import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
-import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.constraints.Constraint
-import app.aaps.core.interfaces.constraints.ConstraintsChecker
-import app.aaps.core.interfaces.constraints.PluginConstraints
-import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.db.ProcessedTbrEbData
-import app.aaps.core.interfaces.iob.GlucoseStatusProvider
-import app.aaps.core.interfaces.iob.IobCobCalculator
-import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.notifications.Notification
-import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.plugin.PluginBase
-import app.aaps.core.interfaces.plugin.PluginDescription
-import app.aaps.core.interfaces.profile.Profile
-import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.aps.Predictions
+import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.profile.ProfileUtil
-import app.aaps.core.interfaces.profiling.Profiler
-import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
-import app.aaps.core.interfaces.ui.UiInteraction
-import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.interfaces.utils.HardLimits
-import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
-import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.IntentKey
-import app.aaps.core.keys.LongKey
-import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.objects.constraints.ConstraintObject
-import app.aaps.core.objects.extensions.convertedToAbsolute
-import app.aaps.core.objects.extensions.getPassedDurationToTimeInMinutes
-import app.aaps.core.objects.extensions.plannedRemainingMinutes
-import app.aaps.core.objects.extensions.put
-import app.aaps.core.objects.extensions.store
-import app.aaps.core.objects.extensions.target
-import app.aaps.core.objects.profile.ProfileSealed
-import app.aaps.core.utils.MidnightUtils
-import app.aaps.core.validators.preferences.AdaptiveDoublePreference
-import app.aaps.core.validators.preferences.AdaptiveIntPreference
-import app.aaps.core.validators.preferences.AdaptiveIntentPreference
-import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
-import app.aaps.core.validators.preferences.AdaptiveUnitPreference
-import app.aaps.plugins.aps.OpenAPSFragment
-import app.aaps.plugins.aps.R
-import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
-import app.aaps.plugins.aps.events.EventResetOpenAPSGui
-import app.aaps.plugins.aps.openAPSSMB.PhoneMovementDetector
-import app.aaps.plugins.aps.openAPSSMB.StepService
-import com.google.gson.Gson
-import io.reactivex.rxjava3.disposables.CompositeDisposable
-import io.reactivex.rxjava3.kotlin.plusAssign
-import org.json.JSONObject
-import java.util.Locale
+import java.text.DecimalFormat
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.inject.Inject
-import javax.inject.Provider
 import javax.inject.Singleton
-import kotlin.math.floor
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 @Singleton
-open class OpenAPSAutoISFPlugin @Inject constructor(
-    aapsLogger: AAPSLogger,
-    private val rxBus: RxBus,
-    private val constraintsChecker: ConstraintsChecker,
-    rh: ResourceHelper,
-    private val profileFunction: ProfileFunction,
-    private val profileUtil: ProfileUtil,
-    private val config: Config,
-    private val activePlugin: ActivePlugin,
-    private val iobCobCalculator: IobCobCalculator,
-    private val hardLimits: HardLimits,
-    private val preferences: Preferences,
-    protected val dateUtil: DateUtil,
-    private val processedTbrEbData: ProcessedTbrEbData,
-    private val persistenceLayer: PersistenceLayer,
-    private val glucoseStatusProvider: GlucoseStatusProvider,
-    private val bgQualityCheck: BgQualityCheck,
-    private val uiInteraction: UiInteraction,
-    private val determineBasalAutoISF: DetermineBasalAutoISF,
-    private val profiler: Profiler,
-    private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
-    private val apsResultProvider: Provider<APSResult>
-) : PluginBase(
-    PluginDescription()
-        .mainType(PluginType.APS)
-        .fragmentClass(OpenAPSFragment::class.java.name)
-        .pluginIcon(app.aaps.core.ui.R.drawable.ic_generic_icon)
-        .pluginName(R.string.openaps_auto_isf)
-        .shortName(R.string.autoisf_shortname)
-        .preferencesId(PluginDescription.PREFERENCE_SCREEN)
-        .preferencesVisibleInSimpleMode(false)
-        .showInList { config.APS && config.isEngineeringMode() && config.isDev() }
-        .description(R.string.description_auto_isf),
-    aapsLogger, rh
-), APS, PluginConstraints {
+class DetermineBasalAutoISF @Inject constructor(
+    private val profileUtil: ProfileUtil
+) {
 
-    @Inject lateinit var automationStateService: AutomationStateInterface
+    @Inject lateinit var preferences: Preferences
 
-    // last values
-    override var lastAPSRun: Long = 0
-    override val algorithm = APSResult.Algorithm.AUTO_ISF
-    override var lastAPSResult: APSResult? = null
-    private var consoleError = mutableListOf<String>()
-    private var consoleLog = mutableListOf<String>()
-    val autoIsfVersion = "3.2.0"
-    val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
-    private val autoISF_max; get() = preferences.get(DoubleKey.ApsAutoIsfMax)
-    private val autoISF_min; get() = preferences.get(DoubleKey.ApsAutoIsfMin)
-    private val bgAccel_ISF_weight; get() = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-    private val bgBrake_ISF_weight; get() = preferences.get(DoubleKey.ApsAutoIsfBgBrakeWeight)
-    private val pp_ISF_weight; get() = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
-    private val lower_ISFrange_weight; get() = preferences.get(DoubleKey.ApsAutoIsfLowBgWeight)
-    private val higher_ISFrange_weight; get() = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
-    private val dura_ISF_weight; get() = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
-    private val smb_delivery_ratio; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatio)
-    private val smb_delivery_ratio_min; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioMin)
-    private val smb_delivery_ratio_max; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioMax)
-    private val smb_delivery_ratio_bg_range
-        get() = if (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange) < 10.0) preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange) * GlucoseUnit.MMOLL_TO_MGDL else preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange)
-    val smbMaxRangeExtension; get() = preferences.get(DoubleKey.ApsAutoIsfSmbMaxRangeExtension)
-    private val enableSMB_EvenOn_OddOff_always; get() = preferences.get(BooleanKey.ApsAutoIsfSmbOnEvenTarget) // for profile target
-    val iobThresholdPercent; get() = preferences.get(IntKey.ApsAutoIsfIobThPercent)
-    private val exerciseMode; get() = SMBDefaults.exercise_mode
-    private val highTemptargetRaisesSensitivity; get() = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
-    val mgdlHalfBasalExerciseTarget;  get() = preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget) * if (profileFunction.getUnits() == GlucoseUnit.MMOL) GlucoseUnit.MMOLL_TO_MGDL else 1.0
-    val normalTarget = 100
-    val calibrationDuration = preferences.get(IntKey.FslCalibrationDuration)
-    private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
-    private val disposable = CompositeDisposable()
-    // create array for key AutoISF results with defaults
-    var autoIsfValues = AIV(
-        timestamp = 0L,
-        acceIsf = 1.0,
-        bgIsf =  1.0,
-        ppIsf = 1.0,
-        driftIsf = 1.0,
-        duraIsf = 1.0,
-        finalIsf = 1.0,
-        iobThEffective = 0.0
-    )
-    // Activity detection (steps)
-    private val recentSteps5Minutes ; get() = StepService.getRecentStepCount5Min()
-    private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = StepService.getRecentStepCount60Min()
-    private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
+    private val consoleError = mutableListOf<String>()
+    private val consoleLog = mutableListOf<String>()
 
-    override fun onStart() {
-        super.onStart()
-        var count = 0
-        val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
-        apsResults.forEach {
-            val glucose = it.glucoseStatus?.glucose ?: return@forEach
-            val variableSens = it.variableSens ?: return@forEach
-            val timestamp = it.date
-            val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
-            if (variableSens > 0) autoIsfCache.put(key, variableSens)
-            count++
+    private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
+
+    fun round_basal(value: Double): Double = value
+
+    // Rounds value to 'digits' decimal places
+    // different for negative numbers fun round(value: Double, digits: Int): Double = BigDecimal(value).setScale(digits, RoundingMode.HALF_EVEN).toDouble()
+    fun round(value: Double, digits: Int): Double {
+        if (value.isNaN()) return Double.NaN
+        val scale = 10.0.pow(digits.toDouble())
+        return Math.round(value * scale) / scale
+    }
+
+    fun Double.withoutZeros(): String = DecimalFormat("0.##").format(this)
+    fun round(value: Double): Int = value.roundToInt()
+
+    // we expect BG to rise or fall at the rate of BGI,
+    // adjusted by the rate at which BG would need to rise /
+    // fall to get eventualBG to target over 2 hours
+    fun calculate_expected_delta(targetBg: Double, eventualBg: Double, bgi: Double): Double {
+        // (hours * mins_per_hour) / 5 = how many 5 minute periods in 2h = 24
+        val fiveMinBlocks = (2 * 60) / 5
+        val targetDelta = targetBg - eventualBg
+        return /* expectedDelta */ round(bgi + (targetDelta / fiveMinBlocks), 1)
+    }
+
+    fun convert_bg(value: Double): String =
+        profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
+    //DecimalFormat("0.#").format(profileUtil.fromMgdlToUnits(value))
+    //if (profile.out_units === "mmol/L") round(value / 18, 1).toFixed(1);
+    //else Math.round(value);
+
+    fun enable_smb(profile: OapsProfileAutoIsf, microBolusAllowed: Boolean, meal_data: MealData, target_bg: Double): Boolean {
+        // disable SMB when a high temptarget is set
+        if (!microBolusAllowed) {
+            consoleError.add("SMB disabled (!microBolusAllowed)")
+            return false
+        } else if (!profile.allowSMB_with_high_temptarget && profile.temptargetSet && target_bg > 100) {
+            consoleError.add("SMB disabled due to high temptarget of $target_bg")
+            return false
         }
-        aapsLogger.debug(LTag.APS, "Loaded $count variable sensitivity values from database")
-    }
 
-    // irrelevant here but gets called by other profile functions and must be TRUE; otherwise averageISF falls back to profile sens
-    override fun supportsDynamicIsf() = true    //false //: Boolean = preferences.get(BooleanKey.ApsUseAutoIsf)
-
-    override fun getIsfMgdl(profile: Profile, caller: String): Double? {
-        val start = dateUtil.now()
-        val multiplier = (profile as ProfileSealed.EPS).value.originalPercentage / 100.0
-        val sensitivity = calculateVariableIsf(start)
-        if (sensitivity.second == null && caller == "OpenAPSSMBPlugin")
-            uiInteraction.addNotificationValidTo(
-                Notification.DYN_ISF_FALLBACK, start,
-                rh.gs(R.string.fallback_to_isf_no_tdd, sensitivity.first), Notification.INFO, dateUtil.now() + T.mins(1).msecs()
-            )
-        else
-            uiInteraction.dismissNotification(Notification.DYN_ISF_FALLBACK)
-        profiler.log(LTag.APS, String.format(Locale.getDefault(), "getIsfMgdl() %s %f %s %s", sensitivity.first, sensitivity.second, dateUtil.dateAndTimeAndSecondsString(start), caller), start)
-        return sensitivity.second?.let { it * multiplier }
-    }
-
-    override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? {
-        var count = 0
-        var sum = 0.0
-        val start = timestamp - T.hours(24).msecs()
-        autoIsfCache.forEach { key, value ->
-            if (key in start..timestamp) {
-                count++
-                sum += value
-            }
-        }
-        val sensitivity = if (count == 0) null else sum / count
-        aapsLogger.debug(LTag.APS, "getAverageIsfMgdl() $sensitivity from $count values ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $caller")
-        return sensitivity
-    }
-
-    override fun getSensitivityOverviewString(): String? = null // placeholder for Auto ISF Detailed information for overview
-
-    override fun specialEnableCondition(): Boolean {
-        return config.isEngineeringMode() && config.isDev() &&
-            try {
-                activePlugin.activePump.pumpDescription.isTempBasalCapable
-            } catch (_: Exception) {
-                // may fail during initialization
-                true
-            }
-    }
-
-    override fun specialShowInListCondition(): Boolean {
-        try {
-            val pump = activePlugin.activePump
-            return pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
+        // enable SMB/UAM if always-on (unless previously disabled for high temptarget)
+        if (profile.enableSMB_always) {
+            consoleError.add("SMB enabled due to enableSMB_always")
             return true
         }
+
+        // enable SMB/UAM (if enabled in preferences) while we have COB
+        if (profile.enableSMB_with_COB && meal_data.mealCOB != 0.0) {
+            consoleError.add("SMB enabled for COB of ${meal_data.mealCOB}")
+            return true
+        }
+
+        // enable SMB/UAM (if enabled in preferences) for a full 6 hours after any carb entry
+        // (6 hours is defined in carbWindow in lib/meal/total.js)
+        if (profile.enableSMB_after_carbs && meal_data.carbs != 0.0) {
+            consoleError.add("SMB enabled for 6h after carb entry")
+            return true
+        }
+
+        // enable SMB/UAM (if enabled in preferences) if a low temptarget is set
+        if (profile.enableSMB_with_temptarget && (profile.temptargetSet && target_bg < 100)) {
+            consoleError.add("SMB enabled for temptarget of ${convert_bg(target_bg)}")
+            return true
+        }
+
+        consoleError.add("SMB disabled (no enableSMB preferences active or no condition satisfied)")
+        return false
     }
 
-    override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
-        super.preprocessPreferences(preferenceFragment)
-        val smbAlwaysEnabled = preferences.get(BooleanKey.ApsUseSmbAlways)
-        val advancedFiltering = activePlugin.activeBgSource.advancedFilteringSupported()
-        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithCob.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
-        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
-        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
+    fun reason(rT: RT, msg: String) {
+        if (rT.reason.toString().isNotEmpty()) rT.reason.append(". ")
+        rT.reason.append(msg)
+        consoleError.add(msg)
     }
 
-    private val autoIsfCache = LongSparseArray<Double>()
+    private fun getMaxSafeBasal(profile: OapsProfileAutoIsf): Double =
+        min(profile.max_basal, min(profile.max_daily_safety_multiplier * profile.max_daily_basal, profile.current_basal_safety_multiplier * profile.current_basal))
 
-    @Synchronized
-    private fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
-        val profile = profileFunction.getProfile(timestamp)
-        if (profile == null) return Pair("OFF", null)
-        val glucose = glucoseStatusProvider.glucoseStatusData?.glucose ?: return Pair("GLUC", null)
-        // Round down to minutesClass min and use it as a key for caching
-        // Add BG to key as it affects calculation
-        val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
-        val sensitivity = autoISF(profile)
-        if (sensitivity > 0) {
-            // can default to 0, e.g. for the first 2-3 loops in a virgin setup
-            aapsLogger.debug("calculateVariableIsf CALC ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $sensitivity")
-            autoIsfCache.put(key, sensitivity)
-            if (autoIsfCache.size() > 1000) autoIsfCache.clear()
-        }
-        // this return is mandatory, otherwise it messed up the AutoISF algo.
-        return Pair("OFF", null)
-    }
+    fun setTempBasal(_rate: Double, duration: Int, profile: OapsProfileAutoIsf, rT: RT, currenttemp: CurrentTemp): RT {
+        //var maxSafeBasal = Math.min(profile.max_basal, 3 * profile.max_daily_basal, 4 * profile.current_basal);
 
-    override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
-        lastAPSResult = null
-        val glucoseStatus = glucoseStatusProvider.glucoseStatusData
-        val profile = profileFunction.getProfile()
-        val pump = activePlugin.activePump
-        if (profile == null) {
-            rxBus.send(EventResetOpenAPSGui(rh.gs(app.aaps.core.ui.R.string.no_profile_set)))
-            aapsLogger.debug(LTag.APS, rh.gs(app.aaps.core.ui.R.string.no_profile_set))
-            return
-        }
-        if (!isEnabled()) {
-            rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openapsma_disabled)))
-            aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_disabled))
-            return
-        }
-        if (glucoseStatus == null) {
-            rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openapsma_no_glucose_data)))
-            aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_no_glucose_data))
-            return
+        val maxSafeBasal = getMaxSafeBasal(profile)
+        var rate = _rate
+        if (rate < 0) rate = 0.0
+        else if (rate > maxSafeBasal) rate = maxSafeBasal
+
+        val suggestedRate = round_basal(rate)
+        if (currenttemp.duration > (duration - 10) && currenttemp.duration <= 120 && suggestedRate <= currenttemp.rate * 1.2 && suggestedRate >= currenttemp.rate * 0.8 && duration > 0) {
+            rT.reason.append(" ${currenttemp.duration}m left and ${currenttemp.rate.withoutZeros()} ~ req ${suggestedRate.withoutZeros()}U/hr: no temp required")
+            return rT
         }
 
-        val inputConstraints = ConstraintObject(0.0, aapsLogger) // fake. only for collecting all results
-
-        if (!hardLimits.checkHardLimits(profile.dia, app.aaps.core.ui.R.string.profile_dia, hardLimits.minDia(), hardLimits.maxDia())) return
-        if (!hardLimits.checkHardLimits(
-                profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight()),
-                app.aaps.core.ui.R.string.profile_carbs_ratio_value,
-                hardLimits.minIC(),
-                hardLimits.maxIC()
-            )
-        ) return
-        if (!hardLimits.checkHardLimits(profile.getIsfMgdl("OpenAPSAutoISFPlugin"), app.aaps.core.ui.R.string.profile_sensitivity_value, HardLimits.MIN_ISF, HardLimits.MAX_ISF)) return
-        if (!hardLimits.checkHardLimits(profile.getMaxDailyBasal(), app.aaps.core.ui.R.string.profile_max_daily_basal_value, 0.02, hardLimits.maxBasal())) return
-        if (!hardLimits.checkHardLimits(pump.baseBasalRate, app.aaps.core.ui.R.string.current_basal_value, 0.01, hardLimits.maxBasal())) return
-
-        // End of check, start gathering data
-
-        val autoIsfMode = true  //supportsDynamicIsf()  // preferences.get(BooleanKey.ApsUseAutoIsf)
-        val smbEnabled = preferences.get(BooleanKey.ApsUseSmb)
-        val advancedFiltering = constraintsChecker.isAdvancedFilteringEnabled().also { inputConstraints.copyReasons(it) }.value()
-
-        val now = dateUtil.now()
-        val tb = processedTbrEbData.getTempBasalIncludingConvertedExtended(now)
-        val currentTemp = CurrentTemp(
-            duration = tb?.plannedRemainingMinutes ?: 0,
-            rate = tb?.convertedToAbsolute(now, profile) ?: 0.0,
-            minutesrunning = tb?.getPassedDurationToTimeInMinutes(now)
-        )
-        var minBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetLowMgdl(), 0.1), app.aaps.core.ui.R.string.profile_low_target, HardLimits.LIMIT_MIN_BG[0], HardLimits.LIMIT_MIN_BG[1])
-        var maxBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), app.aaps.core.ui.R.string.profile_high_target, HardLimits.LIMIT_MAX_BG[0], HardLimits.LIMIT_MAX_BG[1])
-        var targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
-        var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
-            isTempTarget = true
-            minBg = hardLimits.verifyHardLimits(tempTarget.lowTarget, app.aaps.core.ui.R.string.temp_target_low_target, HardLimits.LIMIT_TEMP_MIN_BG[0], HardLimits.LIMIT_TEMP_MIN_BG[1])
-            maxBg = hardLimits.verifyHardLimits(tempTarget.highTarget, app.aaps.core.ui.R.string.temp_target_high_target, HardLimits.LIMIT_TEMP_MAX_BG[0], HardLimits.LIMIT_TEMP_MAX_BG[1])
-            targetBg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
-        }
-        // for key AutoISF results assign defaults
-        autoIsfValues = AIV(
-            timestamp = now,
-            acceIsf = 1.0,
-            bgIsf =  1.0,
-            ppIsf = 1.0,
-            driftIsf = 1.0,
-            duraIsf = 1.0,
-            finalIsf = 1.0,
-            iobThEffective = 0.0
-        )
-
-        var autosensResult = AutosensResult()
-        var variableSensitivity = profile.getProfileIsfMgdl()
-        val sens = profile.getIsfMgdl("OpenAPSAutoISFPlugin")
-
-        if (constraintsChecker.isAutosensModeEnabled().value()) {
-            val autosensData = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")
-            if (autosensData == null) {
-                rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openaps_no_as_data)))
-                return
+        if (suggestedRate == profile.current_basal) {
+            if (profile.skip_neutral_temps) {
+                if (currenttemp.duration > 0) {
+                    reason(rT, "Suggested rate is same as profile rate, a temp basal is active, canceling current temp")
+                    rT.duration = 0
+                    rT.rate = 0.0
+                    return rT
+                } else {
+                    reason(rT, "Suggested rate is same as profile rate, no temp basal is active, doing nothing")
+                    return rT
+                }
+            } else {
+                reason(rT, "Setting neutral temp basal of ${profile.current_basal}U/hr")
+                rT.duration = duration
+                rT.rate = suggestedRate
+                return rT
             }
-            autosensResult = autosensData.autosensResult
-        } else autosensResult.sensResult = "autosens disabled"
-        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens), preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
-        val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
-        val iobData = iobArray[0]
-        val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
-        val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
-
-        aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
-        consoleError.clear()
-        consoleLog.clear()
-        val calendar = Calendar.getInstance()
-        val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
-        val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour)
-        val activityLog = if (consoleLog.size==0) "Activity Monitor skipped" else consoleLog[0]
-        consoleLog.clear()
-        var stepActivityDetected = false
-        var stepInactivityDetected = false
-        if (activityRatio < 1) { stepActivityDetected = true
-        } else if (activityRatio>1)   { stepInactivityDetected = true}
-        preferences.put(BooleanKey.ActivityMonitorStepsActive, stepActivityDetected)
-        preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
-        if (autoIsfMode) {
-            variableSensitivity = autoISF(profile)
+        } else {
+            rT.duration = duration
+            rT.rate = suggestedRate
+            return rT
         }
-        val lastAppStart = preferences.get(LongKey.AppStart)
-        val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
-        val oapsProfile = OapsProfileAutoIsf(
-            dia = 0.0, // not used
-            min_5m_carbimpact = 0.0, // not used
-            max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
-            max_daily_basal = profile.getMaxDailyBasal(),
-            max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
-            min_bg = minBg,
-            max_bg = maxBg,
-            target_bg = targetBg,
-            carb_ratio = profile.getIc(),
-            sens = sens,
-            autosens_adjust_targets = false, // not used
-            max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
-            current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
-            lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
-            high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity, //was false,
-            low_temptarget_lowers_sensitivity = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens), // was false,
-            sensitivity_raises_target = preferences.get(BooleanKey.ApsSensitivityRaisesTarget),
-            resistance_lowers_target = preferences.get(BooleanKey.ApsResistanceLowersTarget),
-            adv_target_adjustments = SMBDefaults.adv_target_adjustments,
-            exercise_mode = SMBDefaults.exercise_mode,
-            half_basal_exercise_target = preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget),
-            // mod activity mode
-            activity_detection = preferences.get(BooleanKey.ApsActivityDetection),
-            recent_steps_5_minutes  = recentSteps5Minutes,
-            recent_steps_10_minutes = recentSteps10Minutes,
-            recent_steps_15_minutes = recentSteps15Minutes,
-            recent_steps_30_minutes = recentSteps30Minutes,
-            recent_steps_60_minutes = recentSteps60Minutes,
-            phone_moved = phone_moved,
-            time_since_start = elapsedTimeSinceLastStart,
-            now = calendar.get(Calendar.HOUR_OF_DAY),
-            // end mod
-            maxCOB = SMBDefaults.maxCOB,
-            skip_neutral_temps = pump.setNeutralTempAtFullHour(),
-            remainingCarbsCap = SMBDefaults.remainingCarbsCap,
-            enableUAM = constraintsChecker.isUAMEnabled().also { inputConstraints.copyReasons(it) }.value(),
-            A52_risk_enable = SMBDefaults.A52_risk_enable,
-            SMBInterval = preferences.get(IntKey.ApsMaxSmbFrequency),
-            enableSMB_with_COB = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithCob),
-            enableSMB_with_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithLowTt),
-            allowSMB_with_high_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithHighTt),
-            enableSMB_always = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAlways) && advancedFiltering,
-            enableSMB_after_carbs = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAfterCarbs) && advancedFiltering,
-            maxSMBBasalMinutes = preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
-            maxUAMSMBBasalMinutes = preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
-            bolus_increment = pump.pumpDescription.bolusStep,
-            carbsReqThreshold = preferences.get(IntKey.ApsCarbsRequestThreshold),
-            current_basal = activePlugin.activePump.baseBasalRate,
-            temptargetSet = isTempTarget,
-            autosens_max = preferences.get(DoubleKey.AutosensMax),
-            out_units = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "mmol/L" else "mg/dl",
-            variable_sens = variableSensitivity,
-            autoISF_version = autoIsfVersion,
-            enable_autoISF = autoIsfWeights,
-            autoISF_max = autoISF_max,
-            autoISF_min = autoISF_min,
-            bgAccel_ISF_weight = bgAccel_ISF_weight,
-            bgBrake_ISF_weight = bgBrake_ISF_weight,
-            pp_ISF_weight = pp_ISF_weight,
-            lower_ISFrange_weight = lower_ISFrange_weight,
-            higher_ISFrange_weight = higher_ISFrange_weight,
-            dura_ISF_weight = dura_ISF_weight,
-            smb_delivery_ratio = smb_delivery_ratio,
-            smb_delivery_ratio_min = smb_delivery_ratio_min,
-            smb_delivery_ratio_max = smb_delivery_ratio_max,
-            smb_delivery_ratio_bg_range = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange),   //smb_delivery_ratio_bg_range was always in mg/dL
-            smb_max_range_extension = smbMaxRangeExtension,
-            enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
-            iob_threshold_percent = iobThresholdPercent,
-            profile_percentage = profile_percentage
+    }
+    fun isEven(value: Double): Boolean {
+        return value % 1 == 0.0 && value.toInt() % 2 == 0
+    }
+
+
+    fun determine_basal(
+        glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
+        microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
+        smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>
+    ): RT {
+        consoleError.clear()
+        consoleError.add(activity_consoleLog)
+        consoleLog.clear()
+        var rT = RT(
+            algorithm = APSResult.Algorithm.AUTO_ISF,
+            runningAutoIsf = true,
+            timestamp = currentTime,
+            consoleLog = consoleLog,
+            consoleError = consoleError
         )
-        var sensitivityRatio = 1.0
+
         // TODO eliminate
-        val target_bg = (minBg + maxBg) / 2
-        val exerciseModeActive = highTemptargetRaisesSensitivity && isTempTarget && target_bg > normalTarget
-        val resistanceModeActive = oapsProfile.low_temptarget_lowers_sensitivity && isTempTarget && target_bg < normalTarget
+        val deliverAt = currentTime
+
+        // TODO eliminate
+        val profile_current_basal = round_basal(profile.current_basal)
+        var basal = profile_current_basal
+
+        // TODO eliminate
+        val systemTime = currentTime
+
+        // TODO eliminate
+        val bgTime = glucose_status.date
+        val minAgo = round((systemTime - bgTime) / 60.0 / 1000.0, 1)
+        // TODO eliminate
+        val bg = glucose_status.glucose
+        // TODO eliminate
+        val noise = glucose_status.noise
+        // 38 is an xDrip error state that usually indicates sensor failure
+        // all other BG values between 11 and 37 mg/dL reflect non-error-code BG values, so we should zero temp for those
+        if (bg <= 10 || bg == 38.0 || noise >= 3) {  //Dexcom is in ??? mode or calibrating, or xDrip reports high noise
+            rT.reason.append("CGM is calibrating, in ??? state, or noise is high")
+        }
+        if (minAgo > 12 || minAgo < -5) { // Dexcom data is too old, or way in the future
+            rT.reason.append("If current system time $systemTime is correct, then BG data is too old. The last BG data was read ${minAgo}m ago at $bgTime")
+            // if BG is too old/noisy, or is changing less than 1 mg/dL/5m for 45m, cancel any high temps and shorten any long zero temps
+        } else if (bg > 60 && flatBGsDetected) {
+            rT.reason.append("Error: CGM data is unchanged for the past ~45m")
+        }
+        if (bg <= 10 || bg == 38.0 || noise >= 3 || minAgo > 12 || minAgo < -5 || (bg > 60 && flatBGsDetected)) {
+            if (currenttemp.rate > basal) { // high temp is running
+                rT.reason.append(". Replacing high temp basal of ${currenttemp.rate} with neutral temp of $basal")
+                rT.deliverAt = deliverAt
+                rT.duration = 30
+                rT.rate = basal
+                return rT
+            } else if (currenttemp.rate == 0.0 && currenttemp.duration > 30) { //shorten long zero temps to 30m
+                rT.reason.append(". Shortening " + currenttemp.duration + "m long zero temp to 30m. ")
+                rT.deliverAt = deliverAt
+                rT.duration = 30
+                rT.rate = 0.0
+                return rT
+            } else { //do nothing.
+                rT.reason.append(". Temp ${currenttemp.rate} <= current basal ${round(basal, 2)}U/hr; doing nothing. ")
+                return rT
+            }
+        }
+
+        // TODO eliminate
+        var max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        val iobThUser = profile.iob_threshold_percent
+        if ( iobThUser == 95 ) {
+            max_iob = max_iob * 1.2
+        }
+        else if ( iobThUser == 96 ) {
+            max_iob = max_iob * 1.5
+        }
+        else if ( iobThUser == 97 ) {
+            max_iob = max_iob * 2.0
+        }
+
+        // if min and max are set, then set target to their average
+        var target_bg = (profile.min_bg + profile.max_bg) / 2
+        var min_bg = profile.min_bg
+        var max_bg = profile.max_bg
+        val target_bgOrigmm: Double = convert_bg(target_bg).toDouble()
+        val activityRatio = preferences.get(DoubleKey.ActivityMonitorRatio)    // activityMonitor(profile, bg, target_bg)
+        val stepActivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsActive)
+        val stepInactivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsInactive)
+        var sensitivityRatio = 1.0
+        val normalTarget = 100 // evaluate high/low temptarget against 100, not scheduled target (which might change)
+        val exerciseModeActive = (profile.exercise_mode || profile.high_temptarget_raises_sensitivity) && profile.temptargetSet && target_bg > normalTarget
+        val resistanceModeActive = profile.low_temptarget_lowers_sensitivity && profile.temptargetSet && target_bg < normalTarget
+        // when temptarget is 160 mg/dL, run 50% basal (120 = 75%; 140 = 60%),  80 mg/dL with low_temptarget_lowers_sensitivity would give 1.5x basal, but is limited to autosens_max (1.2x by default)
+        val mgdlHalfBasalTarget = profile.half_basal_exercise_target * if (profile.out_units == "mmol/L") GlucoseUnit.MMOLL_TO_MGDL else 1.0
         if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
-            if (exerciseModeActive || resistanceModeActive) {
+            if ( exerciseModeActive || resistanceModeActive ) {
                 // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
                 // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
-                //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
-                val resistanceMax = min(1.5, preferences.get(DoubleKey.AutosensMax))  // additional safety limit
-                val c = (mgdlHalfBasalExerciseTarget - normalTarget)
+                val resistanceMax = min(1.5, profile.autosens_max)  // additional safety limit
+                val c = (mgdlHalfBasalTarget - normalTarget).toDouble()
                 if (c * (c + target_bg - normalTarget) <= 0.0) {
                     sensitivityRatio = resistanceMax
                 } else {
@@ -481,797 +260,1384 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // limit sensitivityRatio to profile.autosens_max (1.2x by default)
                     sensitivityRatio = min(sensitivityRatio, resistanceMax)
                     sensitivityRatio = round(sensitivityRatio, 2)
-                    //exerciseRatio = sensitivityRatio
                 }
-            } else {
-                sensitivityRatio = activityRatio
-            }
-        }
-        var iobTH_reduction_ratio = 1.0
-        var use_iobTH = false
-        if (iobThresholdPercent != 100) {
-            iobTH_reduction_ratio = profile_percentage / 100.0 * sensitivityRatio
-            use_iobTH = true
-        }
-        val iobTHtolerance = 130.0
-        val iobTHvirtual = iobThresholdPercent * iobTHtolerance / 10000.0 * oapsProfile.max_iob * iobTH_reduction_ratio
-        val loopWantedSmb = loop_smb(microBolusAllowed, oapsProfile, iobData.iob, use_iobTH, iobTHvirtual / iobTHtolerance * 100.0)
-        val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
-        val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
-
-        val gson = Gson()
-        aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal AutoISF <<<")
-        aapsLogger.debug(LTag.APS, "Glucose status:     $glucoseStatus")
-        aapsLogger.debug(LTag.APS, "Current temp:       $currentTemp")
-        aapsLogger.debug(LTag.APS, "IOB data:           ${gson.toJson(iobArray)}")
-        aapsLogger.debug(LTag.APS, "Profile:            $oapsProfile")
-        aapsLogger.debug(LTag.APS, "Autosens data:      $autosensResult")
-        aapsLogger.debug(LTag.APS, "Meal data:          $mealData")
-        aapsLogger.debug(LTag.APS, "MicroBolusAllowed:  $microBolusAllowed")
-        aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
-        aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
-        //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
-
-        determineBasalAutoISF.determine_basal(
-            glucose_status = glucoseStatus,
-            currenttemp = currentTemp,
-            iob_data_array = iobArray,
-            profile = oapsProfile,
-            autosens_data = autosensResult,
-            meal_data = mealData,
-            microBolusAllowed = microBolusAllowed,
-            currentTime = now,
-            flatBGsDetected = flatBGsDetected,
-            autoIsfMode = autoIsfMode,
-            loop_wanted_smb = loopWantedSmb,
-            profile_percentage = profile_percentage,
-            smb_ratio = smbRatio,
-            smb_max_range_extension = smbMaxRangeExtension,
-            iob_threshold_percent = iobThresholdPercent,
-            activity_consoleLog = activityLog,
-            auto_isf_consoleError = consoleError,
-            auto_isf_consoleLog = consoleLog
-        ).also {
-            val determineBasalResult = apsResultProvider.get().with(it)
-            // Preserve input data
-            determineBasalResult.inputConstraints = inputConstraints
-            determineBasalResult.autosensResult = autosensResult
-            determineBasalResult.iobData = iobArray
-            determineBasalResult.glucoseStatus = glucoseStatus
-            determineBasalResult.currentTemp = currentTemp
-            determineBasalResult.oapsProfileAutoIsf = oapsProfile
-            determineBasalResult.mealData = mealData
-            lastAPSResult = determineBasalResult
-            lastAPSRun = now
-            aapsLogger.debug(LTag.APS, "Result: $it")
-            rxBus.send(EventAPSCalculationFinished())
-        }
-        autoIsfValues.timestamp = now
-        //aapsLogger.debug(LTag.APS, "autoIsfValues to write contains: $autoIsfValues")
-        disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
-        //val autoIsfRecords = persistenceLayer.getAutoIsfValuesFromTime(now-100000L)
-        //aapsLogger.debug(LTag.APS, "autoIsfValues records read contain: $autoIsfRecords")
-        rxBus.send(EventOpenAPSUpdateGui())
-    }
-
-    override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)
-
-    override fun isSuperBolusEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
-        value.set(false)
-        return value
-    }
-
-    override fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
-        if (isEnabled()) {
-            val maxIobPref = preferences.get(DoubleKey.ApsSmbMaxIob)
-            maxIob.setIfSmaller(maxIobPref, rh.gs(R.string.limiting_iob, maxIobPref, rh.gs(R.string.maxvalueinpreferences)), this)
-            maxIob.setIfSmaller(hardLimits.maxIobSMB(), rh.gs(R.string.limiting_iob, hardLimits.maxIobSMB(), rh.gs(R.string.hardlimit)), this)
-        }
-        return maxIob
-    }
-
-    override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
-        if (isEnabled()) {
-            var maxBasal = preferences.get(DoubleKey.ApsMaxBasal)
-            if (maxBasal < profile.getMaxDailyBasal()) {
-                maxBasal = profile.getMaxDailyBasal()
-                absoluteRate.addReason(rh.gs(R.string.increasing_max_basal), this)
-            }
-            absoluteRate.setIfSmaller(maxBasal, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxBasal, rh.gs(R.string.maxvalueinpreferences)), this)
-
-            // Check percentRate but absolute rate too, because we know real current basal in pump
-            val maxBasalMultiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier)
-            val maxFromBasalMultiplier = floor(maxBasalMultiplier * profile.getBasal() * 100) / 100
-            absoluteRate.setIfSmaller(
-                maxFromBasalMultiplier,
-                rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromBasalMultiplier, rh.gs(R.string.max_basal_multiplier)),
-                this
-            )
-            val maxBasalFromDaily = preferences.get(DoubleKey.ApsMaxDailyMultiplier)
-            val maxFromDaily = floor(profile.getMaxDailyBasal() * maxBasalFromDaily * 100) / 100
-            absoluteRate.setIfSmaller(maxFromDaily, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromDaily, rh.gs(R.string.max_daily_basal_multiplier)), this)
-        }
-        return absoluteRate
-    }
-
-    override fun isSMBModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
-        val enabled = preferences.get(BooleanKey.ApsUseSmb)
-        if (!enabled) value.set(false, rh.gs(R.string.smb_disabled_in_preferences), this)
-        return value
-    }
-
-    override fun isUAMEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
-        val enabled = preferences.get(BooleanKey.ApsUseUam)
-        if (!enabled) value.set(false, rh.gs(R.string.uam_disabled_in_preferences), this)
-        return value
-    }
-
-    override fun isAutosensModeEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
-        val enabled = preferences.get(BooleanKey.ApsUseAutosens)
-        if (!enabled) value.set(false, rh.gs(R.string.autosens_disabled_in_preferences), this)
-        return value
-    }
-
-    override fun configuration(): JSONObject =
-        JSONObject()
-            .put(BooleanKey.ApsUseDynamicSensitivity, preferences)
-            .put(IntKey.ApsDynIsfAdjustmentFactor, preferences)
-
-    override fun applyConfiguration(configuration: JSONObject) {
-        configuration
-            .store(BooleanKey.ApsUseDynamicSensitivity, preferences)
-            .store(IntKey.ApsDynIsfAdjustmentFactor, preferences)
-    }
-
-    // Rounds value to 'digits' decimal places
-    // different for negative numbers fun round(value: Double, digits: Int): Double = BigDecimal(value).setScale(digits, RoundingMode.HALF_EVEN).toDouble()
-    fun round(value: Double, digits: Int): Double {
-        if (value.isNaN()) return Double.NaN
-        val scale = 10.0.pow(digits.toDouble())
-        return (value * scale).roundToInt() / scale
-    }
-
-    fun convert_bg(value: Double): String =
-        profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
-
-    fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
-        if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
-
-    fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int): Double
-    {
-       if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
-            val nowMillis = System.currentTimeMillis()
-            val stepsCount = SC(
-                duration = 0,
-                timestamp = nowMillis,
-                steps5min = recentSteps5Minutes,
-                steps10min = recentSteps5Minutes + recentSteps10Minutes,
-                steps15min = recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes,
-                steps30min = recentSteps30Minutes,
-                steps60min = recentSteps60Minutes,
-                steps180min = StepService.getRecentStepCount180Min(),
-                device = "Smartphone"
-            )
-            disposable += persistenceLayer.insertOrUpdateStepsCount(stepsCount).subscribe()
-        }
-
-        val phoneMoved = PhoneMovementDetector.phoneMoved()
-        val lastAppStart = preferences.get(LongKey.AppStart)
-        //val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart) / 60000
-        val time_since_start = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
-        val activityDetection = preferences.get(BooleanKey.ApsActivityDetection)
-        val activity_scale_factor = preferences.get(DoubleKey.ActivityScaleFactor)              // profile.activity_scale_factor;
-        val inactivity_scale_factor = preferences.get(DoubleKey.InactivityScaleFactor)          // profile.inactivity_scale_factor;
-        var activityRatio = 1.0
-        val ignore_inactivity_overnight = preferences.get(BooleanKey.ActivityMonitorOvernight)  // profile.ignore_inactivity_overnight;
-        val inactivity_idle_start =  preferences.get(IntKey.ActivityMonitorIdleStart)           // profile.inactivity_idle_start;
-        val inactivity_idle_end = preferences.get(IntKey.ActivityMonitorIdleEnd)                // profile.inactivity_idle_end;
-
-        val existSleepState = automationStateService.hasStateValues("Sleeping")
-        val useSleepState = automationStateService.inState("Sleeping", "True")
-        aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
-        // really still sleeping?
-            if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
-            automationStateService.setState("query_got_up", "query_it")
-        }
-        aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
-
-        if ( !activityDetection ) {
-            consoleLog.add("Activity monitor disabled in settings")
-        } else if ( isTempTarget ) {
-            consoleLog.add("Activity monitor disabled: tempTarget")
-        } else if ( !phoneMoved ) {
-            consoleLog.add("Activity monitor disabled: Phone seems not to be carried for the last 15m")
-        } else {
-            if ( time_since_start < 60 && recentSteps60Minutes <= 200 ) {
-                consoleLog.add("Activity monitor initialising for ${60 - time_since_start} more minutes: inactivity detection disabled")
-            } else if ( useSleepState && recentSteps60Minutes <= 200) {
-                consoleLog.add("Activity monitor disabled inactivity detection: sleeping state")
-            } else if ( (( inactivity_idle_start>inactivity_idle_end && ( now>=inactivity_idle_start || now<inactivity_idle_end ) )  // includes midnight
-                || ( now>=inactivity_idle_start && now<inactivity_idle_end)  )                                                       // excludes midnight
-                && recentSteps60Minutes <= 200 && ignore_inactivity_overnight && !existSleepState) {
-                consoleLog.add("Activity monitor disabled inactivity detection: sleeping hours")
-            } else if ( recentSteps5Minutes > 300 || recentSteps10Minutes > 300  || recentSteps15Minutes > 300  || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500 ) {
-                activityRatio = 1 - 0.3 * activity_scale_factor
-                consoleLog.add("Activity monitor detected activity, sensitivity ratio: $activityRatio")
-            } else if ( recentSteps5Minutes > 200 || recentSteps10Minutes > 200  || recentSteps15Minutes > 200
-                || recentSteps30Minutes > 500 || recentSteps60Minutes > 800 ) {
-                activityRatio = 1 - 0.15 * activity_scale_factor
-                consoleLog.add("Activity monitor detected partial activity, sensitivity ratio: $activityRatio")
-            } else if ( bg < target_bg && recentSteps60Minutes <= 200 ) {
-                consoleLog.add("Activity monitor disabled inactivity detection: bg < target")
-            } else if ( recentSteps60Minutes < 50 ) {
-                activityRatio = 1 + 0.2 * inactivity_scale_factor
-                consoleLog.add("Activity monitor detected inactivity, sensitivity ratio: $activityRatio")
-            } else if ( recentSteps60Minutes <= 200 ) {
-                activityRatio = 1 + 0.1 * inactivity_scale_factor
-                consoleLog.add("Activity monitor detected partial inactivity, sensitivity ratio: $activityRatio")
-            } else {
-                consoleLog.add("Activity monitor detected neutral state")  //, sensitivity ratio unchanged: $activityRatio")
-            }
-        }
-        preferences.put(DoubleKey.ActivityMonitorRatio, activityRatio)
-        var activityMsg = "Activity Monitor json: {\"activity_scale_factor\":$activity_scale_factor,\"inactivity_scale_factor\":$inactivity_scale_factor"
-        activityMsg += ",\"recentSteps5Minutes\":$recentSteps5Minutes,\"recentSteps10Minutes\":$recentSteps10Minutes,\"recentSteps15Minutes\":$recentSteps15Minutes"
-        activityMsg += ",\"recentSteps30Minutes\":$recentSteps30Minutes,\"recentSteps60Minutes\":$recentSteps60Minutes"
-        activityMsg += ",\"phone_moved\":$phoneMoved,\"time_since_start\":$time_since_start,\"activity_detection\":$activityDetection"
-        activityMsg += ",\"ignore_inactivity_overnight\":$ignore_inactivity_overnight,\"inactivity_idle_start\":$inactivity_idle_start,\"inactivity_idle_end\":$inactivity_idle_end}"
-        aapsLogger.debug(LTag.APS, activityMsg)
-        return activityRatio
-    }
-
-    fun autoISF(profile: Profile): Double {
-        val sens = profile.getProfileIsfMgdl()
-        val glucose_status = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?
-
-        val high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity
-        var target_bg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
-        var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
-            isTempTarget = true
-            target_bg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
-        }
-        val activityRatio = preferences.get(DoubleKey.ActivityMonitorRatio)
-        val stepActivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsActive)
-        val stepInactivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsInactive)
-        var sensitivityRatio = 1.0
-        val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
-        val resistanceModeActive = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)  && isTempTarget && target_bg < normalTarget
-        if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
-            if ( exerciseModeActive || resistanceModeActive ) {
-                // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
-                // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
-                //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
-                val resistanceMax = min(1.5, preferences.get(DoubleKey.AutosensMax))  // additional safety limit
-                val c = (mgdlHalfBasalExerciseTarget - normalTarget)
-                if (c * (c + target_bg - normalTarget) <= 0.0) {
-                    sensitivityRatio = resistanceMax
-                    // consoleError.add("Sensitivity decrease for temp target of $target_bg limited by Autosens_max; ")
-
-                } else {
-                    sensitivityRatio = c / (c + target_bg - normalTarget)
-                    // limit sensitivityRatio to profile.autosens_max (1.2x by default)
-                }
-                sensitivityRatio = min(sensitivityRatio, resistanceMax)
-                sensitivityRatio = round(sensitivityRatio, 2)
-
+                consoleError.add("Sensitivity ratio set to $sensitivityRatio based on temp target of $target_bg; ")
             } else if ( stepActivityDetected ) {
                 sensitivityRatio = activityRatio
             } else if ( stepInactivityDetected ) {
                 sensitivityRatio = activityRatio
             }
         } else {
-            var autosensResult = AutosensResult()
+            consoleError.add("Sensitivity ratio unchanged: 1.0")
+            sensitivityRatio = autosens_data.ratio
+            consoleError.add("Autosens ratio: $sensitivityRatio; ")
+        }
+        var iobTH_reduction_ratio = 1.0
+        if (iob_threshold_percent != 100) {
+            iobTH_reduction_ratio = profile_percentage / 100.0 * sensitivityRatio   //exercise_ratio * activityRatio
+        }
+        basal = profile.current_basal * sensitivityRatio
+        basal = round_basal(basal)
+        if (basal != profile_current_basal)
+            consoleError.add("adjusting basal from $profile_current_basal to $basal;")
+        else
+            consoleError.add("Basal unchanged: $basal;")
 
-            if (constraintsChecker.isAutosensModeEnabled().value()) {
-                iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
-                    autosensResult = it.autosensResult
-                }
-            } else autosensResult.sensResult = "autosens disabled"
-            sensitivityRatio = autosensResult.ratio
+        // adjust min, max, and target BG for sensitivity, such that 50% increase in ISF raises target from 100 to 120
+        if (profile.temptargetSet) {
+            //console.log("Temp Target set, not adjusting with autosens; ");
+        } else {
+            if (profile.sensitivity_raises_target && autosens_data.ratio < 1 || profile.resistance_lowers_target && autosens_data.ratio > 1) {
+                // with a target of 100, default 0.7-1.2 autosens min/max range would allow a 93-117 target range
+                min_bg = round((min_bg - 60) / autosens_data.ratio, 0) + 60
+                max_bg = round((max_bg - 60) / autosens_data.ratio, 0) + 60
+                var new_target_bg = round((target_bg - 60) / autosens_data.ratio, 0) + 60
+                // don't allow target_bg below 80
+                new_target_bg = max(80.0, new_target_bg)
+                if (target_bg == new_target_bg)
+                    consoleError.add("target_bg unchanged: $new_target_bg; ")
+                else
+                    consoleError.add("target_bg from $target_bg to $new_target_bg; ")
+
+                target_bg = new_target_bg
+            }
         }
-        var skipWeights = false
-        val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
-        val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
-        if (calibrationStopsSMB) {
-            consoleError.add("AutoISF weights disabled while calibrating")
-            skipWeights = true
-        } else if ( !autoIsfWeights || glucose_status == null) {
-            consoleError.add("AutoISF weights disabled in Preferences")
-            skipWeights = true
+
+        val iobArray = iob_data_array
+        val iob_data = iobArray[0]
+
+        val tick: String
+        tick = if (glucose_status.delta > -0.5) {
+            "+" + round(glucose_status.delta)
+        } else {
+            round(glucose_status.delta).toString()
         }
-        if (skipWeights) {
+        val minDelta = min(glucose_status.delta, glucose_status.shortAvgDelta)
+        val minAvgDelta = min(glucose_status.shortAvgDelta, glucose_status.longAvgDelta)
+        val maxDelta = max(glucose_status.delta, max(glucose_status.shortAvgDelta, glucose_status.longAvgDelta))
+
+        val profile_sens = round(profile.sens, 1)
+        val adjusted_sens = round(profile.sens / sensitivityRatio, 1)
+        if (adjusted_sens != profile_sens) {
+            consoleError.add("ISF from $profile_sens to $adjusted_sens")
+        } else {
+            consoleError.add("ISF unchanged: $adjusted_sens")
+        }
+        val sens =
+            if (autoIsfMode) {
+                profile.variable_sens
+            } else {
+                adjusted_sens
+                //console.log(" (autosens ratio "+sensitivityRatio+")");
+            }
+        consoleError.add("CR: ${profile.carb_ratio}")
+
+        if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("end AutoISF")
+            consoleError.add("start AutoISF ${profile.autoISF_version}")
             consoleError.add("----------------------------------")
-            return round(sens / sensitivityRatio, 1)
+            consoleError.addAll(auto_isf_consoleLog)
+            consoleError.addAll(auto_isf_consoleError)
         }
-        val autosensResult = AutosensResult()
-
-        if (constraintsChecker.isAutosensModeEnabled().value()) {
-            val autosensData = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")
-            if (autosensData == null) {
-                rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openaps_no_as_data)))
-                return sens
+        // mod autoISF3.0-dev: if that would put us over iobTH, then reduce accordingly; allow 30% overrun
+        val iobTHtolerance = 130.0
+        val iobTHvirtual = iob_threshold_percent * iobTHtolerance / 10000.0 * profile.max_iob * iobTH_reduction_ratio
+        var enableSMB = false
+        if (microBolusAllowed && loop_wanted_smb != "AAPS") {
+            if (loop_wanted_smb == "enforced" || loop_wanted_smb == "fullLoop") {              // otherwise FL switched SMB off
+                enableSMB = true
             }
-            autosensData.autosensResult
-        } else autosensResult.sensResult = "autosens disabled"
-
-        val dura05: Double = glucose_status!!.duraISFminutes
-        val avg05: Double = glucose_status.duraISFaverage
-        val maxISFReduction: Double = autoISF_max
-        var sens_modified = false
-        var pp_ISF = 1.0
-        var acce_ISF = 1.0
-        var acce_weight = 1.0
-        val bg_off = target_bg + 10.0 - glucose_status.glucose                      // move from central BG=100 to target+10 as virtual BG'=100
-
-        // calculate acce_ISF from bg acceleration and adapt ISF accordingly
-        val fit_corr: Double = glucose_status.corrSqu
-        val bg_acce: Double = glucose_status.bgAcceleration
-        //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
-        if (glucose_status.a2 != 0.0 && fit_corr >= 0.9) {
-            var minmax_delta: Double = -glucose_status.a1 / 2 / glucose_status.a2 * 5      // back from 5min block to 1 min
-            val minmax_value: Double = round(glucose_status.a0 - minmax_delta * minmax_delta / 25 * glucose_status.a2, 1)
-            minmax_delta = round(minmax_delta, 1)
-            if (minmax_delta > 0 && bg_acce < 0) {
-                consoleError.add("Parabolic fit extrapolates a maximum of ${convert_bg(minmax_value)} in about $minmax_delta minutes")
-            } else if (minmax_delta > 0 && bg_acce > 0.0) {
-
-                consoleError.add("Parabolic fit extrapolates a minimum of ${convert_bg(minmax_value)} in about $minmax_delta minutes")
-                if (minmax_delta <= 30 && minmax_value < target_bg) {   // start braking
-                    acce_weight = -bgBrake_ISF_weight
-                    consoleError.add("extrapolation below target soon: use bgBrake_ISF_weight instead")
-                }
-            }
-        }
-        if (fit_corr < 0.9) {
-            consoleError.add("acce_ISF adaptation by-passed as correlation ${round(fit_corr, 3)} is too low")
         } else {
-            val fit_share = 10 * (fit_corr - 0.9)                            // 0 at correlation 0.9, 1 at 1.00
-            var cap_weight = 1.0                                             // full contribution above target
-            if (acce_weight == 1.0 && glucose_status.glucose < target_bg) {  // below target acce goes towards target
-                if (bg_acce > 0) {
-                    if (bg_acce > 1) {
-                        cap_weight = 0.5
-                    }            // halve the effect below target
-                    acce_weight = bgBrake_ISF_weight
-                } else if (bg_acce < 0) {
-                    acce_weight = bgAccel_ISF_weight
-                }
-            } else if (acce_weight == 1.0) {                                 // above target acce goes away from target
-                if (bg_acce < 0.0) {
-                    acce_weight = bgBrake_ISF_weight
-                } else if (bg_acce > 0.0) {
-                    acce_weight = bgAccel_ISF_weight
-                }
-            }
-            acce_ISF = 1.0 + bg_acce * cap_weight * acce_weight * fit_share
-            consoleError.add("acce_ISF adaptation is ${round(acce_ISF, 2)}")
-            if (acce_ISF != 1.0) {
-                sens_modified = true
-            }
-        }
-        autoIsfValues.acceIsf = acce_ISF
-
-        val bg_ISF = 1 + interpolate(100 - bg_off)
-        consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
-        autoIsfValues.bgIsf = bg_ISF
-        var liftISF: Double
-        val final_ISF: Double
-        if (bg_ISF < 1.0) {
-            liftISF = min(bg_ISF, acce_ISF)
-            if (acce_ISF > 1.0) {
-                liftISF = bg_ISF * acce_ISF                                 // bg_ISF could become > 1 now
-                consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
-            }
-            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
-        } else if (bg_ISF > 1.0) {
-            sens_modified = true
+            enableSMB = enable_smb(
+                profile,
+                microBolusAllowed,
+                meal_data,
+                target_bg
+            )
         }
 
-        val bg_delta = glucose_status.delta
-        val deltaType = "pp"
-        when {
-            bg_off > 0.0                     -> {
-                consoleError.add("${deltaType}_ISF adaptation by-passed as average glucose < $target_bg+10")
-            }
-
-            glucose_status.shortAvgDelta < 0 -> {
-                consoleError.add("${deltaType}_ISF adaptation by-passed as no rise or too short lived")
-            }
-
-            else                             -> {
-                pp_ISF = 1.0 + max(0.0, bg_delta * pp_ISF_weight)
-                consoleError.add("pp_ISF adaptation is ${round(pp_ISF, 2)}")
-                if (pp_ISF != 1.0) {
-                    sens_modified = true
-                }
-
+        //calculate BG impact: the amount BG "should" be rising or falling based on insulin activity alone
+        val bgi = round((-iob_data.activity * sens * 5), 2)
+        // project deviations for 30 minutes
+        var deviation = round(30 / 5 * (minDelta - bgi))
+        // don't overreact to a big negative delta: use minAvgDelta if deviation is negative
+        if (deviation < 0) {
+            deviation = round((30 / 5) * (minAvgDelta - bgi))
+            // and if deviation is still negative, use long_avgdelta
+            if (deviation < 0) {
+                deviation = round((30 / 5) * (glucose_status.longAvgDelta - bgi))
             }
         }
-        autoIsfValues.ppIsf = pp_ISF
 
-        var dura_ISF = 1.0
-        val weightISF: Double = dura_ISF_weight
-        when {
-            dura05 < 10.0      -> {
-                consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level $avg05")
+        // calculate the naive (bolus calculator math) eventual BG based on net IOB and sensitivity
+        val naive_eventualBG =
+            if (autoIsfMode)
+                round(bg - (iob_data.iob * sens), 0)
+            else {
+                if (iob_data.iob > 0) round(bg - (iob_data.iob * sens), 0)
+                else  // if IOB is negative, be more conservative and use the lower of sens, profile.sens
+                    round(bg - (iob_data.iob * min(sens, profile.sens)), 0)
             }
+        // and adjust it for the deviation above
+        var eventualBG = naive_eventualBG + deviation
 
-            avg05 <= target_bg -> {
-                consoleError.add("dura_ISF by-passed; avg. glucose $avg05 below target $target_bg")
+        // raise target for noisy / raw CGM data
+        if (bg > max_bg && profile.adv_target_adjustments && !profile.temptargetSet) {
+            // with target=100, as BG rises from 100 to 160, adjustedTarget drops from 100 to 80
+            val adjustedMinBG = round(max(80.0, min_bg - (bg - min_bg) / 3.0), 0)
+            val adjustedTargetBG = round(max(80.0, target_bg - (bg - target_bg) / 3.0), 0)
+            val adjustedMaxBG = round(max(80.0, max_bg - (bg - max_bg) / 3.0), 0)
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedMinBG, don t use it
+            //console.error("naive_eventualBG:",naive_eventualBG+", eventualBG:",eventualBG);
+            if (eventualBG > adjustedMinBG && naive_eventualBG > adjustedMinBG && min_bg > adjustedMinBG) {
+                consoleError.add("Adjusting targets for high BG: min_bg from $min_bg to $adjustedMinBG; ")
+                min_bg = adjustedMinBG
+            } else {
+                consoleError.add("min_bg unchanged: $min_bg; ")
             }
-
-            else               -> {
-                // fight the resistance at high levels
-                val dura05Weight = dura05 / 60
-                val avg05Weight = weightISF / target_bg
-                dura_ISF += dura05Weight * avg05Weight * (avg05 - target_bg)
-                sens_modified = true
-                consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${round(sens, 1)} did not do it for ${round(dura05, 1)}m")
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedTargetBG, don t use it
+            if (eventualBG > adjustedTargetBG && naive_eventualBG > adjustedTargetBG && target_bg > adjustedTargetBG) {
+                consoleError.add("target_bg from $target_bg to $adjustedTargetBG; ")
+                target_bg = adjustedTargetBG
+            } else {
+                consoleError.add("target_bg unchanged: $target_bg; ")
+            }
+            // if eventualBG, naive_eventualBG, and max_bg aren't all above adjustedMaxBG, don t use it
+            if (eventualBG > adjustedMaxBG && naive_eventualBG > adjustedMaxBG && max_bg > adjustedMaxBG) {
+                consoleError.add("max_bg from $max_bg to $adjustedMaxBG")
+                max_bg = adjustedMaxBG
+            } else {
+                consoleError.add("max_bg unchanged: $max_bg")
             }
         }
-        autoIsfValues.duraIsf = dura_ISF
 
-        if (sens_modified) {
-            liftISF = max(dura_ISF, max(bg_ISF, max(acce_ISF, pp_ISF)))
-            if (acce_ISF < 1.0) {
-                consoleError.add("strongest autoISF factor ${round(liftISF, 2)} weakened to ${round(liftISF * acce_ISF, 2)} as bg decelerates already")
-                liftISF = liftISF * acce_ISF
-            }
-            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return round(sens / final_ISF, 1)
+        val expectedDelta = calculate_expected_delta(target_bg, eventualBG, bgi)
+
+        // min_bg of 90 -> threshold of 65, 100 -> 70 110 -> 75, and 130 -> 85
+        val threshold = min_bg - 0.5 * (min_bg - 40)
+        //console.error(reservoir_data);
+
+        rT = RT(
+            algorithm = APSResult.Algorithm.AUTO_ISF,
+            runningAutoIsf = true,
+            timestamp = currentTime,
+            bg = bg,
+            tick = tick,
+            eventualBG = eventualBG,
+            targetBG = target_bg,
+            insulinReq = 0.0,
+            deliverAt = deliverAt, // The time at which the microbolus should be delivered
+            sensitivityRatio = sensitivityRatio, // autosens ratio (fraction of normal basal)
+            consoleLog = consoleLog,
+            consoleError = consoleError,
+            variable_sens = profile.variable_sens
+        )
+
+        // generate predicted future BGs based on IOB, COB, and current absorption rate
+
+        var COBpredBGs = mutableListOf<Double>()
+        var aCOBpredBGs = mutableListOf<Double>()
+        var IOBpredBGs = mutableListOf<Double>()
+        var UAMpredBGs = mutableListOf<Double>()
+        var ZTpredBGs = mutableListOf<Double>()
+        COBpredBGs.add(bg)
+        aCOBpredBGs.add(bg)
+        IOBpredBGs.add(bg)
+        ZTpredBGs.add(bg)
+        UAMpredBGs.add(bg)
+
+        //var enableSMB = if (autoIsfMode) microBolusAllowed else enable_smb(profile, microBolusAllowed, meal_data, target_bg) // pulled ahead for autoISF
+
+        // enable UAM (if enabled in preferences)
+        val enableUAM = profile.enableUAM
+
+        //console.error(meal_data);
+        // carb impact and duration are 0 unless changed below
+        var ci: Double
+        val cid: Double
+        // calculate current carb absorption rate, and how long to absorb all carbs
+        // CI = current carb impact on BG in mg/dL/5m
+        ci = round((minDelta - bgi), 1)
+        val uci = round((minDelta - bgi), 1)
+        // ISF (mg/dL/U) / CR (g/U) = CSF (mg/dL/g)
+
+        // TODO: remove commented-out code for old behavior
+        //if (profile.temptargetSet) {
+        // if temptargetSet, use unadjusted profile.sens to allow activity mode sensitivityRatio to adjust CR
+        //var csf = profile.sens / profile.carb_ratio;
+        //} else {
+        // otherwise, use autosens-adjusted sens to counteract autosens meal insulin dosing adjustments
+        // so that autotuned CR is still in effect even when basals and ISF are being adjusted by autosens
+        //var csf = sens / profile.carb_ratio;
+        //}
+        // use autosens-adjusted sens to counteract autosens meal insulin dosing adjustments so that
+        // autotuned CR is still in effect even when basals and ISF are being adjusted by TT or autosens
+        // this avoids overdosing insulin for large meals when low temp targets are active
+        val csf = sens / profile.carb_ratio
+        consoleError.add("profile.sens: ${profile.sens}, sens: $sens, CSF: $csf")
+
+        val maxCarbAbsorptionRate = 30 // g/h; maximum rate to assume carbs will absorb if no CI observed
+        // limit Carb Impact to maxCarbAbsorptionRate * csf in mg/dL per 5m
+        val maxCI = round(maxCarbAbsorptionRate * csf * 5 / 60, 1)
+        if (ci > maxCI) {
+            consoleError.add("Limiting carb impact from $ci to $maxCI mg/dL/5m ( $maxCarbAbsorptionRate g/h )")
+            ci = maxCI
         }
-        consoleError.add("----------------------------------")
-        consoleError.add("end AutoISF")
-        consoleError.add("----------------------------------")
-        return round(sens / sensitivityRatio, 1)     // nothing changed
-    }
+        var remainingCATimeMin = 3.0 // h; duration of expected not-yet-observed carb absorption
+        // adjust remainingCATime (instead of CR) for autosens if sensitivityRatio defined
+        remainingCATimeMin = remainingCATimeMin / sensitivityRatio
+        // 20 g/h means that anything <= 60g will get a remainingCATimeMin, 80g will get 4h, and 120g 6h
+        // when actual absorption ramps up it will take over from remainingCATime
+        val assumedCarbAbsorptionRate = 20 // g/h; maximum rate to assume carbs will absorb if no CI observed
+        var remainingCATime = remainingCATimeMin
+        if (meal_data.carbs != 0.0) {
+            // if carbs * assumedCarbAbsorptionRate > remainingCATimeMin, raise it
+            // so <= 90g is assumed to take 3h, and 120g=4h
+            remainingCATimeMin = Math.max(remainingCATimeMin, meal_data.mealCOB / assumedCarbAbsorptionRate)
+            val lastCarbAge = round((systemTime - meal_data.lastCarbTime) / 60000.0)
+            //console.error(meal_data.lastCarbTime, lastCarbAge);
 
-    fun interpolate(xdata: Double): Double {   // interpolate ISF behaviour based on polygons defining nonlinear functions defined by value pairs for ...
-        //  ...             <----------------------  glucose  ---------------------->
-        val polyX = arrayOf(50.0, 60.0, 80.0, 90.0, 100.0, 110.0, 150.0, 180.0, 200.0)
-        val polyY = arrayOf(-0.5, -0.5, -0.3, -0.2, 0.0, 0.0, 0.5, 0.7, 0.7)
-        val polymax: Int = polyX.size - 1
-        var step = polyX[0]
-        var sVal = polyY[0]
-        var stepT = polyX[polymax]
-        var sValold = polyY[polymax]
+            val fractionCOBAbsorbed = (meal_data.carbs - meal_data.mealCOB) / meal_data.carbs
+            remainingCATime = remainingCATimeMin + 1.5 * lastCarbAge / 60
+            remainingCATime = round(remainingCATime, 1)
+            //console.error(fractionCOBAbsorbed, remainingCATimeAdjustment, remainingCATime)
+            consoleError.add("Last carbs " + lastCarbAge + "minutes ago; remainingCATime:" + remainingCATime + "hours;" + round(fractionCOBAbsorbed * 100) + "% carbs absorbed")
+        }
 
-        var newVal = 1.0
-        var lowVal = 1.0
-        val topVal: Double
-        val lowX: Double
-        val topX: Double
-        val myX: Double
-        var lowLabl = step
+        // calculate the number of carbs absorbed over remainingCATime hours at current CI
+        // CI (mg/dL/5m) * (5m)/5 (m) * 60 (min/hr) * 4 (h) / 2 (linear decay factor) = total carb impact (mg/dL)
+        val totalCI = Math.max(0.0, ci / 5 * 60 * remainingCATime / 2)
+        // totalCI (mg/dL) / CSF (mg/dL/g) = total carbs absorbed (g)
+        val totalCA = totalCI / csf
+        val remainingCarbsCap: Int // default to 90
+        remainingCarbsCap = min(90, profile.remainingCarbsCap)
+        var remainingCarbs = max(0.0, meal_data.mealCOB - totalCA)
+        remainingCarbs = Math.min(remainingCarbsCap.toDouble(), remainingCarbs)
+        // assume remainingCarbs will absorb in a /\ shaped bilinear curve
+        // peaking at remainingCATime / 2 and ending at remainingCATime hours
+        // area of the /\ triangle is the same as a remainingCIpeak-height rectangle out to remainingCATime/2
+        // remainingCIpeak (mg/dL/5m) = remainingCarbs (g) * CSF (mg/dL/g) * 5 (m/5m) * 1h/60m / (remainingCATime/2) (h)
+        val remainingCIpeak = remainingCarbs * csf * 5 / 60 / (remainingCATime / 2)
+        //console.error(profile.min_5m_carbimpact,ci,totalCI,totalCA,remainingCarbs,remainingCI,remainingCATime);
 
-        if (step > xdata) {
-            // extrapolate backwards
-            stepT = polyX[1]
-            sValold = polyY[1]
-            lowVal = sVal
-            topVal = sValold
-            lowX = step
-            topX = stepT
-            myX = xdata
-            newVal = lowVal + (topVal - lowVal) / (topX - lowX) * (myX - lowX)
-        } else if (stepT < xdata) {
-            // extrapolate forwards
-            step = polyX[polymax - 1]
-            sVal = polyY[polymax - 1]
-            lowVal = sVal
-            topVal = sValold
-            lowX = step
-            topX = stepT
-            myX = xdata
-            newVal = lowVal + (topVal - lowVal) / (topX - lowX) * (myX - lowX)
+        // calculate peak deviation in last hour, and slope from that to current deviation
+        val slopeFromMaxDeviation = round(meal_data.slopeFromMaxDeviation, 2)
+        // calculate lowest deviation in last hour, and slope from that to current deviation
+        val slopeFromMinDeviation = round(meal_data.slopeFromMinDeviation, 2)
+        // assume deviations will drop back down at least at 1/3 the rate they ramped up
+        val slopeFromDeviations = Math.min(slopeFromMaxDeviation, -slopeFromMinDeviation / 3)
+        //console.error(slopeFromMaxDeviation);
+
+        val aci = 10
+        //5m data points = g * (1U/10g) * (40mg/dL/1U) / (mg/dL/5m)
+        // duration (in 5m data points) = COB (g) * CSF (mg/dL/g) / ci (mg/dL/5m)
+        // limit cid to remainingCATime hours: the reset goes to remainingCI
+        if (ci == 0.0) {
+            // avoid divide by zero
+            cid = 0.0
         } else {
-            // interpolate
-            for (i: Int in 0..polymax) {
-                step = polyX[i]
-                sVal = polyY[i]
-                if (step == xdata) {
-                    newVal = sVal
+            cid = min(remainingCATime * 60 / 5 / 2, Math.max(0.0, meal_data.mealCOB * csf / ci))
+        }
+        val acid = max(0.0, meal_data.mealCOB * csf / aci)
+        // duration (hours) = duration (5m) * 5 / 60 * 2 (to account for linear decay)
+        consoleError.add(element = "Carb Impact: ${ci} mg/dL per 5m; CI Duration: ${round(cid * 5 / 60 * 2, 1)} hours; remaining CI (~2h peak): ${round(remainingCIpeak, 1)} mg/dL per 5m")
+        //console.error("Accel. Carb Impact:",aci,"mg/dL per 5m; ACI Duration:",round(acid*5/60*2,1),"hours");
+        var minIOBPredBG = 999.0
+        var minCOBPredBG = 999.0
+        var minUAMPredBG = 999.0
+        var minGuardBG: Double
+        var minCOBGuardBG = 999.0
+        var minUAMGuardBG = 999.0
+        var minIOBGuardBG = 999.0
+        var minZTGuardBG = 999.0
+        var minPredBG: Double
+        var avgPredBG: Double
+        var IOBpredBG: Double = eventualBG
+        var maxIOBPredBG = bg
+        var maxCOBPredBG = bg
+        //var maxUAMPredBG = bg
+        //var maxPredBG = bg;
+        //var eventualPredBG = bg
+        val lastIOBpredBG: Double
+        var lastCOBpredBG: Double? = null
+        var lastUAMpredBG: Double? = null
+        //var lastZTpredBG: Int
+        var UAMduration = 0.0
+        var remainingCItotal = 0.0
+        val remainingCIs = mutableListOf<Int>()
+        val predCIs = mutableListOf<Int>()
+        var UAMpredBG: Double? = null
+        var COBpredBG: Double? = null
+        var aCOBpredBG: Double?
+        iobArray.forEach { iobTick ->
+            //console.error(iobTick);
+            val predBGI: Double = round((-iobTick.activity * sens * 5), 2)
+            val IOBpredBGI: Double = predBGI
+            iobTick.iobWithZeroTemp ?: error("iobTick.iobWithZeroTemp missing")
+            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * sens * 5), 2)
+            val predUAMBGI = predBGI
+            // for IOBpredBGs, predicted deviation impact drops linearly from current deviation down to zero
+            // over 60 minutes (data points every 5m)
+            val predDev: Double = ci * (1 - min(1.0, IOBpredBGs.size / (60.0 / 5.0)))
+            IOBpredBG = IOBpredBGs[IOBpredBGs.size - 1] + IOBpredBGI + predDev
+            // calculate predBGs with long zero temp without deviations
+            val ZTpredBG = ZTpredBGs[ZTpredBGs.size - 1] + predZTBGI
+            // for COBpredBGs, predicted carb impact drops linearly from current carb impact down to zero
+            // eventually accounting for all carbs (if they can be absorbed over DIA)
+            val predCI: Double = max(0.0, max(0.0, ci) * (1 - COBpredBGs.size / max(cid * 2, 1.0)))
+            val predACI = max(0.0, max(0, aci) * (1 - COBpredBGs.size / max(acid * 2, 1.0)))
+            // if any carbs aren't absorbed after remainingCATime hours, assume they'll absorb in a /\ shaped
+            // bilinear curve peaking at remainingCIpeak at remainingCATime/2 hours (remainingCATime/2*12 * 5m)
+            // and ending at remainingCATime h (remainingCATime*12 * 5m intervals)
+            val intervals = Math.min(COBpredBGs.size.toDouble(), ((remainingCATime * 12) - COBpredBGs.size))
+            val remainingCI = Math.max(0.0, intervals / (remainingCATime / 2 * 12) * remainingCIpeak)
+            remainingCItotal += predCI + remainingCI
+            remainingCIs.add(round(remainingCI))
+            predCIs.add(round(predCI))
+            //console.log(round(predCI,1)+"+"+round(remainingCI,1)+" ");
+            COBpredBG = COBpredBGs[COBpredBGs.size - 1] + predBGI + min(0.0, predDev) + predCI + remainingCI
+            aCOBpredBG = aCOBpredBGs[aCOBpredBGs.size - 1] + predBGI + min(0.0, predDev) + predACI
+            // for UAMpredBGs, predicted carb impact drops at slopeFromDeviations
+            // calculate predicted CI from UAM based on slopeFromDeviations
+            val predUCIslope = max(0.0, uci + (UAMpredBGs.size * slopeFromDeviations))
+            // if slopeFromDeviations is too flat, predicted deviation impact drops linearly from
+            // current deviation down to zero over 3h (data points every 5m)
+            val predUCImax = max(0.0, uci * (1 - UAMpredBGs.size / max(3.0 * 60 / 5, 1.0)))
+            //console.error(predUCIslope, predUCImax);
+            // predicted CI from UAM is the lesser of CI based on deviationSlope or DIA
+            val predUCI = min(predUCIslope, predUCImax)
+            if (predUCI > 0) {
+                //console.error(UAMpredBGs.length,slopeFromDeviations, predUCI);
+                UAMduration = round((UAMpredBGs.size + 1) * 5 / 60.0, 1)
+            }
+            UAMpredBG = UAMpredBGs[UAMpredBGs.size - 1] + predUAMBGI + min(0.0, predDev) + predUCI
+            //console.error(predBGI, predCI, predUCI);
+            // truncate all BG predictions at 4 hours
+            if (IOBpredBGs.size < 48) IOBpredBGs.add(IOBpredBG)
+            if (COBpredBGs.size < 48) COBpredBGs.add(COBpredBG)
+            if (aCOBpredBGs.size < 48) aCOBpredBGs.add(aCOBpredBG)
+            if (UAMpredBGs.size < 48) UAMpredBGs.add(UAMpredBG)
+            if (ZTpredBGs.size < 48) ZTpredBGs.add(ZTpredBG)
+            // calculate minGuardBGs without a wait from COB, UAM, IOB predBGs
+            if (COBpredBG < minCOBGuardBG) minCOBGuardBG = round(COBpredBG).toDouble()
+            if (UAMpredBG < minUAMGuardBG) minUAMGuardBG = round(UAMpredBG).toDouble()
+            if (IOBpredBG < minIOBGuardBG) minIOBGuardBG = IOBpredBG
+            if (ZTpredBG < minZTGuardBG) minZTGuardBG = round(ZTpredBG, 0)
+
+            // set minPredBGs starting when currently-dosed insulin activity will peak
+            // look ahead 60m (regardless of insulin type) so as to be less aggressive on slower insulins
+            // add 30m to allow for insulin delivery (SMBs or temps)
+            val insulinPeakTime = 90
+            val insulinPeak5m = (insulinPeakTime / 60.0) * 12.0
+            //console.error(insulinPeakTime, insulinPeak5m, profile.insulinPeakTime, profile.curve);
+
+            // wait 90m before setting minIOBPredBG
+            if (IOBpredBGs.size > insulinPeak5m && (IOBpredBG < minIOBPredBG)) minIOBPredBG = round(IOBpredBG, 0)
+            if (IOBpredBG > maxIOBPredBG) maxIOBPredBG = IOBpredBG
+            // wait 85-105m before setting COB and 60m for UAM minPredBGs
+            if ((cid != 0.0 || remainingCIpeak > 0) && COBpredBGs.size > insulinPeak5m && (COBpredBG < minCOBPredBG)) minCOBPredBG = round(COBpredBG, 0)
+            if ((cid != 0.0 || remainingCIpeak > 0) && COBpredBG > maxIOBPredBG) maxCOBPredBG = COBpredBG
+            if (enableUAM && UAMpredBGs.size > 12 && (UAMpredBG < minUAMPredBG)) minUAMPredBG = round(UAMpredBG, 0)
+            //if (enableUAM && UAMpredBG!! > maxIOBPredBG) maxUAMPredBG = UAMpredBG!!
+        }
+        // set eventualBG to include effect of carbs
+        //console.error("PredBGs:",JSON.stringify(predBGs));
+        if (meal_data.mealCOB > 0) {
+            consoleError.add("predCIs (mg/dL/5m):" + predCIs.joinToString(separator = " "))
+            consoleError.add("remainingCIs:      " + remainingCIs.joinToString(separator = " "))
+        }
+        rT.predBGs = Predictions()
+        IOBpredBGs = IOBpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
+        for (i in IOBpredBGs.size - 1 downTo 13) {
+            if (IOBpredBGs[i - 1] != IOBpredBGs[i]) break
+            else IOBpredBGs.removeAt(IOBpredBGs.lastIndex)
+        }
+        rT.predBGs?.IOB = IOBpredBGs.map { it.toInt() }
+        lastIOBpredBG = round(IOBpredBGs[IOBpredBGs.size - 1]).toDouble()
+        ZTpredBGs = ZTpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
+        for (i in ZTpredBGs.size - 1 downTo 7) {
+            // stop displaying ZTpredBGs once they're rising and above target
+            if (ZTpredBGs[i - 1] >= ZTpredBGs[i] || ZTpredBGs[i] <= target_bg) break
+            else ZTpredBGs.removeAt(ZTpredBGs.lastIndex)
+        }
+        rT.predBGs?.ZT = ZTpredBGs.map { it.toInt() }
+        if (meal_data.mealCOB > 0) {
+            aCOBpredBGs = aCOBpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
+            for (i in aCOBpredBGs.size - 1 downTo 13) {
+                if (aCOBpredBGs[i - 1] != aCOBpredBGs[i]) break
+                else aCOBpredBGs.removeAt(aCOBpredBGs.lastIndex)
+            }
+        }
+        if (meal_data.mealCOB > 0 && (ci > 0 || remainingCIpeak > 0)) {
+            COBpredBGs = COBpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
+            for (i in COBpredBGs.size - 1 downTo 13) {
+                if (COBpredBGs[i - 1] != COBpredBGs[i]) break
+                else COBpredBGs.removeAt(COBpredBGs.lastIndex)
+            }
+            rT.predBGs?.COB = COBpredBGs.map { it.toInt() }
+            lastCOBpredBG = COBpredBGs[COBpredBGs.size - 1]
+            eventualBG = max(eventualBG, round(COBpredBGs[COBpredBGs.size - 1], 0))
+        }
+        if (ci > 0 || remainingCIpeak > 0) {
+            if (enableUAM) {
+                UAMpredBGs = UAMpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
+                for (i in UAMpredBGs.size - 1 downTo 13) {
+                    if (UAMpredBGs[i - 1] != UAMpredBGs[i]) break
+                    else UAMpredBGs.removeAt(UAMpredBGs.lastIndex)
+                }
+                rT.predBGs?.UAM = UAMpredBGs.map { it.toInt() }
+                lastUAMpredBG = UAMpredBGs[UAMpredBGs.size - 1]
+                eventualBG = max(eventualBG, round(UAMpredBGs[UAMpredBGs.size - 1], 0))
+            }
+
+            // set eventualBG based on COB or UAM predBGs
+            rT.eventualBG = eventualBG
+        }
+
+        consoleError.add("UAM Impact: $uci mg/dL per 5m; UAM Duration: $UAMduration hours")
+        consoleError.add("EventualBG is $eventualBG ;")
+
+        minIOBPredBG = max(39.0, minIOBPredBG)
+        minCOBPredBG = max(39.0, minCOBPredBG)
+        minUAMPredBG = max(39.0, minUAMPredBG)
+        minPredBG = round(minIOBPredBG, 0)
+
+        val fractionCarbsLeft = meal_data.mealCOB / meal_data.carbs
+        // if we have COB and UAM is enabled, average both
+        if (minUAMPredBG < 999 && minCOBPredBG < 999) {
+            // weight COBpredBG vs. UAMpredBG based on how many carbs remain as COB
+            avgPredBG = round((1 - fractionCarbsLeft) * UAMpredBG!! + fractionCarbsLeft * COBpredBG!!, 0)
+            // if UAM is disabled, average IOB and COB
+        } else if (minCOBPredBG < 999) {
+            avgPredBG = round((IOBpredBG + COBpredBG!!) / 2.0, 0)
+            // if we have UAM but no COB, average IOB and UAM
+        } else if (minUAMPredBG < 999) {
+            avgPredBG = round((IOBpredBG + UAMpredBG!!) / 2.0, 0)
+        } else {
+            avgPredBG = round(IOBpredBG, 0)
+        }
+        // if avgPredBG is below minZTGuardBG, bring it up to that level
+        if (minZTGuardBG > avgPredBG) {
+            avgPredBG = minZTGuardBG
+        }
+
+        // if we have both minCOBGuardBG and minUAMGuardBG, blend according to fractionCarbsLeft
+        if ((cid > 0.0 || remainingCIpeak > 0)) {
+            if (enableUAM) {
+                minGuardBG = fractionCarbsLeft * minCOBGuardBG + (1 - fractionCarbsLeft) * minUAMGuardBG
+            } else {
+                minGuardBG = minCOBGuardBG
+            }
+        } else if (enableUAM) {
+            minGuardBG = minUAMGuardBG
+        } else {
+            minGuardBG = minIOBGuardBG
+        }
+        minGuardBG = round(minGuardBG, 0)
+        //console.error(minCOBGuardBG, minUAMGuardBG, minIOBGuardBG, minGuardBG);
+
+        var minZTUAMPredBG = minUAMPredBG
+        // if minZTGuardBG is below threshold, bring down any super-high minUAMPredBG by averaging
+        // this helps prevent UAM from giving too much insulin in case absorption falls off suddenly
+        if (minZTGuardBG < threshold) {
+            minZTUAMPredBG = (minUAMPredBG + minZTGuardBG) / 2.0
+            // if minZTGuardBG is between threshold and target, blend in the averaging
+        } else if (minZTGuardBG < target_bg) {
+            // target 100, threshold 70, minZTGuardBG 85 gives 50%: (85-70) / (100-70)
+            val blendPct = (minZTGuardBG - threshold) / (target_bg - threshold)
+            val blendedMinZTGuardBG = minUAMPredBG * blendPct + minZTGuardBG * (1 - blendPct)
+            minZTUAMPredBG = (minUAMPredBG + blendedMinZTGuardBG) / 2.0
+            //minZTUAMPredBG = minUAMPredBG - target_bg + minZTGuardBG;
+            // if minUAMPredBG is below minZTGuardBG, bring minUAMPredBG up by averaging
+            // this allows more insulin if lastUAMPredBG is below target, but minZTGuardBG is still high
+        } else if (minZTGuardBG > minUAMPredBG) {
+            minZTUAMPredBG = (minUAMPredBG + minZTGuardBG) / 2.0
+        }
+        minZTUAMPredBG = round(minZTUAMPredBG, 0)
+        //console.error("minUAMPredBG:",minUAMPredBG,"minZTGuardBG:",minZTGuardBG,"minZTUAMPredBG:",minZTUAMPredBG);
+        // if any carbs have been entered recently
+        if (meal_data.carbs != 0.0) {
+
+            // if UAM is disabled, use max of minIOBPredBG, minCOBPredBG
+            if (!enableUAM && minCOBPredBG < 999) {
+                minPredBG = round(max(minIOBPredBG, minCOBPredBG), 0)
+                // if we have COB, use minCOBPredBG, or blendedMinPredBG if it's higher
+            } else if (minCOBPredBG < 999) {
+                // calculate blendedMinPredBG based on how many carbs remain as COB
+                val blendedMinPredBG = fractionCarbsLeft * minCOBPredBG + (1 - fractionCarbsLeft) * minZTUAMPredBG
+                // if blendedMinPredBG > minCOBPredBG, use that instead
+                minPredBG = round(max(minIOBPredBG, max(minCOBPredBG, blendedMinPredBG)), 0)
+                // if carbs have been entered, but have expired, use minUAMPredBG
+            } else if (enableUAM) {
+                minPredBG = minZTUAMPredBG
+            } else {
+                minPredBG = minGuardBG
+            }
+            // in pure UAM mode, use the higher of minIOBPredBG,minUAMPredBG
+        } else if (enableUAM) {
+            minPredBG = round(max(minIOBPredBG, minZTUAMPredBG), 0)
+        }
+        // make sure minPredBG isn't higher than avgPredBG
+        minPredBG = min(minPredBG, avgPredBG)
+
+        consoleError.add("minPredBG: $minPredBG minIOBPredBG: $minIOBPredBG minZTGuardBG: $minZTGuardBG")
+        if (minCOBPredBG < 999) {
+            consoleError.add(" minCOBPredBG: $minCOBPredBG")
+        }
+        if (minUAMPredBG < 999) {
+            consoleError.add(" minUAMPredBG: $minUAMPredBG")
+        }
+        consoleError.add(" avgPredBG: $avgPredBG COB: ${meal_data.mealCOB} / ${meal_data.carbs}")
+        // But if the COB line falls off a cliff, don't trust UAM too much:
+        // use maxCOBPredBG if it's been set and lower than minPredBG
+        if (maxCOBPredBG > bg) {
+            minPredBG = min(minPredBG, maxCOBPredBG)
+        }
+
+        rT.COB = meal_data.mealCOB
+        rT.IOB = iob_data.iob
+        //==========================================================================================================
+        val Delta = glucose_status.delta
+        val IOB = iob_data.iob
+        val COB = meal_data.mealCOB
+        val SDelta = glucose_status.shortAvgDelta
+        val LDelta = glucose_status.longAvgDelta
+        val Steps5M = profile.recent_steps_5_minutes
+        val Steps10M = profile.recent_steps_10_minutes
+        val Steps15M = profile.recent_steps_15_minutes
+        val Steps30M = profile.recent_steps_30_minutes
+        val Steps60M = profile.recent_steps_60_minutes
+        //val Steps180M = profile.recent_steps_180_minutes
+
+        // Compute delta_accl using the same formula as the original JS
+        val delta_accl: Double = if (abs(SDelta) == 0.0) {
+            0.0
+        } else {
+            100 * round((Delta - SDelta) / abs(SDelta), 2)
+        }
+
+        var CR = round ( profile.carb_ratio , 2 )
+
+
+        //val bg_acce: Double = glucose_status.bgAcceleration
+        //var iobThUser = profile.iob_threshold_percent
+        val TwilightTimeAM =8
+        val TwilightTimeMins =0
+        val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append(
+            " r010 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+                round(profile.carb_ratio, 2)
+                    .withoutZeros()
+            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
+        )
+
+        rT.reason.append(" ================================== Delta: ${Delta }")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("IOB: ${round(IOB, 2)} ;")
+        rT.reason.append("iobThUser is ${iobThUser} ;;")
+        var TOD = "not set TOD"
+        if (iobThUser == 12 ) {
+            TOD = "Night"
+        } else if (iobThUser == 15 ) {
+            TOD = "Twilight"
+        } else if (iobThUser == 20 ) {
+            TOD = "SemiTwilight"
+        }else if (iobThUser == 15 ) {
+            TOD = "Evening"
+        } else if (iobThUser == 30 ) {
+            TOD = "PP90%"
+        } else if (iobThUser == 50 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 40 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 55 ) {
+            TOD = "Day PP110%"
+        } else if (iobThUser == 60 ) {
+            TOD = "Day PP130%"
+        }
+        //consoleError.add("TOD: ${TOD} ;")
+        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append("TOD: ${TOD} ;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+
+        rT.reason.append("Delta: ${convert_bg(Delta )} ;")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("SDelta: ${convert_bg(SDelta )} ;")
+        rT.reason.append("LDelta: ${convert_bg(LDelta )} ;")
+        consoleError.add("IOB: "+round(IOB, 2)+" ; ")
+        consoleError.add("Delta: "+convert_bg(Delta )+" ; ")
+        consoleError.add("SDelta: "+convert_bg(SDelta )+" ; ")
+        consoleError.add("LDelta: "+convert_bg(LDelta )+" ; ")
+        //consoleError.add("iobThUser: "+convert_bg(iobThUser )+" ; ")
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("profile_percentage: ${profile_percentage} ;")
+        rT.reason.append("Steps60M: ${Steps60M} ;")
+        rT.reason.append("Steps30M: ${Steps30M} ;")
+        rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
+        rT.reason.append("profile_percentage: ${profile_percentage} ;")
+        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
+        rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
+        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,2)} ;;")
+        rT.reason.append( "pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("Steps60M: "+Steps60M+" ; ")
+        consoleError.add("Steps30M: "+Steps30M+" ; ")
+        consoleError.add("TwilightTimeDec: "+TwilightTimeDec+" ; ")
+
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+
+        //rT.reason.append("iobThPercent ${iobThPercent} ;;")
+        //rT.reason.append("iobThEffective ${iobThEffective} ;;")
+        //rT.reason.append(
+        //   "TwilightTimeDec: ${round(TwilightTimeDec, 1).withoutZeros()}"
+        //)
+        //================================================================================/
+        //KOTLIN ChatGPT1
+        //================================================================================/
+
+
+        // Compute lastCarbAge
+        var lastCarbAge = 361.0
+        if (meal_data.carbs != null && meal_data.carbs > 0) {
+            lastCarbAge = round(((systemTime - meal_data.lastCarbTime) / 60000.0), 2)
+        }
+
+        var CarbAge = lastCarbAge
+
+
+        //var varOffset: Double = 27.0
+        var varOffset: Double = 9.0
+        val hour = LocalDateTime.now().hour
+
+
+        var targetBgOrig: Double = when {
+            !profile.temptargetSet && profile.min_bg != null -> profile.min_bg!!.toDouble()
+            hour >= 22 -> 5.2 * 18
+            hour in 20 until 22 -> 5.2 * 18
+            hour in 16 until 20 -> 5.0 * 18
+            hour in 10 until 16 -> 5.0 * 18
+            hour in 8 until 10  -> 5.0 * 18
+            hour in 6 until 8   -> 5.0 * 18
+            hour in 5 until 6   -> 5.0 * 18
+            else                -> 5.4 * 18
+        }
+
+
+        // Determine if the button should be enabled based on circadian ISF
+
+
+        // Automations for eating soon
+        var eatSoon = false
+        var stuckH = false
+        var high = false
+        var rising = false
+        var straightRise = false
+        var night4Ov = false
+        var day3Ov = false
+        var over6Ov = false
+
+        var offset1 = false
+        var offset2 = false
+        var offset3 = false
+
+        //val delta = GlucoseStatus.Delta
+        //val sDelta = GlucoseStatus.shortAvgDelta
+
+
+
+        // Check for eating soon based on temp target and BG thresholds
+        if (profile.temptargetSet && target_bg < 4.45 * 18 && target_bg > 4.35 * 18 && bg > 4.5 * 18 && Delta > 0.02 * 18) {
+            eatSoon = true
+        }
+
+        var highProfile = false
+        var carbsSugg = profile.carbsReqThreshold
+        var carbsSuggOrig = carbsSugg
+        var boostOrig = false
+
+        // Determine profileSwitch and adjust carbs suggestion and offsets
+        var profileSwitch = 100
+        /*if (carbsSugg == 9 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
+            profileSwitch = 220
+            highProfile = true
+        } else if (carbsSugg == 10 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
+            profileSwitch = 300
+            highProfile = true
+        } else */
+        if (carbsSugg == 1) {
+            carbsSugg = 5
+            offset1 = true
+        } else if (carbsSugg == 9) {
+            carbsSugg = 5
+            varOffset += 9
+        } else if (carbsSugg == 10) {
+            carbsSugg = 5
+            varOffset += 18
+        } else if (carbsSugg == 2) {
+            carbsSugg = 5
+            offset2 = true
+        } else if (carbsSugg == 3) {
+            carbsSugg = 5
+            offset3 = true
+        } else if (carbsSugg == 8) {
+            carbsSugg = 5
+            offset2 = true
+            offset3 = true
+        } else if (carbsSugg == 7) {
+            carbsSugg = 5
+            offset1 = true
+            offset3 = true
+        } else if (carbsSugg == 6) {
+            carbsSugg = 5
+            offset1 = true
+            offset2 = true
+        } else if (carbsSugg == 4) {
+            carbsSugg = 5
+            offset1 = true
+            offset2 = true
+            offset3 = true
+        }
+        var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+
+        var enableButton = false
+        //val maxIob = profile.max_iob
+        //if (profile.enableCircadianISF) {
+        //    enableButton = true
+        //}
+        if (!isEven(profile.max_iob)) {// odd
+            enableButton = true
+        }
+        //false
+        val nowHour = LocalDateTime.now().hour
+
+        // Initial offset and target calculations
+
+        if (enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset1 ${offset1} ;")
+            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        } else if (nowHour >= 8 && nowHour < 10 && offset2) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset2 ${offset2} ;")
+            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        }
+        if ( (enableButton && delta_accl < -10 ) || (nowHour >= 20  && offset3) ) {
+            varOffset = varOffset + 9
+            rT.reason.append("offset3 ${offset3} ;")
+            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset )} ;")
+        }
+// make sure varOffset is Double (e.g., val varOffset: Double = ...)
+
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        // Apply boost logic based on BG and COB
+        var offsetSoZeroSMB= false
+        if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
+            offsetSoZeroSMB= true
+            rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+        }
+        if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+        }
+        rT.reason.append("offset1 ${offset1} ;")
+        rT.reason.append("offset2 ${offset2} ;")
+        rT.reason.append("offset3 ${offset3} ;")
+        rT.reason.append("varOffset ${convert_bg(varOffset )} ;")
+        rT.reason.append("varOffset ${varOffset} ;")
+        consoleError.add("offset1 ${offset1} ;")
+        consoleError.add("offset2 ${offset2} ;")
+        consoleError.add("offset3 ${offset3} ;")
+        consoleError.add("varOffset ${convert_bg(varOffset )} ;")
+        consoleError.add("varOffset ${varOffset} ;")
+        // Ensure varOffset does not exceed 36
+        varOffset =  min(36.0, varOffset ) // +9
+
+        // Log varOffset for debugging purposes
+        //System.err.println("varOffset ($varOffset)")
+        rT.reason.append("varOffset ($varOffset)")
+        targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+        rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset )} ;")
+        // Condition for disabling boost when BG is below the offset target and no/low COB
+        if (bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120))) {
+            //boostActive = false
+            offsetSoZeroSMB= true
+            //rT.reason += "bg < targetBgOffset && no/low COB: boostActive set to ($boostActive); "
+            rT.reason.append("bg un targetBgOffset && no/low COB: ")
+        }
+
+        consoleError.add("target_bgOrigmmcarbsSuggOrig: "+carbsSuggOrig+" ; ")
+        consoleError.add("target_bgOrigmm: "+target_bgOrigmm+" ; ")
+        consoleError.add("targetBgOrig: "+convert_bg(targetBgOrig )+" ; ")
+        consoleError.add("targetBgOffset: "+convert_bg(targetBgOffset )+" ; ")
+        consoleError.add("offsetSoZeroSMB: "+offsetSoZeroSMB+" ; ")
+        consoleError.add("enableButton: "+enableButton+" ; ")
+        rT.reason.append("carbsSuggOrig: "+carbsSuggOrig+" ; ")
+        rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
+        rT.reason.append("enableButton: ${enableButton} ;")
+        rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset )} ;")
+        rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig )} ;")
+        rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")
+
+
+        // Reset offsetSoZeroSMBand possibly restore boostActive if conditions improve
+        if (!(bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("offsetSoZeroSMBcleared: BG ov targetBgOffset, SMB restored; ")
+            if (bg > targetBgOffset) {
+                //boostActive = true
+                //rT.reason += "offsetSoZeroSMBcleared: BG ov targetBgOffset, boostActive restored; "
+
+            }
+        }
+        //var insulinReq = 2 * min(0.0, (eventualBG - target_bg) / sens)
+        if (profile.temptargetSet  && !isEven( target_bgOrigmm)  ){//target_bgOrigmm?
+            //if (profile.temptargetSet  && !isEven( target_bgOrigmm) && nowHour < 6 && target_bgOrigmm <= 4.4  ){//target_bgOrigmm?
+            //insulinReq = 1.5 * insulinReq
+            //rT.reason.append("(profile.temptargetSet  && !isEven( target_bgOrigmm && nowHour un 6  ); ODD 1.5 * insulinReq = "  + round(insulinReq, 2).withoutZeros() + " ")
+            rT.reason.append("(profile.temptargetSet  ODD 1.5 * insulinReq ;")
+            consoleError.add("(profile.temptargetSet  ODD 1.5 * insulinReq ")
+        } else {
+            rT.reason.append("Even ? target_bgOrigmm ")
+            rT.reason.append("Even ? insulinReq ")
+            consoleError.add("Even ? target_bgOrigmm ")
+            consoleError.add("Even ? insulinReq ")
+        }
+        //================================================================================/
+
+        rT.reason.append(
+            "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+                round(profile.carb_ratio, 2)
+                    .withoutZeros()
+            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
+        )
+        if (lastCOBpredBG != null) {
+            rT.reason.append(", COBpredBG " + convert_bg(lastCOBpredBG.toDouble()))
+        }
+        if (lastUAMpredBG != null) {
+            rT.reason.append(", UAMpredBG " + convert_bg(lastUAMpredBG.toDouble()))
+        }
+        rT.reason.append("; ")
+        // use naive_eventualBG if above 40, but switch to minGuardBG if both eventualBGs hit floor of 39
+        var carbsReqBG = naive_eventualBG
+        if (carbsReqBG < 40) {
+            carbsReqBG = min(minGuardBG, carbsReqBG)
+        }
+        var bgUndershoot: Double = threshold - carbsReqBG
+        // calculate how long until COB (or IOB) predBGs drop below min_bg
+        var minutesAboveMinBG = 240
+        var minutesAboveThreshold = 240
+        if (meal_data.mealCOB > 0 && (ci > 0 || remainingCIpeak > 0)) {
+            for (i in COBpredBGs.indices) {
+                //console.error(COBpredBGs[i], min_bg);
+                if (COBpredBGs[i] < min_bg) {
+                    minutesAboveMinBG = 5 * i
                     break
-                } else if (step > xdata) {
-                    topVal = sVal
-                    lowX = lowLabl
-                    myX = xdata
-                    topX = step
-                    newVal = lowVal + (topVal - lowVal) / (topX - lowX) * (myX - lowX)
+                }
+            }
+            for (i in COBpredBGs.indices) {
+                //console.error(COBpredBGs[i], threshold);
+                if (COBpredBGs[i] < threshold) {
+                    minutesAboveThreshold = 5 * i
                     break
                 }
-                lowVal = sVal
-                lowLabl = step
             }
-        }
-        newVal = if (xdata > 100) {
-            newVal * higher_ISFrange_weight
         } else {
-            newVal * lower_ISFrange_weight
-        }
-        return newVal
-    }
-
-    fun withinISFlimits(
-        liftISF: Double, minISFReduction: Double, maxISFReduction: Double, sensitivityRatio: Double,
-        exerciseModeActive: Boolean, resistanceModeActive: Boolean, stepActivityDetected:Boolean, stepInactivityDetected: Boolean
-    ): Double {
-        var liftISFlimited: Double = liftISF
-        if (liftISF < minISFReduction) {
-            consoleError.add("weakest autoISF factor ${round(liftISF, 2)} limited by autoISF_min $minISFReduction")
-            liftISFlimited = minISFReduction
-        } else if (liftISF > maxISFReduction) {
-            consoleError.add("strongest autoISF factor ${round(liftISF, 2)} limited by autoISF_max $maxISFReduction")
-            liftISFlimited = maxISFReduction
-        }
-        val finalISF: Double
-        var originSens = ""
-        when {
-            exerciseModeActive          -> {
-                finalISF = liftISFlimited * sensitivityRatio                //# on top of TT modification
-                originSens = "including exercise mode impact"
-            }
-            resistanceModeActive        -> {
-                finalISF = liftISFlimited * sensitivityRatio                //# on top of TT modification
-                originSens = "including resistance mode impact"
-            }
-            stepActivityDetected        -> {
-                finalISF = liftISFlimited * sensitivityRatio                //# on top of activity detection
-                originSens  = "including activity detection impact"
-            }
-            stepInactivityDetected      -> {
-                finalISF = liftISFlimited * sensitivityRatio                //# on top of inactivity detection
-                originSens  = "including inactivity detection impact"
-            }
-            liftISFlimited >= 1         -> {                                // can we evr get here?
-                finalISF = max(liftISFlimited, sensitivityRatio)
-                if (liftISFlimited < sensitivityRatio) {
-                    originSens = "from low TT modifier"
+            for (i in IOBpredBGs.indices) {
+                //console.error(IOBpredBGs[i], min_bg);
+                if (IOBpredBGs[i] < min_bg) {
+                    minutesAboveMinBG = 5 * i
+                    break
                 }
             }
-            else                        -> {
-                finalISF = min(liftISFlimited, sensitivityRatio)            // low TT lowers sensitivity dominates
+            for (i in IOBpredBGs.indices) {
+                //console.error(IOBpredBGs[i], threshold);
+                if (IOBpredBGs[i] < threshold) {
+                    minutesAboveThreshold = 5 * i
+                    break
+                }
             }
         }
-        consoleError.add("final ISF factor is ${round(finalISF, 2)} " + originSens)
-        consoleError.add("----------------------------------")
-        consoleError.add("end AutoISF")
-        consoleError.add("----------------------------------")
-        autoIsfValues.finalIsf = finalISF
-        return finalISF
-    }
 
-    fun loop_smb(microBolusAllowed: Boolean, profile: OapsProfileAutoIsf, iob_data_iob: Double, useIobTh: Boolean, iobThEffective: Double): String {
-        val iobThUser = preferences.get(IntKey.ApsAutoIsfIobThPercent)
-        if (useIobTh) {
-            val iobThPercent: Double
-            if ( profile.max_iob<0.001 ) {
-                iobThPercent = 0.0
-                consoleLog.add("User setting iobTH disabled in LGS mode")
-            } else {
-                iobThPercent = round(iobThEffective/profile.max_iob*100.0, 0)
-            }
-            if (iobThPercent == iobThUser.toDouble()) {
-                consoleLog.add("User setting iobTH=$iobThUser% not modulated")
-            } else if (iobThPercent > 0.0) {
-                consoleLog.add("User setting iobTH=$iobThUser% modulated to ${iobThPercent.toInt()}% or ${round(iobThEffective, 2)}U")
-                consoleLog.add("  due to profile %, exercise mode or similar")
-            }
-        } else {
-            consoleLog.add("User setting iobTH=100% disables iobTH method")
+        if (enableSMB && minGuardBG < threshold) {
+            consoleError.add("minGuardBG ${convert_bg(minGuardBG)} projected below ${convert_bg(threshold)} - disabling SMB")
+            //rT.reason += "minGuardBG "+minGuardBG+"<"+threshold+": SMB disabled; ";
+            enableSMB = false
         }
-        autoIsfValues.iobThEffective = if (useIobTh) iobThEffective else profile.max_iob
-
-        if (!microBolusAllowed) {
-            return "AAPS"                                                 // see message in enable_smb
+        var maxDeltaPercentage = 0.2           // the AAPS default
+        if (loop_wanted_smb == "fullLoop") {   // only if SMB specifically requested, e.g. for full loop
+            maxDeltaPercentage = 0.3
+        }
+        if (maxDelta > maxDeltaPercentage * bg) {
+            consoleError.add("maxDelta ${convert_bg(maxDelta)} > ${100 * maxDeltaPercentage}% of BG ${convert_bg(bg)} - disabling SMB")
+            rT.reason.append("maxDelta " + convert_bg(maxDelta) + " > " + 100 * maxDeltaPercentage + "% of BG " + convert_bg(bg) + ": SMB disabled; ")
+            enableSMB = false
         }
 
-        if (preferences.get(BooleanKey.FslCalibrationTrigger)) {
-            preferences.put(LongKey.FslCalibrationStart, dateUtil.now())
-            preferences.put(BooleanKey.FslCalibrationTrigger, false)
-            preferences.put(BooleanKey.FslCalibrationEnd, false)
+        consoleError.add("BG projected to remain above ${convert_bg(min_bg)} for $minutesAboveMinBG minutes")
+        if (minutesAboveThreshold < 240 || minutesAboveMinBG < 60) {
+            consoleError.add("BG projected to remain above ${convert_bg(threshold)} for $minutesAboveThreshold minutes")
         }
-        val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
-        val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
-        var CalibrationMsg = "Calibration json: {\"calibrationStart\":${preferences.get(LongKey.FslCalibrationStart)},\"calibrationIgnore\":${preferences.get(BooleanKey.FslCalibrationEnd)}"
-        CalibrationMsg += "}"
-        aapsLogger.debug(LTag.APS, CalibrationMsg)
-        if (calibrationStopsSMB) {
-            consoleLog.add("SMB disabled while calibrating for another ${calibrationMinutes}m")
-            return "blocked"
-        } else if (enableSMB_EvenOn_OddOff_always) {
-            //TODO: cleaner conversion back to original mmol/L if applicable
-            var target = convert_bg_to_units(profile.target_bg, profile)
-            // val msgType: String
-            val evenTarget: Boolean
-            val msgUnits: String
-            val msgTail: String
-            if (profile.out_units == "mmol/L") {
-                evenTarget = round(target * 10.0, 0).toInt() % 2 == 0
-                target = round(target, 1)
-                msgUnits = "has"
-                msgTail = "decimal"
-            } else {
-                evenTarget = round(target, 0).toInt() % 2 == 0
-                target = round(target, 0)
-                msgUnits = "is"
-                msgTail = "number"
-            }
-            val msgEven: String = if (evenTarget) "even" else "odd"
+        // include at least minutesAboveThreshold worth of zero temps in calculating carbsReq
+        // always include at least 30m worth of zero temp (carbs to 80, low temp up to target)
+        val zeroTempDuration = minutesAboveThreshold
+        // BG undershoot, minus effect of zero temps until hitting min_bg, converted to grams, minus COB
+        val zeroTempEffectDouble = profile.current_basal * sens * zeroTempDuration / 60
+        // don't count the last 25% of COB against carbsReq
+        val COBforCarbsReq = max(0.0, meal_data.mealCOB - 0.25 * meal_data.carbs)
+        val carbsReq = round(((bgUndershoot - zeroTempEffectDouble) / csf - COBforCarbsReq))
+        val zeroTempEffect = round(zeroTempEffectDouble)
+        consoleError.add("naive_eventualBG: $naive_eventualBG bgUndershoot: $bgUndershoot zeroTempDuration $zeroTempDuration zeroTempEffect: $zeroTempEffect carbsReq: $carbsReq")
+        if (carbsReq >= profile.carbsReqThreshold && minutesAboveThreshold <= 45) {
+            rT.carbsReq = carbsReq
+            rT.carbsReqWithin = minutesAboveThreshold
+            rT.reason.append("$carbsReq add\'l carbs req w/in ${minutesAboveThreshold}m; ")
+        }
 
-            if (!evenTarget) {
-                consoleLog.add("SMB disabled; current target $target $msgUnits $msgEven $msgTail")
-                consoleLog.add("Loop allows minimal power")
-                return "blocked"
-            } else if (profile.max_iob == 0.0) {
-                consoleLog.add("SMB disabled because of max_iob=0")
-                return "blocked"
-            } else if (useIobTh && iobThEffective < iob_data_iob) {
-                consoleLog.add("SMB disabled by Full Loop logic: iob $iob_data_iob is above effective iobTH $iobThEffective")
-                consoleLog.add("Loop power level temporarily capped")
-                return "iobTH"
-            } else {
-                consoleLog.add("SMB enabled; current target $target $msgUnits $msgEven $msgTail")
-                return if (profile.target_bg < 100) {     // indirect assessment; later set it in GUI
-                    consoleLog.add("Loop allows maximum power")
-                    "fullLoop"                                      // even number
+        // don't low glucose suspend if IOB is already super negative and BG is rising faster than predicted
+        if (bg < threshold && iob_data.iob < -profile.current_basal * 20 / 60 && minDelta > 0 && minDelta > expectedDelta) {
+            rT.reason.append("IOB ${iob_data.iob} < ${round(-profile.current_basal * 20 / 60, 2)}")
+            rT.reason.append(" and minDelta ${convert_bg(minDelta)} > expectedDelta ${convert_bg(expectedDelta)}; ")
+            // predictive low glucose suspend mode: BG is / is projected to be < threshold
+        } else if (bg < threshold || minGuardBG < threshold) {
+            rT.reason.append("minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)}")
+            bgUndershoot = target_bg - minGuardBG
+            val worstCaseInsulinReq = bgUndershoot / sens
+            var durationReq = round(60 * worstCaseInsulinReq / profile.current_basal)
+            durationReq = round(durationReq / 30.0) * 30
+            // always set a 30-120m zero temp (oref0-pump-loop will let any longer SMB zero temp run)
+            durationReq = min(120, max(30, durationReq))
+            return setTempBasal(0.0, durationReq, profile, rT, currenttemp)
+        }
+
+        // if not in LGS mode, cancel temps before the top of the hour to reduce beeping/vibration
+        // console.error(profile.skip_neutral_temps, rT.deliverAt.getMinutes());
+        val minutes = Instant.ofEpochMilli(rT.deliverAt!!).atZone(ZoneId.systemDefault()).toLocalDateTime().minute
+        if (profile.skip_neutral_temps && minutes >= 55) {
+            rT.reason.append("; Canceling temp at " + minutes + "m past the hour. ")
+            return setTempBasal(0.0, 0, profile, rT, currenttemp)
+        }
+
+        if (eventualBG < min_bg) { // if eventual BG is below target:
+            rT.reason.append("Eventual BG ${convert_bg(eventualBG)} < ${convert_bg(min_bg)}")
+            // if 5m or 30m avg BG is rising faster than expected delta
+            if (minDelta > expectedDelta && minDelta > 0 && carbsReq == 0) {
+                // if naive_eventualBG < 40, set a 30m zero temp (oref0-pump-loop will let any longer SMB zero temp run)
+                if (naive_eventualBG < 40) {
+                    rT.reason.append(", naive_eventualBG < 40. ")
+                    return setTempBasal(0.0, 30, profile, rT, currenttemp)
+                }
+                if (glucose_status.delta > minDelta) {
+                    rT.reason.append(", but Delta ${convert_bg(tick.toDouble())} > expectedDelta ${convert_bg(expectedDelta)}")
                 } else {
-                    consoleLog.add("Loop allows medium power")
-                    "enforced"                                      // even number
+                    rT.reason.append(", but Min. Delta ${minDelta.toFixed2()} > Exp. Delta ${convert_bg(expectedDelta)}")
+                }
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                    rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
+                    return rT
+                } else {
+                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    return setTempBasal(basal, 30, profile, rT, currenttemp)
+                }
+            }
+
+            // calculate 30m low-temp required to get projected BG up to target
+            // multiply by 2 to low-temp faster for increased hypo safety
+            var insulinReq = 2 * min(0.0, (eventualBG - target_bg) / sens)
+            insulinReq = round(insulinReq, 2)
+            // calculate naiveInsulinReq based on naive_eventualBG
+            var naiveInsulinReq = min(0.0, (naive_eventualBG - target_bg) / sens)
+            naiveInsulinReq = round(naiveInsulinReq, 2)
+            if (minDelta < 0 && minDelta > expectedDelta) {
+                // if we're barely falling, newinsulinReq should be barely negative
+                val newinsulinReq = round((insulinReq * (minDelta / expectedDelta)), 2)
+                //console.error("Increasing insulinReq from " + insulinReq + " to " + newinsulinReq);
+                insulinReq = newinsulinReq
+            }
+            // rate required to deliver insulinReq less insulin over 30m:
+            var rate = basal + (2 * insulinReq)
+            rate = round_basal(rate)
+
+            // if required temp < existing temp basal
+            val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
+            // if current temp would deliver a lot (30% of basal) less than the required insulin,
+            // by both normal and naive calculations, then raise the rate
+            val minInsulinReq = Math.min(insulinReq, naiveInsulinReq)
+            if (insulinScheduled < minInsulinReq - basal * 0.3) {
+                rT.reason.append(", ${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} is a lot less than needed. ")
+                return setTempBasal(rate, 30, profile, rT, currenttemp)
+            }
+            if (currenttemp.duration > 5 && rate >= currenttemp.rate * 0.8) {
+                rT.reason.append(", temp ${currenttemp.rate} ~< req ${round(rate, 2)}U/hr. ")
+                return rT
+            } else {
+                // calculate a long enough zero temp to eventually correct back up to target
+                if (rate <= 0) {
+                    bgUndershoot = (target_bg - naive_eventualBG)
+                    val worstCaseInsulinReq = bgUndershoot / sens
+                    var durationReq = round(60 * worstCaseInsulinReq / profile.current_basal)
+                    if (durationReq < 0) {
+                        durationReq = 0
+                        // don't set a temp longer than 120 minutes
+                    } else {
+                        durationReq = round(durationReq / 30.0) * 30
+                        durationReq = min(120, max(0, durationReq))
+                    }
+                    //console.error(durationReq);
+                    if (durationReq > 0) {
+                        rT.reason.append(", setting ${durationReq}m zero temp. ")
+                        return setTempBasal(rate, durationReq, profile, rT, currenttemp)
+                    }
+                } else {
+                    rT.reason.append(", setting ${round(rate, 2)}U/hr. ")
+                }
+                return setTempBasal(rate, 30, profile, rT, currenttemp)
+            }
+        }
+
+        // if eventual BG is above min but BG is falling faster than expected Delta
+        if (minDelta < expectedDelta) {
+            // if in SMB mode, don't cancel SMB zero temp
+            if (!(microBolusAllowed && enableSMB)) {
+                if (glucose_status.delta < minDelta) {
+                    rT.reason.append(
+                        "Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Delta ${convert_bg(tick.toDouble())} < Exp. Delta ${
+                            convert_bg(expectedDelta)
+                        }"
+                    )
+                } else {
+                    rT.reason.append("Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Min. Delta ${minDelta.toFixed2()} < Exp. Delta ${convert_bg(expectedDelta)}")
+                }
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                    rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
+                    return rT
+                } else {
+                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    return setTempBasal(basal, 30, profile, rT, currenttemp)
                 }
             }
         }
-        consoleLog.add("Loop allows AAPS power level")
-        return "AAPS"                                                      // leave it to standard AAPS
-    }
-
-    fun determine_varSMBratio(bg: Int, target_bg: Double, loop_wanted_smb: String): Double {   // let SMB delivery ratio increase from min to max depending on how much bg exceeds target
-        val fix_SMB: Double = smb_delivery_ratio
-        val lower_SMB = min(smb_delivery_ratio_min, smb_delivery_ratio_max)
-        val higher_SMB = max(smb_delivery_ratio_min, smb_delivery_ratio_max)
-        val higher_bg = target_bg + smb_delivery_ratio_bg_range
-        var new_SMB: Double = fix_SMB
-        if (smb_delivery_ratio_bg_range > 0) {
-            new_SMB = lower_SMB + (higher_SMB - lower_SMB) * (bg - target_bg) / smb_delivery_ratio_bg_range
-            new_SMB = max(lower_SMB, min(higher_SMB, new_SMB))   // cap if outside target_bg--higher_bg
-        }
-        if (loop_wanted_smb == "fullLoop") {                                // go for max impact
-            consoleLog.add("SMB delivery ratio set to ${round(max(fix_SMB, new_SMB), 2)} as max of fixed and interpolated values")
-            return max(fix_SMB, new_SMB)
+        // eventualBG or minPredBG is below max_bg
+        if (min(eventualBG, minPredBG) < max_bg) {
+            // if in SMB mode, don't cancel SMB zero temp
+            if (!(microBolusAllowed && enableSMB)) {
+                rT.reason.append("${convert_bg(eventualBG)}-${convert_bg(minPredBG)} in range: no temp required")
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                    rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
+                    return rT
+                } else {
+                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    return setTempBasal(basal, 30, profile, rT, currenttemp)
+                }
+            }
         }
 
-        if (smb_delivery_ratio_bg_range == 0.0) {                     // deactivated in SMB extended menu
-            consoleLog.add("SMB delivery ratio set to fixed value ${round(fix_SMB, 2)}")
-            return fix_SMB
+        // eventual BG is at/above target
+        // if iob is over max, just cancel any temps
+        if (eventualBG >= max_bg) {
+            rT.reason.append("Eventual BG " + convert_bg(eventualBG) + " >= " + convert_bg(max_bg) + ", ")
         }
-        if (bg <= target_bg) {
-            consoleLog.add("SMB delivery ratio limited by minimum value ${round(lower_SMB, 2)}")
-            return lower_SMB
-        }
-        if (bg >= higher_bg) {
-            consoleLog.add("SMB delivery ratio limited by maximum value ${round(higher_SMB, 2)}")
-            return higher_SMB
-        }
-        consoleLog.add("SMB delivery ratio set to interpolated value ${round(new_SMB, 2)}")
-        return new_SMB
-    }
+        if (iob_data.iob > max_iob) {
+            rT.reason.append("IOB ${round(iob_data.iob, 2)} > max_iob $max_iob")
+            if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
+                return rT
+            } else {
+                rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                return setTempBasal(basal, 30, profile, rT, currenttemp)
+            }
+        } else { // otherwise, calculate 30m high-temp required to get projected BG down to target
+            // insulinReq is the additional insulin required to get minPredBG down to target_bg
+            //console.error(minPredBG,eventualBG);
+            var insulinReq =
+                // if (dynIsfMode) round((min(minPredBG, eventualBG) - target_bg) / future_sens, 2)
+                round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
+            // if that would put us over max_iob, then reduce accordingly
+            if (insulinReq > max_iob - iob_data.iob) {
+                rT.reason.append("max_iob $max_iob, ")
+                insulinReq = max_iob - iob_data.iob
+            }
 
-    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null &&
-            requiredKey != "absorption_smb_advanced" &&
-            requiredKey != "activity_monitor" &&
-            requiredKey != "auto_isf_settings" &&
-            requiredKey != "smb_delivery_settings" &&
-            requiredKey != "Libre_special_settings"
-        ) return
-        val category = PreferenceCategory(context)
-        parent.addPreference(category)
-        category.apply {
-            key = "openapsautoisf_settings"
-            title = rh.gs(R.string.openaps_auto_isf)
-            initialExpandedChildrenCount = 0
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))
-            //addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsLgsThreshold, dialogMessage = R.string.lgs_threshold_summary, title = R.string.lgs_threshold_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsSensitivityRaisesTarget, summary = R.string.sensitivity_raises_target_summary, title = R.string.sensitivity_raises_target_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsResistanceLowersTarget, summary = R.string.resistance_lowers_target_summary, title = R.string.resistance_lowers_target_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfHighTtRaisesSens, summary = R.string.high_temptarget_raises_sensitivity_summary, title = R.string.high_temptarget_raises_sensitivity_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowTtLowersSens, summary = R.string.low_temptarget_lowers_sensitivity_summary, title = R.string.low_temptarget_lowers_sensitivity_title))
-            addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget, dialogMessage = R.string.half_basal_exercise_target_summary, title = R.string.half_basal_exercise_target_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithHighTt, summary = R.string.enable_smb_with_high_temp_target_summary, title = R.string.enable_smb_with_high_temp_target))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAlways, summary = R.string.enable_smb_always_summary, title = R.string.enable_smb_always))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithCob, summary = R.string.enable_smb_with_cob_summary, title = R.string.enable_smb_with_cob))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithLowTt, summary = R.string.enable_smb_with_temp_target_summary, title = R.string.enable_smb_with_temp_target))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAfterCarbs, summary = R.string.enable_smb_after_carbs_summary, title = R.string.enable_smb_after_carbs))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxSmbFrequency, title = R.string.smb_interval_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
-            addPreference(preferenceManager.createPreferenceScreen(context).apply {
-                key = "absorption_smb_advanced"
-                title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
-                addPreference(
-                    AdaptiveIntentPreference(
-                        ctx = context,
-                        intentKey = IntentKey.ApsLinkToDocs,
-                        intent = Intent().apply { action = Intent.ACTION_VIEW; data = rh.gs(R.string.openapsama_link_to_preference_json_doc).toUri() },
-                        summary = R.string.openapsama_link_to_preference_json_doc_txt
-                    )
-                )
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
-                addPreference(
-                    AdaptiveDoublePreference(
-                        ctx = context,
-                        doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier,
-                        dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary,
-                        title = R.string.openapsama_current_basal_safety_multiplier
-                    )
-                )
-            })
-            addPreference(preferenceManager.createPreferenceScreen(context).apply {
-                key = "activity_monitor"
-                title = rh.gs(R.string.activity_monitor_title)
-                summary = rh.gs(R.string.activity_monitor_summary)
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ActivityMonitorDetection, summary = R.string.activity_monitor_summary, title = R.string.activity_monitor_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ActivityScaleFactor, dialogMessage = R.string.activity_scale_factor_summary, title = R.string.activity_scale_factor_title))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.InactivityScaleFactor, dialogMessage = R.string.inactivity_scale_factor_summary, title = R.string.inactivity_scale_factor_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ActivityMonitorOvernight, summary = R.string.ignore_inactivity_overnight_summary, title = R.string.ignore_inactivity_overnight_title))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ActivityMonitorIdleStart, summary = R.string.inactivity_idle_start_summary, title = R.string.inactivity_idle_start_title ))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ActivityMonitorIdleEnd, summary = R.string.inactivity_idle_end_summary, title = R.string.inactivity_idle_end_title ))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ActivityMonitorShowStepsFromSmartphone, summary = R.string.steps_graph_from_smartphone_summary, title = R.string.steps_graph_from_smartphone_title))
-            })
-            addPreference(preferenceManager.createPreferenceScreen(context).apply {
-                key = "auto_isf_settings"
-                title = rh.gs(R.string.autoISF_settings_title)
-                summary = rh.gs(R.string.autoISF_settings_summary)
-                addPreference(preferenceManager.createPreferenceScreen(context).apply {
-                    key = "Libre_special_settings"
-                    title = "Libre special settings"  //rh.gs(R.string.smb_delivery_settings_title)
-                    summary = "Calibrate and smooth Juggluco raw data"  //rh.gs(R.string.smb_delivery_settings_summary)
-                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationTrigger, summary = R.string.calibration_stops_smb_summary, title = R.string.calibration_stops_smb_title))
-                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationEnd, summary = R.string.calibration_enable_smb_summary, title = R.string.calibration_enable_smb_title))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, dialogMessage = R.string.fslCal_Offset_summary, title = R.string.fslCal_Offset_title))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, dialogMessage = R.string.fslCal_Slope_summary, title = R.string.fslCal_Slope_title))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, dialogMessage = R.string.fsl_exp1_factor_summary, title = R.string.fsl_exp1_factor_title))
-                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MaintenanceCleanupDays, dialogMessage = R.string.MaintenanceCleanupDays_summary, title = R.string.MaintenanceCleanupDays_title))
-                })
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutoIsfWeights, summary = R.string.openapsama_enable_autoISF, title = R.string.openapsama_enable_autoISF))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeight, dialogMessage = R.string.openapsama_bgAccel_ISF_weight_summary, title = R.string.openapsama_bgAccel_ISF_weight))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgBrakeWeight, dialogMessage = R.string.openapsama_bgBrake_ISF_weight_summary, title = R.string.openapsama_bgBrake_ISF_weight))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLowBgWeight, dialogMessage = R.string.openapsama_lower_ISFrange_weight_summary, title = R.string.openapsama_lower_ISFrange_weight))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfHighBgWeight, dialogMessage = R.string.openapsama_higher_ISFrange_weight_summary, title = R.string.openapsama_higher_ISFrange_weight))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeight, dialogMessage = R.string.openapsama_pp_ISF_weight_summary, title = R.string.openapsama_pp_ISF_weight))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfDuraWeight, dialogMessage = R.string.openapsama_dura_ISF_weight_summary, title = R.string.openapsama_dura_ISF_weight))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfIobThPercent, dialogMessage = R.string.openapsama_iob_threshold_percent_summary, title = R.string.openapsama_iob_threshold_percent))
-                addPreference(preferenceManager.createPreferenceScreen(context).apply {
-                    key = "smb_delivery_settings"
-                    title = rh.gs(R.string.smb_delivery_settings_title)
-                    summary = rh.gs(R.string.smb_delivery_settings_summary)
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatio, dialogMessage = R.string.openapsama_smb_delivery_ratio_summary, title = R.string.openapsama_smb_delivery_ratio))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioMin, dialogMessage = R.string.openapsama_smb_delivery_ratio_min_summary, title = R.string.openapsama_smb_delivery_ratio_min))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioMax, dialogMessage = R.string.openapsama_smb_delivery_ratio_max_summary, title = R.string.openapsama_smb_delivery_ratio_max))
-                    addPreference(
-                        AdaptiveDoublePreference(
-                            ctx = context,
-                            doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange,
-                            dialogMessage = R.string.openapsama_smb_delivery_ratio_bg_range_summary,
-                            title = R.string.openapsama_smb_delivery_ratio_bg_range
-                        )
-                    )
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
-                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
-                })
-             })
+            // rate required to deliver insulinReq more insulin over 30m:
+            var rate = basal + (2 * insulinReq)
+            rate = round_basal(rate)
+            insulinReq = round(insulinReq, 3)
+            rT.insulinReq = insulinReq
+            //console.error(iob_data.lastBolusTime);
+            //console.error(profile.temptargetSet, target_bg, rT.COB);
+            // only allow microboluses with COB or low temp targets, or within DIA hours of a bolus
+            val maxBolus: Double
+            if (microBolusAllowed && enableSMB && bg > threshold) {
+                // never bolus more than maxSMBBasalMinutes worth of basal
+                val mealInsulinReq = round(meal_data.mealCOB / profile.carb_ratio, 3)
+                val smb_max_range = smb_max_range_extension
+                if (iob_data.iob > mealInsulinReq && iob_data.iob > 0) {
+                    consoleError.add("IOB ${iob_data.iob} > COB ${meal_data.mealCOB}; mealInsulinReq = $mealInsulinReq")
+                    consoleError.add("profile.maxUAMSMBBasalMinutes: ${profile.maxUAMSMBBasalMinutes} profile.current_basal: ${profile.current_basal}")
+                    maxBolus = round(smb_max_range * profile.current_basal * profile.maxUAMSMBBasalMinutes / 60, 1)
+                } else {
+                    consoleError.add("profile.maxSMBBasalMinutes: ${profile.maxSMBBasalMinutes} profile.current_basal: ${profile.current_basal}")
+                    maxBolus = round(smb_max_range * profile.current_basal * profile.maxSMBBasalMinutes / 60, 1)
+                }
+                // bolus 1/2 the insulinReq, up to maxBolus, rounding down to nearest bolus increment
+                val roundSMBTo = 1 / profile.bolus_increment
+                //var microBolus: Double
+                var microBolus = Math.floor(Math.min(insulinReq / 2, maxBolus) * roundSMBTo) / roundSMBTo
+                if (autoIsfMode) {
+                    microBolus = Math.min(insulinReq * smb_ratio, maxBolus)
+                    if (microBolus > iobTHvirtual - iob_data.iob && (loop_wanted_smb == "fullLoop" || loop_wanted_smb == "enforced")) {
+                        microBolus = iobTHvirtual - iob_data.iob
+                        consoleError.add("Full loop capped SMB at ${round(microBolus, 2)} to not exceed $iobTHtolerance% of effective iobTH ${round(iobTHvirtual / iobTHtolerance * 100, 2)}U")
+                    }
+                    microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
+                }
+
+                // calculate a long enough zero temp to eventually correct back up to target
+                val smbTarget = target_bg
+                val worstCaseInsulinReq = (smbTarget - (naive_eventualBG + minIOBPredBG) / 2.0) / sens
+                var durationReq = round(60 * worstCaseInsulinReq / profile.current_basal)
+
+                // if insulinReq > 0 but not enough for a microBolus, don't set an SMB zero temp
+                if (insulinReq > 0 && microBolus < profile.bolus_increment) {
+                    durationReq = 0
+                }
+
+                var smbLowTempReq = 0.0
+                if (durationReq <= 0) {
+                    durationReq = 0
+                    // don't set an SMB zero temp longer than 60 minutes
+                } else if (durationReq >= 30) {
+                    durationReq = round(durationReq / 30.0) * 30
+                    durationReq = min(60, max(0, durationReq))
+                } else {
+                    // if SMB durationReq is less than 30m, set a nonzero low temp
+                    smbLowTempReq = round(basal * durationReq / 30.0, 2)
+                    durationReq = 30
+                }
+                rT.reason.append(" insulinReq $insulinReq")
+                if (microBolus >= maxBolus) {
+                    rT.reason.append("; maxBolus $maxBolus")
+                }
+                if (durationReq > 0) {
+                    rT.reason.append("; setting ${durationReq}m low temp of ${smbLowTempReq}U/h")
+                }
+                rT.reason.append(". ")
+
+                // seconds since last bolus
+                val lastBolusAge = (systemTime - iob_data.lastBolusTime) / 1000.0
+                //console.error(lastBolusAge);
+                // allow SMBIntervals between 1 and 10 minutes
+                val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
+                //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
+                consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
+                var LibreTrue = 1.00
+                // Shower and no steps times in Twilight am
+                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 &&
+                    !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18  && iobThUser <71 ) {//&& COB <= 0
+                    var iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARDshower microBolus = iobTHvirtualHARDshower - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE  for shower time ")//shower
+                }
+                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 &&
+                    !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && iobThUser <71 ) {// && COB <= 0
+                    var iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARDshower microBolus = iobTHvirtualHARDshower - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE  for shower time ")//shower
+                }
+                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta  ) {// for sudden glitchy rises after gentle fall ; sensor swings
+                    microBolus = microBolus * 0.5 //&& COB <= 5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for sudden glitchy rises after gentle fall ; sensor swings 0.5 smb ")
+                }
+
+                else if (Delta >=0.25 * 18  && SDelta >=0.25* 18
+                    && profile.temptargetSet && target_bg <= 4.1 *18 ) {// high Over6.0
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("Delta ov0.25  && SDeltaov0.25 && profile.temptargetSet && target_bg == 4.0 microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for highTT 0.5 smb? ")// highTT
+                }
+                //var LibreTrue = 0.33
+                else if ( Delta > 0.10 * 18 && LDelta < - 0.05*18 && bg < 162 ) {// glitch?
+                    microBolus = 0.0
+                    rT.reason.append("glitch 0.0 ")
+                    //rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                    //rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.05 * max_iob ${microBolus} ")
+                }// fast rise1
+
+
+                else if (bg > 6.0 * 18 && iobThUser <71 &&
+                    IOB > 0.15 * profile.max_iob && (Steps60M ?: 0) >= 10 ) {// && COB <= 0
+                    if (Delta >=1.0 * 18  && SDelta >=1.0* 18 && LDelta >=1.0* 18 ) {
+                        microBolus = microBolus * 0.2
+                        rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.2smb ") // fast rise 1.0
+                    }
+                    else if (Delta >=0.55 * 18  && SDelta >=0.35* 18 &&
+                        Delta < 1.0 * 18  && SDelta < 1.0 * 18 ) { // && IOB > 0.15 * profile.max_iob // && LDelta >=0.55* 18
+                        microBolus = microBolus * 0.3
+                        rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.3 smb ")// fast rise 0.55
+                    }
+                    else if (Delta >=0.35 * 18  && SDelta >=0.15* 18 &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {// && LDelta >=0.35* 18 // && IOB > 0.30 * profile.max_iob
+                        microBolus = microBolus * 0.4
+                        rT.reason.append("microBolus = microBolus * 0.4 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.4 smb ") // fast rise 0.25
+                    }
+                    else if (Delta >=0.25 * 18  && SDelta >=0.10 * 18  &&
+                        Delta < 0.55 * 18  && SDelta < 0.55 * 18   ) {// && IOB > 0.15 * profile.max_iob
+                        microBolus = microBolus * 0.5
+                        rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ") // fast rise 0.25
+                    }
+                    else if (Delta >=0.50 * 18  && SDelta >=0.30* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&
+                        COB <= 5  ) {// any Do.6 day
+                        microBolus = microBolus * 0.6
+                        rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                        rT.reason.append(" CHANGED SIZE  for fast rise 0.60 smb ") // fast rise any 0.50
+                    }
+                }//fast rise bgl > 9.5
+                else if (Delta >=0.9 * 18  && SDelta >=0.7* 18 && (Steps60M ?: 0) >= 10 &&
+                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 0) {
+                    microBolus = microBolus * 0.15
+                    rT.reason.append("microBolus = microBolus * 0.15 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for fast rise 0.15smb ")//fast rise bgl > 9.5
+                }
+
+                else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
+                    (Steps60M ?: 0) == 0  && iobThUser <30) {
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
+                    rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ")//fast rise bgl > 9.5
+                }
+                else if ((( nowHour  >= 6 ) && ( nowHour <= 8 )) && bg < 9.0 * 18 &&
+                    Delta <1.0 * 18  && SDelta <1.0* 18  && (Steps60M ?: 0) < 10 ) {// && COB <= 0
+                    if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.03 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("SemiTwilight microBolus =  LibreTrue * 0.03 * profile.max_iob ${microBolus} ")
+                    } else if ((Steps60M ?: 0) < 10 && microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("Twilight microBolus =  LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
+                    }
+                    if (microBolus + IOB > 0.15 * profile.max_iob) {//
+                        microBolus =  0.15 * profile.max_iob - IOB
+                        rT.reason.append("microBolus = 0.15 * profile.max_iob - IOB ; 0.15 * profile.max_iob ${0.15 * profile.max_iob} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov 0.15 * profile.max_iob microBolus = 0.15 * profile.max_iob - IOB ${microBolus} ")
+                    }
+                    rT.reason.append(" CHANGED SIZE SMB ")
+                }else {
+                    rT.reason.append(" NOT CHANGED SIZE SMB ")
+                }
+
+                //}
+                /*if ( SMBInterval == 60.0 && bg > 7.0 * 18  && LDelta > 0.1 * 18   && bg_acce > 0 &&
+                    lastBolusAge > 2 * SMBInterval - 6.0) {
+                    //microBolus = microBolus * 1.5
+                    rT.reason.append(" lastBolusAge ov 2 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 1.5 ${1.5 * microBolus}")
+                    rT.reason.append("  bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
+                }else if ( SMBInterval == 60.0 && bg > 7.0 * 18 && LDelta > 0.1 * 18   && bg_acce > 0
+                    && lastBolusAge > 3 * SMBInterval - 6.0) {
+                    //microBolus = microBolus * 2
+                    rT.reason.append(" lastBolusAge ov 3 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 2 ${2 * microBolus}")
+                    rT.reason.append(" bg ${convert_bg(bg)}   ; lastBolusAge  ${lastBolusAge} secs")
+                }else {
+                    //microBolus = microBolus
+                    rT.reason.append(" lastBolusAge un 2 * SMBInterval ${SMBInterval} secs;  microBolus * 1.0 ${ microBolus}")
+                    rT.reason.append(" bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
+                }*/
+                microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
+                if (offsetSoZeroSMB) {
+                    // offsetSoZeroSMBalready defined by tod, bgl, target
+                    microBolus = 0.0
+                    rT.reason.append(" offsetSoZeroSMB($offsetSoZeroSMB) Microbolusing := 0")
+                    //rT.reason = (rT.reason ?: "") + " offsetSoZeroSMB($offsetSoZeroSMB) Microbolusing := 0"
+                } else if (microBolus <= 0) {
+                    microBolus = 0.0
+                    //rT.reason = (rT.reason ?: "") + " (microBolus un = 0) Microbolusing := ($microBolus)"
+                } else {
+                    //rT.reason = (rT.reason ?: "") + " offsetSoZeroSMB($offsetSoZeroSMB) microBolus = ($microBolus)"
+                }
+
+
+
+                if (lastBolusAge > SMBInterval - 6.0) {   // 6s tolerance
+                    if (microBolus > 0) {
+                        rT.units = microBolus
+                        rT.reason.append("Microbolusing ${microBolus}U. ")
+                    }
+                } else {
+                    val nextBolusMins = (SMBInterval - lastBolusAge) / 60.0
+                    val nextBolusSeconds = (SMBInterval - lastBolusAge) % 60
+                    val waitingSeconds = round(nextBolusSeconds, 0) % 60
+                    val waitingMins = round(nextBolusMins - waitingSeconds / 60.0, 0)
+                    rT.reason.append("Waiting ${waitingMins.withoutZeros()}m ${waitingSeconds.withoutZeros()}s to microbolus again.")
+                }
+                //rT.reason += ". ";
+
+                // if no zero temp is required, don't return yet; allow later code to set a high temp
+                if (durationReq > 0) {
+                    rT.rate = smbLowTempReq
+                    rT.duration = durationReq
+                    return rT
+                }
+
+            }
+
+            val maxSafeBasal = getMaxSafeBasal(profile)
+
+            if (rate > maxSafeBasal) {
+                rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+                rate = round_basal(maxSafeBasal)
+            }
+
+            val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
+            if (insulinScheduled >= insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
+                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} > 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
+                return setTempBasal(rate, 30, profile, rT, currenttemp)
+            }
+
+            if (currenttemp.duration == 0) { // no temp is set
+                rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
+                return setTempBasal(rate, 30, profile, rT, currenttemp)
+            }
+
+            if (currenttemp.duration > 5 && (round_basal(rate) <= round_basal(currenttemp.rate))) { // if required temp <~ existing temp basal
+                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} >~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                return rT
+            }
+
+            // required temp > existing temp basal
+            rT.reason.append("temp ${currenttemp.rate.toFixed2()} < ${round(rate, 2).withoutZeros()}U/hr. ")
+            return setTempBasal(rate, 30, profile, rT, currenttemp)
         }
     }
 }
+/*
+
+rsn016
+ */
