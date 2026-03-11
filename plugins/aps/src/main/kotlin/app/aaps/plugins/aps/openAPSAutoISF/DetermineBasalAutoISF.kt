@@ -334,7 +334,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version}")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn016")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -1445,7 +1445,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
-                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 &&
+                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB <= 20 &&
                     !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18  && iobThUser <71 ) {//&& COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1455,7 +1455,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
-                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 &&
+                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 && COB <= 20 &&
                     !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && iobThUser <71 ) {// && COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1465,7 +1465,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
-                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta  ) {// for sudden glitchy rises after gentle fall ; sensor swings
+                else if (Delta >=0.40 * 18  && SDelta <=0.5 * Delta && LDelta <=0.10 * Delta &&  COB <= 20 ) {// for sudden glitchy rises after gentle fall ; sensor swings
                     microBolus = microBolus * 0.5 //&& COB <= 5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE  for sudden glitchy rises after gentle fall ; sensor swings 0.5 smb ")
@@ -1511,8 +1511,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.5 smb ") // fast rise 0.25
                     }
-                    else if (Delta >=0.50 * 18  && SDelta >=0.30* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&
-                        COB <= 5  ) {// any Do.6 day
+                    else if (Delta >=0.50 * 18  && SDelta >=0.30* 18 && nowHour >9 && (Steps60M ?: 0) >= 10 &&  COB <= 20  ) {// any Do.6 day
                         microBolus = microBolus * 0.6
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                         rT.reason.append(" CHANGED SIZE  for fast rise 0.60 smb ") // fast rise any 0.50
@@ -1639,5 +1638,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn015
+rsn016
  */
