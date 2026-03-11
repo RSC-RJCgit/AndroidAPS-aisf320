@@ -67,6 +67,9 @@ class DetermineBasalAutoISF @Inject constructor(
     //if (profile.out_units === "mmol/L") round(value / 18, 1).toFixed(1);
     //else Math.round(value);
 
+    fun convert_bg2(value: Double): String =
+        String.format("%.2f", profileUtil.fromMgdlToUnits(value))
+
     fun enable_smb(profile: OapsProfileAutoIsf, microBolusAllowed: Boolean, meal_data: MealData, target_bg: Double): Boolean {
         // disable SMB when a high temptarget is set
         if (!microBolusAllowed) {
@@ -826,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " r014 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " rsn016 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -864,18 +867,18 @@ class DetermineBasalAutoISF @Inject constructor(
         //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
 
-        rT.reason.append("Delta: ${convert_bg(Delta )} ;")//Delta ${minDelta.toFixed2()}
-        rT.reason.append("SDelta: ${convert_bg(SDelta )} ;")
-        rT.reason.append("LDelta: ${convert_bg(LDelta )} ;")
+        rT.reason.append("Delta: ${convert_bg2(Delta )} ;")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("SDelta: ${convert_bg2(SDelta )} ;")
+        rT.reason.append("LDelta: ${convert_bg2(LDelta )} ;")
         consoleError.add("IOB: "+round(IOB, 2)+" ; ")
-        consoleError.add("Delta: "+convert_bg(Delta )+" ; ")
-        consoleError.add("SDelta: "+convert_bg(SDelta )+" ; ")
-        consoleError.add("LDelta: "+convert_bg(LDelta )+" ; ")
+        consoleError.add("Delta: "+convert_bg2(Delta )+" ; ")
+        consoleError.add("SDelta: "+convert_bg2(SDelta )+" ; ")
+        consoleError.add("LDelta: "+convert_bg2(LDelta )+" ; ")
         //consoleError.add("iobThUser: "+convert_bg(iobThUser )+" ; ")
         //consoleError.add("iobThUseris ${iobThUser} ;;")
         //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
-        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("Steps60M: ${Steps60M} ;")
@@ -883,7 +886,7 @@ class DetermineBasalAutoISF @Inject constructor(
         rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
         //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
-        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
         rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
         rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
