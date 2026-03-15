@@ -730,7 +730,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var steps180min = StepService.getRecentStepCount180Min()
 
         val nowHour = LocalDateTime.now().hour
-        if LocalAutoISFversion.contains("rsn"){
+        if (LocalAutoISFversion.contains("rsn")){
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         consoleError.add("steps180min is ${steps180min} ;;")
         consoleError.add("steps30min is ${recentSteps30Minutes} ;;")}
@@ -830,7 +830,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //consoleError.add("steps180min is ${steps180min} ;;")
         //consoleError.add("nowHour is ${nowHour} ;;")
         //consoleError.add("nowDate is ${nowDate} ;;")
-        if LocalAutoISFversion.contains("rsn"){consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")}
+        if (LocalAutoISFversion.contains("rsn")){consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")}
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
