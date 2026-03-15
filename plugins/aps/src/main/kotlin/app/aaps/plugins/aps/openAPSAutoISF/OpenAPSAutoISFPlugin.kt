@@ -118,6 +118,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: Provider<APSResult>
+    val LocalAutoISFversion = " __ rsn017"
+    //val LocalAutoISFversion = ""
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -463,6 +465,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             iob_threshold_percent = iobThresholdPercent,
             profile_percentage = profile_percentage
         )
+
+
         var sensitivityRatio = 1.0
         // TODO eliminate
         val target_bg = (minBg + maxBg) / 2
@@ -726,9 +730,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var steps180min = StepService.getRecentStepCount180Min()
 
         val nowHour = LocalDateTime.now().hour
+        if LocalAutoISFversion.contains("rsn"){
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         consoleError.add("steps180min is ${steps180min} ;;")
-        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")}
 
 
         val sens = profile.getProfileIsfMgdl()
@@ -823,9 +828,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //val nowHour = LocalDateTime.now().hour
         //consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         //consoleError.add("steps180min is ${steps180min} ;;")
-        consoleError.add("nowHour is ${nowHour} ;;")
+        //consoleError.add("nowHour is ${nowHour} ;;")
         //consoleError.add("nowDate is ${nowDate} ;;")
-        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        if LocalAutoISFversion.contains("rsn"){consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")}
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
@@ -1302,5 +1307,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-rsn016
+rsn017
  */

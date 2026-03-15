@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
-
+//package app.aaps.plugins.constraints.versionChecker
+//import app.aaps.plugins.constraints.versionChecker.VersionChecker
+//import app.aaps.BuildConfig
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -26,6 +28,8 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+
+
 @Singleton
 class DetermineBasalAutoISF @Inject constructor(
     private val profileUtil: ProfileUtil
@@ -35,7 +39,8 @@ class DetermineBasalAutoISF @Inject constructor(
 
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
-
+    //val LocalAutoISFversion = ""
+    val LocalAutoISFversion = " __ rsn017"
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -337,7 +342,10 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn016")
+            //val LocalAutoISFversion = " __ rsn017"
+            consoleError.add("start AutoISF ${profile.autoISF_version}")
+
+            if LocalAutoISFversion.contains("rsn"){consoleError.add(LocalAutoISFversion)}
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -828,8 +836,19 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //val appVersion = BuildConfig.VERSION_NAME
+        //if versionChecker.contains ("rsn") {rT.reason.append( " rsn017 ")}
+        val versionNumber = profile.autoISF_version
+
+        if (!versionNumber.contains("rsn", ignoreCase = true)) {
+            consoleError.add("commented out")
+        }
+
+        if (!versionNumber.contains("rsn", ignoreCase = true)) {
+            consoleError.add("commented out")
+        }
         rT.reason.append(
-            " rsn016 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1641,5 +1660,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn016
+rsn017
  */
