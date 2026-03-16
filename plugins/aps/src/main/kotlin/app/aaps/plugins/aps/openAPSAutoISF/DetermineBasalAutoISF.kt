@@ -1049,11 +1049,11 @@ class DetermineBasalAutoISF @Inject constructor(
         var offsetSoZeroSMB= false
         if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
             offsetSoZeroSMB= true
-            rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+            rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
         if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
             offsetSoZeroSMB= false
-            rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+            rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
         rT.reason.append("offset1 ${offset1} ;")
         rT.reason.append("offset2 ${offset2} ;")
