@@ -1065,13 +1065,13 @@ class DetermineBasalAutoISF @Inject constructor(
         if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
             offsetSoZeroSMB = true
             if (LocalAutoISFversion.contains("rsn")) {
-                rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+                rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
             }
         }
         if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
             offsetSoZeroSMB = false
             if (LocalAutoISFversion.contains("rsn")) {
-                rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB)} ;")
+                rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
             }
         }
         if (LocalAutoISFversion.contains("rsn")) {
@@ -1485,7 +1485,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
-                if (LocalAutoISFversion.contains("rsn")){consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")}
+                if (LocalAutoISFversion.contains("rsn")){
+                    consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")}
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
                 if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB <= 20 &&
