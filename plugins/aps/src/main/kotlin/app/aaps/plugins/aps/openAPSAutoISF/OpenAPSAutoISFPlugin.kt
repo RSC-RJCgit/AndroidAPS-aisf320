@@ -117,10 +117,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val determineBasalAutoISF: DetermineBasalAutoISF,
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
-    private val LocalAutoISFversion = " __ rsn017",
     private val apsResultProvider: Provider<APSResult>
 
-    //val LocalAutoISFversion = ""
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -186,7 +184,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val recentSteps30Minutes; get() = StepService.getRecentStepCount30Min()
     private val recentSteps60Minutes; get() = StepService.getRecentStepCount60Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
-
+    val LocalAutoISFversion = " __ rsn017"
+    //val LocalAutoISFversion = ""
     override fun onStart() {
         super.onStart()
         var count = 0

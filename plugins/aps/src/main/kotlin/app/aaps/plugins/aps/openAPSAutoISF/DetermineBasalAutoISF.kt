@@ -342,9 +342,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            //val LocalAutoISFversion = " __ rsn017"
             consoleError.add("start AutoISF ${profile.autoISF_version}")
-
             if (LocalAutoISFversion.contains("rsn")){consoleError.add(LocalAutoISFversion)}
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
