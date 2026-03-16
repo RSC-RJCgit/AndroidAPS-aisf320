@@ -836,15 +836,11 @@ class DetermineBasalAutoISF @Inject constructor(
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //val appVersion = BuildConfig.VERSION_NAME
         //if versionChecker.contains ("rsn") {rT.reason.append( " rsn017 ")}
-        val versionNumber = profile.autoISF_version
+        //val versionNumber = profile.autoISF_version
 
-        if (!versionNumber.contains("rsn", ignoreCase = true)) {
-            consoleError.add("commented out")
-        }
+        if (LocalAutoISFversion.contains("rsn")){consoleError.add(LocalAutoISFversion)}
 
-        if (!versionNumber.contains("rsn", ignoreCase = true)) {
-            consoleError.add("commented out")
-        }
+
         rT.reason.append(
             "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
@@ -876,7 +872,7 @@ class DetermineBasalAutoISF @Inject constructor(
             TOD = "Day PP130%"
         }
         //consoleError.add("TOD: ${TOD} ;")
-        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        if (LocalAutoISFversion.contains("rsn")){{consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")}
         //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append("TOD: ${TOD} ;")
