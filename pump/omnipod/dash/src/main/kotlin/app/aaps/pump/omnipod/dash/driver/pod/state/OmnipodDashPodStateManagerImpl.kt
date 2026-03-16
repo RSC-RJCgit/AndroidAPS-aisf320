@@ -1035,3 +1035,6 @@ class OmnipodDashPodStateManagerImpl @Inject constructor(
         @Transient var basalCorrectionInProgress: Boolean = false  // Transient flag: true while basal correction is delivering
     ) : Serializable
 }
+/*
+OmnipodDashPodStateManagerImpl rsn017
+ */
