@@ -1047,7 +1047,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         // Apply boost logic based on BG and COB
         var offsetSoZeroSMB= false
-        if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
+        if(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
             offsetSoZeroSMB= true
             rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
