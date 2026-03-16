@@ -872,7 +872,7 @@ class DetermineBasalAutoISF @Inject constructor(
             TOD = "Day PP130%"
         }
         //consoleError.add("TOD: ${TOD} ;")
-        if (LocalAutoISFversion.contains("rsn")){{consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")}
+        if (LocalAutoISFversion.contains("rsn")){consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")}
         //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append("TOD: ${TOD} ;")
