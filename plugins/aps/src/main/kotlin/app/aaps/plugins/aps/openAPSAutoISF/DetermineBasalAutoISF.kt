@@ -1163,7 +1163,7 @@ class DetermineBasalAutoISF @Inject constructor(
             if (LocalAutoISFversion.contains("rsn")){
             rT.reason.append(", UAMpredBG " + convert_bg(lastUAMpredBG.toDouble()))}
         }
-        if (LocalAutoISFversion.contains("rsn")){rT.reason.append("; ")]
+        if (LocalAutoISFversion.contains("rsn")){rT.reason.append("; ")}
         // use naive_eventualBG if above 40, but switch to minGuardBG if both eventualBGs hit floor of 39
         var carbsReqBG = naive_eventualBG
         if (carbsReqBG < 40) {
