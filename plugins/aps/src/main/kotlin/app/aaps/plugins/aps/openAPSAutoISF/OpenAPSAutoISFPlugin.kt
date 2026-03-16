@@ -184,7 +184,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val recentSteps30Minutes; get() = StepService.getRecentStepCount30Min()
     private val recentSteps60Minutes; get() = StepService.getRecentStepCount60Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
-    val LocalAutoISFversion = " __ rsn017"
+    val LocalAutoISFversion = " __ rsn018"
     //val LocalAutoISFversion = ""
     override fun onStart() {
         super.onStart()
@@ -830,11 +830,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //consoleError.add("steps180min is ${steps180min} ;;")
         //consoleError.add("nowHour is ${nowHour} ;;")
         //consoleError.add("nowDate is ${nowDate} ;;")
-        if (LocalAutoISFversion.contains("rsn")){consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")}
+        if (LocalAutoISFversion.contains("rsn")){
+            consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
-        consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
+        consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")}
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         //consoleError.add("bg_acce  is $bg_acce ;;")
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
@@ -1307,5 +1308,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-rsn017
+rsn018
  */
