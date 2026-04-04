@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn021")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn022")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " rsn021 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " rsn022 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1492,8 +1492,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 }// fast rise1
 
 
-                else if (bg > 6.0 * 18 && bg < 10.0 * 18 && iobThUser <71 &&
-                    IOB > 0.15 * profile.max_iob && (Steps60M ?: 0) >= 10 && COB <= 15 ) {// && COB <= 0
+                else if (bg > 6.0 * 18 && bg < 10.0 * 18 &&
+                    IOB > 0.15 * profile.max_iob && COB <= 15 ) {// && COB <= 0 && (Step60M ?: 0) >= 10 && iobThUser <71
                     if (Delta >=1.0 * 18  && SDelta >=1.0* 18 && LDelta >=1.0* 18 ) {
                         microBolus = microBolus * 0.2
                         rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus}  ")
@@ -1523,15 +1523,15 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append(" CHANGED SIZE 0.6 for fast rise 0.60 smb ") // fast rise any 0.50
                     }
                 }//fast rise bgl > 9.5
-                else if (Delta >=0.9 * 18  && SDelta >=0.7* 18 && (Steps60M ?: 0) >= 10 &&
-                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 15 ) {
+                else if (Delta >=0.9 * 18  && SDelta >=0.7* 18 &&
+                    bg > 11.5 * 18  && bg < 13.5 * 18 && IOB > 0.35 * profile.max_iob && COB <= 15 ) {// && (Steps60M ?: 0) >= 10
                     microBolus = microBolus * 0.75
                     rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE 0.75 for fast rise 0.15smb ")//fast rise bgl > 9.5
                 }
 
                 else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
-                    (Steps60M ?: 0) == 0  && iobThUser <30 && COB <= 15 ) {
+                       iobThUser <30 && COB <= 15 ) {// (Steps60M ?: 0) >= 0
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE 0.5 for fast rise 0.5 smb ")//fast rise bgl > 9.5
@@ -1560,21 +1560,6 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 //}
-                /*if ( SMBInterval == 60.0 && bg > 7.0 * 18  && LDelta > 0.1 * 18   && bg_acce > 0 &&
-                    lastBolusAge > 2 * SMBInterval - 6.0) {
-                    //microBolus = microBolus * 1.5
-                    rT.reason.append(" lastBolusAge ov 2 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 1.5 ${1.5 * microBolus}")
-                    rT.reason.append("  bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
-                }else if ( SMBInterval == 60.0 && bg > 7.0 * 18 && LDelta > 0.1 * 18   && bg_acce > 0
-                    && lastBolusAge > 3 * SMBInterval - 6.0) {
-                    //microBolus = microBolus * 2
-                    rT.reason.append(" lastBolusAge ov 3 * SMBInterval ${SMBInterval} secs; Consider microBolus = microBolus * 2 ${2 * microBolus}")
-                    rT.reason.append(" bg ${convert_bg(bg)}   ; lastBolusAge  ${lastBolusAge} secs")
-                }else {
-                    //microBolus = microBolus
-                    rT.reason.append(" lastBolusAge un 2 * SMBInterval ${SMBInterval} secs;  microBolus * 1.0 ${ microBolus}")
-                    rT.reason.append(" bg ${convert_bg(bg)}  ; lastBolusAge  ${lastBolusAge} secs")
-                }*/
                 microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
                 if (offsetSoZeroSMB) {
                     // offsetSoZeroSMBalready defined by tod, bgl, target
@@ -1644,5 +1629,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn021
+rsn022
  */
