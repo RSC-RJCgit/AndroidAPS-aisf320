@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn022")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn023")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " rsn022 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " rsn023 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1448,7 +1448,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
-                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB <= 20 &&
+                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB == 0 &&
                     !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18  && iobThUser <71 ) {//&& COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1459,7 +1459,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     //rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
-                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 && COB <= 20 &&
+                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 && COB == 0 &&
                     !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && iobThUser <71 ) {// && COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1629,5 +1629,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn022
+rsn023
  */
