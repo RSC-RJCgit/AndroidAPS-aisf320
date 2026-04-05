@@ -1448,7 +1448,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 var LibreTrue = 1.00
                 // Shower and no steps times in Twilight am
-                if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB <= 0 &&
+                if ((( nowHour  >= 5 ) && ( nowHour <9 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 10 && COB <= 0 &&
                     !profile.temptargetSet && Delta >=0.25 * 18  && SDelta >=0.1* 18  && iobThUser <71 ) {//&& COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1459,7 +1459,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     //rT.reason.append(" CHANGED SIZE  for shower time ")//shower
                 }
-                else if ((( nowHour  >= 5 ) && ( nowHour <10 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 && COB <= 0 &&
+                else if ((( nowHour  >= 5 ) && ( nowHour <9 )) && bg <= 8.0 * 18 && (Steps60M ?: 0) < 100 && COB <= 0 &&
                     !profile.temptargetSet && Delta >=0.35 * 18  && SDelta >=0.15 * 18 && iobThUser <71 ) {// && COB <= 0
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
