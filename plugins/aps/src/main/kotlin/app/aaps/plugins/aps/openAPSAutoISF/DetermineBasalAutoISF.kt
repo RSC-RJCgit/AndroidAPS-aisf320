@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn025")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn026")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " rsn025 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " rsn026 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1536,7 +1536,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 else if (Delta >=0.3 * 18  && SDelta >=0.1 * 18 && nowHour < 9 &&
-                       iobThUser <30 && COB <= 15 ) {// (Steps60M ?: 0) >= 0
+                    iobThUser <30 && COB <= 15 ) {// (Steps60M ?: 0) >= 0
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus}  ")
                     rT.reason.append(" CHANGED SIZE 0.5 for fast rise 0.5 smb ")//fast rise bgl > 9.5
@@ -1603,6 +1603,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
             }
 
+
             val maxSafeBasal = getMaxSafeBasal(profile)
 
             if (rate > maxSafeBasal) {
@@ -1634,5 +1635,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-rsn025
+rsn026
  */
