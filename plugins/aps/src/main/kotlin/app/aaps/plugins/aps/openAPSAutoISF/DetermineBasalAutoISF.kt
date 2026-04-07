@@ -1622,7 +1622,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
-            if (currenttemp.duration >  5 && (round_basal(rate) <= round_basal(currenttemp.rate))) { // if required temp <~ existing temp basal
+            if (currenttemp.duration > 5 && (round_basal(rate) <= round_basal(currenttemp.rate))) { // if required temp <~ existing temp basal
                 rT.reason.append("temp ${(currenttemp.rate).toFixed2()} >~ req ${round(rate, 2).withoutZeros()}U/hr. ")
                 return rT
             }
