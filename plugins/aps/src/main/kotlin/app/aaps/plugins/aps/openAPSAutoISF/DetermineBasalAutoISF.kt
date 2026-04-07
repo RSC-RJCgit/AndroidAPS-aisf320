@@ -1458,7 +1458,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     !profile.temptargetSet &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.1 * 18 &&
-                    iobThUser < 71) {
+                    iobThUser < 71
+                ) {
 
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
 
@@ -1478,7 +1479,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     !profile.temptargetSet &&
                     Delta >= 0.35 * 18 &&
                     SDelta >= 0.15 * 18 &&
-                    iobThUser < 71) {
+                    iobThUser < 71
+                ) {
 
                     var iobTHvirtualHARDshower = 0.12 * profile.max_iob
 
@@ -1491,7 +1493,6 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     rT.reason.append(" CHANGED SIZE for shower time ")
 
-
 // =====================================================
 // SENSOR GLITCH / SWING DAMPING
 // =====================================================
@@ -1499,12 +1500,12 @@ class DetermineBasalAutoISF @Inject constructor(
                     SDelta <= 0.5 * Delta &&
                     LDelta <= 0.10 * Delta &&
                     COB <= 20 &&
-                    bg < 10.0 * 18) {   // sudden glitchy rises after gentle fall ; sensor swings
+                    bg < 10.0 * 18
+                ) {   // sudden glitchy rises after gentle fall ; sensor swings
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
-
 
 // =====================================================
 // HIGH TT PROTECTION
@@ -1513,23 +1514,23 @@ class DetermineBasalAutoISF @Inject constructor(
                     SDelta >= 0.20 * 18 &&
                     bg < 10.0 * 18 &&
                     profile.temptargetSet &&
-                    target_bg <= 4.1 * 18) {
+                    target_bg <= 4.1 * 18
+                ) {
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE for highTT 0.5 smb? ")
-
 
 // =====================================================
 // GLITCH ZERO SMB
 // =====================================================
                 } else if (Delta > 0.10 * 18 &&
                     LDelta < -0.05 * 18 &&
-                    bg < 162) {
+                    bg < 162
+                ) {
 
                     microBolus = 0.0
                     rT.reason.append("glitch 0.0 ")
-
 
 // =====================================================
 // FAST RISE HANDLING
@@ -1553,7 +1554,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     // -------------------------------------------------
                     if (Delta >= 1.0 * 18 &&
                         SDelta >= 1.0 * 18 &&
-                        LDelta >= 1.0 * 18) {
+                        LDelta >= 1.0 * 18
+                    ) {
 
                         microBolus = microBolus * 0.2
                         rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus} ")
@@ -1568,7 +1570,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     } else if (Delta >= 0.55 * 18 &&
                         SDelta >= 0.35 * 18 &&
                         Delta < 1.0 * 18 &&
-                        SDelta < 1.0 * 18) {
+                        SDelta < 1.0 * 18
+                    ) {
 
                         if (bg > 8.8 * 18) {
                             microBolus = microBolus * 0.5
@@ -1593,7 +1596,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     } else if (Delta >= 0.35 * 18 &&
                         SDelta >= 0.15 * 18 &&
                         Delta < 0.55 * 18 &&
-                        SDelta < 0.55 * 18) {
+                        SDelta < 0.55 * 18
+                    ) {
 
                         if (bg > 8.8 * 18) {
                             microBolus = microBolus * 0.7
@@ -1616,13 +1620,13 @@ class DetermineBasalAutoISF @Inject constructor(
                     } else if (Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         Delta < 0.55 * 18 &&
-                        SDelta < 0.55 * 18) {
+                        SDelta < 0.55 * 18
+                    ) {
 
                         microBolus = microBolus * 0.5
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.5 for early fast rise ")
                     }
-
 
 // =====================================================
 // HIGHER BG FAST RISE
@@ -1632,12 +1636,12 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg > 11.5 * 18 &&
                     bg < 13.5 * 18 &&
                     IOB > 0.35 * profile.max_iob &&
-                    COB <= 15) {
+                    COB <= 15
+                ) {
 
                     microBolus = microBolus * 0.75
                     rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE 0.75 for fast rise 0.75 smb ")
-
 
 // =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD
@@ -1646,12 +1650,12 @@ class DetermineBasalAutoISF @Inject constructor(
                     SDelta >= 0.1 * 18 &&
                     nowHour < 9 &&
                     iobThUser < 30 &&
-                    COB <= 15) {
+                    COB <= 15
+                ) {
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE 0.5 for fast rise 0.5 smb ")
-
 
 // =====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
@@ -1661,7 +1665,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta < 1.0 * 18 &&
                     SDelta < 1.0 * 18 &&
                     (Steps60M ?: 0) < 10 &&
-                    COB <= 15) {
+                    COB <= 15
+                ) {
 
                     if ((Steps60M ?: 0) >= 10 && microBolus > LibreTrue * 0.03 * profile.max_iob) {
                         microBolus = LibreTrue * 0.03 * profile.max_iob
@@ -1684,14 +1689,12 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
 
-
 // =====================================================
 // DEFAULT: NO SMB SIZE CHANGE
 // =====================================================
                 } else {
                     rT.reason.append(" NOT CHANGED SIZE SMB ")
                 }
-
 
 // =====================================================
 // ROUND / ZERO / APPLY SMB
@@ -1718,13 +1721,13 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("Waiting ${waitingMins.withoutZeros()}m ${waitingSeconds.withoutZeros()}s to microbolus again.")
                 }
 
-// if no zero temp is required, don't return yet; allow later code to set a high temp
+                // if no zero temp is required, don't return yet; allow later code to set a high temp
                 if (durationReq > 0) {
                     rT.rate = smbLowTempReq
                     rT.duration = durationReq
                     return rT
                 }
-
+            }
             val maxSafeBasal = getMaxSafeBasal(profile)
 
             if (rate > maxSafeBasal) {
