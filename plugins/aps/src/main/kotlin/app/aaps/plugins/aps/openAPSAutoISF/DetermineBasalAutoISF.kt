@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt027a")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt028")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt027a COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt028 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1520,7 +1520,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = microBolus * 0.2
                     rT.reason.append("Delta ov0.45 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE for highTT 0.2 smb? ")
-                } else if (Delta >= 0.25 * 18 &&
+                } else if (Delta >= 0.20 * 18 &&
                     SDelta >= 0.20 * 18 &&
                     bg < 10.0 * 18 &&
                     profile.temptargetSet &&
@@ -1528,19 +1528,21 @@ class DetermineBasalAutoISF @Inject constructor(
                 ) {
 
                     microBolus = microBolus * 0.3
-                    rT.reason.append("Delta ov0.25 && SDelta ov0.25 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
+                    rT.reason.append("Delta ov0.20 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE for highTT 0.3 smb? ")
+                }
 
 // =====================================================
 // GLITCH ZERO SMB
 // =====================================================
-                } else if (Delta > 0.10 * 18 &&
+                else if (Delta > 0.10 * 18 &&
                     LDelta < -0.05 * 18 &&
                     bg < 162
                 ) {
 
-                    microBolus = 0.0
-                    rT.reason.append("glitch 0.0 ")
+                microBolus = 0.0
+                rT.reason.append("glitch 0.0 ")
+            }
 
 // =====================================================
 // FAST RISE HANDLING
@@ -1769,5 +1771,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt027a
+gpt028
  */
