@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt028")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt027a")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt028 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt027a COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1535,14 +1535,13 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // GLITCH ZERO SMB
 // =====================================================
-                else if (Delta > 0.10 * 18 &&
+                 else if (Delta > 0.10 * 18 &&
                     LDelta < -0.05 * 18 &&
                     bg < 162
                 ) {
 
-                microBolus = 0.0
-                rT.reason.append("glitch 0.0 ")
-            }
+                    microBolus = 0.0
+                    rT.reason.append("glitch 0.0 ")
 
 // =====================================================
 // FAST RISE HANDLING
@@ -1771,5 +1770,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt028
+gpt027a
  */
