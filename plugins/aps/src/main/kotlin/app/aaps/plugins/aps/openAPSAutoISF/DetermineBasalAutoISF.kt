@@ -971,42 +971,27 @@ class DetermineBasalAutoISF @Inject constructor(
 
         // Determine profileSwitch and adjust carbs suggestion and offsets
         var profileSwitch = 100
-        /*if (carbsSugg == 9 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
-            profileSwitch = 220
-            highProfile = true
-        } else if (carbsSugg == 10 && (8 <= nowHour && nowHour < 20) && bg > 5.0 * 18) {
-            profileSwitch = 300
-            highProfile = true
-        } else */
+
         if (carbsSugg == 1) {
-            carbsSugg = 5
             offset1 = true
         } else if (carbsSugg == 9) {
-            carbsSugg = 5
             varOffset += 9
         } else if (carbsSugg == 10) {
-            carbsSugg = 5
             varOffset += 18
         } else if (carbsSugg == 2) {
-            carbsSugg = 5
             offset2 = true
         } else if (carbsSugg == 3) {
-            carbsSugg = 5
             offset3 = true
         } else if (carbsSugg == 8) {
-            carbsSugg = 5
             offset2 = true
             offset3 = true
         } else if (carbsSugg == 7) {
-            carbsSugg = 5
             offset1 = true
             offset3 = true
         } else if (carbsSugg == 6) {
-            carbsSugg = 5
             offset1 = true
             offset2 = true
         } else if (carbsSugg == 4) {
-            carbsSugg = 5
             offset1 = true
             offset2 = true
             offset3 = true
@@ -1014,10 +999,7 @@ class DetermineBasalAutoISF @Inject constructor(
         var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
 
         var enableButton = false
-        //val maxIob = profile.max_iob
-        //if (profile.enableCircadianISF) {
-        //    enableButton = true
-        //}
+
         if (!isEven(profile.max_iob)) {// odd
             enableButton = true
         }
