@@ -82,7 +82,7 @@
     <string name="uam_smb_max_minutes">UAM SMB max minutes</string>
     <string name="uam_smb_max_minutes_summary">Max minutes of basal to limit SMB to for UAM</string>
     <string name="carbs_req_threshold">Minimum Carbs Required For Suggestion</string>
-    <string name="carbs_req_threshold_summary">Minimum grams of carbs to display a carbs suggestion alert. Carbs suggestions below this number will not trigger a notification.</string>
+    <string name="carbs_req_threshold_summary">Min Carbs and -9+9 Offset 1-Hr1-7 2-Hr8-9 3+HR20-23 4those 3 not day (so FastRise Off Day) 6-gives1+2  7-+gives 1+3 8 gives2+3 9+allHrs(FastRise On Day) 10+all extra 18</string>
     <string name="lgs_threshold_summary">BG value below which insulin is suspended. Default value uses standard target model. User can set value between 60mg/dl (3.3mmol/l) and 100mg/dl(5.5mmol/l). Values below 65/3.6 result in use of default model</string>
     <string name="lgs_threshold_title">BG level below which low glucose suspend occurs</string>
 
