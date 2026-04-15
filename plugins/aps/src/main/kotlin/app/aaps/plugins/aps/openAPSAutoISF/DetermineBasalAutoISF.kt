@@ -1538,7 +1538,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 15 &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
-                    IOB > 0.10 * profile.max_iob
+                    IOB > 0.10 * profile.max_iob &&
+                    varOffset > 9
                 ) {
 
                     // -------------------------------------------------
