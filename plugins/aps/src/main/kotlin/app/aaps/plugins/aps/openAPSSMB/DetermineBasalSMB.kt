@@ -34,7 +34,7 @@ class DetermineBasalSMB @Inject constructor(
 
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
 
-    fun round_basal(value: Double): Double = value
+    fun round_basal (value: Double): Double = value
 
     // Rounds value to 'digits' decimal places
     // different for negative numbers fun round(value: Double, digits: Int): Double = BigDecimal(value).setScale(digits, RoundingMode.HALF_EVEN).toDouble()
