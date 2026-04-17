@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt030")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt031")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt030 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt031 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -920,7 +920,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
 
         //var varOffset: Double = 27.0
-        var varOffset: Double = 18.0
+        var varOffset: Double = 9.0
         val hour = LocalDateTime.now().hour
 
 
@@ -975,9 +975,9 @@ class DetermineBasalAutoISF @Inject constructor(
         if (carbsSugg == 1) {
             offset1 = true
         } else if (carbsSugg == 9) {
-            varOffset += 0
-        } else if (carbsSugg == 10) {
             varOffset += 9
+        } else if (carbsSugg == 10) {
+            varOffset += 18
         } else if (carbsSugg == 2) {
             offset2 = true
         } else if (carbsSugg == 3) {
@@ -1752,5 +1752,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt030
+gpt031
  */
