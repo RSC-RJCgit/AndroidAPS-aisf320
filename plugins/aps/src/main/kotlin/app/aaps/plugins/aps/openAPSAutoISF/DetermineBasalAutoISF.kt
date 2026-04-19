@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt031")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt032")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt031 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt032 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -860,12 +860,12 @@ class DetermineBasalAutoISF @Inject constructor(
         }
         //consoleError.add("TOD: ${TOD} ;")
         consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
-        //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //rT.reason.append("TOD: ${TOD} ;")
         rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
-        //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
 
         rT.reason.append("Delta: ${convert_bg2(Delta )} ;")//Delta ${minDelta.toFixed2()}
         rT.reason.append("SDelta: ${convert_bg2(SDelta )} ;")
@@ -1642,7 +1642,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else if (Delta >= 0.3 * 18 &&
                     SDelta >= 0.1 * 18 &&
                     nowHour < 9 &&
-                    iobThUser < 30 &&
+                    IOB > 0.075 * profile.max_iob &&
                     COB <= 15
                 ) {
 
@@ -1752,5 +1752,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt031
+gpt032
  */
