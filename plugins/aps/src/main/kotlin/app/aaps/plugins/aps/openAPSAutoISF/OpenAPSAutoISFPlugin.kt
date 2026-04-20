@@ -1289,7 +1289,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         AdaptiveDoublePreference(
                             ctx = context,
                             doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange,
-                            dialogMessage = R.string.openapsama_smb_delivery_ratio_bg_range_summary,
+                            dialogMessage =  R.string.openapsama_smb_delivery_ratio_bg_range_summary,
                             title = R.string.openapsama_smb_delivery_ratio_bg_range
                         )
                     )
