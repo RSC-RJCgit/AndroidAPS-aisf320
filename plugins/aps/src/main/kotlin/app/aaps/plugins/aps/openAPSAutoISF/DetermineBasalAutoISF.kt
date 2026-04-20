@@ -1483,7 +1483,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     LDelta <= 0.10 * Delta &&
                     COB <= 20 &&
                     bg < 10.0 * 18
-                ) {   // sudden glitchy rises after gentle fall ; sensor swings
+                ) {
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
@@ -1562,7 +1562,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         } else {
                             microBolus = microBolus * 0.3
                             rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.304 for moderate fast rise 0.304  ")
+                            rT.reason.append(" CHANGED SIZE 0.304 for moderate fast rise 0.304 ")
                         }
 
                         // -------------------------------------------------
@@ -1585,11 +1585,11 @@ class DetermineBasalAutoISF @Inject constructor(
                         } else {
                             microBolus = microBolus * 0.4
                             rT.reason.append("microBolus = microBolus * 0.4 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.407 for mild fast rise 0.407  ")
+                            rT.reason.append(" CHANGED SIZE 0.407 for mild fast rise 0.407 ")
                         }
 
                         // -------------------------------------------------
-                        // VERY EARLY RISE  (corrected: now non-overlapping)
+                        // VERY EARLY RISE  (corrected: non-overlapping)
                         // -------------------------------------------------
                     } else if (Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
@@ -1634,6 +1634,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // corrected: remove unreachable >=10 inner branch
+// corrected: total cap now 0.075 * profile.max_iob
 // =====================================================
                 } else if (((nowHour >= 6) && (nowHour <= 8)) &&
                     bg < 9.0 * 18 &&
@@ -1650,10 +1651,10 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("CHANGED SIZE 0.0211 Twilight microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
                     }
 
-                    if (microBolus + IOB > 0.15 * profile.max_iob) {
-                        microBolus = 0.15 * profile.max_iob - IOB
-                        rT.reason.append("microBolus = 0.15 * profile.max_iob - IOB ; 0.15 * profile.max_iob ${0.15 * profile.max_iob} IOB ${IOB} ")
-                        rT.reason.append("CHANGED SIZE 0.1512 microBolus + IOB ov 0.15 * profile.max_iob microBolus = 0.15 * profile.max_iob - IOB ${microBolus} ")
+                    if (microBolus + IOB > 0.075 * profile.max_iob) {
+                        microBolus = 0.075 * profile.max_iob - IOB
+                        rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
+                        rT.reason.append("CHANGED SIZE 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
                     }
 
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
