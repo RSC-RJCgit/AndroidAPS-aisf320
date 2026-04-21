@@ -1698,7 +1698,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     return rT
                 }
             }
-            val maxSafeBasal = getMaxSafeBasal(profile)
+            var maxSafeBasal = getMaxSafeBasal(profile)
             if (nowHour <5){
                 //maxSafeBasal = 2 *  profile.current_basal
                 maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal))
