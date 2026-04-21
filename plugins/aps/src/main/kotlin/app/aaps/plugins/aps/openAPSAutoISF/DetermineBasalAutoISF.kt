@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt038")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt039")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt038 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt039 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1699,7 +1699,12 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
             }
             val maxSafeBasal = getMaxSafeBasal(profile)
-
+            if (nowHour <5){
+                //maxSafeBasal = 2 *  profile.current_basal
+                maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal))
+            }
+            rT.reason.append("1.3 *  profile.current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+            
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
@@ -1707,7 +1712,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
             val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
             if (insulinScheduled >= insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
-                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} > 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
+                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
@@ -1717,7 +1722,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             if (currenttemp.duration > 5 && (round_basal(rate) <= round_basal(currenttemp.rate))) { // if required temp <~ existing temp basal
-                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} >~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
                 return rT
             }
 
@@ -1729,5 +1734,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt038
+gpt039
  */
