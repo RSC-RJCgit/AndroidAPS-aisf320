@@ -115,7 +115,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add(msg)
     }
 
-    private fun getMaxSafeBasal (profile: OapsProfileAutoIsf): Double =
+    private fun getMaxSafeBasal(profile: OapsProfileAutoIsf): Double =
         min(profile.max_basal, min(profile.max_daily_safety_multiplier * profile.max_daily_basal, profile.current_basal_safety_multiplier * profile.current_basal))
 
     fun setTempBasal(_rate: Double, duration: Int, profile: OapsProfileAutoIsf, rT: RT, currenttemp: CurrentTemp): RT {
