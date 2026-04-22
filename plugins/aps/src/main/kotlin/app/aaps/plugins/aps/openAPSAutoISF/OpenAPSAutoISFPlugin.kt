@@ -117,8 +117,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val determineBasalAutoISF: DetermineBasalAutoISF,
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
-    private val apsResultProvider: Provider<APSResult>,
-    private var bgAcce: Double = 0.0
+    private val apsResultProvider: Provider<APSResult>
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -133,6 +132,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
+    private var bgAcce: Double = 0.0  // <-- here
     @Inject lateinit var automationStateService: AutomationStateInterface
 
     // last values
