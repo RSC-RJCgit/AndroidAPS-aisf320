@@ -337,7 +337,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt039")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt040")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -829,7 +829,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt039 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt040 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1700,11 +1700,12 @@ class DetermineBasalAutoISF @Inject constructor(
             }
             var maxSafeBasal = getMaxSafeBasal(profile)
             if (nowHour <5){
-                //maxSafeBasal = 2 *  profile.current_basal
-                maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal)
+                //maxSafeBasal = 2 *  profile.bas
+                maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
             }
-            rT.reason.append("1.3 *  profile.current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
-            
+           // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+            rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
+
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
@@ -1734,5 +1735,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt039
+gpt040
  */
