@@ -1701,7 +1701,11 @@ class DetermineBasalAutoISF @Inject constructor(
             var maxSafeBasal = getMaxSafeBasal(profile)
             if (nowHour <5){
                 //maxSafeBasal = 2 *  profile.bas
-                maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
+                //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
+                maxSafeBasal = minOf(
+                    1.3 * profile.current_basal,
+                    minOf(maxSafeBasal, 0.06 * max_iob)
+                )
             }
            // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
             rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
