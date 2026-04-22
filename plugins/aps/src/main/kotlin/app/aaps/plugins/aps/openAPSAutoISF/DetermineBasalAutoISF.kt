@@ -1534,7 +1534,7 @@ class DetermineBasalAutoISF @Inject constructor(
 //   8.0 to 8.8     -> moderate relaxation
 //   > 8.8          -> stronger relaxation
 // =====================================================
-                } else if (
+                } else if(
                     bg > 6.0 * 18 &&
                     bg < 12.0 * 18 &&
                     COB <= 15 &&
