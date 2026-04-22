@@ -163,7 +163,8 @@ class DetermineBasalAutoISF @Inject constructor(
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
-        smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>
+        smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>,
+        bg_acce: Double
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -337,7 +338,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt041")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt042")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -823,13 +824,14 @@ class DetermineBasalAutoISF @Inject constructor(
 
 
         //val bg_acce: Double = glucose_status.bgAcceleration
+        //val bg_acce: Double = (glucose_status as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0
         //var iobThUser = profile.iob_threshold_percent
         val TwilightTimeAM =8
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt041 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt042 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -878,15 +880,15 @@ class DetermineBasalAutoISF @Inject constructor(
         //consoleError.add("iobThUseris ${iobThUser} ;;")
         //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
-        //consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
-        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("Steps60M: ${Steps60M} ;")
         rT.reason.append("Steps30M: ${Steps30M} ;")
         rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
-        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
-        //rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
         rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
         rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
@@ -1474,6 +1476,17 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
 
                     rT.reason.append(" CHANGED SIZE for shower time ")
+// =====================================================
+// LOW IOB ACCELERATION GLITCH THROTTLE
+// =====================================================
+                } else if (
+                    bg_acce > 0.30 * 18 &&
+                    Delta >= 0.50 * 18 &&
+                    IOB < 0.70
+                ) {
+                    microBolus = microBolus * 0.7
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.7 for low IOB accel glitch ")
 
 // =====================================================
 // SENSOR GLITCH / SWING DAMPING
@@ -1739,5 +1752,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt041
+gpt042
  */

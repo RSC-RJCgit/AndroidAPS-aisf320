@@ -118,6 +118,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: Provider<APSResult>
+    private var bgAcce: Double = 0.0
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -531,10 +532,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             iob_threshold_percent = iobThresholdPercent,
             activity_consoleLog = activityLog,
             auto_isf_consoleError = consoleError,
-            auto_isf_consoleLog = consoleLog
+            auto_isf_consoleLog = consoleLog,
+            bg_acce = bgAcce
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
-            // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
             determineBasalResult.iobData = iobArray
@@ -547,11 +548,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
         }
+
         autoIsfValues.timestamp = now
-        //aapsLogger.debug(LTag.APS, "autoIsfValues to write contains: $autoIsfValues")
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
-        //val autoIsfRecords = persistenceLayer.getAutoIsfValuesFromTime(now-100000L)
-        //aapsLogger.debug(LTag.APS, "autoIsfValues records read contain: $autoIsfRecords")
         rxBus.send(EventOpenAPSUpdateGui())
     }
 
@@ -819,7 +818,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // calculate acce_ISF from bg acceleration and adapt ISF accordingly
         val fit_corr: Double = glucose_status.corrSqu
         val bg_acce: Double = glucose_status.bgAcceleration
-
+        bgAcce = bg_acce  // store for use in determine_basal
         //val nowHour = LocalDateTime.now().hour
         //consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         //consoleError.add("steps180min is ${steps180min} ;;")
@@ -1302,5 +1301,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-gpt041
+gpt042
  */
