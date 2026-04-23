@@ -1671,7 +1671,11 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
                         rT.reason.append("CHANGED SIZE 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
                     }
-
+                    else if (microBolus > 0.3) {
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
+                        rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
+                    }
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
 
 // =====================================================
