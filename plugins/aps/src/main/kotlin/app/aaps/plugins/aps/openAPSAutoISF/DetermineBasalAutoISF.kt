@@ -1618,18 +1618,18 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // HIGHER BG FAST RISE
 // =====================================================
-                    else if (Delta >= 0.9 * 18 &&
-                        SDelta >= 0.7 * 18 &&
-                        bg > 11.5 * 18 &&
-                        bg < 13.5 * 18 &&
-                        IOB > 0.35 * profile.max_iob &&
-                        COB <= 15 &&
-                        microBolus > 0.3
-                    ) {
+                } else if (Delta >= 0.9 * 18 &&
+                    SDelta >= 0.7 * 18 &&
+                    bg > 11.5 * 18 &&
+                    bg < 13.5 * 18 &&
+                    IOB > 0.35 * profile.max_iob &&
+                    COB <= 15 &&
+                    microBolus > 0.3
+                ) {
 
-                        microBolus = microBolus * 0.75
-                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
+                    microBolus = microBolus * 0.75
+                    rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
 
 // =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD
