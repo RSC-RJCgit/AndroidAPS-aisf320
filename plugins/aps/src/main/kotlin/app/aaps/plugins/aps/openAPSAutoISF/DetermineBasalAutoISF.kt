@@ -1689,7 +1689,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
                 if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
                     microBolus = microBolus * 0.75
-                    rT.reason.append("microBolus > 0.60 after fast rise, capping: microBolus = microBolus * 0.75 ${microBolus} ")
+                    rT.reason.append("microBolus ov 0.60 after fast rise CHANGED SIZE SMB 0.75  ${microBolus} ")
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
