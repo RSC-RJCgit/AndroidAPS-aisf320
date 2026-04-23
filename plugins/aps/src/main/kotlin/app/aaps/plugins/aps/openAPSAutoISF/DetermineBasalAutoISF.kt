@@ -1528,7 +1528,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("glitch 0.0 ")
 
 // =====================================================
-// FAST RISE HANDLING
+// FAST RISE HANDLING, microBolus > 0.3
 // 3 BG tiers:
 //   <= 8.0 mmol/L  -> original stricter reduction
 //   8.0 to 8.8     -> moderate relaxation
@@ -1540,7 +1540,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 15 &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
-                    IOB > 0.10 * profile.max_iob
+                    IOB > 0.10 * profile.max_iob &&
+                    microBolus > 0.3
                 ) {
 
                     // -------------------------------------------------
@@ -1617,17 +1618,18 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // HIGHER BG FAST RISE
 // =====================================================
-                } else if (Delta >= 0.9 * 18 &&
-                    SDelta >= 0.7 * 18 &&
-                    bg > 11.5 * 18 &&
-                    bg < 13.5 * 18 &&
-                    IOB > 0.35 * profile.max_iob &&
-                    COB <= 15
-                ) {
+                    else if (Delta >= 0.9 * 18 &&
+                        SDelta >= 0.7 * 18 &&
+                        bg > 11.5 * 18 &&
+                        bg < 13.5 * 18 &&
+                        IOB > 0.35 * profile.max_iob &&
+                        COB <= 15 &&
+                        microBolus > 0.3
+                    ) {
 
-                    microBolus = microBolus * 0.75
-                    rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
+                        rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
 
 // =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD
@@ -1717,7 +1719,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
                 maxSafeBasal = minOf(
                     1.3 * profile.current_basal,
-                    minOf(maxSafeBasal, 0.06 * max_iob)
+                    minOf(maxSafeBasal, 0.07 * max_iob)
                 )
             }
            // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
