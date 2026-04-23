@@ -1684,7 +1684,13 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else {
                     rT.reason.append(" NOT CHANGED SIZE SMB ")
                 }
-
+// =====================================================
+// FAST RISE SECONDARY CAP
+// =====================================================
+                if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
+                    microBolus = microBolus * 0.75
+                    rT.reason.append("microBolus > 0.60 after fast rise, capping: microBolus = microBolus * 0.75 ${microBolus} ")
+                }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
