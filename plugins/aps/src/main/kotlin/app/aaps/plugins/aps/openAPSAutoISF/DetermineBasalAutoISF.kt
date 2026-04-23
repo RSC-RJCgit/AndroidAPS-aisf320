@@ -1662,7 +1662,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
                         microBolus = LibreTrue * 0.02 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
-                        rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append ("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
                         rT.reason.append("CHANGED SIZE 0.0211 Twilight microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
                     }
 
