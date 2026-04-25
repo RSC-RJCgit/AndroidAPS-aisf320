@@ -338,7 +338,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt044")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt045")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -831,7 +831,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt044 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " gpt045 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1541,7 +1541,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
                     IOB > 0.10 * profile.max_iob //&&
-                    //microBolus > 0.3 //not used except gpt044
+                    //microBolus > 0.3 //not used except gpt045
                 ) {
 
                     // -------------------------------------------------
@@ -1624,7 +1624,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 13.5 * 18 &&
                     IOB > 0.35 * profile.max_iob &&
                     COB <= 15 //&&
-                    //microBolus > 0.3 // not used except gpt044
+                    //microBolus > 0.3 // not used except gpt045
                 ) {
 
                     microBolus = microBolus * 0.75
@@ -1675,7 +1675,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
                         rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
-                    }*/ // not used except gpt044
+                    }*/ // not used except gpt045
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
 
 // =====================================================
@@ -1685,7 +1685,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append(" NOT CHANGED SIZE SMB ")
                 }
 /*/ =====================================================
-// FAST RISE SECONDARY CAP. .not used except gpt044not used except gpt044
+// FAST RISE SECONDARY CAP. .not used except gpt045not used except gpt045
 // =====================================================
                 if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
                     microBolus = microBolus * 0.75
@@ -1724,7 +1724,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
             }
             var maxSafeBasal = getMaxSafeBasal(profile)
-            if (nowHour <5){
+/*            if (nowHour <5){
                 //maxSafeBasal = 2 *  profile.bas
                 //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
                 maxSafeBasal = minOf(
@@ -1734,7 +1734,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
            // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
             rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
-
+*/
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
@@ -1764,5 +1764,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt044
+gpt045
  */
