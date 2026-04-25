@@ -133,6 +133,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 ), APS, PluginConstraints {
 
     private var bgAcce: Double = 0.0  // <-- here
+    private var steps180: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
 
     // last values
@@ -724,6 +725,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         var steps180min = StepService.getRecentStepCount180Min()
 
+        var steps180 = steps180min  // add this
         val nowHour = LocalDateTime.now().hour
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         consoleError.add("steps180min is ${steps180min} ;;")
@@ -1301,5 +1303,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-gpt045
+gpt046 OpenAPSAutoISFPlugin.kt
  */
