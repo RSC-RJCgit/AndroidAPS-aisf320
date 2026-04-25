@@ -534,7 +534,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             activity_consoleLog = activityLog,
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog,
-            bg_acce = bgAcce
+            bg_acce = bgAcce,
+            steps180M = steps180
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
