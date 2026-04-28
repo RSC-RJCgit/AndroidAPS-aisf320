@@ -825,7 +825,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //val nowHour = LocalDateTime.now().hour
         //consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         //consoleError.add("steps180min is ${steps180min} ;;")
-        consoleError.add("nowHour is ${nowHour} ;;")
+        consoleError.add("nowHour is  ${nowHour} ;;")
         //consoleError.add("nowDate is ${nowDate} ;;")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
@@ -1304,5 +1304,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-cl050 OpenAPSAutoISFPlugin.kt
+cl050  OpenAPSAutoISFPlugin.kt
  */
