@@ -1454,7 +1454,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         val microBolus1 = microBolus
                         microBolus = iobTHvirtualHARDshower - IOB
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower diff = ${microBolus - microBolus1} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower = ${microBolus - microBolus1} diff = ")
                     }
 
                     // rT.reason.append(" CHANGED SIZE for shower time ")
@@ -1475,7 +1475,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         val microBolus1 = microBolus
                         microBolus = iobTHvirtualHARDshower - IOB
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower diff = ${microBolus - microBolus1} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower = ${microBolus - microBolus1} diff  ")
                     }
 
                     rT.reason.append(" CHANGED SIZE for shower time ")
@@ -1517,7 +1517,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE for highTT 0.5 smb? ")
+                    rT.reason.append(" CHANGED SIZE for [high delta during low TT for low delta only] highTT 0.5 smb? ")
 
 // =====================================================
 // GLITCH ZERO SMB
@@ -1544,7 +1544,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
                     IOB > 0.10 * profile.max_iob //&&
-                    //microBolus > 0.3 //not used except rsn051
+                //microBolus > 0.3 //not used except gpt049
                 ) {
 
                     // -------------------------------------------------
@@ -1592,17 +1592,17 @@ class DetermineBasalAutoISF @Inject constructor(
                     ) {
 
                         if (bg > 8.8 * 18) {
-                            microBolus = microBolus * 0.8
-                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.805 for mild fast rise 0.805 ")
-                        } else if (bg > 8.0 * 18) {
                             microBolus = microBolus * 0.7
                             rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.706 for mild fast rise 0.706 ")
-                        } else {
+                            rT.reason.append(" CHANGED SIZE 0.705 for mild fast rise 0.805 ")
+                        } else if (bg > 8.0 * 18) {
                             microBolus = microBolus * 0.6
                             rT.reason.append("microBolus = microBolus * 0.6 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.607 for mild fast rise 0.607 ")
+                            rT.reason.append(" CHANGED SIZE 0.606 for mild fast rise 0.606 ")
+                        } else {
+                            microBolus = microBolus * 0.5
+                            rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
                         }
 
                         // -------------------------------------------------
@@ -1613,9 +1613,9 @@ class DetermineBasalAutoISF @Inject constructor(
                         Delta < 0.35 * 18
                     ) {
 
-                        microBolus = microBolus * 0.5
+                        microBolus = microBolus * 0.4
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.508 for early fast rise 0.508 ")
+                        rT.reason.append(" CHANGED SIZE 0.508 for early fast rise 0.408 ")
                     }
 
 // =====================================================
@@ -1627,7 +1627,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 13.5 * 18 &&
                     IOB > 0.35 * profile.max_iob &&
                     COB <= 15 //&&
-                    //microBolus > 0.3 // not used except rsn051
+                //microBolus > 0.3 // not used except gpt049
                 ) {
 
                     microBolus = microBolus * 0.75
@@ -1678,7 +1678,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
                         rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
-                    }*/ // not used except rsn051
+                    }*/ // not used except gpt049
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
 
 // =====================================================
@@ -1687,13 +1687,13 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else {
                     rT.reason.append(" NOT CHANGED SIZE SMB ")
                 }
-/*/ =====================================================
-// FAST RISE SECONDARY CAP. .not used except rsn051not used except rsn051
-// =====================================================
-                if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
-                    microBolus = microBolus * 0.75
-                    rT.reason.append("microBolus ov 0.60 after fast rise CHANGED SIZE SMB 0.75  ${microBolus} ")
-                }*/
+                /*/ =====================================================
+                // FAST RISE SECONDARY CAP. .not used except gpt049not used except gpt047
+                // =====================================================
+                                if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
+                                    microBolus = microBolus * 0.75
+                                    rT.reason.append("microBolus ov 0.60 after fast rise CHANGED SIZE SMB 0.75  ${microBolus} ")
+                                }*/
 // =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
@@ -1727,17 +1727,17 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
             }
             var maxSafeBasal = getMaxSafeBasal(profile)
-/*            if (nowHour <5){
-                //maxSafeBasal = 2 *  profile.bas
-                //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
-                maxSafeBasal = minOf(
-                    1.3 * profile.current_basal,
-                    minOf(maxSafeBasal, 0.07 * max_iob)
-                )
-            }
-           // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
-            rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
-*/
+            /*            if (nowHour <5){
+                            //maxSafeBasal = 2 *  profile.bas
+                            //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
+                            maxSafeBasal = minOf(
+                                1.3 * profile.current_basal,
+                                minOf(maxSafeBasal, 0.07 * max_iob)
+                            )
+                        }
+                       // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+                        rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
+            */
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
