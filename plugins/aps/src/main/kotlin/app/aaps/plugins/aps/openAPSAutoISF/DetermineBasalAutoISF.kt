@@ -1738,6 +1738,7 @@ class DetermineBasalAutoISF @Inject constructor(
            // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
             rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
 */
+            rT.reason.append("original maxSafeBasal= ${maxSafeBasal.withoutZeros()}, ")
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
