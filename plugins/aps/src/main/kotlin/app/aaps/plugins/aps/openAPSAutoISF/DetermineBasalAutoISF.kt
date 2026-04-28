@@ -339,7 +339,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ gpt048")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ rsn051")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -833,7 +833,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " gpt048 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " rsn051 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1544,7 +1544,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
                     IOB > 0.10 * profile.max_iob //&&
-                    //microBolus > 0.3 //not used except gpt048
+                    //microBolus > 0.3 //not used except rsn051
                 ) {
 
                     // -------------------------------------------------
@@ -1627,7 +1627,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 13.5 * 18 &&
                     IOB > 0.35 * profile.max_iob &&
                     COB <= 15 //&&
-                    //microBolus > 0.3 // not used except gpt048
+                    //microBolus > 0.3 // not used except rsn051
                 ) {
 
                     microBolus = microBolus * 0.75
@@ -1678,7 +1678,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
                         rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
-                    }*/ // not used except gpt048
+                    }*/ // not used except rsn051
                     rT.reason.append(" CHANGED SIZE SMB other hours ")
 
 // =====================================================
@@ -1688,7 +1688,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append(" NOT CHANGED SIZE SMB ")
                 }
 /*/ =====================================================
-// FAST RISE SECONDARY CAP. .not used except gpt048not used except gpt048
+// FAST RISE SECONDARY CAP. .not used except rsn051not used except rsn051
 // =====================================================
                 if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
                     microBolus = microBolus * 0.75
@@ -1767,5 +1767,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 /*
 
-gpt048 DetermineBasalAutoISF.kt
+rsn051 DetermineBasalAutoISF.kt
  */
