@@ -717,6 +717,7 @@ private fun savePersistedParameters() {
             }
 
             // Logging with effective parameters for transparency.
+            /*
             aapsLogger.warn(
                 LTag.GLUCOSE,
                 "UKF: timestamp=${data[i].timestamp}, live R=${String.format("%.1f", R)}, R_eff=${String.format("%.1f", R_eff)}," +
@@ -725,7 +726,7 @@ private fun savePersistedParameters() {
                 " qScale=${String.format("%.1f", qScale)}," +
                 " P[0]=${String.format("%.1f", P[0])}, P[3]=${String.format("%.4f", P[3])}"
             )
-
+            */
             val resultIdx = i - startIdx
             forwardResults[resultIdx] = x[0]
             forwardStates.add(0, stateBefore)
