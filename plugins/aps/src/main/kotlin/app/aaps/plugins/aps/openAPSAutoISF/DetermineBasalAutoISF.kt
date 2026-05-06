@@ -1543,7 +1543,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 15 &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
-                    // IOB > 0.10 * profile.max_iob // && microBolus > 0.3
+                    IOB > 0.10 * profile.max_iob // && microBolus > 0.3
                 //microBolus > 0.3 //not used except rsn049
                 ) {
 
@@ -1613,7 +1613,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         Delta < 0.35 * 18 &&
                         bg <= 8.0 * 18 &&
                         microBolus > 0.3 )
-                    ) {
+                     {
 
                         microBolus = microBolus * 0.4
                         rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
