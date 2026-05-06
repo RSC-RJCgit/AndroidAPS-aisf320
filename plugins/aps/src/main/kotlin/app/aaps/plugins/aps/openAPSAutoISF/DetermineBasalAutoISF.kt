@@ -1576,7 +1576,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             microBolus = microBolus * 0.4
                             rT.reason.append("microBolus = microBolus * 0.4 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.403 for moderate fast rise 0.403 ")
-                        } else if (bg <= 8.0 * 18 && microBolus > 0.3 ){
+                        } else if (bg <= 8.0 * 18 && microBolus > 0.25 ){
                             microBolus = microBolus * 0.3
                             rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.304 for moderate fast rise 0.304 ")
@@ -1599,7 +1599,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             microBolus = microBolus * 0.6
                             rT.reason.append("microBolus = microBolus * 0.6 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.606 for mild fast rise 0.606 ")
-                        } else if (bg <= 8.0 * 18 && microBolus > 0.3 ){
+                        } else if (bg <= 8.0 * 18 && microBolus > 0.25 ){
                             microBolus = microBolus * 0.5
                             rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
