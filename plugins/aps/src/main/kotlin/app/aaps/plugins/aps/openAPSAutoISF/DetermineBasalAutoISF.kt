@@ -1578,7 +1578,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append(" CHANGED SIZE 0.403 for moderate fast rise 0.403 ")
                         } else if (bg <= 8.0 * 18 && microBolus > 0.035 * maxBolus ){
                             microBolus = microBolus * 0.3
-                            rT.reason.append("microBolus = microBolus * 0.3 ; microBolus = ${microBolus} ")
+                            rT.reason.append("microBolus ov 0.035 * maxBolus  = microBolus * 0.3 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.304 for moderate fast rise 0.304 ")
                         }
 
@@ -1601,7 +1601,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append(" CHANGED SIZE 0.606 for mild fast rise 0.606 ")
                         } else if (bg <= 8.0 * 18 && microBolus > 0.035 * maxBolus ){
                             microBolus = microBolus * 0.5
-                            rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                            rT.reason.append("microBolus ov 0.035 * maxBolus  = microBolus * 0.5 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
                         }
 
@@ -1612,11 +1612,11 @@ class DetermineBasalAutoISF @Inject constructor(
                         SDelta >= 0.10 * 18 &&
                         Delta < 0.35 * 18 &&
                         bg <= 8.0 * 18 &&
-                        microBolus > 0.3 )
+                        microBolus > 0.035 * maxBolus )
                      {
 
                         microBolus = microBolus * 0.4
-                        rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                        rT.reason.append("microBolus ov 0.035 * maxBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.508 for early fast rise 0.408 ")
                     }
 
@@ -1762,7 +1762,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             // required temp > existing temp basal
-            rT.reason.append("temp ${currenttemp.rate.toFixed2()} < ${round(rate, 2).withoutZeros()}U/hr. ")
+            rT.reason.append("temp ${currenttemp.rate.toFixed2()} un ${round(rate, 2).withoutZeros()}U/hr. ")
             return setTempBasal(rate, 30, profile, rT, currenttemp)
         }
     }
