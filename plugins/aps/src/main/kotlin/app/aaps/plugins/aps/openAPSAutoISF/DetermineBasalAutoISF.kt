@@ -1581,7 +1581,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append("microBolus ov 0.035 * max_iob  = microBolus * 0.3 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.304 for moderate fast rise 0.304 ")
                         } else if (bg <= 8.0 * 18 && microBolus <= 0.035 * max_iob ){
-                            rT.reason.append("microBolus un= 0.035 * max_iob  microBolus  = ${microBolus} ")
+                            rT.reason.append("smbUn = 0.035 * max_iob  microBolus  = ${microBolus} ")
                         }
 
                         // -------------------------------------------------
@@ -1606,7 +1606,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append("microBolus ov 0.035 * max_iob  = microBolus * 0.5 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
                         } else {
-                            rT.reason.append("microBolus un= 0.035 * max_iob microBolus = ${microBolus} ")
+                            rT.reason.append("smbUn = 0.035 * max_iob microBolus = ${microBolus} ")
                         }
                     }
 
@@ -1622,7 +1622,7 @@ class DetermineBasalAutoISF @Inject constructor(
                                 rT.reason.append("microBolus ov 0.035 * max_iob = microBolus * 0.4 ; microBolus = ${microBolus} ")
                                 rT.reason.append(" CHANGED SIZE 0.408 for early fast rise 0.408 ")
                         } else {
-                                rT.reason.append("microBolus un= 0.035 * max_iob microBolus = ${microBolus} ")
+                                rT.reason.append("smbUn = 0.035 * max_iob microBolus = ${microBolus} ")
                             }
                         
 // =====================================================
