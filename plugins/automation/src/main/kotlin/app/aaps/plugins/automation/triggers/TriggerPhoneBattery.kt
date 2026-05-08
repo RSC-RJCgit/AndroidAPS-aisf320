@@ -77,3 +77,7 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
             .build(root)
     }
 }
+/*
+
+TriggerPhoneBattery.kt B35059
+ */

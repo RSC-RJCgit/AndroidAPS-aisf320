@@ -1306,5 +1306,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-035058batt OpenAPSAutoISFPlugin.kt
+B35059 OpenAPSAutoISFPlugin.kt
  */
