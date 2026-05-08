@@ -728,9 +728,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         var steps180 = steps180min  // add this
         val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         consoleError.add("steps180min is ${steps180min} ;;")
-        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+
 
 
         val sens = profile.getProfileIsfMgdl()
@@ -1304,5 +1306,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-035057 OpenAPSAutoISFPlugin.kt
+035058batt OpenAPSAutoISFPlugin.kt
  */

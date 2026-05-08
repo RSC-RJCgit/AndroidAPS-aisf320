@@ -64,6 +64,7 @@ import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
@@ -435,7 +436,8 @@ class AutomationPlugin @Inject constructor(
             TriggerCOB(injector),
             TriggerProfilePercent(injector),
             //TriggerProfile(injector),
-            TriggerAutomationState(injector), TriggerTempTarget(injector),
+            TriggerAutomationState(injector),
+            TriggerTempTarget(injector),
             TriggerTempTargetValue(injector),
             TriggerWifiSsid(injector),
             TriggerLocation(injector),
@@ -443,6 +445,7 @@ class AutomationPlugin @Inject constructor(
             TriggerBolusAgo(injector),
             TriggerPumpLastConnection(injector),
             TriggerBTDevice(injector),
+            TriggerPhoneBattery(injector),
             TriggerHeartRate(injector),
             TriggerSensorAge(injector),
             TriggerCannulaAge(injector),
