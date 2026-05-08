@@ -729,8 +729,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
 
-        var steps180 = steps180min  // add this
-        var steps15 = steps15min  // add this
+        //var steps180 = steps180min  // add this
+        //var steps15 = steps15min  // add this
+        this.steps180 = steps180min
+        this.steps15 = steps15min
         val nowHour = LocalDateTime.now().hour
         consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
         consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
@@ -1310,5 +1312,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-BPS060 OpenAPSAutoISFPlugin.kt
+BPS061 OpenAPSAutoISFPlugin.kt
  */
