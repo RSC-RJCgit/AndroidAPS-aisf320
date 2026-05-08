@@ -810,7 +810,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val LDelta = glucose_status.longAvgDelta
         val Steps5M = profile.recent_steps_5_minutes
         val Steps10M = profile.recent_steps_10_minutes
-        val Steps15M = profile.recent_steps_15_minutes
+        //val Steps15M = profile.recent_steps_15_minutes
         val Steps30M = profile.recent_steps_30_minutes
         val Steps60M = profile.recent_steps_60_minutes
         //val Steps180M = profile.recent_steps_180_minutes
