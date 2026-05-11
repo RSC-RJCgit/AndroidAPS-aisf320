@@ -1572,19 +1572,19 @@ class DetermineBasalAutoISF @Inject constructor(
                     ) {
 
                         if (bg > 8.8 * 18) {
+                            microBolus = microBolus * 0.8
+                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.802 for moderate fast rise 0.802 ")
+                        } else if (bg > 8.0 * 18) {
                             microBolus = microBolus * 0.7
                             rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.702 for moderate fast rise 0.702 ")
-                        } else if (bg > 8.0 * 18) {
-                            microBolus = microBolus * 0.6
-                            rT.reason.append("microBolus = microBolus * 0.6 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.603 for moderate fast rise 0.803 ")
+                            rT.reason.append(" CHANGED SIZE 0.703 for moderate fast rise 0.703 ")
                         } else if (bg <= 8.0 * 18 && microBolus > 0.035 * max_iob ){
-                            microBolus = microBolus * 0.5
-                            rT.reason.append("microBolus ov 0.035 * max_iob  = microBolus * 0.5 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.504 for moderate fast rise 0.504 ")
+                            microBolus = microBolus * 0.6
+                            rT.reason.append("microBolus ov 0.035 * max_iob  = microBolus * 0.6 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.604 for moderate fast rise 0.604 ")
                         } else if (bg <= 8.0 * 18 && microBolus <= 0.035 * max_iob ){
-                            rT.reason.append("smbUn  0.504 for 0.035 * max_iob  microBolus  = ${microBolus} ")
+                            rT.reason.append("smbUn  0.564 for 0.035 * max_iob  microBolus  = ${microBolus} ")
                         }
 
                         // -------------------------------------------------
