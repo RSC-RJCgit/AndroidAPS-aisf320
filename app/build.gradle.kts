@@ -229,7 +229,9 @@ dependencies {
     testImplementation(project(":shared:tests"))
     androidTestImplementation(project(":shared:tests"))
     androidTestImplementation(libs.androidx.test.rules)
-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
+    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
+        exclude(group = "org.json", module = "json")
+    }
 
     debugImplementation(libs.com.squareup.leakcanary.android)
 

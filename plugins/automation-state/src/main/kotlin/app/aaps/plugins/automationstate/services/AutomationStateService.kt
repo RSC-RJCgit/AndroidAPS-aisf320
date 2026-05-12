@@ -95,6 +95,8 @@ class AutomationStateService @Inject constructor(
         return stateValues.containsKey(stateName.trim())
     }
 
+   override fun getAllStateNames(): List<String> = stateValues.keys.toList()
+
    override fun deleteState(stateName: String) {
         val trimmedName = stateName.trim()
         automationStates.remove(trimmedName)

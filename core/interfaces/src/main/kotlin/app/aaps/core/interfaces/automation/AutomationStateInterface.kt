@@ -9,4 +9,5 @@ interface AutomationStateInterface {
     fun setStateValues(stateName: String, values: List<String>)
     fun hasStateValues(stateName: String): Boolean
     fun deleteState(stateName: String)
+    fun getAllStateNames(): List<String>
 }
