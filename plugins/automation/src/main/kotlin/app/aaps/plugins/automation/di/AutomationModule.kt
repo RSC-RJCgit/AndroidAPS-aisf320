@@ -40,6 +40,8 @@ import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -92,6 +94,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerHeartRateInjector(): TriggerHeartRate
     @ContributesAndroidInjector abstract fun triggerIobInjector(): TriggerIob
     @ContributesAndroidInjector abstract fun triggerLocationInjector(): TriggerLocation
+    @ContributesAndroidInjector abstract fun triggerPhoneBatteryInjector(): TriggerPhoneBattery
+    @ContributesAndroidInjector abstract fun triggerProfileInjector(): TriggerProfile
     @ContributesAndroidInjector abstract fun triggerProfilePercentInjector(): TriggerProfilePercent
     @ContributesAndroidInjector abstract fun triggerPumpLastConnectionInjector(): TriggerPumpLastConnection
     @ContributesAndroidInjector abstract fun triggerBTDeviceInjector(): TriggerBTDevice
