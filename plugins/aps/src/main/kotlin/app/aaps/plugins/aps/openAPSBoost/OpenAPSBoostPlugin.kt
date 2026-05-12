@@ -1294,5 +1294,5 @@ open class OpenAPSBoostPlugin @Inject constructor(
 }
 /*
 
-OpenAPSBoostPluginv2004-rc.kt.txt
+OpenAPSBoostPluginv2005-rc.kt.txt
  */
