@@ -14,7 +14,8 @@ on:
 
   push:
     branches:
-      - 3.4.0.0+aisf3.2.0
+      - '3.4.0.0+aisf3.2.0'
+      - '**aisf3.2.0'
 jobs:
   build:
     name: Build AAPS
