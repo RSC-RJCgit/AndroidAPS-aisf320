@@ -1,6 +1,11 @@
 package app.aaps.plugins.automation.actions
 
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.LinearLayout
+import android.widget.Spinner
+import android.widget.TextView
 import androidx.annotation.DrawableRes
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.logging.LTag
@@ -8,8 +13,6 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputDropdownMenu
-import app.aaps.plugins.automation.elements.LabelWithElement
-import app.aaps.plugins.automation.elements.LayoutBuilder
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import javax.inject.Inject
@@ -59,19 +62,51 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     override fun hasDialog(): Boolean = true
 
     override fun generateDialog(root: LinearLayout) {
-        val stateNames = ArrayList<CharSequence>(automationStateInterface.getAllStateNames())
-        val values = if (stateName.value.isNotEmpty())
-            ArrayList<CharSequence>(automationStateInterface.getStateValues(stateName.value))
-        else
-            ArrayList()
+        val context = root.context
+        val stateNames = automationStateInterface.getAllStateNames()
 
-        stateName.setList(stateNames)
-        stateValue.setList(values)
+        val valueSpinner = Spinner(context).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+        }
 
-        LayoutBuilder()
-            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_name), "", stateName))
-            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_val), "", stateValue))
-            .build(root)
+        fun refreshValueSpinner(selectedStateName: String) {
+            val values = automationStateInterface.getStateValues(selectedStateName)
+            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            val idx = values.indexOf(stateValue.value)
+            if (idx >= 0) valueSpinner.setSelection(idx)
+            valueSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    if (position < values.size) stateValue.value = values[position]
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+        }
+
+        val nameSpinner = Spinner(context).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val name = stateNames[position]
+                    stateName.value = name
+                    refreshValueSpinner(name)
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
+            val idx = stateNames.indexOf(stateName.value)
+            if (idx >= 0) setSelection(idx)
+        }
+
+        root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_name) })
+        root.addView(nameSpinner)
+        root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_val) })
+        root.addView(valueSpinner)
     }
 
     override fun isValid(): Boolean = stateName.value.isNotEmpty() && stateValue.value.isNotEmpty()
