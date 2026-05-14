@@ -76,6 +76,8 @@ import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
 import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
@@ -403,6 +405,7 @@ class AutomationPlugin @Inject constructor(
             ActionSendSMS(injector),
             ActionSMBChange(injector)
         )
+        actions.add(ActionSetAutomationState(injector))
         if (config.isEngineeringMode() && config.isDev())
             actions.add(ActionRunAutotune(injector))
 
@@ -432,7 +435,8 @@ class AutomationPlugin @Inject constructor(
             TriggerSensorAge(injector),
             TriggerCannulaAge(injector),
             TriggerReservoirLevel(injector),
-            TriggerStepsCount(injector)
+            TriggerStepsCount(injector),
+            TriggerAutomationState(injector)
         )
 
         val pump = activePlugin.activePump
