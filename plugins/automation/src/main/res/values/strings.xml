@@ -155,4 +155,11 @@
     <string name="on">ON</string>
     <string name="off">OFF</string>
 
+    <!--    Automation state-->
+    <string name="trigger_automation_state_label">Automation state</string>
+    <string name="set_state">Set state</string>
+    <string name="set_state_description">Set %1$s to %2$s</string>
+    <string name="set_state_state_name">State name:</string>
+    <string name="set_state_state_val">State value:</string>
+
 </resources>
