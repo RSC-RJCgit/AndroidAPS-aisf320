@@ -1492,7 +1492,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 ) {
                     microBolus = microBolus * 0.7
                     rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE 0.7 for low IOB accel glitch ")
+                    rT.reason.append(" CHANGED SIZE 0.712 fast rise 0.712 for low IOB accel glitch ")
 
 // =====================================================
 // SENSOR GLITCH / SWING DAMPING
@@ -1506,7 +1506,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.511 for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
 
 // =====================================================
 // HIGH TT PROTECTION [low TT 4.0 but delta High]
@@ -1655,9 +1655,9 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 15
                 ) {
 
-                    microBolus = microBolus * 0.5
-                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE 0.510 for fast rise 0.510 smb ")
+                    microBolus = microBolus * 0.8
+                    rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.510 smb ")
 
 // =====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
