@@ -340,7 +340,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ St066")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ St067")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -835,7 +835,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " St066 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " St067 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1507,6 +1507,31 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE fast rise 0.511 for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
+// =====================================================
+// SENSOR GLITCH2 / SWING DAMPING
+// =====================================================
+                } else if (Delta >= 0.50 * 18 &&
+                    SDelta >= 0.40 * 18 &&
+                    LDelta <= 0.15 * 18 &&
+                    bg < 10.0 * 18
+                ) {
+
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.512 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+// =====================================================
+// POST CARBS / SWING DAMPING
+// =====================================================
+                } else if (Delta >= 0.50 * 18 &&
+                    nowHour >= 18 &&
+                    COB > 10 &&
+                    Delta <=  0.15 * 18 &&
+                    bg < 10.0 * 18
+                ) {
+
+                    microBolus = microBolus * 0.7
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
 
 // =====================================================
 // HIGH TT PROTECTION [low TT 4.0 but delta High]
@@ -1778,5 +1803,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-St066 DetermineBasalAutoISF.kt
+St067 DetermineBasalAutoISF.kt
  */
