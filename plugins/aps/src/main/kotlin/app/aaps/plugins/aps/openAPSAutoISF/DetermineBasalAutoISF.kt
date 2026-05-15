@@ -340,7 +340,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ St067")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ St068")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -835,7 +835,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " St067 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " St068 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1550,7 +1550,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // GLITCH ZERO SMB
 // =====================================================
-                } else if (Delta > 0.10 * 18 &&
+                } else if (Delta > 1.0 * 18 &&
                     LDelta < -0.05 * 18 &&
                     bg < 162
                 ) {
@@ -1571,7 +1571,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 15 &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
-                    IOB > 0.10 * profile.max_iob // && microBolus > 0.3
+                    ( (IOB > 0.10 * profile.max_iob )
+                    || ( nowHour >=18 || nowHour <= 5  ))  // && microBolus > 0.3
                 //microBolus > 0.3 //not used except rsn049
                 ) {
 
@@ -1803,5 +1804,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-St067 DetermineBasalAutoISF.kt
+St068 DetermineBasalAutoISF.kt
  */
