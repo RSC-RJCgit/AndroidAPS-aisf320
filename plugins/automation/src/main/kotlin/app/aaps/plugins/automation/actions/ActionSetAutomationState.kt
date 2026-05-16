@@ -65,6 +65,19 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
         val context = root.context
         val stateNames = automationStateInterface.getAllStateNames()
 
+        if (stateNames.isEmpty()) {
+            root.addView(TextView(context).apply { text = rh.gs(R.string.no_automation_states) })
+            return
+        }
+
+        // Ensure stateName has a valid value immediately (don't rely on deferred callbacks)
+        if (stateName.value.isEmpty() || !stateNames.contains(stateName.value))
+            stateName.value = stateNames[0]
+
+        val currentValues = automationStateInterface.getStateValues(stateName.value)
+        if (stateValue.value.isEmpty() || !currentValues.contains(stateValue.value))
+            stateValue.value = currentValues.firstOrNull() ?: ""
+
         val valueSpinner = Spinner(context).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
@@ -72,25 +85,25 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
         fun refreshValueSpinner(selectedStateName: String) {
             val values = automationStateInterface.getStateValues(selectedStateName)
-            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            }
-            val idx = values.indexOf(stateValue.value)
-            if (idx >= 0) valueSpinner.setSelection(idx)
+            // Ensure stateValue is valid for the newly selected state
+            if (stateValue.value.isEmpty() || !values.contains(stateValue.value))
+                stateValue.value = values.firstOrNull() ?: ""
             valueSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     if (position < values.size) stateValue.value = values[position]
                 }
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
+            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            val idx = values.indexOf(stateValue.value)
+            if (idx >= 0) valueSpinner.setSelection(idx)
         }
 
         val nameSpinner = Spinner(context).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
-            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            }
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val name = stateNames[position]
@@ -99,9 +112,15 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
                 }
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
+            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
             val idx = stateNames.indexOf(stateName.value)
             if (idx >= 0) setSelection(idx)
         }
+
+        // Initialise value spinner for current state name
+        refreshValueSpinner(stateName.value)
 
         root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_name) })
         root.addView(nameSpinner)
