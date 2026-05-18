@@ -1525,7 +1525,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else if (Delta >= 0.50 * 18 &&
                     nowHour >= 18 &&
                     COB > 10 &&
-                    Delta <=  0.15 * 18 &&
+                    Delta <=  0.95 * 18 &&
                     bg < 10.0 * 18
                 ) {
 
@@ -1804,5 +1804,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-St068 DetermineBasalAutoISF.kt
+St069 DetermineBasalAutoISF.kt
  */
