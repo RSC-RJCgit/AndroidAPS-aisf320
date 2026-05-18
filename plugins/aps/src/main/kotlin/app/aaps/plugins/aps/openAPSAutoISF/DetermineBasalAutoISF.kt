@@ -1702,13 +1702,13 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = LibreTrue * 0.02 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
                         rT.reason.append ("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                        rT.reason.append("CHANGED SIZE 0.0211 Twilight microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
+                        rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
                     }
 
                     if (microBolus + IOB > 0.075 * profile.max_iob) {
                         microBolus = 0.075 * profile.max_iob - IOB
                         rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
-                        rT.reason.append("CHANGED SIZE 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
+                        rT.reason.append("CHANGED SIZE 0.07512 fast rise 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
                     }
                     /*else if (microBolus > 0.3) {
                         microBolus = microBolus * 0.75
