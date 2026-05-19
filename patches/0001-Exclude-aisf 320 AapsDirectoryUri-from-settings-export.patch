@@ -1,0 +1,29 @@
+From de1c1136f7bd7cde35088e47825f0ff8adf47bde Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Tue, 19 May 2026 21:16:34 +0930
+Subject: [PATCH] Exclude AapsDirectoryUri from settings export
+
+Local AAPS directory path is device-specific and should not be
+carried over when importing settings on another device.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
+index 89a881088c..fefec19ba8 100644
+--- a/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
++++ b/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
+@@ -24,7 +24,7 @@ enum class StringKey(
+     GeneralSkin("skin", ""),
+     GeneralDarkMode("use_dark_mode", "dark", defaultedBySM = true),
+ 
+-    AapsDirectoryUri("aaps_directory", ""),
++    AapsDirectoryUri("aaps_directory", "", exportable = false),
+ 
+     ProtectionMasterPassword("master_password", "", isPassword = true),
+     ProtectionSettingsPassword("settings_password", "", isPassword = true),
+-- 
+2.43.0.windows.1
+

@@ -1317,5 +1317,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-St070r OpenAPSAutoISFPlugin.kt
+StSt071r OpenAPSAutoISFPlugin.kt
  */
