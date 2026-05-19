@@ -33,7 +33,7 @@ class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
         // so we must get some entries from the last 5 minutes.
         val start = dateUtil.now() - 5 * 60 * 1000L
         val measurements = persistenceLayer.getStepsCountFromTime(start)
-        val lastSC = measurements.lastOrNull { it.duration == measurementDuration.value.toInt() * 60 * 1000L }
+        val lastSC = measurements.lastOrNull()
         if (lastSC == null) {
             aapsLogger.info(LTag.AUTOMATION, "No steps count measurements available - ${friendlyDescription()}")
             return false
