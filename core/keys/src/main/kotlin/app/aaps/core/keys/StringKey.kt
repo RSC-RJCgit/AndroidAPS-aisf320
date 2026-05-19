@@ -24,7 +24,7 @@ enum class StringKey(
     GeneralSkin("skin", ""),
     GeneralDarkMode("use_dark_mode", "dark", defaultedBySM = true),
 
-    AapsDirectoryUri("aaps_directory", ""),
+    AapsDirectoryUri("aaps_directory", "", exportable = false),
 
     ProtectionMasterPassword("master_password", "", isPassword = true),
     ProtectionSettingsPassword("settings_password", "", isPassword = true),
