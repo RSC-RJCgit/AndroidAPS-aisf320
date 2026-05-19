@@ -135,6 +135,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var bgAcce: Double = 0.0  // <-- here
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
+    private var steps5: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
 
     // last values
@@ -537,7 +538,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             auto_isf_consoleLog = consoleLog,
             bg_acce = bgAcce,
             steps180M = steps180,
-            steps15M = steps15
+            steps15M = steps15,
+            steps5M = steps5
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
@@ -728,12 +730,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
+        var steps5min = StepService.getRecentStepCount5Min()
 
         //var steps180 = steps180min  // add this
         //var steps15 = steps15min  // add this
         this.steps180 = steps180min
         this.steps15 = steps15min
+        this.steps5 = steps5min
         val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps5min is ${recentSteps5Minutes} ;;")
         consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
         consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
@@ -1312,5 +1317,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-St069.1 OpenAPSAutoISFPlugin.kt
+St070 OpenAPSAutoISFPlugin.kt
  */
