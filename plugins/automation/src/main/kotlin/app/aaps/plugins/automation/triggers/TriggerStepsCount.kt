@@ -30,9 +30,10 @@ class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
 
         
         // Steps count entries update every 1-1.5 minutes on my watch,
-        // so we must get some entries from the last 5 minutes.
+        // use 5 minute window to always catch at least one reading
         val start = dateUtil.now() - 5 * 60 * 1000L
         val measurements = persistenceLayer.getStepsCountFromTime(start)
+        aapsLogger.info(LTag.AUTOMATION, "Steps count measurement content is - $measurements")
         val lastSC = measurements.lastOrNull()
         if (lastSC == null) {
             aapsLogger.info(LTag.AUTOMATION, "No steps count measurements available - ${friendlyDescription()}")
