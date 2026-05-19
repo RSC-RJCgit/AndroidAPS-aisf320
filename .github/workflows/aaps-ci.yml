@@ -4,18 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       buildVariant:
-        description: "Select Build Variant"
+        description: 'Select Build Variant'
         required: true
-        default: "fullRelease"
+        default: 'fullRelease'
         type: choice
         options:
           - fullRelease
+          - fullDebug
+          - aapsclientRelease
+          - aapsclientDebug
           - aapsclient2Release
+          - aapsclient2Debug
+          - pumpcontrolRelease
+          - pumpcontrolDebug
 
   push:
     branches:
-      - '3.4.0.0+aisf3.2.0'
-      - '**aisf3.2.0'
+      - boost-3.4.0.0
+
 jobs:
   build:
     name: Build AAPS
@@ -176,7 +182,6 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          # When upgrading the JDK, please update this section accordingly as well.
           java-version: 21
           distribution: 'temurin'
           cache: gradle
@@ -186,7 +191,9 @@ jobs:
 
       - name: Build APKs
         run: |
-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} :wear:assemble${{ env.BUILD_VARIANT }} \
+              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
+              :app:assembleaapsclient2Release \
+              :wear:assemble${{ env.BUILD_VARIANT }} \
               -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
               -Dkotlin.daemon.jvm.options="-Xmx2g" \
               -Dkotlin.compiler.execution.strategy="in-process" \
@@ -202,6 +209,7 @@ jobs:
         run: |
           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
           mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
 
       - name: Upload APKs to Google Drive
         run: |
@@ -285,5 +293,6 @@ jobs:
 
           upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
           upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
+          upload_to_gdrive "aaps-${VERSION}-aapsclient2.apk" "aaps-${VERSION}-aapsclient2.apk"
 
           echo "🎉 APKs successfully uploaded to Google Drive!"
