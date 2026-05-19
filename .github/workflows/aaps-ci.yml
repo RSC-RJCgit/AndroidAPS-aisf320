@@ -20,7 +20,8 @@ on:
 
   push:
     branches:
-      - boost-3.4.0.0
+      - '3.4.0.0+aisf3.2.0'
+      - '**aisf3.2.0'
 
 jobs:
   build:
@@ -70,9 +71,7 @@ jobs:
             fi
           }
 
-          # Check secrets
           check_secret "$GDRIVE_OAUTH2" "GDRIVE_OAUTH2"
-          
           check_secret "$KEYSTORE_BASE64" "KEYSTORE_BASE64"
           check_secret "$KEYSTORE_PASSWORD" "KEYSTORE_PASSWORD"
           check_secret "$KEY_ALIAS" "KEY_ALIAS"
@@ -95,12 +94,10 @@ jobs:
           set -x
           echo "🔐 Validating keystore, alias and password"
 
-          # Create a dummy JAR file (quick method using zip)
           echo "test" > dummy.txt
           zip -q dummy.jar dummy.txt
           rm dummy.txt
           
-          # Attempt to validate using jarsigner
           JARSIGNER_LOG=$(mktemp)
           if ! jarsigner \
               -keystore "$RUNNER_TEMP/keystore/keystore.jks" \
