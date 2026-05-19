@@ -1,0 +1,33 @@
+From 535139b3c912fc3b6733590155b1a57e48d042ea Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Tue, 19 May 2026 22:35:03 +0930
+Subject: [PATCH] Fix automations not reloading on first settings import
+
+Override afterImport() in AutomationPlugin to call loadFromSP()
+immediately after import, preventing storeToSP() from overwriting
+the newly imported automations with old in-memory data before restart.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../kotlin/app/aaps/plugins/automation/AutomationPlugin.kt   | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index 5f56829771..af596989e8 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -215,6 +215,11 @@ class AutomationPlugin @Inject constructor(
+         super.onStop()
+     }
+ 
++    override fun afterImport() {
++        loadFromSP()
++        rxBus.send(EventAutomationUpdateGui())
++    }
++
+     private fun storeToSP() {
+         val array = JSONArray()
+         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
+-- 
+2.43.0.windows.1
+
