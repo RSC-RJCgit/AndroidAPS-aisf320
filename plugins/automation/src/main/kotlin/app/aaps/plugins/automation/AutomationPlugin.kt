@@ -215,6 +215,11 @@ class AutomationPlugin @Inject constructor(
         super.onStop()
     }
 
+    override fun afterImport() {
+        loadFromSP()
+        rxBus.send(EventAutomationUpdateGui())
+    }
+
     private fun storeToSP() {
         val array = JSONArray()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
