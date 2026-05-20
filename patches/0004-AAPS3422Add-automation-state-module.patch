@@ -1,0 +1,1219 @@
+From 30dd395343a3c542660c557d1986c6668a3da204 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 13:58:27 +0930
+Subject: [PATCH] Add automation-state module: states tab, storage, set/check
+ triggers
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Port the full automation-state module from AndroidAPSa320:
+- AutomationStatePlugin with States tab (fragment + RecyclerView)
+- AutomationStateService implementing AutomationStateInterface
+- AutomationAddStateDialog / AutomationStateValuesDialog
+- AutomationStateStringKey for persisting state data
+- Dagger wiring: AutomationStateModule in AppComponent,
+  AutomationStatePlugin bound in PluginsListModule
+- settings.gradle and app/build.gradle.kts updated
+
+ActionSetAutomationState and TriggerAutomationState were already
+present but had no backing implementation — this fixes them.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ app/build.gradle.kts                          |   1 +
+ .../main/kotlin/app/aaps/di/AppComponent.kt   |   2 +
+ .../kotlin/app/aaps/di/PluginsListModule.kt   |   6 +
+ plugins/automation-state/.gitignore           |   1 +
+ plugins/automation-state/build.gradle.kts     |  35 +++
+ plugins/automation-state/consumer-rules.pro   |   0
+ plugins/automation-state/proguard-rules.pro   |  21 ++
+ .../automationstate/AutomationStatePlugin.kt  |  31 +++
+ .../di/AutomationStateModule.kt               |  37 +++
+ .../dialogs/AutomationAddStateDialog.kt       |  61 +++++
+ .../dialogs/AutomationStateValuesDialog.kt    | 187 +++++++++++++++
+ .../keys/AutomationStateStringKey.kt          |  13 ++
+ .../services/AutomationStateService.kt        | 105 +++++++++
+ .../ui/AutomationStateFragment.kt             | 216 ++++++++++++++++++
+ .../automation_state_active_background.xml    |   6 +
+ .../drawable/automation_state_background.xml  |   6 +
+ .../layout/automation_add_state_dialog.xml    |  51 +++++
+ .../res/layout/automation_state_dialog.xml    |  79 +++++++
+ .../res/layout/automation_state_fragment.xml  |  24 ++
+ .../main/res/layout/automation_state_item.xml |  31 +++
+ .../layout/automation_state_value_item.xml    |  31 +++
+ .../src/main/res/values/strings.xml           |  21 ++
+ settings.gradle                               |   1 +
+ 23 files changed, 966 insertions(+)
+ create mode 100644 plugins/automation-state/.gitignore
+ create mode 100644 plugins/automation-state/build.gradle.kts
+ create mode 100644 plugins/automation-state/consumer-rules.pro
+ create mode 100644 plugins/automation-state/proguard-rules.pro
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationAddStateDialog.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationStateValuesDialog.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/ui/AutomationStateFragment.kt
+ create mode 100644 plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+ create mode 100644 plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+ create mode 100644 plugins/automation-state/src/main/res/layout/automation_add_state_dialog.xml
+ create mode 100644 plugins/automation-state/src/main/res/layout/automation_state_dialog.xml
+ create mode 100644 plugins/automation-state/src/main/res/layout/automation_state_fragment.xml
+ create mode 100644 plugins/automation-state/src/main/res/layout/automation_state_item.xml
+ create mode 100644 plugins/automation-state/src/main/res/layout/automation_state_value_item.xml
+ create mode 100644 plugins/automation-state/src/main/res/values/strings.xml
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index ac1376328d..87b3d3d485 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -169,6 +169,7 @@ dependencies {
+     implementation(project(":ui"))
+     implementation(project(":plugins:aps"))
+     implementation(project(":plugins:automation"))
++    implementation(project(":plugins:automation-state"))
+     implementation(project(":plugins:configuration"))
+     implementation(project(":plugins:constraints"))
+     implementation(project(":plugins:insulin"))
+diff --git a/app/src/main/kotlin/app/aaps/di/AppComponent.kt b/app/src/main/kotlin/app/aaps/di/AppComponent.kt
+index 8c85b1b013..50a7eb0b44 100644
+--- a/app/src/main/kotlin/app/aaps/di/AppComponent.kt
++++ b/app/src/main/kotlin/app/aaps/di/AppComponent.kt
+@@ -8,6 +8,7 @@ import app.aaps.database.persistence.di.PersistenceModule
+ import app.aaps.implementation.di.ImplementationModule
+ import app.aaps.plugins.aps.di.ApsModule
+ import app.aaps.plugins.automation.di.AutomationModule
++import app.aaps.plugins.automationstate.di.AutomationStateModule
+ import app.aaps.plugins.configuration.di.ConfigurationModule
+ import app.aaps.plugins.constraints.di.PluginsConstraintsModule
+ import app.aaps.plugins.insulin.di.InsulinModule
+@@ -54,6 +55,7 @@ import javax.inject.Singleton
+ 
+         // Gradle modules
+         AutomationModule::class,
++        AutomationStateModule::class,
+         ApsModule::class,
+         ConfigurationModule::class,
+         CoreModule::class,
+diff --git a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+index 4ad2be2d8a..85b8028a60 100644
+--- a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
++++ b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+@@ -7,6 +7,7 @@ import app.aaps.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
+ import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
+ import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
+ import app.aaps.plugins.automation.AutomationPlugin
++import app.aaps.plugins.automationstate.AutomationStatePlugin
+ import app.aaps.plugins.configuration.configBuilder.ConfigBuilderPlugin
+ import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
+ import app.aaps.plugins.constraints.bgQualityCheck.BgQualityCheckPlugin
+@@ -265,6 +266,11 @@ abstract class PluginsListModule {
+     @IntKey(250)
+     abstract fun bindAutomationPlugin(plugin: AutomationPlugin): PluginBase
+ 
++    @Binds
++    @IntoMap
++    @IntKey(251)
++    abstract fun bindAutomationStatePlugin(plugin: AutomationStatePlugin): PluginBase
++
+     @Binds
+     @AllConfigs
+     @IntoMap
+diff --git a/plugins/automation-state/.gitignore b/plugins/automation-state/.gitignore
+new file mode 100644
+index 0000000000..bd12233962
+--- /dev/null
++++ b/plugins/automation-state/.gitignore
+@@ -0,0 +1 @@
++/build 
+\ No newline at end of file
+diff --git a/plugins/automation-state/build.gradle.kts b/plugins/automation-state/build.gradle.kts
+new file mode 100644
+index 0000000000..7de2040cb8
+--- /dev/null
++++ b/plugins/automation-state/build.gradle.kts
+@@ -0,0 +1,35 @@
++plugins {
++    alias(libs.plugins.android.library)
++    alias(libs.plugins.ksp)
++    id("kotlin-android")
++    id("android-module-dependencies")
++    id("test-module-dependencies")
++    id("jacoco-module-dependencies")
++}
++
++android {
++    namespace = "app.aaps.plugins.automationstate"
++}
++
++dependencies {
++    implementation(project(":core:data"))
++    implementation(project(":core:interfaces"))
++    implementation(project(":core:keys"))
++    implementation(project(":core:objects"))
++    implementation(project(":core:utils"))
++    implementation(project(":core:ui"))
++    implementation(project(":core:validators"))
++    implementation(project(":plugins:automation"))
++
++    testImplementation(project(":shared:tests"))
++    testImplementation(project(":shared:impl"))
++    testImplementation(project(":implementation"))
++    testImplementation(project(":plugins:main"))
++    testImplementation(project(":pump:virtual"))
++
++    api(libs.androidx.constraintlayout)
++    api(libs.kotlin.reflect)
++
++    ksp(libs.com.google.dagger.compiler)
++    ksp(libs.com.google.dagger.android.processor)
++} 
+\ No newline at end of file
+diff --git a/plugins/automation-state/consumer-rules.pro b/plugins/automation-state/consumer-rules.pro
+new file mode 100644
+index 0000000000..e69de29bb2
+diff --git a/plugins/automation-state/proguard-rules.pro b/plugins/automation-state/proguard-rules.pro
+new file mode 100644
+index 0000000000..f1b424510d
+--- /dev/null
++++ b/plugins/automation-state/proguard-rules.pro
+@@ -0,0 +1,21 @@
++# Add project specific ProGuard rules here.
++# You can control the set of applied configuration files using the
++# proguardFiles setting in build.gradle.
++#
++# For more details, see
++#   http://developer.android.com/guide/developing/tools/proguard.html
++
++# If your project uses WebView with JS, uncomment the following
++# and specify the fully qualified class name to the JavaScript interface
++# class:
++#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
++#   public *;
++#}
++
++# Uncomment this to preserve the line number information for
++# debugging stack traces.
++#-keepattributes SourceFile,LineNumberTable
++
++# If you keep the line number information, uncomment this to
++# hide the original source file name.
++#-renamesourcefileattribute SourceFile
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+new file mode 100644
+index 0000000000..baba599bde
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+@@ -0,0 +1,31 @@
++package app.aaps.plugins.automationstate
++
++import app.aaps.core.data.plugin.PluginType
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
++import app.aaps.core.interfaces.plugin.PluginDescription
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.keys.interfaces.Preferences
++import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
++import app.aaps.plugins.automationstate.ui.AutomationStateFragment
++import javax.inject.Inject
++import javax.inject.Singleton
++
++@Singleton
++class AutomationStatePlugin @Inject constructor(
++    aapsLogger: AAPSLogger,
++    rh: ResourceHelper,
++    preferences: Preferences
++) : PluginBaseWithPreferences(
++    pluginDescription = PluginDescription()
++        .mainType(PluginType.GENERAL)
++        .fragmentClass(AutomationStateFragment::class.java.name)
++        .pluginIcon(app.aaps.core.objects.R.drawable.ic_automation)
++        .pluginName(R.string.automation_states)
++        .shortName(R.string.automation_states_short)
++        .description(R.string.description_automation_states)
++        .enableByDefault(true)
++        .visibleByDefault(true),
++    ownPreferences = listOf(AutomationStateStringKey::class.java),
++    aapsLogger, rh, preferences
++)
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+new file mode 100644
+index 0000000000..ef26563b33
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+@@ -0,0 +1,37 @@
++package app.aaps.plugins.automationstate.di
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.plugins.automationstate.AutomationStatePlugin
++import app.aaps.plugins.automationstate.dialogs.AutomationAddStateDialog
++import app.aaps.plugins.automationstate.dialogs.AutomationStateValuesDialog
++import app.aaps.plugins.automationstate.services.AutomationStateService
++import app.aaps.plugins.automationstate.ui.AutomationStateFragment
++import dagger.Binds
++import dagger.Module
++import dagger.Provides
++import dagger.android.ContributesAndroidInjector
++import javax.inject.Singleton
++
++@Module
++abstract class AutomationStateModule {
++
++    @ContributesAndroidInjector 
++    abstract fun contributesAutomationStateFragment(): AutomationStateFragment
++    
++    @ContributesAndroidInjector 
++    abstract fun contributesAutomationAddStateDialog(): AutomationAddStateDialog
++    
++    @ContributesAndroidInjector 
++    abstract fun contributesAutomationStateValuesDialog(): AutomationStateValuesDialog
++
++    @Binds
++    abstract fun bindAutomationStatePlugin(automationStatePlugin: AutomationStatePlugin): app.aaps.core.interfaces.plugin.PluginBase
++    
++    companion object {
++        @Provides
++        @Singleton
++        fun provideAutomationStateInterface(automationStateService: AutomationStateService): AutomationStateInterface {
++            return automationStateService
++        }
++    }
++} 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationAddStateDialog.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationAddStateDialog.kt
+new file mode 100644
+index 0000000000..9093292013
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationAddStateDialog.kt
+@@ -0,0 +1,61 @@
++package app.aaps.plugins.automationstate.dialogs
++
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.ui.toast.ToastUtils
++import app.aaps.plugins.automationstate.R
++import app.aaps.plugins.automationstate.databinding.AutomationAddStateDialogBinding
++import app.aaps.plugins.automationstate.services.AutomationStateService
++import dagger.android.support.DaggerDialogFragment
++import javax.inject.Inject
++
++class AutomationAddStateDialog : DaggerDialogFragment() {
++
++    @Inject lateinit var automationStateService: AutomationStateService
++    @Inject lateinit var rh: ResourceHelper
++
++    private var _binding: AutomationAddStateDialogBinding? = null
++    private val binding get() = _binding!!
++
++    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
++        _binding = AutomationAddStateDialogBinding.inflate(inflater, container, false)
++        return binding.root
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        super.onViewCreated(view, savedInstanceState)
++
++        binding.okButton.setOnClickListener {
++            val stateName = binding.stateNameInput.text.toString().trim()
++            if (stateName.isEmpty()) {
++                ToastUtils.showToastInUiThread(context, rh.gs(R.string.automation_state_missing_name_value))
++                return@setOnClickListener
++            }
++
++            // First dismiss this dialog
++            dismiss()
++            
++            // Then open the state values dialog for the new state
++            val stateValuesDialog = AutomationStateValuesDialog.newInstance(stateName)
++            stateValuesDialog.show(parentFragmentManager, "AutomationStateValuesDialog")
++        }
++
++        binding.cancelButton.setOnClickListener {
++            dismiss()
++        }
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        _binding = null
++    }
++
++    companion object {
++        fun newInstance(): AutomationAddStateDialog {
++            return AutomationAddStateDialog()
++        }
++    }
++} 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationStateValuesDialog.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationStateValuesDialog.kt
+new file mode 100644
+index 0000000000..415f49b101
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/dialogs/AutomationStateValuesDialog.kt
+@@ -0,0 +1,187 @@
++package app.aaps.plugins.automationstate.dialogs
++
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.RecyclerView
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.interfaces.rx.bus.RxBus
++import app.aaps.core.interfaces.rx.events.EventPreferenceChange
++import app.aaps.core.ui.dialogs.OKDialog
++import app.aaps.core.ui.toast.ToastUtils
++import app.aaps.plugins.automationstate.R
++import app.aaps.plugins.automationstate.databinding.AutomationStateDialogBinding
++import app.aaps.plugins.automationstate.databinding.AutomationStateValueItemBinding
++import app.aaps.plugins.automationstate.services.AutomationStateService
++import dagger.android.support.DaggerDialogFragment
++import javax.inject.Inject
++
++class AutomationStateValuesDialog : DaggerDialogFragment() {
++
++    @Inject lateinit var automationStateService: AutomationStateService
++    @Inject lateinit var rh: ResourceHelper
++    @Inject lateinit var rxBus: RxBus
++
++    private var _binding: AutomationStateDialogBinding? = null
++    private val binding get() = _binding!!
++    private lateinit var adapter: StateValuesAdapter
++    private var stateName: String = ""
++    private var stateValues: MutableList<String> = mutableListOf()
++    private var currentStateValue: String = ""
++    private var isNewState: Boolean = false
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        arguments?.let {
++            stateName = it.getString("stateName", "")
++        }
++    }
++
++    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
++        _binding = AutomationStateDialogBinding.inflate(inflater, container, false)
++        return binding.root
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        super.onViewCreated(view, savedInstanceState)
++
++        // Check if this is a new state
++        isNewState = !automationStateService.hasStateValues(stateName)
++
++        // Get the current state value
++        val states = automationStateService.getAllStates()
++        val stateEntry = states.find { it.first == stateName }
++        currentStateValue = stateEntry?.second ?: ""
++
++        // Set dialog title to include state name
++        binding.dialogTitle.text = "${rh.gs(R.string.automation_state_values)}: $stateName"
++
++        adapter = StateValuesAdapter { position ->
++            if (stateValues.size > 1) {
++                stateValues.removeAt(position)
++                adapter.notifyItemRemoved(position)
++            } else {
++                ToastUtils.showToastInUiThread(context, rh.gs(R.string.automation_state_last_value_cannot_be_deleted))
++            }
++        }
++
++        binding.stateValuesList.apply {
++            layoutManager = LinearLayoutManager(context)
++            adapter = this@AutomationStateValuesDialog.adapter
++        }
++
++        binding.addButton.setOnClickListener {
++            val newValue = binding.newStateValue.text.toString().trim()
++            if (newValue.isNotEmpty()) {
++                stateValues.add(newValue)
++                adapter.notifyItemInserted(stateValues.size - 1)
++                binding.newStateValue.text.clear()
++            } else {
++                ToastUtils.showToastInUiThread(context, rh.gs(R.string.enter_state_value))
++            }
++        }
++
++        binding.okButton.setOnClickListener {
++            if (stateValues.isEmpty()) {
++                ToastUtils.showToastInUiThread(context, rh.gs(R.string.enter_state_value))
++                return@setOnClickListener
++            }
++            
++            // Save the state values
++            automationStateService.setStateValues(stateName, stateValues)
++            
++            // If this is a new state or no current value, set the first value as current
++            if (isNewState || currentStateValue.isEmpty()) {
++                try {
++                    automationStateService.setState(stateName, stateValues.first())
++                } catch (e: Exception) {
++                    ToastUtils.showToastInUiThread(context, e.message ?: "Error setting state")
++                }
++            }
++            
++            rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))
++            dismiss()
++        }
++
++        binding.cancelButton.setOnClickListener {
++            dismiss()
++        }
++
++        binding.deleteStateButton.setOnClickListener {
++            context?.let { ctx ->
++                OKDialog.showConfirmation(ctx, rh.gs(R.string.delete_state), rh.gs(R.string.delete_state_confirmation), 
++                    Runnable {
++                        // Delete the state and its values
++                        automationStateService.deleteState(stateName)
++                        rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))
++                        dismiss()
++                    })
++            }
++        }
++
++        // Load existing values
++        stateValues = automationStateService.getStateValues(stateName).toMutableList()
++        adapter.notifyDataSetChanged()
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        _binding = null
++    }
++
++    inner class StateValuesAdapter(private val onDelete: (Int) -> Unit) : 
++        RecyclerView.Adapter<StateValuesAdapter.ViewHolder>() {
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
++            val binding = AutomationStateValueItemBinding.inflate(
++                LayoutInflater.from(parent.context), parent, false
++            )
++            return ViewHolder(binding)
++        }
++
++        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
++            val stateValue = stateValues[position]
++            holder.binding.stateValue.text = stateValue
++            
++            // Highlight the current active state value
++            if (stateValue == currentStateValue) {
++                holder.binding.stateValue.setBackgroundResource(R.drawable.automation_state_active_background)
++            } else {
++                holder.binding.stateValue.setBackgroundResource(R.drawable.automation_state_background)
++            }
++            
++            // Set click listener to set this value as the current state
++            holder.binding.stateValue.setOnClickListener {
++                try {
++                    automationStateService.setState(stateName, stateValue)
++                    currentStateValue = stateValue
++                    notifyDataSetChanged()
++                    rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))
++                } catch (e: Exception) {
++                    ToastUtils.showToastInUiThread(context, e.message ?: "Error setting state")
++                }
++            }
++            
++            holder.binding.deleteButton.setOnClickListener {
++                onDelete(position)
++            }
++        }
++
++        override fun getItemCount() = stateValues.size
++
++        inner class ViewHolder(val binding: AutomationStateValueItemBinding) : 
++            RecyclerView.ViewHolder(binding.root)
++    }
++
++    companion object {
++        fun newInstance(stateName: String): AutomationStateValuesDialog {
++            return AutomationStateValuesDialog().apply {
++                arguments = Bundle().apply {
++                    putString("stateName", stateName)
++                }
++            }
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+new file mode 100644
+index 0000000000..32c1e7de18
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+@@ -0,0 +1,13 @@
++package app.aaps.plugins.automationstate.keys
++
++import app.aaps.core.keys.interfaces.StringNonPreferenceKey
++
++enum class AutomationStateStringKey(
++    override val key: String,
++    override val defaultValue: String,
++    override val exportable: Boolean = true
++) : StringNonPreferenceKey {
++
++    AutomationCurrentStates("automation_state_service", "{}"),
++    AutomationStateValues("automation_state_values", "{}"),
++}
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+new file mode 100644
+index 0000000000..d2058b594e
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+@@ -0,0 +1,105 @@
++package app.aaps.plugins.automationstate.services
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.keys.interfaces.Preferences
++import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
++import kotlinx.serialization.json.Json
++import javax.inject.Inject
++import javax.inject.Singleton
++
++@Singleton
++class AutomationStateService @Inject constructor(
++    private val preferences: Preferences
++) : AutomationStateInterface {
++
++    private var automationStates: HashMap<String, String> = HashMap()
++    var stateValues: HashMap<String, List<String>> = HashMap()
++        private set
++
++    init {
++        val string = preferences.get(AutomationStateStringKey.AutomationCurrentStates)
++        try {
++            automationStates = Json.decodeFromString(string)
++        } catch (e: Exception) {
++            automationStates = HashMap()
++        }
++
++        val valuesString = preferences.get(AutomationStateStringKey.AutomationStateValues)
++        try {
++            stateValues = Json.decodeFromString(valuesString)
++        } catch (e: Exception) {
++            stateValues = HashMap()
++        }
++    }
++
++   override fun inState(stateName: String, state: String): Boolean {
++        if (automationStates.containsKey(stateName.trim())) {
++            return automationStates[stateName.trim()] == state.trim()
++        }
++        return false
++    }
++
++    override fun setState(stateName: String, state: String) {
++        val trimmedName = stateName.trim()
++        val trimmedState = state.trim()
++
++        // Validate that the state value is in the allowed list
++        require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
++        require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
++
++        automationStates[trimmedName] = trimmedState
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++    }
++
++    override fun getState(stateName: String):String {
++        val trimmedName = stateName.trim()
++        // Validate that the state value is in the allowed list
++        //require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
++        try {
++            return automationStates[trimmedName]!!
++        } catch (e: Exception) {
++            return ""
++        }
++    }
++
++    override fun getAllStates(): List<Pair<String, String>> {
++        return automationStates.toList()
++    }
++
++    fun clearStates() {
++        automationStates.clear()
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, "{}")
++    }
++
++   override fun getStateValues(stateName: String): List<String> {
++        return stateValues[stateName.trim()] ?: emptyList()
++    }
++
++   override fun setStateValues(stateName: String, values: List<String>) {
++        val trimmedName = stateName.trim()
++        val trimmedValues = values.map { it.trim() }
++        
++        // If there's a current state value that's not in the new values list,
++        // clear the current state
++        val currentState = automationStates[trimmedName]
++        if (currentState != null && !trimmedValues.contains(currentState)) {
++            automationStates.remove(trimmedName)
++            preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++        }
++
++        stateValues[trimmedName] = trimmedValues
++        preferences.put(AutomationStateStringKey.AutomationStateValues, Json.encodeToString(stateValues))
++    }
++
++   override fun hasStateValues(stateName: String): Boolean {
++        return stateValues.containsKey(stateName.trim())
++    }
++
++   override fun deleteState(stateName: String) {
++        val trimmedName = stateName.trim()
++        automationStates.remove(trimmedName)
++        stateValues.remove(trimmedName)
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++        preferences.put(AutomationStateStringKey.AutomationStateValues, Json.encodeToString(stateValues))
++    }
++}
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/ui/AutomationStateFragment.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/ui/AutomationStateFragment.kt
+new file mode 100644
+index 0000000000..9f3355cd77
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/ui/AutomationStateFragment.kt
+@@ -0,0 +1,216 @@
++package app.aaps.plugins.automationstate.ui
++
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.Menu
++import android.view.MenuInflater
++import android.view.MenuItem
++import android.view.View
++import android.view.ViewGroup
++import android.widget.LinearLayout
++import android.widget.TextView
++import androidx.core.view.MenuCompat
++import androidx.core.view.MenuProvider
++import androidx.lifecycle.Lifecycle
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.RecyclerView
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.interfaces.rx.AapsSchedulers
++import app.aaps.core.interfaces.rx.bus.RxBus
++import app.aaps.core.interfaces.rx.events.EventPreferenceChange
++import app.aaps.plugins.automationstate.R
++import app.aaps.plugins.automationstate.databinding.AutomationStateFragmentBinding
++import app.aaps.plugins.automationstate.databinding.AutomationStateItemBinding
++import app.aaps.plugins.automationstate.dialogs.AutomationAddStateDialog
++import app.aaps.plugins.automationstate.dialogs.AutomationStateValuesDialog
++import app.aaps.plugins.automationstate.services.AutomationStateService
++import dagger.android.support.DaggerFragment
++import io.reactivex.rxjava3.disposables.CompositeDisposable
++import io.reactivex.rxjava3.kotlin.plusAssign
++import java.util.concurrent.TimeUnit
++import javax.inject.Inject
++
++class AutomationStateFragment : DaggerFragment(), MenuProvider {
++
++    @Inject lateinit var aapsLogger: AAPSLogger
++    @Inject lateinit var rh: ResourceHelper
++    @Inject lateinit var automationStateService: AutomationStateService
++    @Inject lateinit var rxBus: RxBus
++    @Inject lateinit var aapsSchedulers: AapsSchedulers
++
++    companion object {
++        const val ID_MENU_ADD_STATE = 601
++    }
++
++    private val disposable = CompositeDisposable()
++    private var _binding: AutomationStateFragmentBinding? = null
++    private val binding get() = _binding!!
++
++    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
++        AutomationStateFragmentBinding.inflate(inflater, container, false).also { _binding = it }.root
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        super.onViewCreated(view, savedInstanceState)
++
++        binding.recyclerview.layoutManager = LinearLayoutManager(context)
++        binding.recyclerview.adapter = StateAdapter()
++
++        disposable += rxBus
++            .toObservable(EventPreferenceChange::class.java)
++            .debounce(1, TimeUnit.SECONDS)
++            .observeOn(aapsSchedulers.main)
++            .subscribe { updateUI() }
++
++        updateUI()
++        
++        // Add menu provider
++        requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
++    }
++
++    override fun onDestroyView() {
++        super.onDestroyView()
++        disposable.clear()
++        _binding = null
++    }
++
++    private fun updateUI() {
++        val states = automationStateService.getAllStates()
++        (binding.recyclerview.adapter as? StateAdapter)?.updateStates()
++        binding.noStateText.visibility = if (states.isEmpty()) View.VISIBLE else View.GONE
++    }
++    
++    override fun onCreateMenu(menu: Menu, inflater: MenuInflater) {
++        menu.add(Menu.FIRST, ID_MENU_ADD_STATE, 0, rh.gs(R.string.add_automation_state))
++            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
++        MenuCompat.setGroupDividerEnabled(menu, true)
++    }
++
++    override fun onMenuItemSelected(item: MenuItem): Boolean =
++        when (item.itemId) {
++            ID_MENU_ADD_STATE -> {
++                addState()
++                true
++            }
++            else -> false
++        }
++        
++    private fun addState() {
++        AutomationAddStateDialog.newInstance().show(childFragmentManager, "AutomationAddStateDialog")
++    }
++
++    inner class StateAdapter : RecyclerView.Adapter<StateAdapter.StateViewHolder>() {
++
++        private val states = mutableListOf<Pair<String, String>>()
++        private val stateValues = mutableMapOf<String, List<String>>()
++
++        init {
++            updateStates()
++        }
++
++        fun updateStates() {
++            states.clear()
++            states.addAll(automationStateService.getAllStates())
++            states.forEach { (stateName, _) ->
++                stateValues[stateName] = automationStateService.getStateValues(stateName)
++            }
++            notifyDataSetChanged()
++        }
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StateViewHolder {
++            val view = LayoutInflater.from(parent.context).inflate(R.layout.automation_state_item, parent, false)
++            return StateViewHolder(view)
++        }
++
++        override fun onBindViewHolder(holder: StateViewHolder, position: Int) {
++            val (stateName, currentState) = states[position]
++            holder.binding.stateName.text = stateName
++            
++            // Clear previous state views
++            val statesContainer = holder.binding.statesContainer as LinearLayout
++            statesContainer.removeAllViews()
++            
++            // Create a horizontal layout for each row of states
++            var currentRow = LinearLayout(holder.itemView.context).apply {
++                orientation = LinearLayout.HORIZONTAL
++                layoutParams = LinearLayout.LayoutParams(
++                    LinearLayout.LayoutParams.MATCH_PARENT,
++                    LinearLayout.LayoutParams.WRAP_CONTENT
++                )
++            }
++            statesContainer.addView(currentRow)
++            
++            var currentRowWidth = 0
++            val screenWidth = resources.displayMetrics.widthPixels - 48 // Account for padding
++            
++            // Add all possible states
++            stateValues[stateName]?.forEach { stateValue ->
++                val stateView = TextView(holder.itemView.context).apply {
++                    text = stateValue
++                    setPadding(24, 16, 24, 16)
++                    setTextAppearance(android.R.style.TextAppearance_Material_Body1)
++                    
++                    // Set background based on whether this is the current state
++                    background = if (stateValue == currentState) {
++                        resources.getDrawable(R.drawable.automation_state_active_background, null)
++                    } else {
++                        resources.getDrawable(R.drawable.automation_state_background, null)
++                    }
++                    
++                    // Set click listener to set this value as the current state
++                    setOnClickListener {
++                        try {
++                            automationStateService.setState(stateName, stateValue)
++                            notifyDataSetChanged()
++                            rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))
++                        } catch (e: Exception) {
++                            // Handle error
++                        }
++                    }
++                }
++                
++                // Measure the view to get its width
++                stateView.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
++                val stateViewWidth = stateView.measuredWidth + 16 // Add margin
++                
++                // Check if we need to create a new row
++                if (currentRowWidth + stateViewWidth > screenWidth && currentRowWidth > 0) {
++                    // Create a new row
++                    currentRow = LinearLayout(holder.itemView.context).apply {
++                        orientation = LinearLayout.HORIZONTAL
++                        layoutParams = LinearLayout.LayoutParams(
++                            LinearLayout.LayoutParams.MATCH_PARENT,
++                            LinearLayout.LayoutParams.WRAP_CONTENT
++                        ).apply {
++                            topMargin = 8
++                        }
++                    }
++                    statesContainer.addView(currentRow)
++                    currentRowWidth = 0
++                }
++                
++                // Add margin between state views
++                val params = LinearLayout.LayoutParams(
++                    LinearLayout.LayoutParams.WRAP_CONTENT,
++                    LinearLayout.LayoutParams.WRAP_CONTENT
++                ).apply {
++                    setMargins(0, 0, 8, 0)
++                }
++                currentRow.addView(stateView, params)
++                currentRowWidth += stateViewWidth
++            }
++
++            // Set click listener to open the state values dialog
++            holder.itemView.setOnClickListener {
++                val dialog = AutomationStateValuesDialog.newInstance(stateName)
++                dialog.show(childFragmentManager, "AutomationStateValuesDialog")
++            }
++        }
++
++        override fun getItemCount(): Int = states.size
++
++        inner class StateViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
++            val binding = AutomationStateItemBinding.bind(itemView)
++        }
++    }
++} 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml b/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+new file mode 100644
+index 0000000000..15fde76d0a
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/automation_state_active_background" />
++    <corners android:radius="4dp" />
++</shape> 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/drawable/automation_state_background.xml b/plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+new file mode 100644
+index 0000000000..13dd6348b9
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/automation_state_background" />
++    <corners android:radius="4dp" />
++</shape> 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/layout/automation_add_state_dialog.xml b/plugins/automation-state/src/main/res/layout/automation_add_state_dialog.xml
+new file mode 100644
+index 0000000000..d0070e720b
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/layout/automation_add_state_dialog.xml
+@@ -0,0 +1,51 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:padding="16dp">
++
++    <TextView
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:text="@string/add_automation_state"
++        android:textSize="18sp"
++        android:textStyle="bold"
++        android:layout_marginBottom="16dp"/>
++
++    <com.google.android.material.textfield.TextInputLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginBottom="16dp">
++
++        <com.google.android.material.textfield.TextInputEditText
++            android:id="@+id/stateNameInput"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:hint="@string/set_state_state_name"
++            android:inputType="text" />
++
++    </com.google.android.material.textfield.TextInputLayout>
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="horizontal">
++
++        <Button
++            android:id="@+id/okButton"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:text="@string/ok"/>
++
++        <Button
++            android:id="@+id/cancelButton"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:layout_marginStart="8dp"
++            android:text="@string/cancel"/>
++    </LinearLayout>
++
++</LinearLayout> 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/layout/automation_state_dialog.xml b/plugins/automation-state/src/main/res/layout/automation_state_dialog.xml
+new file mode 100644
+index 0000000000..b448870ec9
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/layout/automation_state_dialog.xml
+@@ -0,0 +1,79 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="vertical"
++    android:padding="16dp">
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="horizontal"
++        android:gravity="center_vertical"
++        android:layout_marginBottom="16dp">
++
++        <TextView
++            android:id="@+id/dialogTitle"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:text="@string/automation_state_values"
++            android:textSize="18sp"
++            android:textStyle="bold"/>
++
++        <Button
++            android:id="@+id/deleteStateButton"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:text="@string/delete_state"
++            android:backgroundTint="#F44336"/>
++    </LinearLayout>
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/stateValuesList"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_marginBottom="16dp"/>
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="horizontal">
++
++        <EditText
++            android:id="@+id/newStateValue"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:hint="@string/enter_state_value"/>
++
++        <Button
++            android:id="@+id/addButton"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:text="@string/add_short"
++            android:layout_marginStart="8dp"/>
++    </LinearLayout>
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="horizontal"
++        android:layout_marginTop="16dp">
++
++        <Button
++            android:id="@+id/okButton"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:text="@string/ok"/>
++
++        <Button
++            android:id="@+id/cancelButton"
++            android:layout_width="0dp"
++            android:layout_height="wrap_content"
++            android:layout_weight="1"
++            android:layout_marginStart="8dp"
++            android:text="@string/cancel"/>
++    </LinearLayout>
++</LinearLayout>
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/layout/automation_state_fragment.xml b/plugins/automation-state/src/main/res/layout/automation_state_fragment.xml
+new file mode 100644
+index 0000000000..3a0ead3897
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/layout/automation_state_fragment.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="utf-8"?>
++<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/recyclerview"
++        android:layout_width="match_parent"
++        android:layout_height="match_parent"
++        android:clipToPadding="false"
++        android:padding="8dp" />
++
++    <TextView
++        android:id="@+id/no_state_text"
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:layout_gravity="center"
++        android:gravity="center"
++        android:padding="16dp"
++        android:text="@string/no_automation_states"
++        android:textSize="16sp"
++        android:visibility="gone" />
++
++</FrameLayout> 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/layout/automation_state_item.xml b/plugins/automation-state/src/main/res/layout/automation_state_item.xml
+new file mode 100644
+index 0000000000..13d600ee4c
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/layout/automation_state_item.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:layout_margin="4dp"
++    app:cardCornerRadius="4dp"
++    app:cardElevation="2dp">
++
++    <LinearLayout
++        android:layout_width="match_parent"
++        android:layout_height="wrap_content"
++        android:orientation="vertical"
++        android:padding="8dp">
++
++        <TextView
++            android:id="@+id/state_name"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:textSize="16sp"
++            android:textStyle="bold" />
++
++        <LinearLayout
++            android:id="@+id/states_container"
++            android:layout_width="match_parent"
++            android:layout_height="wrap_content"
++            android:layout_marginTop="4dp"
++            android:orientation="horizontal" />
++
++    </LinearLayout>
++</androidx.cardview.widget.CardView> 
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/layout/automation_state_value_item.xml b/plugins/automation-state/src/main/res/layout/automation_state_value_item.xml
+new file mode 100644
+index 0000000000..e0c3f3248e
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/layout/automation_state_value_item.xml
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="utf-8"?>
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:padding="8dp">
++
++    <FrameLayout
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"
++        android:layout_marginEnd="8dp">
++
++        <TextView
++            android:id="@+id/stateValue"
++            android:layout_width="wrap_content"
++            android:layout_height="wrap_content"
++            android:textSize="16sp"
++            android:padding="4dp"/>
++    </FrameLayout>
++
++    <ImageButton
++        android:id="@+id/deleteButton"
++        android:layout_width="32dp"
++        android:layout_height="32dp"
++        android:background="@color/buttonBackground"
++        android:contentDescription="@string/delete_short"
++        android:padding="4dp"
++        android:src="@android:drawable/ic_delete" />
++
++</LinearLayout>
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/values/strings.xml b/plugins/automation-state/src/main/res/values/strings.xml
+new file mode 100644
+index 0000000000..d8fce7a58b
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/values/strings.xml
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <!-- Automation States Plugin -->
++    <string name="automation_states">Automation States</string>
++    <string name="automation_states_short">States</string>
++    <string name="description_automation_states">View and monitor automation state variables</string>
++    <string name="automation_state_values">Automation State Values</string>
++    <string name="enter_state_value">Enter state value</string>
++    <string name="automation_state_missing_name_value">Please enter a state name </string>
++    <string name="ok">OK</string>
++    <string name="cancel">Cancel</string>
++    <string name="add_automation_state">Add Automation State</string>
++    <string name="select_state_name">Select state name</string>
++    <string name="select_state_value">Select state value</string>
++    <string name="state_name_label">State name</string>
++    <string name="state_value_label">State value</string>
++    <string name="automation_state_last_value_cannot_be_deleted">Cannot delete the last state value</string>
++    <string name="delete_state">Delete State</string>
++    <string name="delete_state_confirmation">Are you sure you want to delete this state?</string>
++    <string name="no_automation_states">No automation states defined. Use the menu to add one.</string>
++</resources>
+diff --git a/settings.gradle b/settings.gradle
+index ed0d0ddb7b..7703e14bdb 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -25,6 +25,7 @@ include ':database:persistence'
+ include ':implementation'
+ include ':plugins:aps'
+ include ':plugins:automation'
++include ':plugins:automation-state'
+ include ':plugins:configuration'
+ include ':plugins:constraints'
+ include ':plugins:insulin'
+-- 
+2.43.0.windows.1
+
