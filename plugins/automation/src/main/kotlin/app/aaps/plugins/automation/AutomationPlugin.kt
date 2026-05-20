@@ -142,6 +142,8 @@ class AutomationPlugin @Inject constructor(
     var executionLog: MutableList<String> = ArrayList()
     var btConnects: MutableList<EventBTChange> = ArrayList()
 
+    @Volatile private var importInProgress = false
+
     private var handler: Handler? = null
     private var refreshLoop: Runnable
 
@@ -215,12 +217,18 @@ class AutomationPlugin @Inject constructor(
         super.onStop()
     }
 
+    override fun beforeImport() {
+        importInProgress = true
+    }
+
     override fun afterImport() {
+        importInProgress = false
         loadFromSP()
         rxBus.send(EventAutomationUpdateGui())
     }
 
     private fun storeToSP() {
+        if (importInProgress) return
         val array = JSONArray()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         try {
