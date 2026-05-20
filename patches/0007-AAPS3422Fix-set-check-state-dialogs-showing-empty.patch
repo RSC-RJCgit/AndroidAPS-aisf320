@@ -1,0 +1,190 @@
+From 86a888fec958af35fc329c6c78986a42069ddf16 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 17:27:18 +0930
+Subject: [PATCH] Fix set/check state dialogs showing empty on load
+
+Replace generateDialog in ActionSetAutomationState and TriggerAutomationState
+with the Boost-proven implementation that:
+- Returns early with a message when no states are defined yet
+- Eagerly validates/initializes stateName.value before spinner setup, preventing
+  Android Spinner's deferred onItemSelected(0) callback from overwriting the
+  value loaded from JSON
+- Sets listener before adapter in nameSpinner to avoid spurious position-0 fire
+- Calls refreshValueSpinner() after spinner construction so the value spinner is
+  always correctly initialised for the current state name
+
+Also adds no_automation_states string (pointing to Config Builder States tab).
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../actions/ActionSetAutomationState.kt       | 35 +++++++++++++-----
+ .../triggers/TriggerAutomationState.kt        | 36 ++++++++++++++-----
+ .../src/main/res/values/strings.xml           |  1 +
+ 3 files changed, 56 insertions(+), 16 deletions(-)
+
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+index cd2bdb990e..f3f512def4 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -65,6 +65,19 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector)
+         val context = root.context
+         val stateNames = automationStateInterface.getAllStateNames()
+ 
++        if (stateNames.isEmpty()) {
++            root.addView(TextView(context).apply { text = rh.gs(R.string.no_automation_states) })
++            return
++        }
++
++        // Ensure stateName has a valid value immediately (don't rely on deferred callbacks)
++        if (stateName.value.isEmpty() || !stateNames.contains(stateName.value))
++            stateName.value = stateNames[0]
++
++        val currentValues = automationStateInterface.getStateValues(stateName.value)
++        if (stateValue.value.isEmpty() || !currentValues.contains(stateValue.value))
++            stateValue.value = currentValues.firstOrNull() ?: ""
++
+         val valueSpinner = Spinner(context).apply {
+             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+@@ -72,25 +85,25 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector)
+ 
+         fun refreshValueSpinner(selectedStateName: String) {
+             val values = automationStateInterface.getStateValues(selectedStateName)
+-            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
+-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+-            }
+-            val idx = values.indexOf(stateValue.value)
+-            if (idx >= 0) valueSpinner.setSelection(idx)
++            // Ensure stateValue is valid for the newly selected state
++            if (stateValue.value.isEmpty() || !values.contains(stateValue.value))
++                stateValue.value = values.firstOrNull() ?: ""
+             valueSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                     if (position < values.size) stateValue.value = values[position]
+                 }
+                 override fun onNothingSelected(parent: AdapterView<*>?) {}
+             }
++            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
++                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++            }
++            val idx = values.indexOf(stateValue.value)
++            if (idx >= 0) valueSpinner.setSelection(idx)
+         }
+ 
+         val nameSpinner = Spinner(context).apply {
+             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+-            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
+-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+-            }
+             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                     val name = stateNames[position]
+@@ -99,10 +112,16 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector)
+                 }
+                 override fun onNothingSelected(parent: AdapterView<*>?) {}
+             }
++            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
++                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++            }
+             val idx = stateNames.indexOf(stateName.value)
+             if (idx >= 0) setSelection(idx)
+         }
+ 
++        // Initialise value spinner for current state name
++        refreshValueSpinner(stateName.value)
++
+         root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_name) })
+         root.addView(nameSpinner)
+         root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_val) })
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+index 275811c5e9..27807ec065 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+@@ -61,6 +61,20 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
+         val context = root.context
+         val stateNames = automationStateInterface.getAllStateNames()
+ 
++        if (stateNames.isEmpty()) {
++            StaticLabel(rh, R.string.trigger_automation_state_label, this).addToLayout(root)
++            root.addView(TextView(context).apply { text = rh.gs(R.string.no_automation_states) })
++            return
++        }
++
++        // Ensure stateName has a valid value immediately (don't rely on deferred callbacks)
++        if (stateName.value.isEmpty() || !stateNames.contains(stateName.value))
++            stateName.value = stateNames[0]
++
++        val currentValues = automationStateInterface.getStateValues(stateName.value)
++        if (stateValue.value.isEmpty() || !currentValues.contains(stateValue.value))
++            stateValue.value = currentValues.firstOrNull() ?: ""
++
+         val valueSpinner = Spinner(context).apply {
+             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+@@ -68,25 +82,25 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
+ 
+         fun refreshValueSpinner(selectedStateName: String) {
+             val values = automationStateInterface.getStateValues(selectedStateName)
+-            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
+-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+-            }
+-            val idx = values.indexOf(stateValue.value)
+-            if (idx >= 0) valueSpinner.setSelection(idx)
++            // Ensure stateValue is valid for the newly selected state
++            if (stateValue.value.isEmpty() || !values.contains(stateValue.value))
++                stateValue.value = values.firstOrNull() ?: ""
+             valueSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                     if (position < values.size) stateValue.value = values[position]
+                 }
+                 override fun onNothingSelected(parent: AdapterView<*>?) {}
+             }
++            valueSpinner.adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, values).apply {
++                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++            }
++            val idx = values.indexOf(stateValue.value)
++            if (idx >= 0) valueSpinner.setSelection(idx)
+         }
+ 
+         val nameSpinner = Spinner(context).apply {
+             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                 .also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
+-            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
+-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+-            }
+             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                     val name = stateNames[position]
+@@ -95,10 +109,16 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
+                 }
+                 override fun onNothingSelected(parent: AdapterView<*>?) {}
+             }
++            adapter = ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, stateNames).apply {
++                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++            }
+             val idx = stateNames.indexOf(stateName.value)
+             if (idx >= 0) setSelection(idx)
+         }
+ 
++        // Initialise value spinner for current state name
++        refreshValueSpinner(stateName.value)
++
+         StaticLabel(rh, R.string.trigger_automation_state_label, this).addToLayout(root)
+         root.addView(TextView(context).apply { text = rh.gs(R.string.set_state_state_name) })
+         root.addView(nameSpinner)
+diff --git a/plugins/automation/src/main/res/values/strings.xml b/plugins/automation/src/main/res/values/strings.xml
+index e51add8694..c7f6a6480a 100644
+--- a/plugins/automation/src/main/res/values/strings.xml
++++ b/plugins/automation/src/main/res/values/strings.xml
+@@ -161,5 +161,6 @@
+     <string name="set_state_description">Set %1$s to %2$s</string>
+     <string name="set_state_state_name">State name:</string>
+     <string name="set_state_state_val">State value:</string>
++    <string name="no_automation_states">No automation states defined yet. Use the States tab in Config Builder to create states.</string>
+ 
+ </resources>
+\ No newline at end of file
+-- 
+2.43.0.windows.1
+
