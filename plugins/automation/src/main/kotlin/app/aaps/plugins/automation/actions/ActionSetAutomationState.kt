@@ -54,8 +54,12 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
     override fun fromJSON(data: String): Action {
         val d = JSONObject(data)
+        // Support both AndroidAPS1/Boost format ("stateName"/"stateValue")
+        // and a320 format ("inputStateName"/"inputState")
         stateName.value = JsonHelper.safeGetString(d, "stateName", "")
+            .ifEmpty { JsonHelper.safeGetString(d, "inputStateName", "") }
         stateValue.value = JsonHelper.safeGetString(d, "stateValue", "")
+            .ifEmpty { JsonHelper.safeGetString(d, "inputState", "") }
         return this
     }
 
