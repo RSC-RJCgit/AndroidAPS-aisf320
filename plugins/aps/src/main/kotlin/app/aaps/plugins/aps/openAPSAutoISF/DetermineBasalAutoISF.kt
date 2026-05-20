@@ -341,7 +341,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ St074")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ St075")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -837,7 +837,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " St074 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " St075 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1535,11 +1535,11 @@ class DetermineBasalAutoISF @Inject constructor(
 // POST CARBS / SWING DAMPING
 // =====================================================
                 } else if (Delta >= 0.50 * 18 &&
-                    nowHour >= 18 &&
+                   
                     COB > 10 &&
                     Delta <=  0.95 * 18 &&
                     bg < 10.0 * 18
-                ) {
+                ) { // nowHour >= 18 &&
 
                     microBolus = microBolus * 0.7
                     rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
@@ -1580,7 +1580,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else if(
                     bg > 6.0 * 18 &&
                     bg < 12.0 * 18 &&
-                    COB <= 15 &&
+                    COB <= 25 &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.10 * 18 &&
                     ( (IOB > 0.10 * profile.max_iob )
@@ -1682,7 +1682,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg > 11.5 * 18 &&
                     bg < 13.5 * 18 &&
                     IOB > 0.35 * profile.max_iob &&
-                    COB <= 15 //&&VERY EARLY RISE
+                    COB <= 25 //&&VERY EARLY RISE
                 //microBolus > 0.3 // not used except rsn049
                 ) {
 
@@ -1698,7 +1698,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     SDelta >= 0.1 * 18 &&
                     nowHour < 10 &&
                     IOB > 0.075 * profile.max_iob &&
-                    COB <= 15
+                    COB <= 25
                 ) {
 
                     microBolus = microBolus * 0.8
@@ -1715,7 +1715,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta < 1.0 * 18 &&
                     SDelta < 1.0 * 18 &&
                     (Steps60M ?: 0) < 10 &&
-                    COB <= 15
+                    COB <= 25
                 ) {
 
                     if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
@@ -1824,5 +1824,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.ktSt074
+DetermineBasalAutoISF.ktSt075
  */
