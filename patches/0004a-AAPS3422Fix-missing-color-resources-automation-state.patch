@@ -1,0 +1,31 @@
+From cfa18f0776a1387b21149a31ce4f6cf2a02e4a26 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 14:19:17 +0930
+Subject: [PATCH] Fix: add missing color resources for automation-state
+ drawables
+
+automation_state_active_background and automation_state_background
+were referenced by drawables but not defined in the module.
+In a320 they live in plugins/automation/colors.xml; add them
+directly to the automation-state module to keep it self-contained.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ plugins/automation-state/src/main/res/values/colors.xml | 5 +++++
+ 1 file changed, 5 insertions(+)
+ create mode 100644 plugins/automation-state/src/main/res/values/colors.xml
+
+diff --git a/plugins/automation-state/src/main/res/values/colors.xml b/plugins/automation-state/src/main/res/values/colors.xml
+new file mode 100644
+index 0000000000..50defe0413
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/values/colors.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <color name="automation_state_active_background">#408343</color>
++    <color name="automation_state_background">#535353</color>
++</resources>
+-- 
+2.43.0.windows.1
+

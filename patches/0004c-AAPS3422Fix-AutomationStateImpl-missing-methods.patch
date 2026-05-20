@@ -1,0 +1,51 @@
+From 9c9f49c832c88bf79545377fb2b64245a24f6050 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 14:48:34 +0930
+Subject: [PATCH] Fix AutomationStateImpl: implement new interface methods
+
+The fallback AutomationStateImpl stub was missing 5 methods added
+to the interface: getState, getAllStates, setStateValues,
+hasStateValues, deleteState.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../automation/AutomationStateImpl.kt            | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/automation/AutomationStateImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/automation/AutomationStateImpl.kt
+index 56973fe1fc..962401db0a 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/automation/AutomationStateImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/automation/AutomationStateImpl.kt
+@@ -11,6 +11,10 @@ class AutomationStateImpl @Inject constructor() : AutomationStateInterface {
+ 
+     override fun getAllStateNames(): List<String> = states.keys.toList()
+ 
++    override fun getAllStates(): List<Pair<String, String>> = states.toList()
++
++    override fun getState(stateName: String): String = states[stateName] ?: ""
++
+     override fun getStateValues(stateName: String): List<String> =
+         states[stateName]?.let { listOf(it) } ?: emptyList()
+ 
+@@ -18,6 +22,18 @@ class AutomationStateImpl @Inject constructor() : AutomationStateInterface {
+         states[stateName] = stateValue
+     }
+ 
++    override fun setStateValues(stateName: String, values: List<String>) {
++        // fallback impl: just ensure state exists with first value if not set
++        if (values.isNotEmpty() && !states.containsKey(stateName))
++            states[stateName] = values.first()
++    }
++
++    override fun hasStateValues(stateName: String): Boolean = states.containsKey(stateName)
++
++    override fun deleteState(stateName: String) {
++        states.remove(stateName)
++    }
++
+     override fun inState(stateName: String, stateValue: String): Boolean =
+         states[stateName] == stateValue
+ }
+-- 
+2.43.0.windows.1
+

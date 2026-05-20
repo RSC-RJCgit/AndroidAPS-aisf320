@@ -1,0 +1,42 @@
+From 88eb0cc98d96f7b8a35d37dbb800be75b7cbf597 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 14:54:11 +0930
+Subject: [PATCH] Fix Dagger duplicate binding for AutomationStateInterface
+
+ImplementationModule bound AutomationStateImpl as the interface
+implementation, but AutomationStateModule now provides the real
+AutomationStateService. Remove the redundant binding and unused
+imports from ImplementationModule.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../kotlin/app/aaps/implementation/di/ImplementationModule.kt  | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/di/ImplementationModule.kt b/implementation/src/main/kotlin/app/aaps/implementation/di/ImplementationModule.kt
+index 2c9a35d0fa..7e63ff7c4f 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/di/ImplementationModule.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/di/ImplementationModule.kt
+@@ -37,11 +37,9 @@ import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
+ import app.aaps.core.interfaces.utils.DecimalFormatter
+ import app.aaps.core.interfaces.utils.HardLimits
+ import app.aaps.core.interfaces.utils.Translator
+-import app.aaps.core.interfaces.automation.AutomationStateInterface
+ import app.aaps.core.interfaces.utils.TrendCalculator
+ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+ import app.aaps.core.keys.interfaces.Preferences
+-import app.aaps.implementation.automation.AutomationStateImpl
+ import app.aaps.implementation.alerts.LocalAlertUtilsImpl
+ import app.aaps.implementation.androidNotification.NotificationHolderImpl
+ import app.aaps.implementation.aps.DetermineBasalResult
+@@ -102,7 +100,6 @@ class ImplementationModule {
+ 
+         @ContributesAndroidInjector fun contributesNetworkChangeReceiver(): NetworkChangeReceiver
+ 
+-        @Binds fun bindAutomationState(automationStateImpl: AutomationStateImpl): AutomationStateInterface
+         @Binds fun bindPreferences(preferencesImpl: PreferencesImpl): Preferences
+         @Binds fun bindFabricPrivacy(fabricPrivacyImpl: FabricPrivacyImpl): FabricPrivacy
+         @Binds fun bindActivePlugin(pluginStore: PluginStore): ActivePlugin
+-- 
+2.43.0.windows.1
+

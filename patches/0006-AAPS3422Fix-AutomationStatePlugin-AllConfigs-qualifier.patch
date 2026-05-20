@@ -1,0 +1,29 @@
+From 9a4c17a6fec0ed83273e5f2fe2a1cccec11be596 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 16:06:26 +0930
+Subject: [PATCH] Fix AutomationStatePlugin not appearing in Config Builder
+
+Add @AllConfigs qualifier to bindAutomationStatePlugin in PluginsListModule.
+Without this, the plugin goes into an unqualified Dagger map that nothing
+injects, making it invisible to the Config Builder and all plugin lists.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ app/src/main/kotlin/app/aaps/di/PluginsListModule.kt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+index 85b8028a60..0e3ab0ee85 100644
+--- a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
++++ b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+@@ -267,6 +267,7 @@ abstract class PluginsListModule {
+     abstract fun bindAutomationPlugin(plugin: AutomationPlugin): PluginBase
+ 
+     @Binds
++    @AllConfigs
+     @IntoMap
+     @IntKey(251)
+     abstract fun bindAutomationStatePlugin(plugin: AutomationStatePlugin): PluginBase
+-- 
+2.43.0.windows.1
+
