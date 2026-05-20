@@ -32,7 +32,9 @@ class AutomationStateService @Inject constructor(
         }
     }
 
-   override fun inState(stateName: String, state: String): Boolean {
+    override fun getAllStateNames(): List<String> = stateValues.keys.toList()
+
+    override fun inState(stateName: String, state: String): Boolean {
         if (automationStates.containsKey(stateName.trim())) {
             return automationStates[stateName.trim()] == state.trim()
         }
