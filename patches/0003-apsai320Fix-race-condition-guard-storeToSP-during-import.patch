@@ -1,0 +1,49 @@
+From 5f595ef2e324a0526e2cba310808931add08458a Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 10:48:12 +0930
+Subject: [PATCH] Fix race condition: guard storeToSP() during settings import
+
+Add importInProgress volatile flag set in beforeImport() and cleared
+in afterImport() to prevent background refreshLoop from overwriting
+freshly imported automations before afterImport() can reload them.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../app/aaps/plugins/automation/AutomationPlugin.kt       | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index af596989e8..a5e676d075 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -142,6 +142,8 @@ class AutomationPlugin @Inject constructor(
+     var executionLog: MutableList<String> = ArrayList()
+     var btConnects: MutableList<EventBTChange> = ArrayList()
+ 
++    @Volatile private var importInProgress = false
++
+     private var handler: Handler? = null
+     private var refreshLoop: Runnable
+ 
+@@ -215,12 +217,18 @@ class AutomationPlugin @Inject constructor(
+         super.onStop()
+     }
+ 
++    override fun beforeImport() {
++        importInProgress = true
++    }
++
+     override fun afterImport() {
++        importInProgress = false
+         loadFromSP()
+         rxBus.send(EventAutomationUpdateGui())
+     }
+ 
+     private fun storeToSP() {
++        if (importInProgress) return
+         val array = JSONArray()
+         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
+         try {
+-- 
+2.43.0.windows.1
+
