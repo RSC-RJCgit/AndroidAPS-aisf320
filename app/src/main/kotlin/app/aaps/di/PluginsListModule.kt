@@ -267,6 +267,7 @@ abstract class PluginsListModule {
     abstract fun bindAutomationPlugin(plugin: AutomationPlugin): PluginBase
 
     @Binds
+    @AllConfigs
     @IntoMap
     @IntKey(251)
     abstract fun bindAutomationStatePlugin(plugin: AutomationStatePlugin): PluginBase
