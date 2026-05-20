@@ -341,7 +341,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ St073")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ St074")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -837,7 +837,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " St073 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " St074 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1454,13 +1454,17 @@ class DetermineBasalAutoISF @Inject constructor(
                     iobThUser < 71
                 ) {
 
-                    val iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
+                    val microBolus1 = microBolus                          // ? add this
 
+                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * max_iob = ${microBolus} ")
+                    }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
-                        val microBolus1 = microBolus
                         microBolus = iobTHvirtualHARDshower - IOB
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower = ${microBolus - microBolus1} diff = ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${microBolus - microBolus1} diff = ")
                     }
 
                     // rT.reason.append(" CHANGED SIZE for shower time ")
@@ -1475,13 +1479,18 @@ class DetermineBasalAutoISF @Inject constructor(
                     iobThUser < 71
                 ) {
 
-                    val iobTHvirtualHARDshower = 0.12 * profile.max_iob
+                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
+                    val microBolus1 = microBolus                          // ? add this
 
+                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * max_iob = ${microBolus} ")
+                    }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
-                        val microBolus1 = microBolus
                         microBolus = iobTHvirtualHARDshower - IOB
+
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD shower = ${microBolus - microBolus1} diff  ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.716 shower = ${microBolus - microBolus1} diff  ")
                     }
 
                     rT.reason.append(" CHANGED SIZE for shower time ")
@@ -1815,5 +1824,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.ktSt073
+DetermineBasalAutoISF.ktSt074
  */
