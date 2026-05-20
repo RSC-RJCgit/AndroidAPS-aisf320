@@ -1,0 +1,41 @@
+From fcfb0251a6d7c2d202919d0fdbe042e50fac40fc Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 14:00:37 +0930
+Subject: [PATCH] Add missing TriggerProfile and TriggerPhoneBattery to trigger
+ list
+
+Both files existed but were not imported or registered in
+getTriggerDummyObjects(), so they never appeared in the trigger
+chooser dialog.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../kotlin/app/aaps/plugins/automation/AutomationPlugin.kt    | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index d0004cbf0d..556cfc8dc0 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -68,7 +68,9 @@ import app.aaps.plugins.automation.triggers.TriggerHeartRate
+ import app.aaps.plugins.automation.triggers.TriggerInsulinAge
+ import app.aaps.plugins.automation.triggers.TriggerIob
+ import app.aaps.plugins.automation.triggers.TriggerLocation
++import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+ import app.aaps.plugins.automation.triggers.TriggerPodChange
++import app.aaps.plugins.automation.triggers.TriggerProfile
+ import app.aaps.plugins.automation.triggers.TriggerProfilePercent
+ import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
+ import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
+@@ -435,6 +437,8 @@ class AutomationPlugin @Inject constructor(
+             TriggerDelta(injector),
+             TriggerIob(injector),
+             TriggerCOB(injector),
++            TriggerProfile(injector),
++            TriggerPhoneBattery(injector),
+             TriggerProfilePercent(injector),
+             TriggerTempTarget(injector),
+             TriggerTempTargetValue(injector),
+-- 
+2.43.0.windows.1
+
