@@ -1,0 +1,35 @@
+From 9e717e10b25a0321ea01fe31fb48b5ebe32ca7d9 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 18:48:00 +0930
+Subject: [PATCH] Fix ActionSetAutomationState not loading state from a320
+ settings
+
+a320 exports action data with keys "inputStateName"/"inputState" while
+AndroidAPS1/Boost use "stateName"/"stateValue". Add fallback key lookup
+in fromJSON so both formats are accepted.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../plugins/automation/actions/ActionSetAutomationState.kt    | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+index f3f512def4..88c31c8242 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -54,8 +54,12 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector)
+ 
+     override fun fromJSON(data: String): Action {
+         val d = JSONObject(data)
++        // Support both AndroidAPS1/Boost format ("stateName"/"stateValue")
++        // and a320 format ("inputStateName"/"inputState")
+         stateName.value = JsonHelper.safeGetString(d, "stateName", "")
++            .ifEmpty { JsonHelper.safeGetString(d, "inputStateName", "") }
+         stateValue.value = JsonHelper.safeGetString(d, "stateValue", "")
++            .ifEmpty { JsonHelper.safeGetString(d, "inputState", "") }
+         return this
+     }
+ 
+-- 
+2.43.0.windows.1
+
