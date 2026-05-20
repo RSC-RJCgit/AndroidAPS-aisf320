@@ -1,0 +1,36 @@
+From fff8e8f6782045b42160bf9e7ef18fcca30ab058 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 20 May 2026 11:24:39 +0930
+Subject: [PATCH] Fix: use non-null default for sp.getString in directory
+ save/restore
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ .../configuration/maintenance/ImportExportPrefsImpl.kt        | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+index d855198398..b45f5ace43 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+@@ -396,7 +396,7 @@ class ImportExportPrefsImpl @Inject constructor(
+                         if (importPossible) {
+                             activePlugin.beforeImport()
+                             // Preserve device-specific path — never let an import overwrite it
+-                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, null)
++                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
+                             sp.clear()
+                             for ((key, value) in prefs.values) {
+                                 if (value == "true" || value == "false") {
+@@ -406,7 +406,7 @@ class ImportExportPrefsImpl @Inject constructor(
+                                 }
+                             }
+                             // Restore local AAPS directory path so it is never lost on import
+-                            if (!savedAapsDirectory.isNullOrEmpty()) {
++                            if (savedAapsDirectory.isNotEmpty()) {
+                                 sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
+                             }
+                             activePlugin.afterImport()
+-- 
+2.43.0.windows.1
+
