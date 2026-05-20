@@ -1535,11 +1535,11 @@ class DetermineBasalAutoISF @Inject constructor(
 // POST CARBS / SWING DAMPING
 // =====================================================
                 } else if (Delta >= 0.50 * 18 &&
-                   
+                    nowHour >= 18 &&
                     COB > 10 &&
                     Delta <=  0.95 * 18 &&
                     bg < 10.0 * 18
-                ) { // nowHour >= 18 &&
+                ) {
 
                     microBolus = microBolus * 0.7
                     rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
