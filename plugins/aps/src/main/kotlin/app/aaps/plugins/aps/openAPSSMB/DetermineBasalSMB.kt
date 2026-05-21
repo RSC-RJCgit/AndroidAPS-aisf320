@@ -1138,7 +1138,7 @@ class DetermineBasalSMB @Inject constructor(
             }
 
             if (currenttemp.duration == 0) { // no temp is set
-                rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
+                rT.reason.append ("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
