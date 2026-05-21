@@ -391,7 +391,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsActive, stepActivityDetected)
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
-            val graphActivity = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
+            val graphActivity = 100  * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
             variableSensitivity = autoISF(profile, graphActivity)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
@@ -1326,5 +1326,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktStCAP077 
+OpenAPSAutoISFPlugin.ktStCAP0778
  */
