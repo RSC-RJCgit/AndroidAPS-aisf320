@@ -392,7 +392,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
             val graphActivity = 100  * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
-            variableSensitivity = autoISF(profile, graphActivity)
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -727,7 +727,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return activityRatio
     }
 
-    fun autoISF(profile: Profile, currentActivity: Double = 0.0): Double {
+    fun autoISF(profile: Profile, currentActivity: Double = 0.0, smbActivity: Double = 0.0): Double {
 
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
@@ -853,7 +853,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
         consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
-        consoleError.add("insulin activity: ${round(currentActivity, 4)} ;;")
+        consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;; SMB: ${round(smbActivity, 4)} ;;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         //consoleError.add("bg_acce  is $bg_acce ;;")
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
