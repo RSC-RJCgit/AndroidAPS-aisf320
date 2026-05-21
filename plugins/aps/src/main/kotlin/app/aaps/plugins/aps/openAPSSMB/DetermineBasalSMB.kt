@@ -1137,7 +1137,7 @@ class DetermineBasalSMB @Inject constructor(
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
-            if (currenttemp.duration == 0) { // no temp is set
+            if(currenttemp.duration == 0) { // no temp is set
                 rT.reason.append ("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
@@ -1155,5 +1155,5 @@ class DetermineBasalSMB @Inject constructor(
 }
 /*
 
-detMaster006-rc
+detMaster006b-rc
  */
