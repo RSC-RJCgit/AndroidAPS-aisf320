@@ -391,7 +391,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsActive, stepActivityDetected)
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
-            variableSensitivity = autoISF(profile)
+            val graphActivity = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
+            variableSensitivity = autoISF(profile, graphActivity)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -726,7 +727,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return activityRatio
     }
 
-    fun autoISF(profile: Profile): Double {
+    fun autoISF(profile: Profile, currentActivity: Double = 0.0): Double {
 
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
@@ -795,15 +796,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else autosensResult.sensResult = "autosens disabled"
             sensitivityRatio = autosensResult.ratio
         }
-        var skipWeights = false
         val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
         val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
+        val maxIob = constraintsChecker.getMaxIOBAllowed().value()
+        val maxIobIsEven = maxIob.roundToInt() % 2 == 0
+        var skipWeights = false
+        var applyWeights = false
         if (calibrationStopsSMB) {
-            consoleError.add("AutoISF weights disabled while calibrating")
-            skipWeights = true
-        } else if ( !autoIsfWeights || glucose_status == null) {
+            consoleError.add("AutoISF weights calculated for display but not applied: calibrating")
+        } else if (!autoIsfWeights || glucose_status == null) {
             consoleError.add("AutoISF weights disabled in Preferences")
             skipWeights = true
+        } else if (maxIobIsEven) {
+            consoleError.add("AutoISF weights display only: max_iob ${round(maxIob, 1)} is even")
+            applyWeights = false
+        } else {
+            applyWeights = true
         }
         if (skipWeights) {
             consoleError.add("----------------------------------")
@@ -845,6 +853,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
         consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
+        consoleError.add("insulin activity: ${round(currentActivity, 4)} ;;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         //consoleError.add("bg_acce  is $bg_acce ;;")
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
@@ -898,7 +907,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
         autoIsfValues.bgIsf = bg_ISF
         var liftISF: Double
-        val final_ISF: Double
+        var final_ISF: Double = 1.0
         if (bg_ISF < 1.0) {
             liftISF = min(bg_ISF, acce_ISF)
             if (acce_ISF > 1.0) {
@@ -906,7 +915,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
+            if (applyWeights) return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
         }
@@ -962,7 +971,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return round(sens / final_ISF, 1)
+            if (applyWeights) return round(sens / final_ISF, 1)
         }
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
