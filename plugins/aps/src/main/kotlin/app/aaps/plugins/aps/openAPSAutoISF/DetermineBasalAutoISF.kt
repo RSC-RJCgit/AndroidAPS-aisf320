@@ -1543,7 +1543,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     microBolus = microBolus * 0.7
                     rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+                    rT.reason.append (" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
 
 // =====================================================
 // HIGH TT PROTECTION [low TT 4.0 but delta High]
