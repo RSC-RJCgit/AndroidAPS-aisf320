@@ -155,9 +155,12 @@ class DetermineBasalAutoISF @Inject constructor(
             return rT
         }
     }
-    fun isEven(value: Double): Boolean {
+    /*fun isEven(value: Double): Boolean {
         return value % 1 == 0.0 && value.toInt() % 2 == 0
-    }
+    }*/
+    fun isEven(value: Double): Boolean =
+        if (value % 1 == 0.0) value.toInt() % 2 == 0          // whole number: check integer
+        else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
 
 
     fun determine_basal(
