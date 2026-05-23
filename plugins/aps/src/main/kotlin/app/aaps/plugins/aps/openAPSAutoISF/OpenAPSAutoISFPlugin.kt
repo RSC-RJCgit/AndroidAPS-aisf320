@@ -799,7 +799,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
         val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
         val maxIob = constraintsChecker.getMaxIOBAllowed().value()
-        val maxIobIsEven = maxIob.roundToInt() % 2 == 0
+        val maxIobIsEven = maxIob % 2.0 == 0.0
         var skipWeights = false
         var applyWeights = false
         if (calibrationStopsSMB) {
