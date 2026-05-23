@@ -983,6 +983,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (applyWeights) return round(sens / final_ISF, 1)
             return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
+        if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1336,5 +1337,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt CAP087
+OpenAPSAutoISFPlugin.ktSt CAP088
  */
