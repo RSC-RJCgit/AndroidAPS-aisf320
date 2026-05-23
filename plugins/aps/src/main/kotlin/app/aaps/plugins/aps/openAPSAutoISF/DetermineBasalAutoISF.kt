@@ -932,7 +932,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         //var varOffset: Double = 27.0
         var varOffset: Double = 9.0
-        val hour = LocalDateTime.now().hour
+        val hour= LocalDateTime.now().hour
 
 
         var targetBgOrig: Double = when {
