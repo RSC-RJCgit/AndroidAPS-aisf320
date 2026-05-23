@@ -247,6 +247,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 true
             }
     }
+    fun isEven(value: Double): Boolean {
+        return value % 1 == 0.0 && value.toInt() % 2 == 0
+    }
 
     override fun specialShowInListCondition(): Boolean {
         try {
@@ -799,7 +802,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
         val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
         val maxIob = constraintsChecker.getMaxIOBAllowed().value()
-        val maxIobIsEven = maxIob % 2.0 == 0.0
+        fun isEven(value: Double): Boolean = (value * 10).roundToInt() % 2 == 0
+        val maxIobIsEven = isEven(maxIob)
         var skipWeights = false
         var applyWeights = false
         if (calibrationStopsSMB) {
@@ -811,6 +815,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("AutoISF weights display only: max_iob ${round(maxIob, 1)} is even")
             applyWeights = false
         } else {
+            consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd")
             applyWeights = true
         }
         if (skipWeights) {
