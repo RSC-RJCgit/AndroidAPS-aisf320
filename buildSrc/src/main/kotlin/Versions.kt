@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 object Versions {
 
     const
-    val appVersion= "3.4.0.0+ai320CAP084" +
+    val appVersion= "3.4.0.0+ai320CAP085" +
         ""
     const val versionCode = 1500
 
