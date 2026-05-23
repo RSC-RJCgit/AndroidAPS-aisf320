@@ -853,7 +853,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
         consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
         consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
-        consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;; SMB: ${round(smbActivity, 4)} ;;")
+        consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         //consoleError.add("bg_acce  is $bg_acce ;;")
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
@@ -972,6 +972,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
             if (applyWeights) return round(sens / final_ISF, 1)
+            return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
@@ -1326,5 +1327,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt CAP082
+OpenAPSAutoISFPlugin.ktSt CAP083
  */
