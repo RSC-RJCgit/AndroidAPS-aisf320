@@ -1641,7 +1641,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     ) {
 
                         if (bg > 8.8 * 18) {
-                            microBolus = microBolus * 0.
+                            microBolus = microBolus * 0.9
                             rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.905 for mild fast rise 0.905 ")
                         } else if (bg > 8.0 * 18) {
