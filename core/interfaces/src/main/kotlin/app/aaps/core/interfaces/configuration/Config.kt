@@ -39,4 +39,6 @@ interface Config {
      * Disable LeakCanary (memory leaks detection). By default it's enabled in DEBUG builds.
      */
     fun disableLeakCanary(): Boolean
+
+    fun enableOmnipodDriftCompensation(): Boolean
 }
