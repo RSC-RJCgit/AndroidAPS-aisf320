@@ -7,6 +7,7 @@ import app.aaps.database.persistence.di.PersistenceModule
 import app.aaps.implementation.di.ImplementationModule
 import app.aaps.plugins.aps.di.ApsModule
 import app.aaps.plugins.automation.di.AutomationModule
+import app.aaps.plugins.automationstate.di.AutomationStateModule
 import app.aaps.plugins.configuration.di.ConfigurationModule
 import app.aaps.plugins.constraints.di.PluginsConstraintsModule
 import app.aaps.plugins.insulin.di.InsulinModule
@@ -58,6 +59,7 @@ import javax.inject.Singleton
 
         // Gradle modules
         AutomationModule::class,
+        AutomationStateModule::class,
         ApsModule::class,
         ConfigurationModule::class,
         CoreModule::class,
