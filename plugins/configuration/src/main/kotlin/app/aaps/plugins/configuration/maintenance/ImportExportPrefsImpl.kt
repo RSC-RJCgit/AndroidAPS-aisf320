@@ -875,7 +875,7 @@ class ImportExportPrefsImpl @Inject constructor(
                         if (importPossible) {
                             activePlugin.beforeImport()
                             // Preserve device-specific path — never let an import overwrite it
-                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, null)
+                            val savedAapsDirectory = sp.getStringOrNull(StringKey.AapsDirectoryUri.key, null)
                             sp.clear()
                             for ((key, value) in prefs.values) {
                                 if (value == "true" || value == "false") {
