@@ -196,6 +196,7 @@ dependencies {
     implementation(project(":ui"))
     implementation(project(":plugins:aps"))
     implementation(project(":plugins:automation"))
+    implementation(project(":plugins:automation-state"))
     implementation(project(":plugins:configuration"))
     implementation(project(":plugins:constraints"))
     implementation(project(":plugins:insulin"))
@@ -228,7 +229,9 @@ dependencies {
     testImplementation(project(":shared:tests"))
     androidTestImplementation(project(":shared:tests"))
     androidTestImplementation(libs.androidx.test.rules)
-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
+    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
+        exclude(group = "org.json", module = "json")
+    }
 
     debugImplementation(libs.com.squareup.leakcanary.android)
 

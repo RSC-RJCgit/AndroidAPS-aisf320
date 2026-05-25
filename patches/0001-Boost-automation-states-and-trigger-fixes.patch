@@ -1,0 +1,318 @@
+From 5d7b414f34fd36c573316ad5fac5ec6fea77c456 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Tue, 12 May 2026 19:51:12 +0930
+Subject: [PATCH] Boost: AutomationStates trigger+action, fix
+ TriggerProfile/PhoneBattery deserialise, fix jsonassert build conflict
+
+- Add TriggerAutomationState: trigger that fires when a named state equals a chosen value
+- Add ActionSetAutomationState: action that sets a named state to a chosen value
+- Register both in instantiate(), dummy-object lists, and Dagger module
+- Add getAllStateNames() to AutomationStateInterface / AutomationStateService
+- Fix TriggerProfile and TriggerPhoneBattery missing from Trigger.instantiate()
+  (saved rules using these triggers were silently broken on reload)
+- Exclude org.json:json from jsonassert to fix Android build conflict
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index eebe94ca93..9fbd0632bc 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -229,7 +229,9 @@ dependencies {
+     testImplementation(project(":shared:tests"))
+     androidTestImplementation(project(":shared:tests"))
+     androidTestImplementation(libs.androidx.test.rules)
+-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
++    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
++        exclude(group = "org.json", module = "json")
++    }
+ 
+     debugImplementation(libs.com.squareup.leakcanary.android)
+ 
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
+index 69fd803c09..9f3cc7d1b3 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
+@@ -9,4 +9,5 @@ interface AutomationStateInterface {
+     fun setStateValues(stateName: String, values: List<String>)
+     fun hasStateValues(stateName: String): Boolean
+     fun deleteState(stateName: String)
++    fun getAllStateNames(): List<String>
+ }
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+index d2058b594e..dd9469488e 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+@@ -95,6 +95,8 @@ class AutomationStateService @Inject constructor(
+         return stateValues.containsKey(stateName.trim())
+     }
+ 
++   override fun getAllStateNames(): List<String> = stateValues.keys.toList()
++
+    override fun deleteState(stateName: String) {
+         val trimmedName = stateName.trim()
+         automationStates.remove(trimmedName)
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index 6baeaa30ab..7be22902a6 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -78,6 +78,8 @@ import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
+ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
+ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
+ import app.aaps.plugins.automation.triggers.TriggerSensorAge
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerStepsCount
+ import app.aaps.plugins.automation.triggers.TriggerTempTarget
+ import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
+@@ -405,6 +407,7 @@ class AutomationPlugin @Inject constructor(
+             ActionSendSMS(injector),
+             ActionSMBChange(injector)
+         )
++        actions.add(ActionSetAutomationState(injector))
+         if (config.isEngineeringMode() && config.isDev())
+             actions.add(ActionRunAutotune(injector))
+ 
+@@ -436,7 +439,8 @@ class AutomationPlugin @Inject constructor(
+             TriggerSensorAge(injector),
+             TriggerCannulaAge(injector),
+             TriggerReservoirLevel(injector),
+-            TriggerStepsCount(injector)
++            TriggerStepsCount(injector),
++            TriggerAutomationState(injector)
+         )
+ 
+         val pump = activePlugin.activePump
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+index 9b117a9189..859c5cfd08 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+@@ -69,6 +69,7 @@ abstract class Action(val injector: HasAndroidInjector) {
+                 ActionSendSMS::class.java.simpleName              -> ActionSendSMS(injector).fromJSON(data.toString())
+                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
+                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
++                ActionSetAutomationState::class.java.simpleName  -> ActionSetAutomationState(injector).fromJSON(data.toString())
+                 else                                              -> throw ClassNotFoundException(type)
+             }
+         } catch (e: Exception) {
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+new file mode 100644
+index 0000000000..3188010fed
+--- /dev/null
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -0,0 +1,78 @@
++package app.aaps.plugins.automation.actions
++
++import android.widget.LinearLayout
++import androidx.annotation.DrawableRes
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.interfaces.queue.Callback
++import app.aaps.core.utils.JsonHelper
++import app.aaps.plugins.automation.R
++import app.aaps.plugins.automation.elements.InputDropdownMenu
++import app.aaps.plugins.automation.elements.LabelWithElement
++import app.aaps.plugins.automation.elements.LayoutBuilder
++import dagger.android.HasAndroidInjector
++import org.json.JSONObject
++import javax.inject.Inject
++
++class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) {
++
++    @Inject lateinit var automationStateInterface: AutomationStateInterface
++
++    var stateName = InputDropdownMenu(rh)
++    var stateValue = InputDropdownMenu(rh)
++
++    override fun friendlyName(): Int = R.string.set_state
++
++    override fun shortDescription(): String =
++        rh.gs(R.string.set_state_description, stateName.value, stateValue.value)
++
++    @DrawableRes override fun icon(): Int = app.aaps.core.objects.R.drawable.ic_automation
++
++    override fun doAction(callback: Callback) {
++        try {
++            automationStateInterface.setState(stateName.value, stateValue.value)
++            aapsLogger.debug(LTag.AUTOMATION, "State set: ${stateName.value} = ${stateValue.value}")
++            callback.result(pumpEnactResultProvider.get().success(true).comment(app.aaps.core.ui.R.string.ok)).run()
++        } catch (e: Exception) {
++            aapsLogger.error(LTag.AUTOMATION, "Error setting state: ${e.message}")
++            callback.result(pumpEnactResultProvider.get().success(false).comment(app.aaps.core.ui.R.string.error)).run()
++        }
++    }
++
++    override fun toJSON(): String {
++        val data = JSONObject()
++            .put("stateName", stateName.value)
++            .put("stateValue", stateValue.value)
++        return JSONObject()
++            .put("type", this.javaClass.simpleName)
++            .put("data", data)
++            .toString()
++    }
++
++    override fun fromJSON(data: String): Action {
++        val d = JSONObject(data)
++        stateName.value = JsonHelper.safeGetString(d, "stateName", "")
++        stateValue.value = JsonHelper.safeGetString(d, "stateValue", "")
++        return this
++    }
++
++    override fun hasDialog(): Boolean = true
++
++    override fun generateDialog(root: LinearLayout) {
++        val stateNames = ArrayList<CharSequence>(automationStateInterface.getAllStateNames())
++        val values = if (stateName.value.isNotEmpty())
++            ArrayList<CharSequence>(automationStateInterface.getStateValues(stateName.value))
++        else
++            ArrayList()
++
++        stateName.setList(stateNames)
++        stateValue.setList(values)
++
++        LayoutBuilder()
++            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_name), "", stateName))
++            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_val), "", stateValue))
++            .build(root)
++    }
++
++    override fun isValid(): Boolean = stateName.value.isNotEmpty() && stateValue.value.isNotEmpty()
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+index 3519811c1d..593ec4d64a 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+@@ -49,6 +49,8 @@ import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
+ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
+ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
+ import app.aaps.plugins.automation.triggers.TriggerSensorAge
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerStepsCount
+ import app.aaps.plugins.automation.triggers.TriggerTempTarget
+ import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
+@@ -106,6 +108,7 @@ abstract class AutomationModule {
+     @ContributesAndroidInjector abstract fun triggerTimeRangeInjector(): TriggerTimeRange
+     @ContributesAndroidInjector abstract fun triggerWifiSsidInjector(): TriggerWifiSsid
+     @ContributesAndroidInjector abstract fun triggerStepsCountInjector(): TriggerStepsCount
++    @ContributesAndroidInjector abstract fun triggerAutomationStateInjector(): TriggerAutomationState
+ 
+     @ContributesAndroidInjector abstract fun actionInjector(): Action
+     @ContributesAndroidInjector abstract fun actionSMBChangeInjector(): ActionSMBChange
+@@ -121,6 +124,7 @@ abstract class AutomationModule {
+     @ContributesAndroidInjector abstract fun actionStartTempTargetInjector(): ActionStartTempTarget
+     @ContributesAndroidInjector abstract fun actionStopTempTargetInjector(): ActionStopTempTarget
+     @ContributesAndroidInjector abstract fun actionDummyInjector(): ActionDummy
++    @ContributesAndroidInjector abstract fun actionSetAutomationStateInjector(): ActionSetAutomationState
+     @ContributesAndroidInjector abstract fun contributesLocationService(): LocationService
+ 
+     @Module
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+index 298f7d91b7..73bd5127d6 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+@@ -115,6 +115,9 @@ abstract class Trigger(val injector: HasAndroidInjector) {
+                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
+                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
+                 TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
++                TriggerProfile::class.java.simpleName            -> TriggerProfile(injector).fromJSON(data.toString())
++                TriggerPhoneBattery::class.java.simpleName       -> TriggerPhoneBattery(injector).fromJSON(data.toString())
++                TriggerAutomationState::class.java.simpleName    -> TriggerAutomationState(injector).fromJSON(data.toString())
+ 
+                 else                                             -> TriggerConnector(injector)
+             }
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+new file mode 100644
+index 0000000000..51135b7d0b
+--- /dev/null
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+@@ -0,0 +1,73 @@
++package app.aaps.plugins.automation.triggers
++
++import android.widget.LinearLayout
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.utils.JsonHelper
++import app.aaps.plugins.automation.R
++import app.aaps.plugins.automation.elements.InputDropdownMenu
++import app.aaps.plugins.automation.elements.LabelWithElement
++import app.aaps.plugins.automation.elements.LayoutBuilder
++import app.aaps.plugins.automation.elements.StaticLabel
++import dagger.android.HasAndroidInjector
++import org.json.JSONObject
++import java.util.Optional
++import javax.inject.Inject
++
++class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
++
++    @Inject lateinit var automationStateInterface: AutomationStateInterface
++
++    var stateName = InputDropdownMenu(rh)
++    var stateValue = InputDropdownMenu(rh)
++
++    private constructor(injector: HasAndroidInjector, other: TriggerAutomationState) : this(injector) {
++        stateName = InputDropdownMenu(rh, other.stateName.value)
++        stateValue = InputDropdownMenu(rh, other.stateValue.value)
++    }
++
++    override fun shouldRun(): Boolean {
++        val result = automationStateInterface.inState(stateName.value, stateValue.value)
++        if (result) aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
++        else aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
++        return result
++    }
++
++    override fun dataJSON(): JSONObject =
++        JSONObject()
++            .put("stateName", stateName.value)
++            .put("stateValue", stateValue.value)
++
++    override fun fromJSON(data: String): Trigger {
++        val d = JSONObject(data)
++        stateName.value = JsonHelper.safeGetString(d, "stateName", "")
++        stateValue.value = JsonHelper.safeGetString(d, "stateValue", "")
++        return this
++    }
++
++    override fun friendlyName(): Int = R.string.trigger_automation_state_label
++
++    override fun friendlyDescription(): String =
++        "${rh.gs(R.string.trigger_automation_state_label)}: ${stateName.value} = ${stateValue.value}"
++
++    override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_automation)
++
++    override fun duplicate(): Trigger = TriggerAutomationState(injector, this)
++
++    override fun generateDialog(root: LinearLayout) {
++        val stateNames = ArrayList<CharSequence>(automationStateInterface.getAllStateNames())
++        val values = if (stateName.value.isNotEmpty())
++            ArrayList<CharSequence>(automationStateInterface.getStateValues(stateName.value))
++        else
++            ArrayList()
++
++        stateName.setList(stateNames)
++        stateValue.setList(values)
++
++        LayoutBuilder()
++            .add(StaticLabel(rh, R.string.trigger_automation_state_label, this))
++            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_name), "", stateName))
++            .add(LabelWithElement(rh, rh.gs(R.string.set_state_state_val), "", stateValue))
++            .build(root)
++    }
++}
+diff --git a/plugins/automation/src/main/res/values/strings.xml b/plugins/automation/src/main/res/values/strings.xml
+index 8a9dc27b23..9a3f4e59c7 100644
+--- a/plugins/automation/src/main/res/values/strings.xml
++++ b/plugins/automation/src/main/res/values/strings.xml
+@@ -156,6 +156,7 @@
+     <string name="on">ON</string>
+     <string name="off">OFF</string>
+ 
++    <string name="trigger_automation_state_label">Automation state</string>
+     <string name="set_state">Set automation state</string>
+     <string name="set_state_description">Set automation state %1$s=%2$s</string>
+     <string name="set_state_state_name">"State name: "</string>
+-- 
+2.43.0.windows.1
+

@@ -2,6 +2,9 @@
 <resources>
     <string name="key_google_apis_android" translatable="false">AIzaSyDcZpDRMaGjdhihXp531cVYM6LkEL8KbgM</string>
 
+    <string name="trigger_phone_battery_label">Phone battery level</string>
+    <string name="profilecheck">Profile check</string>
+
     <string name="automation_short">Auto</string>
     <string name="automation">Automation</string>
     <string name="automation_description">User defined automation tasks</string>
@@ -152,5 +155,18 @@
     <string name="newSmbMode">New SMB mode:</string>
     <string name="on">ON</string>
     <string name="off">OFF</string>
+
+    <string name="trigger_automation_state_label">Automation state</string>
+    <string name="set_state">Set automation state</string>
+    <string name="set_state_description">Set automation state %1$s=%2$s</string>
+    <string name="set_state_state_name">"State name: "</string>
+    <string name="set_state_state_val">"State value: "</string>
+    <string name="no_automation_states">No automation states defined yet. Use the \"Set automation state\" action in your automation rules to create states.</string>
+    <string name="automation_states">Automation States</string>
+    <string name="automation_states_short">States</string>
+    <string name="description_automation_states">View and monitor automation state variables</string>
+    <string name="automation_state_values">Automation State Values</string>
+    <string name="automation_state_missing_name_value">Please enter a state name </string>
+    <string name="add_automation_state">Add Automation State</string>
 
 </resources>

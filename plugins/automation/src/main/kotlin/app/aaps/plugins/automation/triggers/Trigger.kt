@@ -115,6 +115,9 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
                 TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
+                TriggerProfile::class.java.simpleName            -> TriggerProfile(injector).fromJSON(data.toString())
+                TriggerPhoneBattery::class.java.simpleName       -> TriggerPhoneBattery(injector).fromJSON(data.toString())
+                TriggerAutomationState::class.java.simpleName    -> TriggerAutomationState(injector).fromJSON(data.toString())
 
                 else                                             -> TriggerConnector(injector)
             }

@@ -69,6 +69,8 @@ import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -76,6 +78,8 @@ import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
 import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
@@ -131,6 +135,8 @@ class AutomationPlugin @Inject constructor(
     private val automationEvents = ArrayList<AutomationEventObject>()
     var executionLog: MutableList<String> = ArrayList()
     var btConnects: MutableList<EventBTChange> = ArrayList()
+
+    @Volatile private var importInProgress = false
 
     private var handler: Handler? = null
     private var refreshLoop: Runnable
@@ -205,7 +211,18 @@ class AutomationPlugin @Inject constructor(
         super.onStop()
     }
 
+    override fun beforeImport() {
+        importInProgress = true
+    }
+
+    override fun afterImport() {
+        importInProgress = false
+        loadFromSP()
+        rxBus.send(EventAutomationUpdateGui())
+    }
+
     private fun storeToSP() {
+        if (importInProgress) return
         val array = JSONArray()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         try {
@@ -403,6 +420,7 @@ class AutomationPlugin @Inject constructor(
             ActionSendSMS(injector),
             ActionSMBChange(injector)
         )
+        actions.add(ActionSetAutomationState(injector))
         if (config.isEngineeringMode() && config.isDev())
             actions.add(ActionRunAutotune(injector))
 
@@ -419,6 +437,8 @@ class AutomationPlugin @Inject constructor(
             TriggerDelta(injector),
             TriggerIob(injector),
             TriggerCOB(injector),
+            TriggerProfile(injector),
+            TriggerPhoneBattery(injector),
             TriggerProfilePercent(injector),
             TriggerTempTarget(injector),
             TriggerTempTargetValue(injector),
@@ -432,7 +452,8 @@ class AutomationPlugin @Inject constructor(
             TriggerSensorAge(injector),
             TriggerCannulaAge(injector),
             TriggerReservoirLevel(injector),
-            TriggerStepsCount(injector)
+            TriggerStepsCount(injector),
+            TriggerAutomationState(injector)
         )
 
         val pump = activePlugin.activePump

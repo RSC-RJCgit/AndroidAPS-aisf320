@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSBoost
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.net.toUri
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
@@ -52,6 +53,7 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.data.model.SC
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -871,9 +873,23 @@ open class OpenAPSBoostPlugin @Inject constructor(
 
         // 7. Step counts
         val recentSteps5Min = StepService.getRecentStepCount5Min()
+        val recentSteps10Min = StepService.getRecentStepCount10Min()
         val recentSteps15Min = StepService.getRecentStepCount15Min()
         val recentSteps30Min = StepService.getRecentStepCount30Min()
         val recentSteps60Min = StepService.getRecentStepCount60Min()
+        disposable += persistenceLayer.insertOrUpdateStepsCount(
+            SC(
+                duration = 0,
+                timestamp = System.currentTimeMillis(),
+                steps5min = recentSteps5Min,
+                steps10min = recentSteps10Min,
+                steps15min = recentSteps15Min,
+                steps30min = recentSteps30Min,
+                steps60min = recentSteps60Min,
+                steps180min = 0,
+                device = Build.MANUFACTURER + " " + Build.MODEL
+            )
+        ).subscribe()
 
         // ---- Build the OapsProfileBoost ----
 
@@ -1292,3 +1308,7 @@ open class OpenAPSBoostPlugin @Inject constructor(
         }
     }
 }
+/*
+
+OpenAPSBoostPluginvBoostv3001-rc.txt
+ */

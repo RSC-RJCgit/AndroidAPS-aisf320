@@ -18,6 +18,10 @@ on:
           - pumpcontrolRelease
           - pumpcontrolDebug
 
+  push:
+    branches:
+      - boost-3.4.0.0
+
 jobs:
   build:
     name: Build AAPS
@@ -153,7 +157,7 @@ jobs:
 
       - name: Set BUILD_VARIANT
         run: |
-          BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
+          BUILD_VARIANT="${{ github.event.inputs.buildVariant || 'fullRelease' }}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')

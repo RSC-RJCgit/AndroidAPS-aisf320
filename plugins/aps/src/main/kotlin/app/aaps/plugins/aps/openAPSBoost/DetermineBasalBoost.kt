@@ -1437,8 +1437,12 @@ class DetermineBasalBoost @Inject constructor(
                 return rT
             }
 
-            rT.reason.append("temp ${currenttemp.rate.toFixed2()} < ${round(rate, 2).withoutZeros()}U/hr. ")
+            rT.reason.append ("temp ${currenttemp.rate.toFixed2()} < ${round(rate, 2).withoutZeros()}U/hr. ")
             return setTempBasal(rate, 30, profile, rT, currenttemp)
         }
     }
 }
+/*
+
+DetermineBasalBoostBoostv3001-rc.kt.txt
+ */
