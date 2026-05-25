@@ -1,6 +1,5 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -17,9 +16,11 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.text.DecimalFormat
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -65,6 +66,9 @@ class DetermineBasalAutoISF @Inject constructor(
     //DecimalFormat("0.#").format(profileUtil.fromMgdlToUnits(value))
     //if (profile.out_units === "mmol/L") round(value / 18, 1).toFixed(1);
     //else Math.round(value);
+
+    fun convert_bg2(value: Double): String =
+        String.format("%.2f", profileUtil.fromMgdlToUnits(value))
 
     fun enable_smb(profile: OapsProfileAutoIsf, microBolusAllowed: Boolean, meal_data: MealData, target_bg: Double): Boolean {
         // disable SMB when a high temptarget is set
@@ -151,12 +155,22 @@ class DetermineBasalAutoISF @Inject constructor(
             return rT
         }
     }
+    /*fun isEven(value: Double): Boolean {
+        return value % 1 == 0.0 && value.toInt() % 2 == 0
+    }*/
+    fun isEven(value: Double): Boolean =
+        if (value % 1 == 0.0) value.toInt() % 2 == 0          // whole number: check integer
+        else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
 
 
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
-        smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>
+        smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>,
+        bg_acce: Double,
+        steps180M: Int,
+        steps15M: Int,
+        steps5M: Int
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -217,18 +231,28 @@ class DetermineBasalAutoISF @Inject constructor(
         }
 
         // TODO eliminate
-        val max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        var max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        val iobThUser = profile.iob_threshold_percent
+        if ( iobThUser == 95 ) {
+            max_iob = max_iob * 1.2
+        }
+        else if ( iobThUser == 96 ) {
+            max_iob = max_iob * 1.5
+        }
+        else if ( iobThUser == 97 ) {
+            max_iob = max_iob * 2.0
+        }
 
         // if min and max are set, then set target to their average
         var target_bg = (profile.min_bg + profile.max_bg) / 2
         var min_bg = profile.min_bg
         var max_bg = profile.max_bg
-
+        val target_bgOrigmm: Double = convert_bg(target_bg).toDouble()
         val activityRatio = preferences.get(DoubleKey.ActivityMonitorRatio)    // activityMonitor(profile, bg, target_bg)
         val stepActivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsActive)
         val stepInactivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsInactive)
         var sensitivityRatio = 1.0
-        val normalTarget = Constants.NORMAL_TARGET_MGDL // evaluate high/low temptarget against normal target, not scheduled target (which might change)
+        val normalTarget = 100 // evaluate high/low temptarget against 100, not scheduled target (which might change)
         val exerciseModeActive = (profile.exercise_mode || profile.high_temptarget_raises_sensitivity) && profile.temptargetSet && target_bg > normalTarget
         val resistanceModeActive = profile.low_temptarget_lowers_sensitivity && profile.temptargetSet && target_bg < normalTarget
         // when temptarget is 160 mg/dL, run 50% basal (120 = 75%; 140 = 60%),  80 mg/dL with low_temptarget_lowers_sensitivity would give 1.5x basal, but is limited to autosens_max (1.2x by default)
@@ -320,7 +344,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version}")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ C320.001")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -373,7 +397,7 @@ class DetermineBasalAutoISF @Inject constructor(
             val adjustedMinBG = round(max(80.0, min_bg - (bg - min_bg) / 3.0), 0)
             val adjustedTargetBG = round(max(80.0, target_bg - (bg - target_bg) / 3.0), 0)
             val adjustedMaxBG = round(max(80.0, max_bg - (bg - max_bg) / 3.0), 0)
-            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedMinBG, don’t use it
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedMinBG, don t use it
             //console.error("naive_eventualBG:",naive_eventualBG+", eventualBG:",eventualBG);
             if (eventualBG > adjustedMinBG && naive_eventualBG > adjustedMinBG && min_bg > adjustedMinBG) {
                 consoleError.add("Adjusting targets for high BG: min_bg from $min_bg to $adjustedMinBG; ")
@@ -381,14 +405,14 @@ class DetermineBasalAutoISF @Inject constructor(
             } else {
                 consoleError.add("min_bg unchanged: $min_bg; ")
             }
-            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedTargetBG, don’t use it
+            // if eventualBG, naive_eventualBG, and target_bg aren't all above adjustedTargetBG, don t use it
             if (eventualBG > adjustedTargetBG && naive_eventualBG > adjustedTargetBG && target_bg > adjustedTargetBG) {
                 consoleError.add("target_bg from $target_bg to $adjustedTargetBG; ")
                 target_bg = adjustedTargetBG
             } else {
                 consoleError.add("target_bg unchanged: $target_bg; ")
             }
-            // if eventualBG, naive_eventualBG, and max_bg aren't all above adjustedMaxBG, don’t use it
+            // if eventualBG, naive_eventualBG, and max_bg aren't all above adjustedMaxBG, don t use it
             if (eventualBG > adjustedMaxBG && naive_eventualBG > adjustedMaxBG && max_bg > adjustedMaxBG) {
                 consoleError.add("max_bg from $max_bg to $adjustedMaxBG")
                 max_bg = adjustedMaxBG
@@ -782,6 +806,316 @@ class DetermineBasalAutoISF @Inject constructor(
 
         rT.COB = meal_data.mealCOB
         rT.IOB = iob_data.iob
+        //==========================================================================================================
+        val Delta = glucose_status.delta
+        val IOB = iob_data.iob
+        val COB = meal_data.mealCOB
+        val SDelta = glucose_status.shortAvgDelta
+        val LDelta = glucose_status.longAvgDelta
+        //val Steps5M = profile.recent_steps_5_minutes
+        val Steps10M = profile.recent_steps_10_minutes
+        //val Steps15M = profile.recent_steps_15_minutes
+        val Steps30M = profile.recent_steps_30_minutes
+        val Steps60M = profile.recent_steps_60_minutes
+        //val Steps180M = profile.recent_steps_180_minutes
+        val Steps180M = steps180M
+        val Steps15M = steps15M
+        val Steps5M = steps5M
+
+        // Compute delta_accl using the same formula as the original JS
+        val delta_accl: Double = if (abs(SDelta) == 0.0) {
+            0.0
+        } else {
+            100 * round((Delta - SDelta) / abs(SDelta), 2)
+        }
+
+        var CR = round ( profile.carb_ratio , 2 )
+
+
+        //val bg_acce: Double = glucose_status.bgAcceleration
+        //val bg_acce: Double = (glucose_status as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0
+        //var iobThUser = profile.iob_threshold_percent
+        val TwilightTimeAM =8
+        val TwilightTimeMins =0
+        val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append(
+            " 320.001 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+                round(profile.carb_ratio, 2)
+                    .withoutZeros()
+            }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
+        )
+
+        rT.reason.append (" ================================== Delta: ${Delta }")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("IOB: ${round(IOB, 2)} ;")
+        rT.reason.append("iobThUser is ${iobThUser} ;;")
+        var TOD = "not set TOD"
+        if (iobThUser == 12 ) {
+            TOD = "Night"
+        } else if (iobThUser == 15 ) {
+            TOD = "Twilight"
+        } else if (iobThUser == 20 ) {
+            TOD = "SemiTwilight"
+        }else if (iobThUser == 15 ) {
+            TOD = "Evening"
+        } else if (iobThUser == 30 ) {
+            TOD = "PP90%"
+        } else if (iobThUser == 50 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 40 ) {
+            TOD = "Day PP100%"
+        } else if (iobThUser == 55 ) {
+            TOD = "Day PP110%"
+        } else if (iobThUser == 60 ) {
+            TOD = "Day PP130%"
+        }
+        //consoleError.add("TOD: ${TOD} ;")
+        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //rT.reason.append("TOD: ${TOD} ;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        //rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+
+        rT.reason.append("Delta: ${convert_bg2(Delta )} ;")//Delta ${minDelta.toFixed2()}
+        rT.reason.append("SDelta: ${convert_bg2(SDelta )} ;")
+        rT.reason.append("LDelta: ${convert_bg2(LDelta )} ;")
+        consoleError.add("IOB: "+round(IOB, 2)+" ; ")
+        consoleError.add("Delta: "+convert_bg2(Delta )+" ; ")
+        consoleError.add("SDelta: "+convert_bg2(SDelta )+" ; ")
+        consoleError.add("LDelta: "+convert_bg2(LDelta )+" ; ")
+        //consoleError.add("iobThUser: "+convert_bg(iobThUser )+" ; ")
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        consoleError.add("profile_percentage: ${profile_percentage} ;")
+        rT.reason.append("Steps5M: ${Steps5M} ;")
+        rT.reason.append("Steps15M: ${Steps15M} ;")
+        rT.reason.append("Steps30M: ${Steps30M} ;")
+        rT.reason.append("Steps60M: ${Steps60M} ;")
+        rT.reason.append("Steps180M: ${Steps180M} ;")
+        rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
+        rT.reason.append("profile_percentage: ${profile_percentage} ;")
+        rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
+        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
+        rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
+        rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
+        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")//
+
+        //consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,2)} ;;")
+        rT.reason.append( "pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("Steps60M: "+Steps60M+" ; ")
+        consoleError.add("Steps30M: "+Steps30M+" ; ")
+        consoleError.add("TwilightTimeDec: "+TwilightTimeDec+" ; ")
+
+        //consoleError.add("iobThUseris ${iobThUser} ;;")
+
+        //rT.reason.append("iobThPercent ${iobThPercent} ;;")
+        //rT.reason.append("iobThEffective ${iobThEffective} ;;")
+        //rT.reason.append(
+        //   "TwilightTimeDec: ${round(TwilightTimeDec, 1).withoutZeros()}"
+        //)
+        //================================================================================/
+        //KOTLIN ChatGPT1
+        //================================================================================/
+
+
+        // Compute lastCarbAge
+        var lastCarbAge = 361.0
+        if (meal_data.carbs != null && meal_data.carbs > 0) {
+            lastCarbAge = round(((systemTime - meal_data.lastCarbTime) / 60000.0), 2)
+        }
+
+        var CarbAge = lastCarbAge
+
+
+        //var varOffset: Double = 27.0
+        var varOffset: Double = 9.0
+        val hour= LocalDateTime.now().hour
+
+
+        var targetBgOrig: Double = when {
+            !profile.temptargetSet && profile.min_bg != null -> profile.min_bg!!.toDouble()
+            hour >= 22 -> 5.2 * 18
+            hour in 20 until 22 -> 5.2 * 18
+            hour in 16 until 20 -> 5.0 * 18
+            hour in 10 until 16 -> 5.0 * 18
+            hour in 8 until 10  -> 5.0 * 18
+            hour in 6 until 8   -> 5.0 * 18
+            hour in 5 until 6   -> 5.0 * 18
+            else                -> 5.4 * 18
+        }
+
+
+        // Determine if the button should be enabled based on circadian ISF
+
+
+        // Automations for eating soon
+        var eatSoon = false
+        var stuckH = false
+        var high = false
+        var rising = false
+        var straightRise = false
+        var night4Ov = false
+        var day3Ov = false
+        var over6Ov = false
+
+        var offset1 = false
+        var offset2 = false
+        var offset3 = false
+
+        //val delta = GlucoseStatus.Delta
+        //val sDelta = GlucoseStatus.shortAvgDelta
+
+
+
+        // Check for eating soon based on temp target and BG thresholds
+        if (profile.temptargetSet && target_bg < 4.45 * 18 && target_bg > 4.35 * 18 && bg > 4.5 * 18 && Delta > 0.02 * 18) {
+            eatSoon = true
+        }
+
+        var highProfile = false
+        var carbsSugg = profile.carbsReqThreshold
+        var carbsSuggOrig = carbsSugg
+        var boostOrig = false
+
+        // Determine profileSwitch and adjust carbs suggestion and offsets
+        var profileSwitch = 100
+
+        if (carbsSugg == 1) {
+            offset1 = true
+        } else if (carbsSugg == 9) {
+            varOffset += 9
+        } else if (carbsSugg == 10) {
+            varOffset += 18
+        } else if (carbsSugg == 2) {
+            offset2 = true
+        } else if (carbsSugg == 3) {
+            offset3 = true
+        } else if (carbsSugg == 8) {
+            offset2 = true
+            offset3 = true
+        } else if (carbsSugg == 7) {
+            offset1 = true
+            offset3 = true
+        } else if (carbsSugg == 6) {
+            offset1 = true
+            offset2 = true
+        } else if (carbsSugg == 4) {
+            offset1 = true
+            offset2 = true
+            offset3 = true
+        }
+        var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+
+        var enableButton = false
+
+        if (!isEven(profile.max_iob)) {// odd
+            enableButton = true
+        }
+        //false
+        val nowHour = LocalDateTime.now().hour
+
+        // Initial offset and target calculations
+
+        if (enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset1 ${offset1} ;")
+            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        } else if (nowHour >= 8 && nowHour < 10 && offset2) {
+            varOffset = varOffset - 9
+            rT.reason.append("offset2 ${offset2} ;")
+            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+        }
+        if ( (enableButton && delta_accl < -10 ) || (nowHour >= 20  && offset3) ) {
+            varOffset = varOffset + 9
+            rT.reason.append("offset3 ${offset3} ;")
+            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset )} ;")
+        }
+// make sure varOffset is Double (e.g., val varOffset: Double = ...)
+
+
+//+++++++++++++++++++++++++++++++++++++++++++++++++++
+
+        // Apply boost logic based on BG and COB
+        var offsetSoZeroSMB= false
+        if(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
+            offsetSoZeroSMB= true
+            rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
+        }
+        if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
+        }
+        rT.reason.append("offset1 ${offset1} ;")
+        rT.reason.append("offset2 ${offset2} ;")
+        rT.reason.append("offset3 ${offset3} ;")
+        rT.reason.append("varOffset ${convert_bg(varOffset )} ;")
+        rT.reason.append("varOffset ${varOffset} ;")
+        consoleError.add("offset1 ${offset1} ;")
+        consoleError.add("offset2 ${offset2} ;")
+        consoleError.add("offset3 ${offset3} ;")
+        consoleError.add("varOffset ${convert_bg(varOffset )} ;")
+        consoleError.add("varOffset ${varOffset} ;")
+        // Ensure varOffset does not exceed 36
+        varOffset =  min(36.0, varOffset ) // +9
+
+        // Log varOffset for debugging purposes
+        //System.err.println("varOffset ($varOffset)")
+        rT.reason.append("varOffset ($varOffset)")
+        targetBgOffset = min(targetBgOrig + varOffset, 126.0)
+        rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset )} ;")
+        // Condition for disabling boost when BG is below the offset target and no/low COB
+        if (bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120))) {
+            //boostActive = false
+            offsetSoZeroSMB= true
+            //rT.reason += "bg < targetBgOffset && no/low COB: boostActive set to ($boostActive); "
+            rT.reason.append("bg un targetBgOffset && no/low COB: ")
+        }
+
+        consoleError.add("target_bgOrigmmcarbsSuggOrig: "+carbsSuggOrig+" ; ")
+        consoleError.add("target_bgOrigmm: "+target_bgOrigmm+" ; ")
+        consoleError.add("targetBgOrig: "+convert_bg(targetBgOrig )+" ; ")
+        consoleError.add("targetBgOffset: "+convert_bg(targetBgOffset )+" ; ")
+        consoleError.add("offsetSoZeroSMB: "+offsetSoZeroSMB+" ; ")
+        consoleError.add("enableButton: "+enableButton+" ; ")
+        rT.reason.append("carbsSuggOrig: "+carbsSuggOrig+" ; ")
+        rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
+        rT.reason.append("enableButton: ${enableButton} ;")
+        rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset )} ;")
+        rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig )} ;")
+        rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")
+
+
+        // Reset offsetSoZeroSMBand possibly restore boostActive if conditions improve
+        if (!(bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120)))) {
+            offsetSoZeroSMB= false
+            rT.reason.append("offsetSoZeroSMBcleared: BG ov targetBgOffset, SMB restored; ")
+            if (bg > targetBgOffset) {
+                //boostActive = true
+                //rT.reason += "offsetSoZeroSMBcleared: BG ov targetBgOffset, boostActive restored; "
+
+            }
+        }
+        //var insulinReq = 2 * min(0.0, (eventualBG - target_bg) / sens)
+        if (profile.temptargetSet  && !isEven( target_bgOrigmm)  ){//target_bgOrigmm?
+            //if (profile.temptargetSet  && !isEven( target_bgOrigmm) && nowHour < 6 && target_bgOrigmm <= 4.4  ){//target_bgOrigmm?
+            //insulinReq = 1.5 * insulinReq
+            //rT.reason.append("(profile.temptargetSet  && !isEven( target_bgOrigmm && nowHour un 6  ); ODD 1.5 * insulinReq = "  + round(insulinReq, 2).withoutZeros() + " ")
+            rT.reason.append("(profile.temptargetSet  ODD 1.5 * insulinReq ;")
+            consoleError.add("(profile.temptargetSet  ODD 1.5 * insulinReq ")
+        } else {
+            rT.reason.append("Even ? target_bgOrigmm ")
+            rT.reason.append("Even ? insulinReq ")
+            consoleError.add("Even ? target_bgOrigmm ")
+            consoleError.add("Even ? insulinReq ")
+        }
+        //================================================================================/
+
         rT.reason.append(
             "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
@@ -873,7 +1207,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         // don't low glucose suspend if IOB is already super negative and BG is rising faster than predicted
         if (bg < threshold && iob_data.iob < -profile.current_basal * 20 / 60 && minDelta > 0 && minDelta > expectedDelta) {
-            rT.reason.append("IOB ${iob_data.iob} < ${round(-profile.current_basal * 20 / 60, 2)}")
+            rT.reason.append("IOB ${iob_data.iob} un ${round(-profile.current_basal * 20 / 60, 2)}")
             rT.reason.append(" and minDelta ${convert_bg(minDelta)} > expectedDelta ${convert_bg(expectedDelta)}; ")
             // predictive low glucose suspend mode: BG is / is projected to be < threshold
         } else if (bg < threshold || minGuardBG < threshold) {
@@ -1015,7 +1349,7 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("Eventual BG " + convert_bg(eventualBG) + " >= " + convert_bg(max_bg) + ", ")
         }
         if (iob_data.iob > max_iob) {
-            rT.reason.append("IOB ${round(iob_data.iob, 2)} > max_iob $max_iob")
+            rT.reason.append("IOB ${round(iob_data.iob, 2)} ov max_iob $max_iob")
             if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
                 rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
                 return rT
@@ -1049,7 +1383,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 val mealInsulinReq = round(meal_data.mealCOB / profile.carb_ratio, 3)
                 val smb_max_range = smb_max_range_extension
                 if (iob_data.iob > mealInsulinReq && iob_data.iob > 0) {
-                    consoleError.add("IOB ${iob_data.iob} > COB ${meal_data.mealCOB}; mealInsulinReq = $mealInsulinReq")
+                    consoleError.add("IOB ${iob_data.iob} ov mealInsulinReq = $mealInsulinReq")
                     consoleError.add("profile.maxUAMSMBBasalMinutes: ${profile.maxUAMSMBBasalMinutes} profile.current_basal: ${profile.current_basal}")
                     maxBolus = round(smb_max_range * profile.current_basal * profile.maxUAMSMBBasalMinutes / 60, 1)
                 } else {
@@ -1107,6 +1441,332 @@ class DetermineBasalAutoISF @Inject constructor(
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
+                var LibreTrue = 1.00
+
+// =====================================================
+// SHOWER / TWILIGHT AM PROTECTION
+// =====================================================
+                if (((nowHour >= 5) && (nowHour < 10)) &&
+                    bg <= 8.0 * 18 &&
+                    (Steps60M ?: 0) < 10 &&
+                    COB <= 0 &&
+                    !profile.temptargetSet &&
+                    Delta >= 0.25 * 18 &&
+                    SDelta >= 0.1 * 18 &&
+                    iobThUser < 71
+                ) {
+
+                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
+                    val microBolus1 = microBolus                          // ? add this
+
+                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * max_iob = ${microBolus} ")
+                    }
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${microBolus - microBolus1} diff = ")
+                    }
+
+                    // rT.reason.append(" CHANGED SIZE for shower time ")
+
+                } else if (((nowHour >= 5) && (nowHour < 10)) &&
+                    bg <= 8.0 * 18 &&
+                    (Steps60M ?: 0) < 100 &&
+                    COB <= 0 &&
+                    !profile.temptargetSet &&
+                    Delta >= 0.35 * 18 &&
+                    SDelta >= 0.15 * 18 &&
+                    iobThUser < 71
+                ) {
+
+                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
+                    val microBolus1 = microBolus                          // ? add this
+
+                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * max_iob = ${microBolus} ")
+                    }
+                    if (microBolus + IOB > iobTHvirtualHARDshower) {
+                        microBolus = iobTHvirtualHARDshower - IOB
+
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.716 shower = ${microBolus - microBolus1} diff  ")
+                    }
+
+                    rT.reason.append(" CHANGED SIZE for shower time ")
+// =====================================================
+// LOW IOB ACCELERATION GLITCH THROTTLE
+// =====================================================
+                } else if (
+                    bg_acce > 0.30 * 18 &&
+                    Delta >= 0.50 * 18 &&
+                    IOB < 0.70
+                ) {
+                    microBolus = microBolus * 0.7
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.712 fast rise 0.712 for low IOB accel glitch ")
+
+// =====================================================
+// SENSOR GLITCH / SWING DAMPING
+// =====================================================
+                } else if (Delta >= 0.40 * 18 &&
+                    SDelta <= 0.5 * Delta &&
+                    LDelta <= 0.10 * Delta &&
+                    COB <= 20 &&
+                    bg < 10.0 * 18
+                ) {
+
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.511 for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
+// =====================================================
+// SENSOR GLITCH2 / SWING DAMPING
+// =====================================================
+                } else if (Delta >= 0.50 * 18 &&
+                    SDelta >= 0.40 * 18 &&
+                    LDelta <= 0.15 * 18 &&
+                    bg < 10.0 * 18
+                ) {
+
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.512 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+// =====================================================
+// POST CARBS / SWING DAMPING
+// =====================================================
+                } else if (Delta >= 0.50 * 18 &&
+                    nowHour >= 18 &&
+                    COB > 10 &&
+                    Delta <=  0.95 * 18 &&
+                    bg < 10.0 * 18
+                ) {
+
+                    microBolus = microBolus * 0.7
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append (" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+
+// =====================================================
+// HIGH TT PROTECTION [low TT 4.0 but delta High]
+// =====================================================
+                } else if (Delta >= 0.25 * 18 &&
+                    SDelta >= 0.20 * 18 &&
+                    bg < 10.0 * 18 &&
+                    profile.temptargetSet &&
+                    target_bg <= 4.1 * 18
+                ) {
+
+                    microBolus = microBolus * 0.5
+                    rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE for [high delta during low TT for low delta only] highTT 0.5 smb? ")
+
+// =====================================================
+// GLITCH ZERO SMB
+// =====================================================
+                } else if (Delta > 1.0 * 18 &&
+                    LDelta < -0.05 * 18 &&
+                    bg < 162
+                ) {
+
+                    microBolus = 0.0
+                    rT.reason.append("glitch 0.0 ")
+
+// =====================================================
+// FAST RISE HANDLING, microBolus > 0.3
+// 3 BG tiers:
+//   <= 8.0 mmol/L  -> original stricter reduction
+//   8.0 to 8.8     -> moderate relaxation
+//   > 8.8          -> stronger relaxation
+// =====================================================
+                } else if(
+                    bg > 6.0 * 18 &&
+                    bg < 12.0 * 18 &&
+                    COB <= 25 &&
+                    Delta >= 0.25 * 18 &&
+                    SDelta >= 0.10 * 18 &&
+                    ( (IOB > 0.10 * profile.max_iob )
+                        || ( nowHour >=18 || nowHour <= 5  ))  // && microBolus > 0.3
+                //microBolus > 0.3 //not used except rsn049
+                ) {
+
+                    // -------------------------------------------------
+                    // STRONG FAST RISE
+                    // -------------------------------------------------
+                    if (Delta >= 1.0 * 18 &&
+                        SDelta >= 1.0 * 18 &&
+                        LDelta >= 1.0 * 18
+                    ) {
+
+                        microBolus = microBolus * 0.2
+                        rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus} ")
+                        rT.reason.append(" CHANGED SIZE 0.201 for fast rise 0.201 smb ")
+
+                        // -------------------------------------------------
+                        // MODERATE FAST RISE
+                        // -------------------------------------------------
+                    } else if (Delta >= 0.55 * 18 &&
+                        SDelta >= 0.30 * 18 &&
+                        Delta < 1.0 * 18 &&
+                        SDelta < 1.0 * 18
+                    ) {
+
+                        if (bg > 8.8 * 18) {
+                            microBolus = microBolus * 0.8
+                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.802 for moderate fast rise 0.802 ")
+                        } else if (bg > 8.0 * 18) {
+                            microBolus = microBolus * 0.7
+                            rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.703 for moderate fast rise 0.703 ")
+                        } else if (bg <= 8.0 * 18 &&
+                            ( microBolus > 0.030 * max_iob ||
+                                nowHour <= 8 )
+                        ){
+                            microBolus = microBolus * 0.6
+                            rT.reason.append("microBolus ov 0.030 * max_iob  = microBolus * 0.6 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.604 for moderate fast rise 0.604 ")
+                        } else if (bg <= 8.0 * 18 && microBolus <= 0.030 * max_iob ){
+                            rT.reason.append("smbUn  0.564 for 0.030 * max_iob  microBolus  = ${microBolus} ")
+                        }
+
+                        // -------------------------------------------------
+                        // MILD FAST RISE
+                        // -------------------------------------------------
+                    } else if (Delta >= 0.25 * 18 &&
+                        SDelta >= 0.15 * 18 &&
+                        Delta < 0.55 * 18 &&
+                        SDelta < 0.55 * 18
+                    ) {
+
+                        if (bg > 8.8 * 18) {
+                            microBolus = microBolus * 0.9
+                            rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.905 for mild fast rise 0.905 ")
+                        } else if (bg > 8.0 * 18) {
+                            microBolus = microBolus * 0.85
+                            rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.856 for mild fast rise 0.856 ")
+                        } else if (bg <= 8.0 * 18 &&
+                            ( microBolus > 0.030 * max_iob ||
+                                nowHour <= 8 )
+                        ){
+                            microBolus = microBolus * 0.8
+                            rT.reason.append("microBolus ov 0.030 * max_iob  = microBolus * 0.6 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.807 for mild fast rise 0.807 ")
+                        } else {
+                            rT.reason.append("smbUn 0.607 for 0.030 * max_iob microBolus = ${microBolus} ")
+                        }
+                    }
+
+                    // -------------------------------------------------
+                    // VERY EARLY RISE  (corrected: non-overlapping)
+                    // -------------------------------------------------
+                } else if (Delta >= 0.25 * 18 &&
+                    SDelta >= 0.10 * 18 &&
+                    Delta < 0.35 * 18
+                ){
+                    if ( microBolus > 0.030 * max_iob ||
+                        nowHour <= 8
+                    ) {
+                        microBolus = microBolus * 0.6
+                        rT.reason.append("microBolus ov 0.030 * max_iob = microBolus * 0.6 ; microBolus = ${microBolus} ")
+                        rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
+                    } else {
+                        rT.reason.append("smbUn 0.608 for 0.030 * max_iob microBolus = ${microBolus} ")
+                    }
+
+// =====================================================
+// HIGHER BG FAST RISE
+// =====================================================
+                } else if (Delta >= 0.9 * 18 &&
+                    SDelta >= 0.7 * 18 &&
+                    bg > 11.5 * 18 &&
+                    bg < 13.5 * 18 &&
+                    IOB > 0.35 * profile.max_iob &&
+                    COB <= 25 //&&VERY EARLY RISE
+                //microBolus > 0.3 // not used except rsn049
+                ) {
+
+                    microBolus = microBolus * 0.75
+                    rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
+
+// =====================================================
+// EARLY MORNING EXTRA FAST RISE GUARD
+// corrected: direct IOB gate instead of iobThUser < 30
+// =====================================================
+                } else if ((Delta >= 0.3 * 18 &&
+                        SDelta >= 0.1 * 18 &&
+                        nowHour < 10 &&
+                        IOB > 0.075 * profile.max_iob &&
+                        COB <= 25)  ||
+                    ( nowHour < 4 &&
+                        IOB > 0.10 * profile.max_iob)
+                ) {
+
+                    microBolus = microBolus * 0.8
+                    rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                    rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
+
+// =====================================================
+// TWILIGHT / OTHER HOURS SMB LIMITING
+// corrected: remove unreachable >=10 inner branch
+// corrected: total cap now 0.075 * profile.max_iob
+// =====================================================
+                } else if (((nowHour >= 6) && (nowHour <= 8)) &&
+                    bg < 9.0 * 18 &&
+                    Delta < 1.0 * 18 &&
+                    SDelta < 1.0 * 18 &&
+                    (Steps60M ?: 0) < 10 &&
+                    COB <= 25
+                ) {
+
+                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
+                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                        rT.reason.append("nowHour ${nowHour} ")
+                        rT.reason.append ("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                        rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
+                    }
+
+                    if (microBolus + IOB > 0.075 * profile.max_iob) {
+                        microBolus = 0.075 * profile.max_iob - IOB
+                        rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
+                        rT.reason.append("CHANGED SIZE 0.07512 fast rise 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
+                    }
+                    /*else if (microBolus > 0.3) {
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
+                        rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
+                    }*/ // not used except rsn049
+                    rT.reason.append(" CHANGED SIZE SMB other hours ")
+
+// =====================================================
+// DEFAULT: NO SMB SIZE CHANGE
+// =====================================================
+                } else {
+                    rT.reason.append(" NOT CHANGED SIZE SMB ")
+                }
+                /*/ =====================================================
+                // FAST RISE SECONDARY CAP. .not used except rsn049not used except gpt047
+                // =====================================================
+                                if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
+                                    microBolus = microBolus * 0.75
+                                    rT.reason.append("microBolus ov 0.60 after fast rise CHANGED SIZE SMB 0.75  ${microBolus} ")
+                                }*/
+// =====================================================
+// ROUND / ZERO / APPLY SMB
+// =====================================================
+                microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
+
+                if (offsetSoZeroSMB) {
+                    microBolus = 0.0
+                    rT.reason.append(" offsetSoZeroSMB($offsetSoZeroSMB) Microbolusing := 0")
+                } else if (microBolus <= 0) {
+                    microBolus = 0.0
+                }
+
                 if (lastBolusAge > SMBInterval - 6.0) {   // 6s tolerance
                     if (microBolus > 0) {
                         rT.units = microBolus
@@ -1119,7 +1779,6 @@ class DetermineBasalAutoISF @Inject constructor(
                     val waitingMins = round(nextBolusMins - waitingSeconds / 60.0, 0)
                     rT.reason.append("Waiting ${waitingMins.withoutZeros()}m ${waitingSeconds.withoutZeros()}s to microbolus again.")
                 }
-                //rT.reason += ". ";
 
                 // if no zero temp is required, don't return yet; allow later code to set a high temp
                 if (durationReq > 0) {
@@ -1127,11 +1786,19 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.duration = durationReq
                     return rT
                 }
-
             }
-
-            val maxSafeBasal = getMaxSafeBasal(profile)
-
+            var maxSafeBasal = getMaxSafeBasal(profile)
+            /*            if (nowHour <5){
+                            //maxSafeBasal = 2 *  profile.bas
+                            //maxSafeBasal = min(1.3 * profile.current_basal, maxSafeBasal, 0.06 * max_iob)
+                            maxSafeBasal = minOf(
+                                1.3 * profile.current_basal,
+                                minOf(maxSafeBasal, 0.07 * max_iob)
+                            )
+                        }
+                       // rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+                        rT.reason.append("1.3 * current_basal: ${round(2 *  profile.current_basal, 2)} OR 0.06 * max_iob: ${0.06 * max_iob} OR maxSafeBasal: ${maxSafeBasal.withoutZeros()},")
+            */
             if (rate > maxSafeBasal) {
                 rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
                 rate = round_basal(maxSafeBasal)
@@ -1139,7 +1806,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
             val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
             if (insulinScheduled >= insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
-                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} > 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
+                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
@@ -1149,13 +1816,18 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             if (currenttemp.duration > 5 && (round_basal(rate) <= round_basal(currenttemp.rate))) { // if required temp <~ existing temp basal
-                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} >~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
                 return rT
             }
 
             // required temp > existing temp basal
-            rT.reason.append("temp ${currenttemp.rate.toFixed2()} < ${round(rate, 2).withoutZeros()}U/hr. ")
+            rT.reason.append("temp ${currenttemp.rate.toFixed2()} un ${round(rate, 2).withoutZeros()}U/hr. ")
             return setTempBasal(rate, 30, profile, rT, currenttemp)
         }
     }
 }
+
+/*
+
+DetermineBasalAutoISF.kt 320.001
+ */
