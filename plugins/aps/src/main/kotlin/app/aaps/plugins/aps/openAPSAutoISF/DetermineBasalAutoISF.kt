@@ -846,7 +846,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
         )
 
-        rT.reason.append (" ================================== Delta: ${Delta }")//Delta ${minDelta.toFixed2()}
+        rT.reason.append(" ================================== Delta: ${Delta }")//Delta ${minDelta.toFixed2()}
         rT.reason.append("IOB: ${round(IOB, 2)} ;")
         rT.reason.append("iobThUser is ${iobThUser} ;;")
         var TOD = "not set TOD"
