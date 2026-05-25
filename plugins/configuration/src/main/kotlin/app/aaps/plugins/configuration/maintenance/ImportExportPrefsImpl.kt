@@ -103,6 +103,15 @@ class ImportExportPrefsImpl @Inject constructor(
     private val configBuilder: ConfigBuilder
 ) : ImportExportPrefs {
 
+    companion object {
+        /** Cloud preference files loaded from the active cloud provider for the import list. */
+        var cloudPrefsFiles: List<PrefsFile> = emptyList()
+        /** Pagination token for the next page of cloud files; null when all files are loaded. */
+        var cloudNextPageToken: String? = null
+        /** Total number of files available in the cloud (0 = unknown). */
+        var cloudTotalFilesCount: Int = 0
+    }
+
     override var selectedImportFile: PrefsFile? = null
 
     override fun prefsFileExists(): Boolean = prefFileList.listPreferenceFiles().isNotEmpty()
