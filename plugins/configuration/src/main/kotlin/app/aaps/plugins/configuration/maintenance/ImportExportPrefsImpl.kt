@@ -13,7 +13,6 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.lifecycleScope
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
@@ -110,10 +109,7 @@ class ImportExportPrefsImpl @Inject constructor(
     private val context: Context,
     private val dataWorkerStorage: DataWorkerStorage,
     private val activePlugin: ActivePlugin,
-    private val configBuilder: ConfigBuilder,
-    private val cloudStorageManager: CloudStorageManager,
-    private val exportOptionsDialog: ExportOptionsDialog,
-    private val importSourceDialog: ImportSourceDialog
+    private val configBuilder: ConfigBuilder
 ) : ImportExportPrefs {
 
     companion object {
@@ -418,7 +414,8 @@ class ImportExportPrefsImpl @Inject constructor(
         else
             rh.gs(R.string.exported_failed)
 
-        ToastUtils.okToast(activity, exportResultMessage)
+            // Send toast alert to overview
+            ToastUtils.okToast(activity, exportResultMessage)
 
         disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE.asSettingsExport(error = exportResultMessage),
@@ -932,13 +929,11 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
     override fun exportUserEntriesCsv(activity: FragmentActivity) {
-        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT exportUserEntriesCsv called, enqueuing WorkManager")
         WorkManager.getInstance(activity).enqueueUniqueWork(
             "export",
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequest.Builder(CsvExportWorker::class.java).build()
         )
-        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT WorkManager enqueued")
     }
 
     class CsvExportWorker(
@@ -951,8 +946,6 @@ class ImportExportPrefsImpl @Inject constructor(
         @Inject lateinit var userEntryPresentationHelper: UserEntryPresentationHelper
         @Inject lateinit var storage: Storage
         @Inject lateinit var persistenceLayer: PersistenceLayer
-        @Inject lateinit var cloudStorageManager: CloudStorageManager
-        @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
 
         override suspend fun doWorkAndLog(): Result {
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT doWorkAndLog started")
@@ -985,7 +978,7 @@ class ImportExportPrefsImpl @Inject constructor(
             val newFile = prefFileList.newExportCsvFile() ?: return Result.failure()
             var ret = Result.success()
             try {
-                saveCsv(newFile, userEntries)
+                saveCsv(newFile, entries)
                 ToastUtils.okToast(context, rh.gs(R.string.ue_exported))
             } catch (e: FileNotFoundException) {
                 ToastUtils.errorToast(context, rh.gs(R.string.filenotfound) + " " + newFile)
