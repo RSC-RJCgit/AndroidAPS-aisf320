@@ -1,3 +1,16 @@
+diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
+index 89a881088c..fefec19ba8 100644
+--- a/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
++++ b/core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt
+@@ -24,7 +24,7 @@ enum class StringKey(
+     GeneralSkin("skin", ""),
+     GeneralDarkMode("use_dark_mode", "dark", defaultedBySM = true),
+ 
+-    AapsDirectoryUri("aaps_directory", ""),
++    AapsDirectoryUri("aaps_directory", "", exportable = false),
+ 
+     ProtectionMasterPassword("master_password", "", isPassword = true),
+     ProtectionSettingsPassword("settings_password", "", isPassword = true),
 diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
 index 5f56829771..a5e676d075 100644
 --- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
