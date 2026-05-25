@@ -196,4 +196,6 @@
     <string name="select_state_value">Select state value</string>
     <string name="state_name_label">State name</string>
     <string name="state_value_label">State value</string>
+    <string name="profilecheck">Profile check</string>
+    <string name="trigger_phone_battery_label">Phone battery level</string>
 </resources>
