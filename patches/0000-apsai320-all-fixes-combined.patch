@@ -1,0 +1,73 @@
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index 5f56829771..a5e676d075 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -142,6 +142,8 @@ class AutomationPlugin @Inject constructor(
+     var executionLog: MutableList<String> = ArrayList()
+     var btConnects: MutableList<EventBTChange> = ArrayList()
+ 
++    @Volatile private var importInProgress = false
++
+     private var handler: Handler? = null
+     private var refreshLoop: Runnable
+ 
+@@ -215,7 +217,18 @@ class AutomationPlugin @Inject constructor(
+         super.onStop()
+     }
+ 
++    override fun beforeImport() {
++        importInProgress = true
++    }
++
++    override fun afterImport() {
++        importInProgress = false
++        loadFromSP()
++        rxBus.send(EventAutomationUpdateGui())
++    }
++
+     private fun storeToSP() {
++        if (importInProgress) return
+         val array = JSONArray()
+         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
+         try {
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+index da71d44c0f..cbcf2fb6e6 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -86,8 +86,12 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector)
+ 
+     override fun fromJSON(data: String): Action {
+         val o = JSONObject(data)
++        // Support both a320 format ("inputStateName"/"inputState")
++        // and AndroidAPS1/Boost format ("stateName"/"stateValue")
+         val stateName = JsonHelper.safeGetString(o, "inputStateName", "")
++            .ifEmpty { JsonHelper.safeGetString(o, "stateName", "") }
+         val stateValue = JsonHelper.safeGetString(o, "inputState", "")
++            .ifEmpty { JsonHelper.safeGetString(o, "stateValue", "") }
+ 
+         stateNameDropdown.value = stateName
+ 
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+index d35b75a8e8..b45f5ace43 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+@@ -395,6 +395,8 @@ class ImportExportPrefsImpl @Inject constructor(
+                     PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
+                         if (importPossible) {
+                             activePlugin.beforeImport()
++                            // Preserve device-specific path — never let an import overwrite it
++                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
+                             sp.clear()
+                             for ((key, value) in prefs.values) {
+                                 if (value == "true" || value == "false") {
+@@ -403,6 +405,10 @@ class ImportExportPrefsImpl @Inject constructor(
+                                     sp.putString(key, value)
+                                 }
+                             }
++                            // Restore local AAPS directory path so it is never lost on import
++                            if (savedAapsDirectory.isNotEmpty()) {
++                                sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
++                            }
+                             activePlugin.afterImport()
+                             restartAppAfterImport(activity)
+                         } else {
