@@ -21,12 +21,14 @@ on:
   push:
     branches:
       - '3.4.0.0+aisf3.2.0'
-      - '**aisf3.2.0'
 
 jobs:
   build:
-    name: Build AAPS
+    name: Build AAPS (${{ matrix.buildVariant }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        buildVariant: ${{ fromJSON(github.event_name == 'push' && '["fullRelease","aapsclient2Release"]' || format('["{0}"]', github.event.inputs.buildVariant || 'fullRelease')) }}
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         run: |
@@ -154,7 +156,7 @@ jobs:
 
       - name: Set BUILD_VARIANT
         run: |
-          BUILD_VARIANT="${{ github.event.inputs.buildVariant || 'fullRelease' }}"
+          BUILD_VARIANT="${{ matrix.buildVariant }}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
