@@ -21,14 +21,12 @@ on:
   push:
     branches:
       - '3.4.0.0+aisf3.2.0'
+      - '**aisf3.2.0'
 
 jobs:
   build:
-    name: Build AAPS (${{ matrix.buildVariant }})
+    name: Build AAPS
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        buildVariant: ${{ fromJSON(github.event_name == 'push' && '["fullRelease","aapsclient2Release"]' || format('["{0}"]', github.event.inputs.buildVariant || 'fullRelease')) }}
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         run: |
@@ -99,7 +97,7 @@ jobs:
           echo "test" > dummy.txt
           zip -q dummy.jar dummy.txt
           rm dummy.txt
-          
+
           JARSIGNER_LOG=$(mktemp)
           if ! jarsigner \
               -keystore "$RUNNER_TEMP/keystore/keystore.jks" \
@@ -122,16 +120,16 @@ jobs:
         run: |
           echo "🔐 Decoding GDRIVE_OAUTH2..."
           DECODED=$(echo "${{ secrets.GDRIVE_OAUTH2 }}" | base64 -d)
-          
+
           GDRIVE_CLIENT_ID=$(echo "$DECODED" | cut -d'|' -f1)
           GDRIVE_REFRESH_TOKEN=$(echo "$DECODED" | cut -d'|' -f2)
-          
+
           echo "::add-mask::$GDRIVE_CLIENT_ID"
           echo "::add-mask::$GDRIVE_REFRESH_TOKEN"
-          
+
           echo "GDRIVE_CLIENT_ID=$GDRIVE_CLIENT_ID" >> $GITHUB_ENV
           echo "GDRIVE_REFRESH_TOKEN=$GDRIVE_REFRESH_TOKEN" >> $GITHUB_ENV
-          
+
           echo "✅ GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
 
       - name: Retrieving Google Drive access token
@@ -156,7 +154,7 @@ jobs:
 
       - name: Set BUILD_VARIANT
         run: |
-          BUILD_VARIANT="${{ matrix.buildVariant }}"
+          BUILD_VARIANT="${{ github.event.inputs.buildVariant || 'fullRelease' }}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
@@ -290,8 +288,8 @@ jobs:
             echo "✅ Uploaded: $NAME"
           }
 
-          upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
-          upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
-          upload_to_gdrive "aaps-${VERSION}-aapsclient2.apk" "aaps-${VERSION}-aapsclient2.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
+          upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
 
           echo "🎉 APKs successfully uploaded to Google Drive!"
