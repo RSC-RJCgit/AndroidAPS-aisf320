@@ -1310,5 +1310,5 @@ open class OpenAPSBoostPlugin @Inject constructor(
 }
 /*
 
-OpenAPSBoostPluginvBoostv3002-rc.txt
+OpenAPSBoostPluginvBoostv3003-rc.txt
  */
