@@ -1,0 +1,28 @@
+Missed BG Readings - SMS to all numbers
+========================================
+Adds SMS notification to all whitelisted numbers when the missed BG readings
+alarm fires. Uses the same KeepAliveWorker trigger as the existing alarm so
+it works even when the AAPS loop is suspended due to missing CGM data.
+
+Toggle "Report missed BG readings" added to SMS Communicator preferences (default ON).
+SMS text: "Missed BG readings" (same as existing notification).
+
+--- 1. core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt ---
+After: SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true),
+Add:   SmsReportMissedBgReadings("smscommunicator_report_missed_bg_readings", true),
+
+--- 2. implementation/src/main/kotlin/app/aaps/implementation/alerts/LocalAlertUtilsImpl.kt ---
+Inside checkStaleBGAlert(), after the NsClient announcement block, before the closing }:
+Add:
+            if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
+
+--- 3. plugins/main/src/main/kotlin/app/aaps/plugins/main/general/smsCommunicator/SmsCommunicatorPlugin.kt ---
+After: addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.SmsReportPumpUnreachable, ...))
+Add:   addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.SmsReportMissedBgReadings, summary = R.string.smscommunicator_report_missed_bg_readings_summary, title = R.string.smscommunicator_missed_bg_readings))
+
+--- 4. plugins/main/src/main/res/values/strings.xml ---
+After: <string name="smscommunicator_pump_unreachable">Report pump unreachable</string>
+Add:
+    <string name="smscommunicator_report_missed_bg_readings_summary">Send SMS to all numbers if missed BG readings alarm is triggered</string>
+    <string name="smscommunicator_missed_bg_readings">Report missed BG readings</string>
