@@ -1,6 +1,8 @@
 package app.aaps.plugins.automationstate.services
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
 import kotlinx.serialization.json.Json
@@ -9,7 +11,8 @@ import javax.inject.Singleton
 
 @Singleton
 class AutomationStateService @Inject constructor(
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val rxBus: RxBus
 ) : AutomationStateInterface {
 
     private var automationStates: HashMap<String, String> = HashMap()
@@ -49,6 +52,7 @@ class AutomationStateService @Inject constructor(
 
         automationStates[trimmedName] = trimmedState
         preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
+        rxBus.send(EventPreferenceChange(AutomationStateStringKey.AutomationCurrentStates.key))
     }
 
     override fun getState(stateName: String):String {
