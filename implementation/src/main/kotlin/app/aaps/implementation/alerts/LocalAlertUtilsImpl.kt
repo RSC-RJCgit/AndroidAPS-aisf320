@@ -147,6 +147,8 @@ class LocalAlertUtilsImpl @Inject constructor(
                     listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
                 ).subscribe()
             }
+            if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
         } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
             rxBus.send(EventDismissNotification(Notification.BG_READINGS_MISSED))
         }
