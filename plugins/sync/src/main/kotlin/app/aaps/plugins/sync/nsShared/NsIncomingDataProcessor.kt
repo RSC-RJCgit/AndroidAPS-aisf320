@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsShared
 
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.FD
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.IDs
@@ -150,8 +151,13 @@ class NsIncomingDataProcessor @Inject constructor(
 
                 when (treatment) {
                     is NSBolus                  ->
-                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync)
-                            storeDataForDb.addToBoluses(treatment.toBolus())
+                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync) {
+                            val bolus = treatment.toBolus()
+                            if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT && !doFullSync)
+                                aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus (excluded by setting): $treatment")
+                            else
+                                storeDataForDb.addToBoluses(bolus)
+                        }
 
                     is NSCarbs                  ->
                         if (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT || doFullSync)
