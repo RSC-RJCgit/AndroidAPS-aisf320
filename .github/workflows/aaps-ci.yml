@@ -20,7 +20,7 @@ on:
 
   push:
     branches:
-      - '3422a320'
+      - 'tdd-sensitivity-autosens-off'
 
 jobs:
   build:
