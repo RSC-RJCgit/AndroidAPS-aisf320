@@ -1,9 +1,7 @@
 package app.aaps.core.interfaces.aps
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 
-@Suppress("OPT_IN_USAGE")
 @Serializable
 data class GlucoseStatusAutoIsf(
     override val glucose: Double,
@@ -39,5 +37,5 @@ data class GlucoseStatusAutoIsf(
     /** correlation coefficient, i.e. quality of parabola fit */
     val corrSqu: Double = 0.0,
     /** true when Libre special settings are active (native Libre via xDrip, Juggluco, or FslApplySmoothing enabled) */
-    @Transient val libreActive: Boolean = false
+    val libreActive: Boolean = false
 ) : GlucoseStatus
