@@ -827,7 +827,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     aapsLogger.debug(LTag.APS, autosensResult.sensResult)
                     consoleError.add("TDD sensitivity: ${autosensResult.sensResult}")
                 } else {
-                    autosensResult.sensResult = "autosens disabled, TDD unavailable"
+                    val missing = listOfNotNull(
+                        if (tdd7D == null || tdd7D <= 0.0) "7D" else null,
+                        if (tdd1D == null) "1D" else null,
+                        if (tddLast4H == null) "4H" else null,
+                        if (tddLast8to4H == null) "8-4H" else null
+                    ).joinToString()
+                    autosensResult.sensResult = "autosens disabled, TDD unavailable (missing: $missing)"
                     aapsLogger.debug(LTag.APS, autosensResult.sensResult)
                     consoleError.add("TDD sensitivity: ${autosensResult.sensResult}")
                 }
