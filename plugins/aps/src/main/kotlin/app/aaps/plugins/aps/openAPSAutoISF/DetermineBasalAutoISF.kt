@@ -1817,7 +1817,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 rate = round_basal(maxSafeBasal)
             }
 
-            val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
+            val insulinScheduled = currenttemp.duration *  (currenttemp.rate - basal) / 60
             if (insulinScheduled >= insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
                 rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
