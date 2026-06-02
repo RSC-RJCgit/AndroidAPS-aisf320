@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.InternalSerializationApi::class)
+
 package app.aaps.core.interfaces.aps
 
 import kotlinx.serialization.Serializable
