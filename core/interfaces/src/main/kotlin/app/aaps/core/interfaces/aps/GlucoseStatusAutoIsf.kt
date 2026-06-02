@@ -1,10 +1,9 @@
 package app.aaps.core.interfaces.aps
 
-import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
-@OptIn(InternalSerializationApi::class)
+@Suppress("OPT_IN_USAGE")
 @Serializable
 data class GlucoseStatusAutoIsf(
     override val glucose: Double,
