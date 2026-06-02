@@ -1,6 +1,7 @@
 package app.aaps.core.interfaces.aps
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class GlucoseStatusAutoIsf(
@@ -37,5 +38,5 @@ data class GlucoseStatusAutoIsf(
     /** correlation coefficient, i.e. quality of parabola fit */
     val corrSqu: Double = 0.0,
     /** true when Libre special settings are active (native Libre via xDrip, Juggluco, or FslApplySmoothing enabled) */
-    val libreActive: Boolean = false
+    @Transient val libreActive: Boolean = false
 ) : GlucoseStatus
