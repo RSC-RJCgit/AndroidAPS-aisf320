@@ -345,7 +345,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320.018")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320.019")
             consoleError.add("----------------------------------")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
@@ -841,7 +841,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " 320.018 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
+            " 320.019 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_bg(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1448,10 +1448,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (profile.smb_delivery_ratio_min > 0.8) {
                     lower_SMB = profile.smb_delivery_ratio_min
                 }
-                //val lower_SMB = profile.smb_delivery_ratio_min
                 val high_SMB = profile.smb_delivery_ratio_max
                 val bg_range_SMB = profile.smb_delivery_ratio_bg_range
                 val delivery_ratio = profile.smb_delivery_ratio
+                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB}   ")
+                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB}  ")
                 var ThresholForFastRise = lower_SMB * 0.030 * max_iob
                 consoleError.add("Delta threshold lower_SMB * 0.030 * max_iob = ($lower_SMB * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
                 rT.reason.append("Delta threshold lower_SMB * 0.030 * max_iob = ($lower_SMB * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
@@ -1547,6 +1548,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = microBolus * 0.5
                     rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
                     rT.reason.append(" CHANGED SIZE fast rise 0.512 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+
 // =====================================================
 // POST CARBS / SWING DAMPING
 // =====================================================
@@ -1585,7 +1587,20 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     microBolus = 0.0
                     rT.reason.append("glitch 0.0 ")
-
+// =====================================================
+// SENSOR GLITCH3 / SHORT SPIKE WITHOUT TREND
+// =====================================================
+                } else if (
+                    SDelta >= 0.25 * 18 &&
+                    LDelta <= 0.08 * 18 &&
+                    SDelta >= 3.0 * (LDelta + 0.01)   // SDelta disproportionate to LDelta
+                ) {
+                    microBolus = microBolus * 0.5
+                    rT.reason.append(" CHANGED SIZE fast rise 0.513 short spike no trend ")
+                } else if (
+                    LibreTrue &&
+                    !profile.temptargetSet
+                ) {
 // =====================================================
 // FAST RISE HANDLING, microBolus > 0.3
 // 3 BG tiers:
@@ -1593,181 +1608,182 @@ class DetermineBasalAutoISF @Inject constructor(
 //   8.0 to 8.8     -> moderate relaxation
 //   > 8.8          -> stronger relaxation
 // =====================================================
-                } else if(
-                    bg > 6.0 * 18 &&
-                    bg < 12.0 * 18 &&
-                    COB <= 25 &&
-                    Delta >= 0.25 * 18 &&
-                    SDelta >= 0.10 * 18 &&
-                    ( (IOB > 0.10 * profile.max_iob )
-                        || ( nowHour >=18 || nowHour <= 5  ))  // && microBolus > 0.3
-                //microBolus > 0.3 //not used except rsn049
-                ) {
+                        if (
+                            bg > 6.0 * 18 &&
+                            bg < 12.0 * 18 &&
+                            COB <= 25 &&
+                            Delta >= 0.25 * 18 &&
+                            SDelta >= 0.10 * 18 &&
+                            ((IOB > 0.10 * profile.max_iob)
+                                || (nowHour >= 18 || nowHour <= 5))  // && microBolus > 0.3
+                        //microBolus > 0.3 //not used except rsn049
+                        ) {
 
-                    // -------------------------------------------------
-                    // STRONG FAST RISE
-                    // -------------------------------------------------
-                    if (Delta >= 1.0 * 18 &&
-                        SDelta >= 1.0 * 18 &&
-                        LDelta >= 1.0 * 18
-                    ) {
+                            // -------------------------------------------------
+                            // STRONG FAST RISE
+                            // -------------------------------------------------
+                            if (Delta >= 1.0 * 18 &&
+                                SDelta >= 1.0 * 18 &&
+                                LDelta >= 1.0 * 18
+                            ) {
 
-                        microBolus = microBolus * 0.2
-                        rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.201 for fast rise 0.201 smb ")
+                                microBolus = microBolus * 0.2
+                                rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus} ")
+                                rT.reason.append(" CHANGED SIZE 0.201 for fast rise 0.201 smb ")
 
-                        // -------------------------------------------------
-                        // MODERATE FAST RISE
-                        // -------------------------------------------------
-                    } else if (Delta >= 0.55 * 18 &&
-                        SDelta >= 0.30 * 18 &&
-                        Delta < 1.0 * 18 &&
-                        SDelta < 1.0 * 18
-                    ) {
+                                // -------------------------------------------------
+                                // MODERATE FAST RISE
+                                // -------------------------------------------------
+                            } else if (Delta >= 0.55 * 18 &&
+                                SDelta >= 0.30 * 18 &&
+                                Delta < 1.0 * 18 &&
+                                SDelta < 1.0 * 18
+                            ) {
 
-                        if (bg > 8.8 * 18) {
-                            microBolus = microBolus * 0.8
-                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.802 for moderate fast rise 0.802 ")
-                        } else if (bg > 8.0 * 18) {
-                            microBolus = microBolus * 0.7
-                            rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.703 for moderate fast rise 0.703 ")
-                        } else if (bg <= 8.0 * 18 &&
-                            ( microBolus > ThresholForFastRise||
-                                nowHour <= 8 )
-                        ){
-                            microBolus = microBolus * 0.6
-                            rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus * 0.6 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.604 for moderate fast rise 0.604 ")
-                        } else if (bg <= 8.0 * 18 && microBolus <= ThresholForFastRise){
-                            rT.reason.append("smbUn  0.564 for microBolus  = ${microBolus} ")
-                        }
+                                if (bg > 8.8 * 18) {
+                                    microBolus = microBolus * 0.8
+                                    rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.802 for moderate fast rise 0.802 ")
+                                } else if (bg > 8.0 * 18) {
+                                    microBolus = microBolus * 0.7
+                                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.703 for moderate fast rise 0.703 ")
+                                } else if (bg <= 8.0 * 18 &&
+                                    (microBolus > ThresholForFastRise ||
+                                        nowHour <= 8)
+                                ) {
+                                    microBolus = microBolus * 0.6
+                                    rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus * 0.6 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.604 for moderate fast rise 0.604 ")
+                                } else if (bg <= 8.0 * 18 && microBolus <= ThresholForFastRise) {
+                                    rT.reason.append("smbUn  0.564 for microBolus  = ${microBolus} ")
+                                }
 
-                        // ----------------------------------------0.030 * max_iob---------
-                        // MILD FAST RISE
-                        // -------------------------------------------------
-                    } else if (Delta >= 0.25 * 18 &&
-                        SDelta >= 0.15 * 18 &&
-                        Delta < 0.55 * 18 &&
-                        SDelta < 0.55 * 18
-                    ) {
+                                // ----------------------------------------0.030 * max_iob---------
+                                // MILD FAST RISE
+                                // -------------------------------------------------
+                            } else if (Delta >= 0.25 * 18 &&
+                                SDelta >= 0.15 * 18 &&
+                                Delta < 0.55 * 18 &&
+                                SDelta < 0.55 * 18
+                            ) {
 
-                        if (bg > 8.8 * 18) {
-                            microBolus = microBolus * 0.8
-                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.805 for mild fast rise 0.905 ")
-                        } else if (bg > 8.0 * 18) {
-                            microBolus = microBolus * 0.7
-                            rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.706 for mild fast rise 0.706 ")
-                        } else if (bg <= 8.0 * 18 &&
-                            ( microBolus > ThresholForFastRise||
-                                nowHour <= 8 )
-                        ){
-                            microBolus = microBolus * 0.5
-                            rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.5 ; microBolus = ${microBolus} ")
-                            rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
-                        } else {
-                            rT.reason.append("smbUn 0.507 for 0.025 * max_iob microBolus = ${microBolus} ")
-                        }
-                    }
+                                if (bg > 8.8 * 18) {
+                                    microBolus = microBolus * 0.8
+                                    rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.805 for mild fast rise 0.905 ")
+                                } else if (bg > 8.0 * 18) {
+                                    microBolus = microBolus * 0.7
+                                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.706 for mild fast rise 0.706 ")
+                                } else if (bg <= 8.0 * 18 &&
+                                    (microBolus > ThresholForFastRise ||
+                                        nowHour <= 8)
+                                ) {
+                                    microBolus = microBolus * 0.5
+                                    rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.5 ; microBolus = ${microBolus} ")
+                                    rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
+                                } else {
+                                    rT.reason.append("smbUn 0.507 for 0.025 * max_iob microBolus = ${microBolus} ")
+                                }
+                            }
 
-                    // -------------------------------------------------
-                    // VERY EARLY RISE  (corrected: non-overlapping)
-                    // -------------------------------------------------
-                } else if (Delta >= 0.25 * 18 &&
-                    SDelta >= 0.10 * 18 &&
-                    Delta < 0.35 * 18
-                ){
-                    if ( microBolus > ThresholForFastRise||
-                        nowHour <= 8
-                    ) {
-                        microBolus = microBolus * 0.6
-                        rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.6 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
-                    } else {
-                        rT.reason.append("smbUn 0.608 for 0.030 * max_iob microBolus = ${microBolus} ")
-                    }
+                            // -------------------------------------------------
+                            // VERY EARLY RISE  (corrected: non-overlapping)
+                            // -------------------------------------------------
+                        } else if (Delta >= 0.25 * 18 &&
+                            SDelta >= 0.10 * 18 &&
+                            Delta < 0.35 * 18
+                        ) {
+                            if (microBolus > ThresholForFastRise ||
+                                nowHour <= 8
+                            ) {
+                                microBolus = microBolus * 0.6
+                                rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.6 ; microBolus = ${microBolus} ")
+                                rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
+                            } else {
+                                rT.reason.append("smbUn 0.608 for 0.030 * max_iob microBolus = ${microBolus} ")
+                            }
 
 // =====================================================
 // HIGHER BG FAST RISE
 // =====================================================
-                } else if (Delta >= 0.9 * 18 &&
-                    SDelta >= 0.7 * 18 &&
-                    bg > 11.5 * 18 &&
-                    bg < 13.5 * 18 &&
-                    IOB > ThresholForFastRise * max_iob &&
-                    COB <= 25 //&&VERY EARLY RISE
-                //microBolus > 0.3 // not used except rsn049
-                ) {
+                        } else if (Delta >= 0.9 * 18 &&
+                            SDelta >= 0.7 * 18 &&
+                            bg > 11.5 * 18 &&
+                            bg < 13.5 * 18 &&
+                            IOB > ThresholForFastRise * max_iob &&
+                            COB <= 25 //&&VERY EARLY RISE
+                        //microBolus > 0.3 // not used except rsn049
+                        ) {
 
-                    microBolus = microBolus * 0.75
-                    rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
+                            microBolus = microBolus * 0.75
+                            rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
 
 // =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD
 // corrected: direct IOB gate instead of iobThUser < 30
 // =====================================================
-                } else if ((Delta >= 0.3 * 18 &&
-                        SDelta >= 0.1 * 18 &&
-                        nowHour < 10 &&
-                        IOB > 0.075 * profile.max_iob &&
-                        COB <= 25)  ||
-                    ( nowHour < 4 &&
-                        IOB > 0.10 * profile.max_iob)
-                ) {
+                        } else if ((Delta >= 0.3 * 18 &&
+                                SDelta >= 0.1 * 18 &&
+                                nowHour < 10 &&
+                                IOB > 0.075 * profile.max_iob &&
+                                COB <= 25) ||
+                            (nowHour < 4 &&
+                                IOB > 0.10 * profile.max_iob)
+                        ) {
 
-                    microBolus = microBolus * 0.8
-                    rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                    rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
+                            microBolus = microBolus * 0.8
+                            rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                            rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
 
 // =====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // corrected: remove unreachable >=10 inner branch
 // corrected: total cap now 0.075 * profile.max_iob
 // =====================================================
-                } else if (((nowHour >= 6) && (nowHour <= 8)) &&
-                    bg < 9.0 * 18 &&
-                    Delta < 1.0 * 18 &&
-                    SDelta < 1.0 * 18 &&
-                    (Steps60M ?: 0) < 10 &&
-                    COB <= 25
-                ) {
+                        } else if (((nowHour >= 6) && (nowHour <= 8)) &&
+                            bg < 9.0 * 18 &&
+                            Delta < 1.0 * 18 &&
+                            SDelta < 1.0 * 18 &&
+                            (Steps60M ?: 0) < 10 &&
+                            COB <= 25
+                        ) {
 
-                    if (microBolus > 0.02 * profile.max_iob) {
-                        microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("nowHour ${nowHour} ")
-                        rT.reason.append ("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                        rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = 0.02 * profile.max_iob ${microBolus} ")
-                    }
+                            if (microBolus > 0.02 * profile.max_iob) {
+                                microBolus = 0.02 * profile.max_iob
+                                rT.reason.append("nowHour ${nowHour} ")
+                                rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
+                                rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = 0.02 * profile.max_iob ${microBolus} ")
+                            }
 
-                    if (microBolus + IOB > 0.075 * profile.max_iob) {
-                        microBolus = 0.075 * profile.max_iob - IOB
-                        rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
-                        rT.reason.append("CHANGED SIZE 0.07512 fast rise 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
-                    }
-                    /*else if (microBolus > 0.3) {
+                            if (microBolus + IOB > 0.075 * profile.max_iob) {
+                                microBolus = 0.075 * profile.max_iob - IOB
+                                rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
+                                rT.reason.append("CHANGED SIZE 0.07512 fast rise 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
+                            }
+                            /*else if (microBolus > 0.3) {
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus ov 0.3 microBolus = microBolus * 0.75 ${microBolus} ")
                         rT.reason.append("CHANGED SIZE 0.75 microBolus ${microBolus} ")
                     }*/ // not used except rsn049
-                    rT.reason.append(" CHANGED SIZE SMB other hours ")
+                            rT.reason.append(" CHANGED SIZE SMB other hours ")
 
 // =====================================================
 // DEFAULT: NO SMB SIZE CHANGE
 // =====================================================
-                } else {
-                    rT.reason.append(" NOT CHANGED SIZE SMB ")
-                }
-                /*/ =====================================================
+                        } else {
+                            rT.reason.append(" NOT CHANGED SIZE SMB ")
+                        }
+                        /*/ =====================================================
                 // FAST RISE SECONDARY CAP. .not used except rsn049not used except gpt047
                 // =====================================================
                                 if (rT.reason.toString().contains("fast rise") && microBolus > 0.60) {
                                     microBolus = microBolus * 0.75
                                     rT.reason.append("microBolus ov 0.60 after fast rise CHANGED SIZE SMB 0.75  ${microBolus} ")
                                 }*/
+                }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
@@ -1842,5 +1858,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.kt 320.018
+DetermineBasalAutoISF.kt 320.019
  */
