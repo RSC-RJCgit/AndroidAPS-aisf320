@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -117,7 +118,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val determineBasalAutoISF: DetermineBasalAutoISF,
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    private val tddCalculator: TddCalculator
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -796,7 +798,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
                     autosensResult = it.autosensResult
                 }
-            } else autosensResult.sensResult = "autosens disabled"
+            } else {
+                // When autosens is off, derive sensitivity ratio from blended TDD (Boost method).
+                // Blends 8H-weighted, 7D, and 1D TDD; ratio = blendedTDD / tdd7D.
+                // ratio > 1 = more insulin needed recently (resistance); < 1 = more sensitive.
+                val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
+                val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
+                val tddLast4H  = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+                val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+                if (tdd7D != null && tdd7D > 0.0 && tdd1D != null &&
+                    tddLast4H != null && tddLast8to4H != null) {
+                    val w8H = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3
+                    val blendedTDD = if (w8H < 0.75 * tdd7D) {
+                        // Recent usage well below average — pull 7D toward recent reality before blending
+                        val adj7D = w8H + ((w8H / tdd7D) * (tdd7D - w8H))
+                        (adj7D * 0.34) + (tdd1D * 0.33) + (w8H * 0.33)
+                    } else {
+                        (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
+                    }
+                    val tddRatio = blendedTDD / tdd7D
+                    autosensResult.ratio = tddRatio.coerceIn(
+                        preferences.get(DoubleKey.AutosensMin),
+                        preferences.get(DoubleKey.AutosensMax)
+                    )
+                    autosensResult.sensResult = "TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
+                        " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                        " W8H ${Round.roundTo(w8H, 0.1)}U)"
+                } else {
+                    autosensResult.sensResult = "autosens disabled, TDD unavailable"
+                }
+            }
             sensitivityRatio = autosensResult.ratio
         }
         val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
