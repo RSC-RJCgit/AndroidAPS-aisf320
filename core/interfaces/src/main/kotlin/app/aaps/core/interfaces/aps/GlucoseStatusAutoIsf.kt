@@ -35,5 +35,7 @@ data class GlucoseStatusAutoIsf(
      *  where 1 unit of Time is 5 minutes */
     val a2: Double = 0.0,
     /** correlation coefficient, i.e. quality of parabola fit */
-    val corrSqu: Double = 0.0
+    val corrSqu: Double = 0.0,
+    /** true when Libre special settings are active (native Libre via xDrip, Juggluco, or FslApplySmoothing enabled) */
+    val libreActive: Boolean = false
 ) : GlucoseStatus

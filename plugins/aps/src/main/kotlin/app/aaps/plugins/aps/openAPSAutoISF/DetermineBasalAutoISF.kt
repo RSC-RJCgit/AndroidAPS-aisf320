@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
@@ -1442,7 +1443,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
-                var LibreTrue = 1.00
+                val LibreTrue = if ((glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true) 1.0 else 1.0
                 var lower_SMB = 1.00
                 if (profile.smb_delivery_ratio_min > 0.8) {
                     lower_SMB = profile.smb_delivery_ratio_min
@@ -1472,8 +1473,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus                          // ? add this
 
-                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
-                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                    if (microBolus > 0.02 * profile.max_iob) {
+                        microBolus = 0.02 * profile.max_iob
                         rT.reason.append("microBolus fast rise 0.713 capped 0.02 * max_iob = ${microBolus} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1497,8 +1498,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus                          // ? add this
 
-                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
-                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                    if (microBolus > 0.02 * profile.max_iob) {
+                        microBolus = 0.02 * profile.max_iob
                         rT.reason.append("microBolus capped fast rise 0.715 0.02 * max_iob = ${microBolus} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
@@ -1735,11 +1736,11 @@ class DetermineBasalAutoISF @Inject constructor(
                     COB <= 25
                 ) {
 
-                    if (microBolus > LibreTrue * 0.02 * profile.max_iob) {
-                        microBolus = LibreTrue * 0.02 * profile.max_iob
+                    if (microBolus > 0.02 * profile.max_iob) {
+                        microBolus = 0.02 * profile.max_iob
                         rT.reason.append("nowHour ${nowHour} ")
                         rT.reason.append ("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                        rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = LibreTrue * 0.02 * profile.max_iob ${microBolus} ")
+                        rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = 0.02 * profile.max_iob ${microBolus} ")
                     }
 
                     if (microBolus + IOB > 0.075 * profile.max_iob) {

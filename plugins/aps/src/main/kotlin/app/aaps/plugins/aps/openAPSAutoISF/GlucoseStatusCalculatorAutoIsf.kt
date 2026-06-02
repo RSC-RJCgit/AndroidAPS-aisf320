@@ -265,6 +265,7 @@ class GlucoseStatusCalculatorAutoIsf @Inject constructor(
             a0 = a0,
             a1 = a1,
             a2 = a2,
+            libreActive = fslReally,
         )   //.also { aapsLogger.debug(LTag.GLUCOSE, it.log(decimalFormatter)) }.asRounded()
     }
 
