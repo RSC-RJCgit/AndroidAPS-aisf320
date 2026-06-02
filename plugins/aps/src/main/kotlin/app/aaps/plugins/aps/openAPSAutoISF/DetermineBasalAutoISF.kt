@@ -347,6 +347,7 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.add("----------------------------------")
             consoleError.add("start AutoISF ${profile.autoISF_version} __ 320.TDD020")
             consoleError.add("----------------------------------")
+            consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
         }
