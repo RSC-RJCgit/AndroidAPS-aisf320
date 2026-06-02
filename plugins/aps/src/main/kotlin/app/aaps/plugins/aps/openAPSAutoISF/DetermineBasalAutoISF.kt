@@ -1443,7 +1443,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
-                val LibreTrue = if ((glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true) 1.0 else 1.0
+                val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
+                val LibreTrue = if (libreActive) 1.0 else 1.0
                 var lower_SMB = 1.00
                 if (profile.smb_delivery_ratio_min > 0.8) {
                     lower_SMB = profile.smb_delivery_ratio_min
@@ -1598,7 +1599,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = microBolus * 0.5
                     rT.reason.append(" CHANGED SIZE fast rise 0.513 short spike no trend ")
                 } else if (
-                    LibreTrue &&
+                    libreActive &&
                     !profile.temptargetSet
                 ) {
 // =====================================================
