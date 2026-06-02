@@ -119,7 +119,7 @@
     <string name="triggers">Triggers:</string>
     <string name="preconditions">Preconditions:</string>
     <string name="automation_event">Automation event</string>
-    <string name="automation_repeat_interval">Repeat every (min, 0=default)</string>
+    <string name="automation_repeat_interval">Min interval (min)</string>
     <string name="reorder_label">Reorder</string>
     <string name="user_action">User action</string>
     <string name="remove_selected_items">Remove selected items</string>

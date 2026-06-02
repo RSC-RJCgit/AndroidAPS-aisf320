@@ -1,0 +1,25 @@
+From bbf6e626436ef6f7dc5be4c61c2a946c9da27a72 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 27 May 2026 23:05:56 +0930
+Subject: [PATCH] 320.006
+
+---
+ .../plugins/automationstate/services/AutomationStateService.kt  | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+index d2058b594e..e8ba385ae0 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+@@ -63,7 +63,7 @@ class AutomationStateService @Inject constructor(
+     }
+ 
+     override fun getAllStates(): List<Pair<String, String>> {
+-        return automationStates.toList()
++        return stateValues.keys.map { stateName -> Pair(stateName, automationStates[stateName] ?: "") }
+     }
+ 
+     fun clearStates() {
+-- 
+2.43.0.windows.1
+

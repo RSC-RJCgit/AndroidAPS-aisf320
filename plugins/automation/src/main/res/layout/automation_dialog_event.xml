@@ -170,7 +170,7 @@
                     android:layout_width="80dp"
                     android:layout_height="wrap_content"
                     android:inputType="number"
-                    android:text="0"
+                    android:text="5"
                     android:textAlignment="center" />
 
             </LinearLayout>
