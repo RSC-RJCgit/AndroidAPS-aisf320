@@ -354,7 +354,7 @@ class DetermineBasalAutoISF @Inject constructor(
         // mod autoISF3.0-dev: if that would put us over iobTH, then reduce accordingly; allow 30% overrun
         val iobTHtolerance = 130.0
         val iobTHvirtual = iob_threshold_percent * iobTHtolerance / 10000.0 * profile.max_iob * iobTH_reduction_ratio
-        var enableSMB = false
+        var enableSMB =  false
         if (microBolusAllowed && loop_wanted_smb != "AAPS") {
             if (loop_wanted_smb == "enforced" || loop_wanted_smb == "fullLoop") {              // otherwise FL switched SMB off
                 enableSMB = true
