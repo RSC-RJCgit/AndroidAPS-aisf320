@@ -61,7 +61,7 @@ class LoadSecondaryBolusCarbsWorker(
         return try {
             // Load from last fetched timestamp, or last 48h on first run
             val lastLoaded = max(
-                preferences.get(LongKey.NsClientSecondaryLastLoaded) - 24 * 60 * 60 * 1000L,
+                preferences.get(LongKey.NsClientSecondaryLastLoaded) - 2 * 60 * 60 * 1000L,
                 dateUtil.now() - 72 * 60 * 60 * 1000L
             )
             val lastLoadedIso = dateUtil.toISOString(lastLoaded)
