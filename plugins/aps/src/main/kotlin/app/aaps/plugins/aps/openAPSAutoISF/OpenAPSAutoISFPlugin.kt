@@ -646,6 +646,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     fun convert_bg(value: Double): String =
         profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
 
+    fun convert_isf(value: Double): String =
+        String.format("%.1f", profileUtil.fromMgdlToUnits(value))
+
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
@@ -963,7 +966,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + min(720.0, round(sens / final_ISF, 1)))
+            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + convert_isf(min(720.0, sens / final_ISF)))
             if (applyWeights) return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
@@ -973,7 +976,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val deltaType = "pp"
         when {
             bg_off > 0.0                     -> {
-                consoleError.add("${deltaType}_ISF adaptation by-passed as average glucose < $target_bg+10")
+                consoleError.add("${deltaType}_ISF adaptation by-passed as average glucose < ${convert_bg(target_bg)}+10")
             }
 
             glucose_status.shortAvgDelta < 0 -> {
@@ -995,11 +998,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val weightISF: Double = dura_ISF_weight
         when {
             dura05 < 10.0      -> {
-                consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level $avg05")
+                consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level ${convert_bg(avg05)}")
             }
 
             avg05 <= target_bg -> {
-                consoleError.add("dura_ISF by-passed; avg. glucose $avg05 below target $target_bg")
+                consoleError.add("dura_ISF by-passed; avg. glucose ${convert_bg(avg05)} below target ${convert_bg(target_bg)}")
             }
 
             else               -> {
@@ -1008,7 +1011,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val avg05Weight = weightISF / target_bg
                 dura_ISF += dura05Weight * avg05Weight * (avg05 - target_bg)
                 sens_modified = true
-                consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${round(sens, 1)} did not do it for ${round(dura05, 1)}m")
+                consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${convert_isf(sens)} did not do it for ${round(dura05, 1)}m")
             }
         }
         autoIsfValues.duraIsf = dura_ISF
@@ -1020,11 +1023,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + round(sens / final_ISF, 1))
+            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + convert_isf(sens / final_ISF))
             if (applyWeights) return round(sens / final_ISF, 1)
             return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
-        if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+        if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1378,5 +1381,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 3320.TDD020
+OpenAPSAutoISFPlugin.ktSt 3320.TDD021
  */
