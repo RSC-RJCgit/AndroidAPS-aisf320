@@ -216,8 +216,8 @@
     <string name="openapsama_dura_ISF_weight">dura_ISF weight\n(dura_ISF_weight)</string>
     <string name="openapsama_smb_delivery_ratio">fixed SMB delivery ratio\n(smb_delivery_ratio)</string>
     <string name="openapsama_smb_delivery_ratio_min">ThresholdFastRise , was variable SMB delivery ratio, lower end\n(smb_delivery_ratio_min)</string>
-    <string name="openapsama_smb_delivery_ratio_max">Variable 2, was variable SMB delivery ratio, upper end\n(smb_delivery_ratio_max)</string>
-    <string name="openapsama_smb_delivery_ratio_bg_range">Variable 3 , was variable SMB delivery ratio, mapped glucose range\n(smb_delivery_ratio_bg_range)</string>
+    <string name="openapsama_smb_delivery_ratio_max">OFFSET , 0.5 to turn off TDD effect ,  was variable SMB delivery ratio, upper end\n(smb_delivery_ratio_max)</string>
+    <string name="openapsama_smb_delivery_ratio_bg_range">KEEP 0 for FIXED , was variable SMB delivery ratio, mapped glucose range\n(smb_delivery_ratio_bg_range)</string>
     <string name="openapsama_smb_max_range_extension">SMB/UAM max range extension\n(smb_max_range_extension)</string>
     <string name="openapsama_smb_delivery_ratio_summary">Default value: 0.5 This is another key OpenAPS safety cap, and specifies what share of the total insulin required can be delivered as SMB. This is to prevent people from getting into dangerous territory by setting SMB requests from the caregivers phone at the same time. Increase this experimental value slowly and with caution.</string>
     <string name="openapsama_smb_delivery_ratio_min_summary">Default value: 0.5 This is the lower end of a linearly increasing ratio rather than the fix value above.</string>
