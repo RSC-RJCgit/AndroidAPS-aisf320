@@ -1107,7 +1107,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
         }
         //var insulinReq = 2 * min(0.0, (eventualBG - target_bg) / sens)
-        if (profile.temptargetSet  && !isEven( target_bgOrigmm)  ){//target_bgOrigmm?
+        /*if (profile.temptargetSet  && !isEven( target_bgOrigmm)  ){//target_bgOrigmm?
             //if (profile.temptargetSet  && !isEven( target_bgOrigmm) && nowHour < 6 && target_bgOrigmm <= 4.4  ){//target_bgOrigmm?
             //insulinReq = 1.5 * insulinReq
             //rT.reason.append("(profile.temptargetSet  && !isEven( target_bgOrigmm && nowHour un 6  ); ODD 1.5 * insulinReq = "  + round(insulinReq, 2).withoutZeros() + " ")
@@ -1118,7 +1118,7 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("Even ? insulinReq ")
             consoleError.add("Even ? target_bgOrigmm ")
             consoleError.add("Even ? insulinReq ")
-        }
+        }*/
         //================================================================================/
 
         rT.reason.append(
@@ -1373,6 +1373,8 @@ class DetermineBasalAutoISF @Inject constructor(
             var insulinReq =
                 // if (dynIsfMode) round((min(minPredBG, eventualBG) - target_bg) / future_sens, 2)
                 round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
+            insulinReq *= TDDfactor
+            max_iob *= TDDfactor
             // if that would put us over max_iob, then reduce accordingly
             if (insulinReq > max_iob - iob_data.iob) {
                 rT.reason.append("max_iob $max_iob, ")
@@ -1459,7 +1461,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     lower_SMB = profile.smb_delivery_ratio_min
                 }
                 val high_SMB = profile.smb_delivery_ratio_max
-                max_iob *= TDDfactor
+                //max_iob *= TDDfactor
                 val bg_range_SMB = profile.smb_delivery_ratio_bg_range
                 val delivery_ratio = profile.smb_delivery_ratio
                 rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB} TDDfactor= ${round(TDDfactor, 2)}   ")
