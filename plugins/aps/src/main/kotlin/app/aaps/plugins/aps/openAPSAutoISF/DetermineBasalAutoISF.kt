@@ -348,7 +348,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320.TDD022")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320.TDD023")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -845,7 +845,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " 320.TDD022 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320.TDD023 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1363,6 +1363,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 return setTempBasal(basal, 30, profile, rT, currenttemp)
             }
         } else { // otherwise, calculate 30m high-temp required to get projected BG down to target
+            // TDDfactor: scale max_iob and insulinReq by TDD ratio when high_SMB is active
+            var TDDfactor = 1.0
+            if (profile.smb_delivery_ratio_max > 0.5) {
+                TDDfactor = min(1.2, max(0.80, sensitivityRatio))
+            }
             // insulinReq is the additional insulin required to get minPredBG down to target_bg
             //console.error(minPredBG,eventualBG);
             var insulinReq =
@@ -1454,9 +1459,10 @@ class DetermineBasalAutoISF @Inject constructor(
                     lower_SMB = profile.smb_delivery_ratio_min
                 }
                 val high_SMB = profile.smb_delivery_ratio_max
+                max_iob *= TDDfactor
                 val bg_range_SMB = profile.smb_delivery_ratio_bg_range
                 val delivery_ratio = profile.smb_delivery_ratio
-                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB}   ")
+                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB} TDDfactor= ${round(TDDfactor, 2)}   ")
                 rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB}  ")
                 var ThresholForFastRise = lower_SMB * 0.030 * max_iob
                 consoleError.add("Delta threshold lower_SMB * 0.030 * max_iob = ($lower_SMB * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
@@ -1839,7 +1845,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             val insulinScheduled = currenttemp.duration *  (currenttemp.rate - basal) / 60
-            if (insulinScheduled >= insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
+            if (insulinScheduled >= TDDfactor * insulinReq * 2) { // if current temp would deliver >2x more than the required insulin, lower the rate
                 rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
@@ -1863,5 +1869,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.kt 320.TDD022
+DetermineBasalAutoISF.kt 320.TDD023
  */
