@@ -1375,6 +1375,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
             insulinReq *= TDDfactor
             max_iob *= TDDfactor
+            consoleError.add("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
+
             // if that would put us over max_iob, then reduce accordingly
             if (insulinReq > max_iob - iob_data.iob) {
                 rT.reason.append("max_iob $max_iob, ")
