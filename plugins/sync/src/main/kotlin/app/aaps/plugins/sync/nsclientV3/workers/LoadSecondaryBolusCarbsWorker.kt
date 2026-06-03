@@ -61,7 +61,7 @@ class LoadSecondaryBolusCarbsWorker(
         return try {
             // Load from last fetched timestamp, or last 48h on first run
             val lastLoaded = max(
-                preferences.get(LongKey.NsClientSecondaryLastLoaded) - 24 * 60 * 60 * 1000L,  // always overlap 24h to catch missed entries
+                preferences.get(LongKey.NsClientSecondaryLastLoaded) - 2 * 60 * 60 * 1000L,  // always overlap 2h to catch missed entries
                 dateUtil.now() - 72 * 60 * 60 * 1000L  // max 72h lookback
             )
             val lastLoadedIso = dateUtil.toISOString(lastLoaded)
