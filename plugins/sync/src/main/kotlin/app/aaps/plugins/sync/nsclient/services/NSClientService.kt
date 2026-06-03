@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
 import app.aaps.core.data.time.T.Companion.mins
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -58,6 +59,7 @@ import app.aaps.plugins.sync.nsclient.acks.NSUpdateAck
 import app.aaps.plugins.sync.nsclient.data.AlarmAck
 import app.aaps.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsclient.workers.NSClientAddUpdateWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import app.aaps.plugins.sync.nsclient.workers.NSClientMbgWorker
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import com.google.common.base.Charsets
@@ -498,6 +500,8 @@ class NSClientService : DaggerService() {
                                     .setInputData(dataWorkerStorage.storeInputData(addedOrUpdatedTreatments))
                                     .build()
                             )
+                            WorkManager.getInstance(this)
+                                .enqueue(OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build())
                         }
                     }
                     if (data.has("devicestatus")) {
