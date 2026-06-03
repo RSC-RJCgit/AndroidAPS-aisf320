@@ -251,7 +251,7 @@ class NSClientPlugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced") return
+        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced" && requiredKey != "ns_secondary_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
