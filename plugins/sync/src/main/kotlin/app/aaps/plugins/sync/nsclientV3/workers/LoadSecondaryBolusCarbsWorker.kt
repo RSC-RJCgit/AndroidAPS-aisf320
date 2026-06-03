@@ -73,7 +73,7 @@ class LoadSecondaryBolusCarbsWorker(
                 // NsIncomingDataProcessor respects NsClientAcceptInsulin + NsClientAcceptInsulinExcludeSmb + NsClientAcceptCarbs
                 // Ensure those keys are ON in settings; SMB exclusion handled by NsClientAcceptInsulinExcludeSmb
                 nsIncomingDataProcessor.processTreatments(treatments, false)
-                storeDataForDb.storeTreatmentsToDb()
+                storeDataForDb.storeTreatmentsToDb(false)
                 preferences.put(LongKey.NsClientSecondaryLastLoaded, dateUtil.now())
             } else {
                 rxBus.send(EventNSClientNewLog("◄ SEC-NS", "No new treatments from secondary NS"))
