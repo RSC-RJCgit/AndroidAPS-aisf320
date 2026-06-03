@@ -50,6 +50,8 @@ enum class StringKey(
     NsClientApiSecret("nsclientinternal_api_secret", "", isPassword = true),
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),
     NsClientAccessToken("nsclient_token", "", isPassword = true),
+    NsClientSecondaryUrl("nsclient_secondary_url", "", dependency = BooleanKey.NsClientSecondaryEnabled),
+    NsClientSecondaryAccessToken("nsclient_secondary_token", "", isPassword = true, dependency = BooleanKey.NsClientSecondaryEnabled),
 
     // Google Drive settings
     GoogleDriveStorageType("google_drive_storage_type", "local"),

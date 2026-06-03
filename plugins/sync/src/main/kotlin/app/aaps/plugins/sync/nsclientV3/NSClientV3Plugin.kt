@@ -96,6 +96,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -774,6 +775,7 @@ class NSClientV3Plugin @Inject constructor(
             .then(OneTimeWorkRequest.Builder(LoadLastModificationWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadBgWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadTreatmentsWorker::class.java).build())
+            .then(OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadFoodsWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadProfileStoreWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadDeviceStatusWorker::class.java).build())
@@ -854,6 +856,13 @@ class NSClientV3Plugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTherapyEvent, summary = R.string.ns_receive_therapy_events_summary, title = R.string.ns_receive_therapy_events))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptRunningMode, summary = R.string.ns_receive_running_mode_summary, title = R.string.ns_receive_running_mode))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTbrEb, summary = R.string.ns_receive_tbr_eb_summary, title = R.string.ns_receive_tbr_eb))
+            })
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "ns_secondary_settings"
+                title = rh.gs(R.string.ns_secondary_settings)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryEnabled, summary = R.string.ns_secondary_enabled_summary, title = R.string.ns_secondary_enabled))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_alarm_options"
