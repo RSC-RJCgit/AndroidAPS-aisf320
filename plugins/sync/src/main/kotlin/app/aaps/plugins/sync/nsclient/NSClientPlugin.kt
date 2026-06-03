@@ -287,6 +287,13 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTbrEb, summary = R.string.ns_receive_tbr_eb_summary, title = R.string.ns_receive_tbr_eb))
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "ns_secondary_settings"
+                title = rh.gs(R.string.ns_secondary_settings)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryEnabled, summary = R.string.ns_secondary_enabled_summary, title = R.string.ns_secondary_enabled))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
+            })
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_alarm_options"
                 title = rh.gs(R.string.ns_alarm_options)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientNotificationsFromAlarms, title = R.string.ns_alarms))

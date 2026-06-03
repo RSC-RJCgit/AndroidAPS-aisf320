@@ -27,6 +27,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import app.aaps.plugins.sync.tidepool.TidepoolFragment
 import app.aaps.plugins.sync.tidepool.auth.AuthFlowIn
 import app.aaps.plugins.sync.wear.WearFragment
@@ -68,6 +69,7 @@ abstract class SyncModule {
     @ContributesAndroidInjector abstract fun contributesLoadFoodsWorker(): LoadFoodsWorker
     @ContributesAndroidInjector abstract fun contributesLoadProfileStoreWorker(): LoadProfileStoreWorker
     @ContributesAndroidInjector abstract fun contributesTreatmentWorker(): LoadTreatmentsWorker
+    @ContributesAndroidInjector abstract fun contributesSecondaryBolusCarbsWorker(): LoadSecondaryBolusCarbsWorker
     @ContributesAndroidInjector abstract fun contributesLoadDeviceStatusWorker(): LoadDeviceStatusWorker
     @ContributesAndroidInjector abstract fun contributesDataSyncWorker(): DataSyncWorker
 

@@ -1859,5 +1859,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.kt 320.022
+DetermineBasalAutoISF.kt a320New001
  */

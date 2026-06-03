@@ -62,6 +62,13 @@
     <string name="ns_receive_insulin_summary">Accept insulin entered through NS or AAPSClient (it\'s not delivered, only calculated towards IOB)</string>
     <string name="ns_receive_insulin_exclude_smb">Exclude SMB from download</string>
     <string name="ns_receive_insulin_exclude_smb_summary">Skip automated micro-boluses (SMB) when downloading insulin — only manual boluses are accepted</string>
+    <string name="ns_secondary_enabled">Download bolus+carbs from secondary NS</string>
+    <string name="ns_secondary_enabled_summary">Pull manual boluses and carbs from a separate Nightscout site (e.g. main phone\'s NS) while uploading outcomes to the primary NS</string>
+    <string name="ns_secondary_url">Secondary NS URL</string>
+    <string name="ns_secondary_url_summary">Nightscout URL to download bolus and carbs from (e.g. https://mymainns.herokuapp.com)</string>
+    <string name="ns_secondary_token">Secondary NS access token</string>
+    <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site</string>
+    <string name="ns_secondary_settings">Secondary NS (bolus+carbs source)</string>
     <string name="ns_receive_carbs">Receive carbs</string>
     <string name="ns_receive_carbs_summary">Accept carbs entered through NS or AAPSClient</string>
     <string name="ns_receive_therapy_events">Receive therapy events</string>
