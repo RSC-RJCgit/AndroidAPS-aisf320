@@ -929,6 +929,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
                                      "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
             }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            //                                       "ISF " + min(720.0, round(sens / final_ISF, 1)))
             if (applyWeights) return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
@@ -992,6 +994,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
                                      "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
             }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+             //                                      "ISF " + round(sens / final_ISF, 1))
             if (applyWeights) return round(sens / final_ISF, 1)
             return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
@@ -1002,6 +1006,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
                                  "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         }
+        //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1355,5 +1360,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSta320New008
+OpenAPSAutoISFPlugin.ktSta320New007
  */
