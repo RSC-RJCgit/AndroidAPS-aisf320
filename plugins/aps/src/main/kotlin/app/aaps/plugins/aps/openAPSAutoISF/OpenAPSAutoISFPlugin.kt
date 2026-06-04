@@ -924,10 +924,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
             if (applyWeights) {
                 consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
-                                     "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+                                     "ISF  " + round(sens / sensitivityRatio, 1))
             } else {
-                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
-                                     "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                                     "ISF  " + round(sens / sensitivityRatio, 1))
             }
             //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
             //                                       "ISF " + min(720.0, round(sens / final_ISF, 1)))
@@ -989,10 +989,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
             if (applyWeights) {
                 consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
-                                     "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+                                     "ISF " + round(sens / final_ISF, 1))
             } else {
-                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
-                                     "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                                     "ISF " + round(sens / final_ISF, 1))
             }
             //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
              //                                      "ISF " + round(sens / final_ISF, 1))
@@ -1003,10 +1003,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
                                  "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         } else {
-            consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is odd, " +
+            consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
                                  "ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         }
-        //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + round(sens / sensitivityRatio, 1))
+        //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, 
+        // ISF (unchanged) " + round(sens / sensitivityRatio, 1))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1360,5 +1361,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSta320New007
+OpenAPSAutoISFPlugin.ktSta320New009
  */
