@@ -858,7 +858,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("AutoISF weights disabled in Preferences")
             skipWeights = true
         } else if (maxIobIsEven) {
-            consoleError.add("AutoISF weights display only: max_iob ${round(maxIob, 1)} is even")
+            consoleError.add("AutoISF weights DISPLAY only: max_iob ${round(maxIob, 1)} is even")
             applyWeights = false
         } else {
             consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd")
@@ -966,7 +966,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            if (applyWeights) {
+                consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            } else {
+                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            //                                       "ISF " + convert_isf(min(720.0, sens / final_ISF)))
             if (applyWeights) return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
@@ -1023,11 +1031,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF " + convert_isf(sens / final_ISF))
+            if (applyWeights) {
+                consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            } else {
+                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            //                                       "ISF " + convert_isf(sens / final_ISF))
             if (applyWeights) return round(sens / final_ISF, 1)
             return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
-        if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
+        if (applyWeights) {
+            consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+                                 "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
+        } else {
+            consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                                 "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
+        }
+        //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+        //                                       "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1381,5 +1405,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 3320.TDD024NS7
+OpenAPSAutoISFPlugin.ktSt 320TDD029
  */
