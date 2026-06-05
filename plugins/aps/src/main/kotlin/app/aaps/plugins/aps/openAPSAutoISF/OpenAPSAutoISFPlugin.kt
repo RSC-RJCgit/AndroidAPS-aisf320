@@ -855,13 +855,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (calibrationStopsSMB) {
             consoleError.add("AutoISF weights calculated for display but not applied: calibrating")
         } else if (!autoIsfWeights || glucose_status == null) {
-            consoleError.add("AutoISF weights disabled in Preferences")
+        /*    consoleError.add("AutoISF weights disabled in Preferences")
             skipWeights = true
-        } else if (maxIobIsEven) {
-            consoleError.add("AutoISF weights DISPLAY only: max_iob ${round(maxIob, 1)} is even")
+        } else if (maxIobIsEven) {*/
+            consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences")
             applyWeights = false
         } else {
-            consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd")
+            consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences")
             applyWeights = true
         }
         if (skipWeights) {
@@ -967,10 +967,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
             if (applyWeights) {
-                consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+                consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences " +
                                      "ISF " + convert_isf(min(720.0, sens / final_ISF)))
             } else {
-                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences " +
                                      "ISF " + convert_isf(min(720.0, sens / final_ISF)))
             }
             //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
@@ -1032,10 +1032,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
             if (applyWeights) {
-                consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+                consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences "+
                                      "ISF " + convert_isf(min(720.0, sens / final_ISF)))
             } else {
-                consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+                consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences" +
                                      "ISF " + convert_isf(min(720.0, sens / final_ISF)))
             }
             //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
@@ -1044,10 +1044,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
         if (applyWeights) {
-            consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences "+
                                  "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
         } else {
-            consoleError.add("AutoISF weights ISFOFF: max_iob ${round(maxIob, 1)} is even, " +
+            consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences"+
                                  "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
         }
         //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
@@ -1405,5 +1405,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD029
+OpenAPSAutoISFPlugin.ktSt 320TDD030
  */
