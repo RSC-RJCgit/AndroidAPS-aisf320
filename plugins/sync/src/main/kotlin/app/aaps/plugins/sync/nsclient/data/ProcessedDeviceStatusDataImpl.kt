@@ -8,13 +8,16 @@ import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.interfaces.BooleanPreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.plugins.sync.R
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
+import kotlin.text.append
 
 @Singleton
 class ProcessedDeviceStatusDataImpl @Inject constructor(
@@ -113,8 +116,52 @@ class ProcessedDeviceStatusDataImpl @Inject constructor(
             return HtmlHelper.fromHtml(string.toString())
         }
 
+    override val aisfStatus: Spanned
+        get() {
+            val string = StringBuilder()
+                .append("<span style=\"color:${rh.gac(app.aaps.core.ui.R.attr.nsTitleColor)}\">")
+                .append(rh.gs(R.string.script_debug_short))
+                .append(": </span>")
+
+            // test warning level
+            val level = when {
+                openAPSData.clockSuggested + T.mins(preferences.get(IntKey.NsClientUrgentAlarmStaleData).toLong()).msecs() < dateUtil.now() -> ProcessedDeviceStatusData.Levels.URGENT
+
+                openAPSData.clockSuggested + T.mins(preferences.get(IntKey.NsClientAlarmStaleData).toLong()).msecs() < dateUtil.now()       -> ProcessedDeviceStatusData.Levels.WARN
+                else                                                                                                                        -> ProcessedDeviceStatusData.Levels.INFO
+            }
+            string.append("<span style=\"color:${level.toColor()}\">")
+            var activeAlgorithm = getAlgorithm
+            if (activeAlgorithm == "SMB" && preferences.get(BooleanKey.ApsUseDynamicSensitivity)) {
+                activeAlgorithm = "DynISF"
+            }
+            string.append(activeAlgorithm)
+            string.append("</span>") // color
+            return HtmlHelper.fromHtml(string.toString())
+        }
+
+    override val extendedAisfStatus: Spanned
+        get() {
+            val debugInfo = getAPSResult()?.scriptDebug
+            if (debugInfo.isNullOrEmpty()) {
+                return HtmlHelper.fromHtml("")
+            }
+            val string = StringBuilder()
+            debugInfo.forEach { line ->
+                string.append(line).append("<br>")
+            }
+            return HtmlHelper.fromHtml(string.toString())
+        }
+
     override val openApsTimestamp: Long
         get() = if (openAPSData.clockSuggested != 0L) openAPSData.clockSuggested else -1
+
+    private val getAlgorithm: String
+        get() = try {
+            openAPSData.suggested!!.algorithm.name
+        } catch (e: Exception) {
+            ""
+        }
 
     override fun getAPSResult(): APSResult? =
         openAPSData.suggested?.let { apsResultProvider.get().with(it) }

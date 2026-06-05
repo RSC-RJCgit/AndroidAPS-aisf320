@@ -1,6 +1,7 @@
 package app.aaps.database.entities.data
 
 import app.aaps.database.entities.APSResult
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.Carbs
@@ -36,4 +37,5 @@ data class NewEntries(
     val versionChanges: List<VersionChange>,
     val heartRates: List<HeartRate>,
     val stepsCount: List<StepsCount>,
+    val autoIsfValues: List<AutoIsfValues>,
 )

@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -36,6 +39,7 @@ import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -185,10 +189,19 @@ class MainApp : DaggerApplication() {
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.preSnoozeAlarms()
 
+        // Activity Monitor
+        // Save AAPS start time
+        preferences.put(LongKey.AppStart, dateUtil.now())
+        // activate sensor
+        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        val phoneMovementDetector = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager.registerListener(app.aaps.plugins.aps.openAPSSMB.StepService, stepSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        sensorManager.registerListener(app.aaps.plugins.aps.openAPSSMB.PhoneMovementDetector, phoneMovementDetector, SensorManager.SENSOR_DELAY_NORMAL)
         //  schedule widget update
         refreshWidget = Runnable {
-            handler.postDelayed(refreshWidget, 60000)
-            Widget.updateWidget(this@MainApp, "ScheduleEveryMin")
+                handler.postDelayed(refreshWidget, 60000)
+                Widget.updateWidget(this@MainApp, "ScheduleEveryMin")
         }
         handler.postDelayed(refreshWidget, 60000)
         config.appInitialized = true

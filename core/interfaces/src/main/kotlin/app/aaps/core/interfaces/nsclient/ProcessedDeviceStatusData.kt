@@ -64,4 +64,6 @@ interface ProcessedDeviceStatusData {
     val uploaderStatus: String
     val uploaderStatusSpanned: Spanned
     val extendedUploaderStatus: Spanned
+    val aisfStatus: Spanned
+    val extendedAisfStatus: Spanned
 }

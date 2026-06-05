@@ -280,6 +280,7 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
         }
         androidPermission.notifyForStoragePermission(this)
         androidPermission.notifyForBatteryOptimizationPermission(this)
+        androidPermission.notifyForStepCountPermissions(this)
         if (!config.AAPSCLIENT) androidPermission.notifyForLocationPermissions(this)
         if (config.PUMPDRIVERS) {
             if (smsCommunicator.isEnabled())
@@ -326,6 +327,7 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
                 action = { maintenancePlugin.selectAapsDirectory(this) },
                 validityCheck = { preferences.getIfExists(StringKey.AapsDirectoryUri).isNullOrEmpty() }
             )
+
     }
 
     private fun startWizard(): Boolean =

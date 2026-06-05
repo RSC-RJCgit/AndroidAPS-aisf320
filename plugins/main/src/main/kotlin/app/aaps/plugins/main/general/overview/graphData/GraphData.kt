@@ -17,6 +17,8 @@ import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.TimeAsXAxisLabelFormatter
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -133,6 +135,12 @@ class GraphData @Inject constructor(
         overviewData.actScale.multiplier = maxY * scale / overviewData.maxIAValue
     }
 
+    fun addBgParabola(addPredictions: Boolean, scale: Double) {
+        addSeries(overviewData.bgParabolaSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        if (addPredictions) addSeries(overviewData.bgParabolaPredictionSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        overviewData.bgParabolaScale.multiplier = maxY * scale / overviewData.maxBgValue
+    }
+
     //Function below show -BGI to be able to compare curves with deviations
     fun addMinusBGI(useForScale: Boolean, scale: Double) {
         if (useForScale) {
@@ -145,24 +153,44 @@ class GraphData @Inject constructor(
     }
 
     // scale in % of vertical size (like 0.3)
-    fun addIob(useForScale: Boolean, scale: Double) {
-        if (useForScale) {
-            maxY = overviewData.maxIobValueFound
-            minY = -overviewData.maxIobValueFound
+    fun addIobTh(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
+        if (maxCommonIob>0.0) {
+            maxY = maxCommonIob
+            minY = -maxY
+        } else if (useForScale) {
+            maxY =max(overviewData.maxIobThValueFound, maxCommonIob)
+            minY = -maxY    //overviewData.maxIobThValueFound
         }
-        overviewData.iobScale.multiplier = maxY * scale / overviewData.maxIobValueFound
+        overviewData.iobThScale.multiplier = maxY * scale / max(overviewData.maxIobThValueFound, maxCommonIob)
+        addSeries(overviewData.iobThSeries as LineGraphSeries<ScaledDataPoint>)
+        //addSeries(overviewData.iobPredictions2Series)
+    }
+
+    // scale in % of vertical size (like 0.3)
+    fun addIob(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
+        if (maxCommonIob>0.0) {
+            maxY = maxCommonIob
+            minY = -maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxIobValueFound, maxCommonIob)
+            minY = -maxY    //overviewData.maxIobValueFound
+        }
+        overviewData.iobScale.multiplier = maxY * scale / max(overviewData.maxIobValueFound, maxCommonIob)      //overviewData.maxIobValueFound
         addSeries(overviewData.iobSeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.iobPredictions1Series as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         //addSeries(overviewData.iobPredictions2Series)
     }
 
     // scale in % of vertical size (like 0.3)
-    fun addAbsIob(useForScale: Boolean, scale: Double) {
-        if (useForScale) {
-            maxY = overviewData.maxIobValueFound
-            minY = -overviewData.maxIobValueFound
+    fun addAbsIob(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
+        if (maxCommonIob>0.0) {
+            maxY = maxCommonIob
+            minY = -maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxIobValueFound, maxCommonIob)
+            minY = -maxY    //overviewData.maxIobValueFound
         }
-        overviewData.iobScale.multiplier = maxY * scale / overviewData.maxIobValueFound
+        overviewData.iobScale.multiplier = maxY * scale / max(overviewData.maxIobValueFound, maxCommonIob)
         addSeries(overviewData.absIobSeries as FixedLineGraphSeries<ScaledDataPoint>)
     }
 
@@ -305,4 +333,81 @@ class GraphData @Inject constructor(
         addSeries(overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         overviewData.stepsForScale.multiplier = maxY * scale / maxSteps
     }
+
+    // AutoISF interim data
+    fun addAcceIsf(useForScale: Boolean, scale: Double, useCommonFactor: Boolean,  maxCommonFactor: Double) {
+        if (useCommonFactor) {
+            maxY = maxCommonFactor
+            minY = 2.0 - maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxAcceIsfValueFound, maxCommonFactor)
+            minY = 2.0 - maxY
+        }
+        if (maxY == 1.0) { maxY += 1.0e-6 }
+        if (minY == 1.0) { minY -= 1.0e-6 }
+        //aapsLogger.debug ( "addAcceIsf -  maxY: $maxY, minY: $minY, useForScale: $useForScale, maxCommonFactor: $maxCommonFactor")
+        overviewData.acceIsfScale.multiplier = maxY * scale / max(overviewData.maxAcceIsfValueFound, maxCommonFactor)
+        addSeries(overviewData.acceIsfSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
+    fun addBgIsf(useForScale: Boolean, scale: Double,useCommonFactor: Boolean,  maxCommonFactor: Double) {
+        if (useCommonFactor) {
+            maxY = maxCommonFactor
+            minY = 2.0 - maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxBgIsfValueFound,  maxCommonFactor)
+            minY = 2.0 - maxY
+        }
+        if (maxY == 1.0) { maxY += 1.0e-6 }
+        if (minY == 1.0) { minY -= 1.0e-6 }
+        //aapsLogger.debug ( "addBgIsf - maxY: $maxY, minY: $minY, useForScale: $useForScale, maxCommonFactor: $maxCommonFactor")
+        overviewData.bgIsfScale.multiplier = maxY * scale / max(overviewData.maxBgIsfValueFound ,maxCommonFactor)
+        addSeries(overviewData.bgIsfSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
+    fun addPpIsf(useForScale: Boolean, scale: Double, useCommonFactor: Boolean,  maxCommonFactor: Double) {
+        if (useCommonFactor) {
+            maxY = maxCommonFactor
+            minY = 2.0 - maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxPpIsfValueFound,  maxCommonFactor)
+            minY = 2.0 - maxY
+        }
+        if (maxY == 1.0) { maxY += 1.0e-6 }
+        if (minY == 1.0) { minY -= 1.0e-6 }
+        //aapsLogger.debug ( "addPpIsf - maxY: $maxY, minY: $minY, useForScale: $useForScale, maxCommonFactor: $maxCommonFactor")
+        overviewData.ppIsfScale.multiplier = maxY * scale / max(overviewData.maxPpIsfValueFound, maxCommonFactor)
+        addSeries(overviewData.ppIsfSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
+    fun addDuraIsf(useForScale: Boolean, scale: Double, useCommonFactor: Boolean,  maxCommonFactor: Double) {
+        if (useCommonFactor) {
+            maxY = maxCommonFactor
+            minY = 2.0 - maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxDuraIsfValueFound,  maxCommonFactor)
+            minY = 2.0 - maxY
+        }
+        if (maxY == 1.0) { maxY += 1.0e-6 }
+        if (minY == 1.0) { minY -= 1.0e-6 }
+        //aapsLogger.debug ( "addDuraIsf - maxY: $maxY, minY: $minY, useForScale: $useForScale, maxCommonFactor: $maxCommonFactor")
+        overviewData.duraIsfScale.multiplier = maxY * scale / max(overviewData.maxDuraIsfValueFound, maxCommonFactor)
+        addSeries(overviewData.duraIsfSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
+    fun addFinalIsf(useForScale: Boolean, scale: Double, useCommonFactor: Boolean,  maxCommonFactor: Double) {
+        if (useCommonFactor) {
+            maxY = maxCommonFactor
+            minY = 2.0 - maxY
+        } else if (useForScale) {
+            maxY = max(overviewData.maxFinalIsfValueFound, maxCommonFactor)
+            minY = 2.0 - maxY
+        }
+        if (maxY == 1.0) { maxY += 1.0e-6 }
+        if (minY == 1.0) { minY -= 1.0e-6 }
+        //aapsLogger.debug ( "addFinalIsf - maxY: $maxY, minY: $minY, useForScale: $useForScale, maxCommonFactor: $maxCommonFactor")
+        overviewData.finalIsfScale.multiplier = maxY * scale / max(overviewData.maxFinalIsfValueFound, maxCommonFactor)
+        addSeries(overviewData.finalIsfSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
 }

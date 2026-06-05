@@ -98,6 +98,15 @@
     <color name="profileSwitch">#FFFFFF</color>
     <color name="sens">#008585</color>
 
+    <!--    AutoISF-->
+    <color name="bgParabolaColor">#FF00FF</color>
+    <color name="acceIsfColor">#0066FF</color>
+    <color name="bgIsfColor">#FF0000</color>
+    <color name="ppIsfColor">#00FF00</color>
+    <color name="duraIsfColor">#FF8800</color>
+    <color name="finalIsfColor">#00FFFF</color>
+    <color name="iobThColor">#BBFFFF</color>
+
     <color name="ribbonDefault">#5a595b</color>
     <color name="daySelected">#D000FF00</color>
     <color name="weekdayOutline">#1ea3e5</color>

@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.convertToJSONArray
@@ -226,7 +227,7 @@ class DetermineBasalAdapterAutoISFJS(private val scriptReader: ScriptReader, pri
         this.profile.put("resistance_lowers_target", preferences.get(BooleanKey.ApsResistanceLowersTarget))
         this.profile.put("adv_target_adjustments", SMBDefaults.adv_target_adjustments)
         this.profile.put("exercise_mode", SMBDefaults.exercise_mode)
-        this.profile.put("half_basal_exercise_target", preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget))
+        this.profile.put("half_basal_exercise_target", preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget))
         this.profile.put("maxCOB", SMBDefaults.maxCOB)
         this.profile.put("skip_neutral_temps", pump.setNeutralTempAtFullHour())
         // min_5m_carbimpact is not used within SMB determinebasal

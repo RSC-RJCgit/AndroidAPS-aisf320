@@ -61,6 +61,8 @@
     <string name="apsmode_title">APS Mode</string>
     <string name="error_asking_for_permissions">Error asking for permissions</string>
     <string name="alert_dialog_permission_battery_optimization_failed">This device does not appear to support battery optimization whitelisting - you may experience performance issues.</string>
+    <!--    for  phone step counter -->
+    <string name="need_step_count_permission">Application needs body activity permission to access step counts via the AAPS phone</string>
 
     <!--    ConfigBuilder-->
     <string name="config_builder">Config Builder</string>

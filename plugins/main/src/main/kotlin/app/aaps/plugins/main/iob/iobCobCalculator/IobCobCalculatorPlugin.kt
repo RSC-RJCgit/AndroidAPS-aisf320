@@ -268,7 +268,7 @@ class IobCobCalculatorPlugin @Inject constructor(
         return iobTotal
     }
 
-    private fun calculateFromTreatmentsAndTemps(time: Long, lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Int, isTempTarget: Boolean): IobTotal {
+    private fun calculateFromTreatmentsAndTemps(time: Long, lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Double, isTempTarget: Boolean): IobTotal {
         val now = dateUtil.now()
         val bolusIob = calculateIobFromBolusToTime(time).round()
         val basalIob = getCalculationToTimeTempBasals(time, lastAutosensResult, exerciseMode, halfBasalExerciseTarget, isTempTarget).round()
@@ -342,7 +342,7 @@ class IobCobCalculatorPlugin @Inject constructor(
             carbs.forEach { carb ->
                 if (carb.timestamp > autosensData.time && carb.timestamp <= now) {
                     displayCob = displayCob!! + carb.amount
-                    displayCob = max(displayCob, 0.0)
+                    displayCob = max(displayCob!!, 0.0)
                 }
             }
             timestamp = autosensData.time
@@ -390,7 +390,7 @@ class IobCobCalculatorPlugin @Inject constructor(
         return array
     }
 
-    override fun calculateIobArrayForSMB(lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Int, isTempTarget: Boolean): Array<IobTotal> {
+    override fun calculateIobArrayForSMB(lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Double, isTempTarget: Boolean): Array<IobTotal> {
         // predict IOB out to DIA plus 30m
         val now = dateUtil.now()
         val len = 4 * 60 / 5
@@ -634,7 +634,7 @@ class IobCobCalculatorPlugin @Inject constructor(
         return total
     }
 
-    private fun getCalculationToTimeTempBasals(toTime: Long, lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Int, isTempTarget: Boolean): IobTotal {
+    private fun getCalculationToTimeTempBasals(toTime: Long, lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Double, isTempTarget: Boolean): IobTotal {
         val total = IobTotal(toTime)
         val pumpInterface = activePlugin.activePump
         val now = dateUtil.now()

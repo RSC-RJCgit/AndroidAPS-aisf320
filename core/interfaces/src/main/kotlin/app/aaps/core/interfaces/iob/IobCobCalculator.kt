@@ -23,7 +23,7 @@ interface IobCobCalculator {
     fun getBasalData(profile: Profile, fromTime: Long): BasalData
 
     fun calculateIobArrayInDia(profile: Profile): Array<IobTotal>
-    fun calculateIobArrayForSMB(lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Int, isTempTarget: Boolean): Array<IobTotal>
+    fun calculateIobArrayForSMB(lastAutosensResult: AutosensResult, exerciseMode: Boolean, halfBasalExerciseTarget: Double, isTempTarget: Boolean): Array<IobTotal>
     fun iobArrayToString(array: Array<IobTotal>): String
 
     fun clearCache()

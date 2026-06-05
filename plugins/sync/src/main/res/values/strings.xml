@@ -21,6 +21,7 @@
     <string name="unsupported_ns_version">Unsupported version of Nightscout</string>
     <string name="openaps_short">OAPS</string>
     <string name="uploader_short">UPLD</string>
+    <string name="script_debug_short">Algorithm</string>
     <string name="ns_malfunction">NSClient malfunction. Consider NS and NSClient restart.</string>
 
     <!-- AAPSClient -->

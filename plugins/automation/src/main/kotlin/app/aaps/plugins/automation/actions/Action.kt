@@ -64,12 +64,18 @@ abstract class Action(val injector: HasAndroidInjector) {
                 ActionSMBChange::class.java.simpleName            -> ActionSMBChange(injector).fromJSON(data.toString())
                 ActionNotification::class.java.simpleName         -> ActionNotification(injector).fromJSON(data.toString())
                 ActionProfileSwitch::class.java.simpleName        -> ActionProfileSwitch(injector).fromJSON(data.toString())
+                //ActionStopProfilePercent::class.java.simpleName   -> ActionStopProfilePercent(injector).fromJSON(data.toString())
                 ActionProfileSwitchPercent::class.java.simpleName -> ActionProfileSwitchPercent(injector).fromJSON(data.toString())
+                ActionAutoisfEnable::class.java.simpleName        -> ActionAutoisfEnable(injector).fromJSON(data.toString())
+                ActionAutoisfDisable::class.java.simpleName       -> ActionAutoisfDisable(injector).fromJSON(data.toString())
+                ActionSetAcceWeight::class.java.simpleName        -> ActionSetAcceWeight(injector).fromJSON(data.toString())
+                ActionSetIobTH::class.java.simpleName             -> ActionSetIobTH(injector).fromJSON(data.toString())
                 ActionRunAutotune::class.java.simpleName          -> ActionRunAutotune(injector).fromJSON(data.toString())
                 ActionSendSMS::class.java.simpleName              -> ActionSendSMS(injector).fromJSON(data.toString())
                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
                 ActionStopProcessing::class.java.simpleName       -> ActionStopProcessing(injector).fromJSON(data.toString())
                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
+                ActionSetAutomationState::class.java.simpleName   -> ActionSetAutomationState(injector).fromJSON(data.toString())
                 else                                              -> throw ClassNotFoundException(type)
             }
         } catch (e: Exception) {

@@ -29,7 +29,9 @@ import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
@@ -68,6 +70,7 @@ class MaintenanceFragment : DaggerFragment() {
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var fileListProvider: FileListProvider
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var cloudStorageManager: CloudStorageManager
     @Inject lateinit var cloudDirectoryDialog: CloudDirectoryDialog
     @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
@@ -144,8 +147,9 @@ class MaintenanceFragment : DaggerFragment() {
         binding.cleanupDb.setOnClickListener {
             activity?.let { activity ->
                 var result = ""
-                OKDialog.showConfirmation(activity, rh.gs(R.string.maintenance), rh.gs(app.aaps.core.ui.R.string.cleanup_db_confirm), Runnable {
-                    disposable += Completable.fromAction { result = persistenceLayer.cleanupDatabase(93, deleteTrackedChanges = true) }
+                val keepDays = preferences.get(IntKey.MaintenanceCleanupDays)
+                OKDialog.showConfirmation(activity, rh.gs(R.string.maintenance), "Do you really want to delete entries older than $keepDays days from the db?", Runnable {
+                    disposable += Completable.fromAction { result = persistenceLayer.cleanupDatabase(keepDays.toLong(), deleteTrackedChanges = true) }
                         .subscribeOn(aapsSchedulers.io)
                         .observeOn(aapsSchedulers.main)
                         .subscribeBy(
@@ -192,7 +196,7 @@ class MaintenanceFragment : DaggerFragment() {
                     act,
                     onLocalSelected = { /* Choose not to use cloud: set storage type to local, no action */ },
                     onCloudSelected = { /* Authorization and folder selection handled in dialog */ },
-                    onStorageChanged = { 
+                    onStorageChanged = {
                         updateStorageErrorState()
                         updateDynamicButtonText()
                         updateExportOptionsButtonState()
@@ -200,12 +204,12 @@ class MaintenanceFragment : DaggerFragment() {
                 )
             }
         }
-        
+
         // Cloud directory error icon click - show toast with error info
         binding.cloudDirectoryErrorIcon.setOnClickListener {
             app.aaps.core.ui.toast.ToastUtils.warnToast(requireContext(), rh.gs(R.string.cloud_token_expired_or_invalid))
         }
-        
+
         // Export destination: configure destination for various export functions
         binding.exportOptions.setOnClickListener {
             val hasCloudDirectory = cloudStorageManager.isCloudStorageActive()
@@ -240,13 +244,13 @@ class MaintenanceFragment : DaggerFragment() {
         super.onResume()
         // Check and restore cloud settings (prevent settings loss after app update)
         checkAndRestoreCloudSettings()
-        
+
         // Subscribe to cloud storage status changes to update UI immediately
         disposable += rxBus
             .toObservable(EventCloudStorageStatusChanged::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe({ updateStorageErrorState() }, fabricPrivacy::logException)
-        
+
         if (inMenu) queryProtection() else {
             updateProtectedUi()
             updateStorageErrorState()
@@ -254,7 +258,7 @@ class MaintenanceFragment : DaggerFragment() {
             updateExportOptionsButtonState()
         }
     }
-    
+
     /**
      * Check and restore cloud storage settings
      */
@@ -278,7 +282,7 @@ class MaintenanceFragment : DaggerFragment() {
         val isLocked = protectionCheck.isLocked(PREFERENCES)
         binding.mainLayout.visibility = isLocked.not().toVisibility()
         binding.unlock.visibility = isLocked.toVisibility()
-        
+
         // Update storage error state when UI becomes available
         if (!isLocked) {
             updateStorageErrorState()
@@ -289,18 +293,18 @@ class MaintenanceFragment : DaggerFragment() {
     private fun updateStorageErrorState() {
         // Local directory - no error icon needed (local storage doesn't have connection errors)
         binding.directoryErrorIcon.visibility = View.GONE
-        
+
         // Cloud directory error - show when cloud is active but token is invalid/expired
         val isCloudActive = cloudStorageManager.isCloudStorageActive()
         val provider = cloudStorageManager.getActiveProvider()
         val hasValidCredentials = provider?.hasValidCredentials() ?: false
         val hasCloudConnectionError = provider?.hasConnectionError() ?: false
-        
+
         // Show error icon if cloud is active but credentials are invalid or there's a connection error
         val showCloudError = isCloudActive && (!hasValidCredentials || hasCloudConnectionError)
         binding.cloudDirectoryErrorIcon.visibility = if (showCloudError) View.VISIBLE else View.GONE
     }
-    
+
     /**
      * Update export options button state based on cloud directory selection
      */
@@ -308,32 +312,32 @@ class MaintenanceFragment : DaggerFragment() {
         val hasCloudDirectory = cloudStorageManager.isCloudStorageActive()
         binding.exportOptions.alpha = if (hasCloudDirectory) 1.0f else 0.5f
     }
-    
+
     /**
      * Update dynamic button text based on export destination settings
      */
     private fun updateDynamicButtonText() {
         val isAllCloud = exportOptionsDialog.isAllCloudEnabled()
         val isCloudActive = cloudStorageManager.isCloudStorageActive()
-        
+
         // Log button text
         val isLogCloud = isAllCloud || exportOptionsDialog.isLogCloudEnabled()
         binding.logSend.text = rh.gs(
             if (isLogCloud) R.string.send_logs_to_cloud else R.string.send_all_logs
         )
-        
+
         // CSV button text
         val isCsvCloud = isAllCloud || exportOptionsDialog.isCsvCloudEnabled()
         binding.exportCsv.text = rh.gs(
             if (isCsvCloud) R.string.export_csv_to_cloud else R.string.export_csv_to_local
         )
-        
+
         // Settings export/import destinations
         val isSettingsLocal = exportOptionsDialog.isSettingsLocalEnabled()
         val isSettingsCloud = exportOptionsDialog.isSettingsCloudEnabled()
         val bothEnabled = isSettingsLocal && isSettingsCloud && isCloudActive
         val cloudOnly = isSettingsCloud && isCloudActive && !isSettingsLocal
-        
+
         // Export button text
         binding.navExport.text = rh.gs(
             when {
@@ -342,7 +346,7 @@ class MaintenanceFragment : DaggerFragment() {
                 else -> R.string.export_settings_local
             }
         )
-        
+
         // Import button text
         binding.navImport.text = rh.gs(
             when {

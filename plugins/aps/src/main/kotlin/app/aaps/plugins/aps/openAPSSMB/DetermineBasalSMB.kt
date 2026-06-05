@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.openAPSSMB
 
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
@@ -11,6 +12,7 @@ import app.aaps.core.interfaces.aps.OapsProfile
 import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import java.text.DecimalFormat
 import java.time.Instant
@@ -26,7 +28,8 @@ import kotlin.math.roundToInt
 @Singleton
 class DetermineBasalSMB @Inject constructor(
     private val profileUtil: ProfileUtil,
-    private val fabricPrivacy: FabricPrivacy
+    private val fabricPrivacy: FabricPrivacy,
+    private val profileFunction: ProfileFunction
 ) {
 
     private val consoleError = mutableListOf<String>()
@@ -41,7 +44,7 @@ class DetermineBasalSMB @Inject constructor(
     fun round(value: Double, digits: Int): Double {
         if (value.isNaN()) return Double.NaN
         val scale = 10.0.pow(digits.toDouble())
-        return Math.round(value * scale) / scale
+        return (value * scale).roundToInt() / scale
     }
 
     fun Double.withoutZeros(): String = DecimalFormat("0.##").format(this)
@@ -218,11 +221,70 @@ class DetermineBasalSMB @Inject constructor(
         var min_bg = profile.min_bg
         var max_bg = profile.max_bg
 
+        // Activity detection (steps)
+        consoleError.add("----------------------------------")
+        consoleError.add("Activity detection: ")
+        consoleError.add("----------------------------------")
+
+        val activityDetection = profile.activity_detection ?: false
+        var stepActivityDetected = false
+        var stepInactivityDetected = false
+        var activityRatio = 1.0
+        val recentSteps5Minutes = profile.recent_steps_5_minutes ?: 0
+        val recentSteps10Minutes = profile.recent_steps_10_minutes ?: 0
+        val recentSteps15Minutes = profile.recent_steps_15_minutes ?: 0
+        val recentSteps30Minutes = profile.recent_steps_30_minutes ?: 0
+        val recentSteps60Minutes = profile.recent_steps_60_minutes ?: 0
+        val phoneMoved = profile.phone_moved ?: false
+        val now = profile.now ?: 0
+        val timeSinceStart = profile.time_since_start ?: 0
+
+        if ( !activityDetection) {
+            consoleError.add("Activity detection disabled in the settings. ")
+        } else if ( profile.temptargetSet) {
+            consoleError.add("Activity detection disabled: tempTarget. ")
+        } else if (!phoneMoved) {
+            consoleError.add("Activity detection disabled: Phone seems not to be carried for the last 15 m. ")
+        } else {
+            consoleError.add("0-5 m ago: $recentSteps5Minutes steps; ")
+            consoleError.add("5-10 m ago: $recentSteps10Minutes steps; ")
+            consoleError.add("10-15 m ago: $recentSteps15Minutes steps; ")
+            consoleError.add("Last 30 m: $recentSteps30Minutes steps; ")
+            consoleError.add("Last 60 m: $recentSteps60Minutes steps; ")
+            if ( timeSinceStart < 60 && recentSteps60Minutes <= 200 ) {
+                consoleError.add("Activity monitor initialising for ${(60-timeSinceStart)} more minutes: inactivity detection disabled")
+            } else if ( (now !in 8..<22) && recentSteps60Minutes <= 200 ) {
+                consoleError.add("Activity monitor disabled inactivity detection: sleeping hours")
+            } else if ( recentSteps5Minutes > 300 || recentSteps10Minutes > 300  || recentSteps15Minutes > 300  || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500 ) {
+                stepActivityDetected = true
+                activityRatio = 0.7
+                consoleError.add("-> Activity monitor detected activity, sensitivity ratio: $activityRatio")
+            } else if ( recentSteps5Minutes > 200 || recentSteps10Minutes > 200  || recentSteps15Minutes > 200
+                || recentSteps30Minutes > 500 || recentSteps60Minutes > 800 ) {
+                stepActivityDetected = true
+                activityRatio = 0.85
+                consoleError.add("-> Activity monitor detected partial activity, sensitivity ratio: $activityRatio")
+            } else if ( bg < target_bg && recentSteps60Minutes <= 200 ) {
+                consoleError.add("Activity monitor disabled inactivity detection: : bg < target")
+            } else if ( recentSteps60Minutes < 50 ) {
+                stepInactivityDetected = true
+                activityRatio = 1.2
+                consoleError.add("-> Activity monitor detected inactivity, sensitivity ratio: $activityRatio")
+            } else if ( recentSteps60Minutes <= 200 ) {
+                stepInactivityDetected = true
+                activityRatio = 1.1
+                consoleError.add("-> Activity monitor detected partial inactivity, sensitivity ratio: $activityRatio")
+            } else {
+                consoleError.add("-> Activity monitor detected neutral state, sensitivity ratio unchanged: $activityRatio")
+            }
+        }
+        consoleError.add("----------------------------------")
+
         var sensitivityRatio: Double
         val high_temptarget_raises_sensitivity = profile.exercise_mode || profile.high_temptarget_raises_sensitivity
         val normalTarget = Constants.NORMAL_TARGET_MGDL // evaluate high/low temptarget against normal target, not scheduled target (which might change)
         // when temptarget is 160 mg/dL, run 50% basal (120 = 75%; 140 = 60%),  80 mg/dL with low_temptarget_lowers_sensitivity would give 1.5x basal, but is limited to autosens_max (1.2x by default)
-        val halfBasalTarget = profile.half_basal_exercise_target
+        val mgdlHalfBasalTarget = profile.half_basal_exercise_target * if (profileFunction.getUnits() == GlucoseUnit.MMOL) GlucoseUnit.MMOLL_TO_MGDL else 1.0
 
         if (dynIsfMode) {
             consoleError.add("---------------------------------------------------------")
@@ -236,15 +298,18 @@ class DetermineBasalSMB @Inject constructor(
             // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
             // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
             //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
-            val c = (halfBasalTarget - normalTarget).toDouble()
+            val c = (mgdlHalfBasalTarget - normalTarget)
             sensitivityRatio = c / (c + target_bg - normalTarget)
             // limit sensitivityRatio to profile.autosens_max (1.2x by default)
             sensitivityRatio = min(sensitivityRatio, profile.autosens_max)
             sensitivityRatio = round(sensitivityRatio, 2)
             consoleLog.add("Sensitivity ratio set to $sensitivityRatio based on temp target of $target_bg; ")
         } else {
-            sensitivityRatio = autosens_data.ratio
+            sensitivityRatio = autosens_data.ratio * activityRatio
             consoleLog.add("Autosens ratio: $sensitivityRatio; ")
+            if (stepActivityDetected || stepInactivityDetected) {
+                consoleLog.add("Autosens ratio adjusted for activity/inactivity: $autosens_data.ratio * $activityRatio")
+            }
         }
         basal = profile.current_basal * sensitivityRatio
         basal = round_basal(basal)
@@ -276,9 +341,7 @@ class DetermineBasalSMB @Inject constructor(
         val iobArray = iob_data_array
         val iob_data = iobArray[0]
 
-        val tick: String
-
-        tick = if (glucose_status.delta > -0.5) {
+        val tick: String = if (glucose_status.delta > -0.5) {
             "+" + round(glucose_status.delta)
         } else {
             round(glucose_status.delta).toString()
@@ -439,7 +502,7 @@ class DetermineBasalSMB @Inject constructor(
         }
         var remainingCATimeMin = 3.0 // h; duration of expected not-yet-observed carb absorption
         // adjust remainingCATime (instead of CR) for autosens if sensitivityRatio defined
-        remainingCATimeMin = remainingCATimeMin / sensitivityRatio
+        remainingCATimeMin /= sensitivityRatio
         // 20 g/h means that anything <= 60g will get a remainingCATimeMin, 80g will get 4h, and 120g 6h
         // when actual absorption ramps up it will take over from remainingCATime
         val assumedCarbAbsorptionRate = 20 // g/h; maximum rate to assume carbs will absorb if no CI observed
@@ -489,11 +552,11 @@ class DetermineBasalSMB @Inject constructor(
         //5m data points = g * (1U/10g) * (40mg/dL/1U) / (mg/dL/5m)
         // duration (in 5m data points) = COB (g) * CSF (mg/dL/g) / ci (mg/dL/5m)
         // limit cid to remainingCATime hours: the reset goes to remainingCI
-        if (ci == 0.0) {
+        cid = if (ci == 0.0) {
             // avoid divide by zero
-            cid = 0.0
+            0.0
         } else {
-            cid = min(remainingCATime * 60 / 5 / 2, Math.max(0.0, meal_data.mealCOB * csf / ci))
+            min(remainingCATime * 60 / 5 / 2, Math.max(0.0, meal_data.mealCOB * csf / ci))
         }
         val acid = max(0.0, meal_data.mealCOB * csf / aci)
         // duration (hours) = duration (5m) * 5 / 60 * 2 (to account for linear decay)
@@ -512,10 +575,6 @@ class DetermineBasalSMB @Inject constructor(
         var IOBpredBG: Double = eventualBG
         var maxIOBPredBG = bg
         var maxCOBPredBG = bg
-        //var maxUAMPredBG = bg
-        //var maxPredBG = bg;
-        //var eventualPredBG = bg
-        val lastIOBpredBG: Double
         var lastCOBpredBG: Double? = null
         var lastUAMpredBG: Double? = null
         //var lastZTpredBG: Int
@@ -622,7 +681,10 @@ class DetermineBasalSMB @Inject constructor(
             else IOBpredBGs.removeAt(IOBpredBGs.lastIndex)
         }
         rT.predBGs?.IOB = IOBpredBGs.map { it.toInt() }
-        lastIOBpredBG = round(IOBpredBGs[IOBpredBGs.size - 1]).toDouble()
+        //var maxUAMPredBG = bg
+        //var maxPredBG = bg;
+        //var eventualPredBG = bg
+        val lastIOBpredBG: Double = round(IOBpredBGs[IOBpredBGs.size - 1]).toDouble()
         ZTpredBGs = ZTpredBGs.map { round(min(401.0, max(39.0, it)), 0) }.toMutableList()
         for (i in ZTpredBGs.size - 1 downTo 7) {
             // stop displaying ZTpredBGs once they're rising and above target
@@ -697,17 +759,17 @@ class DetermineBasalSMB @Inject constructor(
 
         val fractionCarbsLeft = meal_data.mealCOB / meal_data.carbs
         // if we have COB and UAM is enabled, average both
-        if (minUAMPredBG < 999 && minCOBPredBG < 999) {
+        avgPredBG = if (minUAMPredBG < 999 && minCOBPredBG < 999) {
             // weight COBpredBG vs. UAMpredBG based on how many carbs remain as COB
-            avgPredBG = round((1 - fractionCarbsLeft) * UAMpredBG!! + fractionCarbsLeft * COBpredBG!!, 0)
+            round((1 - fractionCarbsLeft) * UAMpredBG!! + fractionCarbsLeft * COBpredBG!!, 0)
             // if UAM is disabled, average IOB and COB
         } else if (minCOBPredBG < 999) {
-            avgPredBG = round((IOBpredBG + COBpredBG!!) / 2.0, 0)
+            round((IOBpredBG + COBpredBG!!) / 2.0, 0)
             // if we have UAM but no COB, average IOB and UAM
         } else if (minUAMPredBG < 999) {
-            avgPredBG = round((IOBpredBG + UAMpredBG!!) / 2.0, 0)
+            round((IOBpredBG + UAMpredBG!!) / 2.0, 0)
         } else {
-            avgPredBG = round(IOBpredBG, 0)
+            round(IOBpredBG, 0)
         }
         // if avgPredBG is below minZTGuardBG, bring it up to that level
         if (minZTGuardBG > avgPredBG) {
@@ -715,16 +777,16 @@ class DetermineBasalSMB @Inject constructor(
         }
 
         // if we have both minCOBGuardBG and minUAMGuardBG, blend according to fractionCarbsLeft
-        if ((cid > 0.0 || remainingCIpeak > 0)) {
+        minGuardBG = if ((cid > 0.0 || remainingCIpeak > 0)) {
             if (enableUAM) {
-                minGuardBG = fractionCarbsLeft * minCOBGuardBG + (1 - fractionCarbsLeft) * minUAMGuardBG
+                fractionCarbsLeft * minCOBGuardBG + (1 - fractionCarbsLeft) * minUAMGuardBG
             } else {
-                minGuardBG = minCOBGuardBG
+                minCOBGuardBG
             }
         } else if (enableUAM) {
-            minGuardBG = minUAMGuardBG
+            minUAMGuardBG
         } else {
-            minGuardBG = minIOBGuardBG
+            minIOBGuardBG
         }
         minGuardBG = round(minGuardBG, 0)
         //console.error(minCOBGuardBG, minUAMGuardBG, minIOBGuardBG, minGuardBG);
@@ -796,10 +858,10 @@ class DetermineBasalSMB @Inject constructor(
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
         )
         if (lastCOBpredBG != null) {
-            rT.reason.append(", COBpredBG " + convert_bg(lastCOBpredBG.toDouble()))
+            rT.reason.append(", COBpredBG " + convert_bg(lastCOBpredBG))
         }
         if (lastUAMpredBG != null) {
-            rT.reason.append(", UAMpredBG " + convert_bg(lastUAMpredBG.toDouble()))
+            rT.reason.append(", UAMpredBG " + convert_bg(lastUAMpredBG))
         }
         rT.reason.append("; ")
         // use naive_eventualBG if above 40, but switch to minGuardBG if both eventualBGs hit floor of 39
@@ -853,6 +915,14 @@ class DetermineBasalSMB @Inject constructor(
             rT.reason.append("maxDelta " + convert_bg(maxDelta) + " > 20% of BG " + convert_bg(bg) + ": SMB disabled; ")
             enableSMB = false
         }
+
+        // mod no smb if bg < 100
+        if (enableSMB && bg < 100) {
+            consoleError.add("BG < 100 - disabling SMB")
+            rT.reason.append("BG < 100 - disabling SMB")
+            enableSMB = false
+        }
+        // end mod
 
         consoleError.add("BG projected to remain above ${convert_bg(min_bg)} for $minutesAboveMinBG minutes")
         if (minutesAboveThreshold < 240 || minutesAboveMinBG < 60) {

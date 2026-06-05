@@ -6,6 +6,8 @@ import android.graphics.Paint
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.aps.SMBDefaults
+import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.graph.data.BarGraphSeries
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.DeviationDataPoint
@@ -16,9 +18,11 @@ import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.Shape
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.graph.Scale
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.OverviewData
@@ -54,6 +58,7 @@ class PrepareIobAutosensGraphDataWorker(
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var decimalFormatter: DecimalFormatter
+    @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
     private var ctx: Context
 
     init {
@@ -146,6 +151,8 @@ class PrepareIobAutosensGraphDataWorker(
 
         val adsData = data.iobCobCalculator.ads.clone()
 
+        val toUnits = if (profileUtil.units == GlucoseUnit.MGDL) 1.0 else Constants.MGDL_TO_MMOLL
+
         while (time <= endTime) {
             if (isStopped) return Result.failure(workDataOf("Error" to "stopped"))
             val progress = (time - fromTime).toDouble() / (endTime - fromTime) * 100.0
@@ -231,6 +238,29 @@ class PrepareIobAutosensGraphDataWorker(
 
             time += 5 * 60 * 1000L
         }
+
+        // IOB_TH
+        val iobThArray: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxIobThValueFound = Double.MIN_VALUE
+        data.overviewData.minIobThValueFound = Double.MAX_VALUE
+        val autoIsfResults = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        autoIsfResults.forEach {
+            it.iobThEffective.let { iobThEffective ->
+                iobThArray.add(ScaledDataPoint(it.timestamp, iobThEffective, data.overviewData.iobThScale))
+                data.overviewData.maxIobThValueFound = max(data.overviewData.maxIobThValueFound, iobThEffective)
+                data.overviewData.minIobThValueFound = min(data.overviewData.minIobThValueFound, iobThEffective)
+            }
+        }
+        //aapsLogger.debug(LTag.APS, "iob_TH min/max range is ${data.overviewData.minIobThValueFound} to ${data.overviewData.maxIobThValueFound}")
+        data.overviewData.iobThSeries = LineGraphSeries(Array(iobThArray.size) { i -> iobThArray[i] }).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                paint.pathEffect = DashPathEffect(floatArrayOf(2f, 2f), 0f)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.iobThColor)
+            })
+        }
+
         // IOB
         data.overviewData.iobSeries = FixedLineGraphSeries(Array(iobArray.size) { i -> iobArray[i] }).also {
             it.isDrawBackground = true
@@ -255,6 +285,11 @@ class PrepareIobAutosensGraphDataWorker(
                 iobPrediction.add(IobTotalDataPoint(i).setColor(rh.gac(ctx, app.aaps.core.ui.R.attr.iobPredASColor)))
                 data.overviewData.maxIobValueFound = max(data.overviewData.maxIobValueFound, abs(i.iob))
             }
+            if (overviewMenus.setting[0][OverviewMenus.CharType.IOB_TH.ordinal]) {
+                data.overviewData.maxIobValueFound = max(data.overviewData.maxIobValueFound, abs(data.overviewData.maxIobValueFound))
+                data.overviewData.maxIobThValueFound = data.overviewData.maxIobValueFound
+            }
+
             data.overviewData.iobPredictions1Series = PointsWithLabelGraphSeries(Array(iobPrediction.size) { i -> iobPrediction[i] })
             aapsLogger.debug(LTag.AUTOSENS, "IOB prediction for AS=" + decimalFormatter.to2Decimal(lastAutosensResult.ratio) + ": " + data.iobCobCalculator.iobArrayToString(iobPredictionArray))
         } else {
@@ -337,6 +372,113 @@ class PrepareIobAutosensGraphDataWorker(
         data.overviewData.varSensSeries = LineGraphSeries(Array(varSensArray.size) { i -> varSensArray[i] }).also {
             it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.ratioColor)
             it.thickness = 3
+        }
+
+        // AUTO_ISF
+        // BG PARABOLA
+        if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal)) {
+            val bgParabolaArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+            val bgParabolaArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
+            val glucoseStatus = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?    //glucoseStatusProvider.glucoseStatusData
+            val corr = glucoseStatus?.corrSqu ?: 0.0
+            if (corr > 0.0) {
+                val a0 = glucoseStatus!!.a0
+                val a1 = glucoseStatus.a1
+                val a2 = glucoseStatus.a2
+                // parabola extrapolation
+                for (i in 0 until 21 step 5) {
+                    val timestamp = now + (i * 60 * 1000).toLong()
+                    val value = a0 + a1 * i / 5 + a2 * i * i / 25
+                    bgParabolaArrayPrediction.add(ScaledDataPoint(timestamp, value * toUnits, data.overviewData.bgParabolaScale))
+                }
+                // fitted parabola
+                val dur = (glucoseStatus.parabolaMinutes).toInt()
+                for (i in -dur until 1 step 5) {
+                    val timestamp = now + (i * 60 * 1000).toLong()
+                    val value = a0 + a1 * i / 5 + a2 * i * i / 25
+                    bgParabolaArrayHist.add(ScaledDataPoint(timestamp, value * toUnits, data.overviewData.bgParabolaScale))
+                }
+            }
+            data.overviewData.bgParabolaSeries = FixedLineGraphSeries(Array(bgParabolaArrayHist.size) { i -> bgParabolaArrayHist[i] }).also {
+                it.isDrawBackground = false
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.bgParabolaColor)
+                it.thickness = 8
+            }
+            data.overviewData.bgParabolaPredictionSeries = FixedLineGraphSeries(Array(bgParabolaArrayPrediction.size) { i -> bgParabolaArrayPrediction[i] }).also {
+                it.setCustomPaint(Paint().also { paint ->
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 8f
+                    paint.pathEffect = DashPathEffect(floatArrayOf(6f, 6f), 0f)
+                    paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.bgParabolaColor)
+                })
+            }
+        }
+        val acceIsfArray: MutableList<ScaledDataPoint> = ArrayList()
+        val bgIsfArray: MutableList<ScaledDataPoint> = ArrayList()
+        val ppIsfArray: MutableList<ScaledDataPoint> = ArrayList()
+        val duraIsfArray: MutableList<ScaledDataPoint> = ArrayList()
+        val finalIsfArray: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxAcceIsfValueFound = 1.0
+        data.overviewData.minAcceIsfValueFound = 1.0
+        data.overviewData.maxBgIsfValueFound = 1.0
+        data.overviewData.minBgIsfValueFound = 1.0
+        data.overviewData.maxPpIsfValueFound = 1.0
+        data.overviewData.minPpIsfValueFound = 1.0
+        data.overviewData.maxDuraIsfValueFound = 1.0
+        data.overviewData.minDuraIsfValueFound = 1.0
+        data.overviewData.maxFinalIsfValueFound = 1.0
+        data.overviewData.minFinalIsfValueFound = 1.0
+        autoIsfResults.forEach {
+            it.acceIsf.let { acceIsf ->
+                acceIsfArray.add(ScaledDataPoint(it.timestamp, acceIsf, data.overviewData.acceIsfScale))
+                data.overviewData.maxAcceIsfValueFound = max(data.overviewData.maxAcceIsfValueFound, acceIsf)
+                data.overviewData.minAcceIsfValueFound = min(data.overviewData.minAcceIsfValueFound, acceIsf)
+            }
+            it.bgIsf.let { bgIsf ->
+                bgIsfArray.add(ScaledDataPoint(it.timestamp, bgIsf, data.overviewData.bgIsfScale))
+                data.overviewData.maxBgIsfValueFound = max(data.overviewData.maxBgIsfValueFound, bgIsf)
+                data.overviewData.minBgIsfValueFound = min(data.overviewData.minBgIsfValueFound, bgIsf)
+            }
+            it.ppIsf.let { ppIsf ->
+                ppIsfArray.add(ScaledDataPoint(it.timestamp, ppIsf, data.overviewData.ppIsfScale))
+                data.overviewData.maxPpIsfValueFound = max(data.overviewData.maxPpIsfValueFound, ppIsf)
+                data.overviewData.minPpIsfValueFound = min(data.overviewData.minPpIsfValueFound, ppIsf)
+            }
+            it.duraIsf.let { duraIsf ->
+                duraIsfArray.add(ScaledDataPoint(it.timestamp, duraIsf, data.overviewData.duraIsfScale))
+                data.overviewData.maxDuraIsfValueFound = max(data.overviewData.maxDuraIsfValueFound, duraIsf)
+                data.overviewData.minDuraIsfValueFound = min(data.overviewData.minDuraIsfValueFound, duraIsf)
+            }
+           it.finalIsf.let { finalIsf ->
+                finalIsfArray.add(ScaledDataPoint(it.timestamp, finalIsf, data.overviewData.finalIsfScale))
+                data.overviewData.maxFinalIsfValueFound = max(data.overviewData.maxFinalIsfValueFound, finalIsf)
+                data.overviewData.minFinalIsfValueFound = min(data.overviewData.minFinalIsfValueFound, finalIsf)
+            }
+        }
+        //aapsLogger.debug(LTag.APS, "acce_ISF min/max range is ${data.overviewData.minAcceIsfValueFound} to ${data.overviewData.maxAcceIsfValueFound}")
+        //aapsLogger.debug(LTag.APS, "bg_ISF min/max range is ${data.overviewData.minBgIsfValueFound} to ${data.overviewData.maxBgIsfValueFound}")
+        //aapsLogger.debug(LTag.APS, "pp_ISF min/max range is ${data.overviewData.minPpIsfValueFound} to ${data.overviewData.maxPpIsfValueFound}")
+        //aapsLogger.debug(LTag.APS, "dura_ISF min/max range is ${data.overviewData.minDuraIsfValueFound} to ${data.overviewData.maxDuraIsfValueFound}")
+        //aapsLogger.debug(LTag.APS, "final_ISF min/max range is ${data.overviewData.minFinalIsfValueFound} to ${data.overviewData.maxFinalIsfValueFound}")
+        data.overviewData.acceIsfSeries = LineGraphSeries(Array(acceIsfArray.size) { i -> acceIsfArray[i] }).also {
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
+            it.thickness = 3
+        }
+        data.overviewData.bgIsfSeries = LineGraphSeries(Array(bgIsfArray.size) { i -> bgIsfArray[i] }).also {
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
+            it.thickness = 3
+        }
+        data.overviewData.ppIsfSeries = LineGraphSeries(Array(ppIsfArray.size) { i -> ppIsfArray[i] }).also {
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
+            it.thickness = 3
+        }
+        data.overviewData.duraIsfSeries = LineGraphSeries(Array(duraIsfArray.size) { i -> duraIsfArray[i] }).also {
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
+            it.thickness = 3
+        }
+        data.overviewData.finalIsfSeries = LineGraphSeries(Array(finalIsfArray.size) { i -> finalIsfArray[i] }).also {
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.finalIsfColor)
+            it.thickness = 8
         }
 
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100, null))

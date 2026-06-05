@@ -195,4 +195,18 @@ class AndroidPermissionImpl @Inject constructor(
             )
         else uiInteraction.dismissNotification(Notification.PERMISSION_SYSTEM_WINDOW)
     }
+
+    @Synchronized override fun notifyForStepCountPermissions(activity: FragmentActivity) {
+        if (permissionNotGranted(activity, Manifest.permission.ACTIVITY_RECOGNITION))
+            uiInteraction.addNotification(
+                id = Notification.PERMISSION_STEPS,
+                text = rh.gs(R.string.need_step_count_permission),
+                level = Notification.NORMAL,
+                actionButtonId = R.string.request,
+                action = { askForPermission(activity, arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)) },
+                validityCheck = { permissionNotGranted(activity, Manifest.permission.ACTIVITY_RECOGNITION) }
+            )
+        else uiInteraction.dismissNotification(Notification.PERMISSION_STORAGE)
+    }
+
 }

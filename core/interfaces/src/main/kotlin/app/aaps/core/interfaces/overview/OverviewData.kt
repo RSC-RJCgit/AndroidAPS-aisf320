@@ -67,6 +67,11 @@ interface OverviewData {
     var activitySeries: SeriesData
     var activityPredictionSeries: SeriesData
 
+    var maxBgParabolaValue: Double
+    val bgParabolaScale: Scale
+    var bgParabolaSeries: SeriesData
+    var bgParabolaPredictionSeries: SeriesData
+
     var maxEpsValue: Double
     val epsScale: Scale
     var epsSeries: SeriesData
@@ -116,4 +121,29 @@ interface OverviewData {
     var stepsForScale: Scale
     var stepsCountGraphSeries: SeriesData
 
+    // AutoISF interim results
+    var maxIobThValueFound: Double
+    var minIobThValueFound: Double
+    val iobThScale: Scale
+    var iobThSeries: SeriesData
+    var maxAcceIsfValueFound: Double
+    var minAcceIsfValueFound: Double
+    val acceIsfScale: Scale
+    var acceIsfSeries: SeriesData
+    var maxBgIsfValueFound: Double
+    var minBgIsfValueFound: Double
+    val bgIsfScale: Scale
+    var bgIsfSeries: SeriesData
+    var maxPpIsfValueFound: Double
+    var minPpIsfValueFound: Double
+    val ppIsfScale: Scale
+    var ppIsfSeries: SeriesData
+    var maxDuraIsfValueFound: Double
+    var minDuraIsfValueFound: Double
+    val duraIsfScale: Scale
+    var duraIsfSeries: SeriesData
+    var maxFinalIsfValueFound: Double
+    var minFinalIsfValueFound: Double
+    val finalIsfScale: Scale
+    var finalIsfSeries: SeriesData
 }

@@ -231,6 +231,14 @@
         <item name="activityColor">@color/activity</item>
         <item name="baseBasalColor">@color/baseBasal</item>
         <item name="dotLineColor">@color/white</item>
+        <!-- AutoISf specific colors  -->
+        <item name="bgParabolaColor">@color/bgParabolaColor</item>
+        <item name="acceIsfColor">@color/acceIsfColor</item>
+        <item name="bgIsfColor">@color/bgIsfColor</item>
+        <item name="ppIsfColor">@color/ppIsfColor</item>
+        <item name="duraIsfColor">@color/duraIsfColor</item>
+        <item name="finalIsfColor">@color/finalIsfColor</item>
+        <item name="iobThColor">@color/iobThColor</item>
         <!---Popupmenu TextColor -->
         <item name="menuTextColor">@color/black</item>
         <item name="menuTextColorInverse">@color/black</item>

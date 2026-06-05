@@ -48,7 +48,7 @@ class ConfigImpl @Inject constructor(
     private var disableLeakCanary: Boolean? = null
 
     override fun isEngineeringModeOrRelease(): Boolean = if (!APS) true else isEngineeringMode() || !isDev()
-    override fun isEngineeringMode(): Boolean = isEngineeringMode ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("engineering_mode") != null).also { isEngineeringMode = it }
+    override fun isEngineeringMode(): Boolean = true        //isEngineeringMode ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("engineering_mode") != null).also { isEngineeringMode = it }
     override fun isUnfinishedMode(): Boolean = isUnfinishedMode ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("unfinished_mode") != null).also { isUnfinishedMode = it }
     override fun isDev(): Boolean = (VERSION.contains("-") || VERSION.matches(Regex(".*[a-zA-Z]+.*"))) && !VERSION.contains("-beta") && !VERSION.contains("-rc")
     override fun showUserActionsOnWatchOnly(): Boolean = showUserActionsOnWatchOnly ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("show_user_actions_on_watch_only") != null).also { showUserActionsOnWatchOnly = it }

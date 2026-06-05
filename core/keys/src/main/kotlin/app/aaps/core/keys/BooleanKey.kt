@@ -60,8 +60,18 @@ enum class BooleanKey(
     ApsAmaAutosensAdjustTargets("autosens_adjust_targets", true, defaultedBySM = true),
     ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", false, defaultedBySM = true),
     ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", false, defaultedBySM = true),
+    ApsActivityDetection("activity_detection", false, defaultedBySM = true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
+    FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
+    FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
+
+
+    ActivityMonitorDetection("activity_detection", false, defaultedBySM=true),
+    ActivityMonitorOvernight("ignore_inactivity_overnight", true, defaultedBySM=true, dependency = ActivityMonitorDetection),
+    ActivityMonitorStepsActive("steps_activity_detected", false, defaultedBySM=true),
+    ActivityMonitorStepsInactive("steps_inactivity_detected", false, defaultedBySM=true),
+    ActivityMonitorShowStepsFromSmartphone("steps_graph_from_smartphone", true, defaultedBySM = true),
 
     MaintenanceEnableFabric("enable_fabric2", true, defaultedBySM = true, hideParentScreenIfHidden = true),
 

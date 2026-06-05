@@ -74,6 +74,9 @@ class OverviewDataImpl @Inject constructor(
         maxIAValue = 0.0
         activitySeries = FixedLineGraphSeries<ScaledDataPoint>()
         activityPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        maxBgParabolaValue = 280.0
+        bgParabolaSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        bgParabolaPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
         maxIobValueFound = Double.MIN_VALUE
         iobSeries = FixedLineGraphSeries<ScaledDataPoint>()
         absIobSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -105,6 +108,26 @@ class OverviewDataImpl @Inject constructor(
         maxVarSensValueFound = 200.0
         minVarSensValueFound = 50.0
         varSensSeries = LineGraphSeries<ScaledDataPoint>()
+        // AutoISF interim results
+        maxAcceIsfValueFound = 1.5
+        minAcceIsfValueFound = 0.5
+        acceIsfSeries = LineGraphSeries<ScaledDataPoint>()
+        maxBgIsfValueFound = 1.5
+        minBgIsfValueFound = 0.5
+        bgIsfSeries = LineGraphSeries<ScaledDataPoint>()
+        maxPpIsfValueFound = 1.5
+        minPpIsfValueFound = 0.5
+        ppIsfSeries = LineGraphSeries<ScaledDataPoint>()
+        maxDuraIsfValueFound = 1.5
+        minDuraIsfValueFound = 0.5
+        duraIsfSeries = LineGraphSeries<ScaledDataPoint>()
+        maxFinalIsfValueFound = 1.5
+        minFinalIsfValueFound = 0.5
+        finalIsfSeries = LineGraphSeries<ScaledDataPoint>()
+
+        maxIobThValueFound = 0.0
+        minIobThValueFound = 0.0
+        iobThSeries = LineGraphSeries<ScaledDataPoint>()
     }
 
     override fun initRange() {
@@ -208,6 +231,11 @@ class OverviewDataImpl @Inject constructor(
     override var activitySeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var activityPredictionSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
 
+    override var maxBgParabolaValue = 0.0
+    override val bgParabolaScale = Scale()
+    override var bgParabolaSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+    override var bgParabolaPredictionSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+
     override var maxEpsValue = 0.0
     override val epsScale = Scale()
     override var epsSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -215,6 +243,11 @@ class OverviewDataImpl @Inject constructor(
     override var treatmentsSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var maxTherapyEventValue = 0.0
     override var therapyEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+    override var maxIobThValueFound = Double.MIN_VALUE
+    override var minIobThValueFound = 0.0
+    override val iobThScale = Scale()
+    override var iobThSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
     override var maxIobValueFound = Double.MIN_VALUE
     override val iobScale = Scale()
@@ -251,6 +284,28 @@ class OverviewDataImpl @Inject constructor(
     override var heartRateGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsForScale = Scale()
     override var stepsCountGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+
+    override var maxAcceIsfValueFound = 1.5
+    override var minAcceIsfValueFound = 0.5
+    override val acceIsfScale = Scale()
+    override var acceIsfSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var maxBgIsfValueFound = 1.5
+    override var minBgIsfValueFound = 0.5
+    override val bgIsfScale = Scale()
+    override var bgIsfSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var maxPpIsfValueFound = 1.5
+    override var minPpIsfValueFound = 0.5
+    override val ppIsfScale = Scale()
+    override var ppIsfSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var maxDuraIsfValueFound = 1.5
+    override var minDuraIsfValueFound = 0.5
+    override val duraIsfScale = Scale()
+    override var duraIsfSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var maxFinalIsfValueFound = 1.5
+    override var minFinalIsfValueFound = 0.5
+    override val finalIsfScale = Scale()
+    override var finalIsfSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
     override var maxVarSensValueFound = 200.0
     override var minVarSensValueFound = 50.0

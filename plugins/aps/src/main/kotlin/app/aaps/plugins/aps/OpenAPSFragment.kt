@@ -134,7 +134,8 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
         openAPSPlugin.lastAPSResult?.let { lastAPSResult ->
             binding.result.text = lastAPSResult.rawData().dataClassToHtml()
             binding.request.text = lastAPSResult.resultAsSpanned()
-            binding.glucosestatus.text = lastAPSResult.glucoseStatus?.dataClassToHtml(listOf("glucose", "delta", "shortAvgDelta", "longAvgDelta"))
+            //binding.glucosestatus.text = lastAPSResult.glucoseStatus?.dataClassToHtml(listOf("glucose", "delta", "shortAvgDelta", "longAvgDelta"))
+            binding.glucosestatus.text = lastAPSResult.glucoseStatus?.dataClassToHtml(listOf("glucose", "delta", "shortAvgDelta", "longAvgDelta", "duraISFaverage", "duraISFminutes", "parabolaMinutes", "corrSqu", "a0", "a1", "a2", "bgAcceleration"))     // AISF offline
             binding.currenttemp.text = lastAPSResult.currentTemp?.dataClassToHtml()
             binding.iobdata.text = rh.gs(R.string.array_of_elements, lastAPSResult.iobData?.size) + "\n" + lastAPSResult.iob?.dataClassToHtml()
             binding.profile.text = lastAPSResult.oapsProfile?.dataClassToHtml() ?: lastAPSResult.oapsProfileAutoIsf?.dataClassToHtml()

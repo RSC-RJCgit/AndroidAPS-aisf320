@@ -111,6 +111,10 @@ class TranslatorImpl @Inject internal constructor(
         Action.RUNNING_MODE                    -> rh.gs(R.string.uel_running_mode)
         Action.RUNNING_MODE_REMOVED            -> rh.gs(R.string.uel_running_mode_removed)
         Action.RUNNING_MODE_UPDATED            -> rh.gs(R.string.uel_running_mode_updarted)
+        Action.AUTOISF_ENABLED                 -> rh.gs(R.string.uel_autoisf_enabled)
+        Action.AUTOISF_DISABLED                -> rh.gs(R.string.uel_autoisf_disabled)
+        Action.IOB_TH_SET                      -> rh.gs(R.string.uel_iobth_set)
+        Action.ACCE_WEIGHT_SET                 -> rh.gs(R.string.uel_acce_weight_set)
         Action.UNKNOWN                         -> rh.gs(R.string.unknown)
     }
 

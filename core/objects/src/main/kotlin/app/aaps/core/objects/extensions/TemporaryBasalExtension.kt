@@ -2,6 +2,7 @@ package app.aaps.core.objects.extensions
 
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -103,7 +104,7 @@ fun TB.iobCalc(
     profile: Profile,
     lastAutosensResult: AutosensResult,
     exerciseMode: Boolean,
-    halfBasalExerciseTarget: Int,
+    halfBasalExerciseTarget: Double,
     isTempTarget: Boolean,
     insulinInterface: Insulin
 ): IobTotal {
@@ -116,7 +117,8 @@ fun TB.iobCalc(
     if (exerciseMode && isTempTarget && profile.getTargetMgdl() >= normalTarget + 5) {
         // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
         // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
-        val c = halfBasalExerciseTarget - normalTarget
+        val mgdlHalfBasalExerciseTarget = halfBasalExerciseTarget * if (profile.units.toString() == "mmol/L") GlucoseUnit.MMOLL_TO_MGDL else 1.0
+        val c = mgdlHalfBasalExerciseTarget - normalTarget
         sensitivityRatio = c / (c + profile.getTargetMgdl() - normalTarget)
     }
     if (realDuration > 0) {

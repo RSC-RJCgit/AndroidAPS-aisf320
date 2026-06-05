@@ -54,9 +54,17 @@ enum class IntKey(
     ApsCarbsRequestThreshold("carbsReqThreshold", 1, 1, 100, defaultedBySM = true),
     ApsAutoIsfHalfBasalExerciseTarget("half_basal_exercise_target", 160, 120, 200, defaultedBySM = true),
     ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),
+    FslMinFitMinutes("fslMinMinutes", 20, 3, 20, defaultedBySM = true),
+    FslMaxSmoothGap("Exp1SmoothGap", 20, 10, 60, defaultedBySM = true),
+    FslCalibrationDuration("Calibration_Duration", 20, 20, 20, defaultedBySM = true),   // effectively frozen
+
+    ActivityMonitorIdleStart("inactivity_idle_start", 22, 0, 23, defaultedBySM=true, dependency = BooleanKey.ActivityMonitorOvernight),
+    ActivityMonitorIdleEnd("inactivity_idle_end", 6, 0, 23, defaultedBySM=true, dependency = BooleanKey.ActivityMonitorOvernight),
+
     ApsDynIsfAdjustmentFactor("DynISFAdjust", 100, 1, 300, dependency = BooleanKey.ApsUseDynamicSensitivity),
     AutosensPeriod("openapsama_autosens_period", 24, 4, 24, calculatedDefaultValue = true),
     MaintenanceLogsAmount("maintenance_logs_amount", 2, 1, 10, defaultedBySM = true),
+    MaintenanceCleanupDays("maintenance_cleanup_days", 93, 7, 93, defaultedBySM = true),
     AlertsStaleDataThreshold("missed_bg_readings_threshold", 30, 15, 10000, defaultedBySM = true, dependency = BooleanKey.AlertMissedBgReading),
     AlertsPumpUnreachableThreshold("pump_unreachable_threshold", 30, 30, 300, defaultedBySM = true, dependency = BooleanKey.AlertPumpUnreachable),
     InsulinOrefPeak("insulin_oref_peak", 75, 35, 120, hideParentScreenIfHidden = true),

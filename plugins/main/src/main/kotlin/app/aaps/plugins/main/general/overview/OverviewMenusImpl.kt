@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.overview.OverviewMenus
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
@@ -45,7 +46,8 @@ class OverviewMenusImpl @Inject constructor(
     private val preferences: Preferences,
     private val rxBus: RxBus,
     private val config: Config,
-    private val loop: Loop
+    private val loop: Loop,
+    private val activePlugin: ActivePlugin
 ) : OverviewMenus {
 
     enum class CharTypeData(
@@ -60,11 +62,13 @@ class OverviewMenusImpl @Inject constructor(
     ) {
 
         PRE(R.string.overview_show_predictions, app.aaps.core.ui.R.attr.predictionColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = false, shortnameId = R.string.prediction_shortname, enabledByDefault = true),
+        BG_PARAB(R.string.overview_show_bgParabola, app.aaps.core.ui.R.attr.bgParabolaColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = false, shortnameId = R.string.bgParabola_shortname, enabledByDefault = true),
         TREAT(R.string.overview_show_treatments, app.aaps.core.ui.R.attr.cobColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = false, shortnameId = R.string.treatments_shortname, enabledByDefault = true),
         BAS(R.string.overview_show_basals, app.aaps.core.ui.R.attr.basal, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = false, shortnameId = R.string.basal_shortname, enabledByDefault = true),
         ABS(R.string.overview_show_abs_insulin, app.aaps.core.ui.R.attr.iobColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.abs_insulin_shortname),
         IOB(R.string.overview_show_iob, app.aaps.core.ui.R.attr.iobColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = app.aaps.core.ui.R.string.iob),
         COB(R.string.overview_show_cob, app.aaps.core.ui.R.attr.cobColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = app.aaps.core.ui.R.string.cob),
+        IOB_TH(R.string.overview_show_iobTH, app.aaps.core.ui.R.attr.iobThColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.iob_threshold_shortname),
         DEV(R.string.overview_show_deviations, app.aaps.core.ui.R.attr.bgiColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.deviation_shortname),
         BGI(R.string.overview_show_bgi, app.aaps.core.ui.R.attr.bgiColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.bgi_shortname),
         SEN(R.string.overview_show_sensitivity, app.aaps.core.ui.R.attr.ratioColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.sensitivity_shortname),
@@ -73,19 +77,48 @@ class OverviewMenusImpl @Inject constructor(
         DEVSLOPE(R.string.overview_show_deviation_slope, app.aaps.core.ui.R.attr.devSlopePosColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.devslope_shortname),
         HR(R.string.overview_show_heartRate, app.aaps.core.ui.R.attr.heartRateColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.heartRate_shortname),
         STEPS(R.string.overview_show_steps, app.aaps.core.ui.R.attr.stepsColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.steps_shortname),
+        FIN_ISF(R.string.overview_show_final_isf, app.aaps.core.ui.R.attr.finalIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.final_isf_shortname),
+        ACC_ISF(R.string.overview_show_acce_isf, app.aaps.core.ui.R.attr.acceIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.acce_isf_shortname),
+        BG_ISF(R.string.overview_show_bg_isf, app.aaps.core.ui.R.attr.bgIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.bg_isf_shortname),
+        PP_ISF(R.string.overview_show_pp_isf, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_isf_shortname),
+        DUR_ISF(R.string.overview_show_dura_isf, app.aaps.core.ui.R.attr.duraIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.dura_isf_shortname),
     }
 
-    init {
-        CharTypeData.PRE.visibility = {
-            when {
-                config.APS        -> loop.lastRun?.request?.hasPredictions == true
-                config.AAPSCLIENT -> true
-                else              -> false
-            }
+    private val runningAutoIsf: Boolean
+        get() = try {
+            activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
+        } catch (e: Exception) {
+            false
         }
-        CharTypeData.DEVSLOPE.visibility = { config.isDev() }
-        CharTypeData.VAR_SENS.visibility = { preferences.get(BooleanKey.ApsUseDynamicSensitivity) || (preferences.get(BooleanKey.ApsUseAutoIsfWeights) && config.isDev()) }
-    }
+    private val masterAutoIsf: Boolean; get() = runningAutoIsf && !config.AAPSCLIENT
+    private val runningDynIsf: Boolean
+        get() = preferences.get(BooleanKey.ApsUseDynamicSensitivity) &&
+            try {
+                activePlugin.activeAPS.algorithm.name == "SMB"
+            } catch (e: Exception) {
+                false
+            }
+
+    /**
+    init {
+       CharTypeData.PRE.visibility = {
+           when {
+               config.APS        -> loop.lastRun?.request?.hasPredictions == true
+               config.AAPSCLIENT -> true
+               else              -> false
+           }
+       }
+       //CharTypeData.DEVSLOPE.visibility = { config.isDev() }
+       //CharTypeData.BG_PARAB.visibility = { runningAutoIsf }
+       //CharTypeData.IOB_TH.visibility = { masterAutoIsf }
+       //CharTypeData.VAR_SENS.visibility = { preferences.get(BooleanKey.ApsUseDynamicSensitivity) || runningAutoIsf }
+       //CharTypeData.FIN_ISF.visibility = { masterAutoIsf }
+       //CharTypeData.ACC_ISF.visibility = {masterAutoIsf }
+       //CharTypeData.BG_ISF.visibility = { masterAutoIsf }
+       //CharTypeData.PP_ISF.visibility = { masterAutoIsf }
+       //CharTypeData.DUR_ISF.visibility = { masterAutoIsf }
+     }
+    **/
 
     companion object {
 
@@ -95,7 +128,7 @@ class OverviewMenusImpl @Inject constructor(
     override fun enabledTypes(graph: Int): String {
         val r = StringBuilder()
         for (type in CharTypeData.entries)
-            if (setting[graph][type.ordinal]) {
+            if (isActiveCharTypeData(graph,type.ordinal) && type.secondary) {
                 r.append(rh.gs(type.shortnameId))
                 r.append(" ")
             }
@@ -119,10 +152,39 @@ class OverviewMenusImpl @Inject constructor(
                 }
             else
                 listOf(
-                    arrayOf(true, true, true, false, false, false, false, false, false, false, false, false, false, false),
-                    arrayOf(false, false, false, false, true, false, false, false, false, false, false, false, false, false),
-                    arrayOf(false, false, false, false, false, true, false, false, false, false, false, false, false, false)
+                    arrayOf(true, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
+                    arrayOf(false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
+                    arrayOf(false, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false)
                 )
+
+    @Synchronized
+    private fun isSelectableCharTypeData(m: Int): Boolean  {
+        val isSelectable = when  {
+            m  == CharTypeData.PRE.ordinal      -> when {
+                                                       config.APS        -> loop.lastRun?.request?.hasPredictions == true
+                                                       config.AAPSCLIENT -> true
+                                                       else              -> false
+                                                   }
+            m == CharTypeData.DEVSLOPE.ordinal  -> config.isDev()
+            m == CharTypeData.BG_PARAB.ordinal  -> runningAutoIsf
+            m == CharTypeData.VAR_SENS.ordinal  -> runningAutoIsf || runningDynIsf
+            m == CharTypeData.IOB_TH.ordinal    -> masterAutoIsf
+            m == CharTypeData.FIN_ISF.ordinal   -> masterAutoIsf
+            m == CharTypeData.ACC_ISF.ordinal   -> masterAutoIsf
+            m == CharTypeData.BG_ISF.ordinal    -> masterAutoIsf
+            m == CharTypeData.PP_ISF.ordinal    -> masterAutoIsf
+            m == CharTypeData.DUR_ISF.ordinal   -> masterAutoIsf
+            m == CharTypeData.HR.ordinal        -> !config.AAPSCLIENT
+            m == CharTypeData.STEPS.ordinal     -> !config.AAPSCLIENT
+            else                                -> true
+        }
+        return isSelectable
+    }
+
+    @Synchronized
+    override fun isActiveCharTypeData(graph: Int, m: Int): Boolean  {
+        return if (!setting[graph][m]) false else isSelectableCharTypeData(m)
+    }
 
     @Synchronized
     private fun storeGraphConfig() {
@@ -159,6 +221,8 @@ class OverviewMenusImpl @Inject constructor(
         chartButton.setOnClickListener { v: View ->
             var itemRow = 0
             val popup = PopupWindow(v.context)
+            //val runningAutoIsf =  activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
+            //val masterAutoIsf = runningAutoIsf && !config.AAPSCLIENT
             popup.setBackgroundDrawable(rh.gac(chartButton.context, app.aaps.core.ui.R.attr.popupWindowBackground).toDrawable())
             val scrollView = ScrollView(v.context)                        // required to be able to scroll menu on low res screen
             val horizontalScrollView = HorizontalScrollView(v.context)    // Workaround because I was not able to manage first column width for long labels
@@ -172,7 +236,7 @@ class OverviewMenusImpl @Inject constructor(
 
             // insert primary items
             CharTypeData.entries.forEach { m ->
-                if (m.visibility.invoke() && m.primary) {
+                if (isSelectableCharTypeData( m.ordinal) && m.primary) {
                     createCustomMenuItemView(v.context, m, itemRow, layout, true)
                     itemRow++
                 }
@@ -199,7 +263,16 @@ class OverviewMenusImpl @Inject constructor(
 
             // insert secondary items
             CharTypeData.entries.forEach { m ->
-                if (m.visibility.invoke() && m.secondary) {
+                //var insert = true
+                //if (m == CharTypeData.DEVSLOPE) insert = config.isDev()
+                //else if (m == CharTypeData.VAR_SENS) insert = preferences.get(BooleanKey.ApsUseDynamicSensitivity) || runningAutoIsf
+                //else if (m == CharTypeData.IOB_TH) insert = masterAutoIsf
+                //else if (m == CharTypeData.FIN_ISF) insert = masterAutoIsf
+                //else if (m == CharTypeData.ACC_ISF) insert = masterAutoIsf
+                //else if (m == CharTypeData.BG_ISF) insert = masterAutoIsf
+                //else if (m == CharTypeData.PP_ISF) insert = masterAutoIsf
+                //else if (m == CharTypeData.DUR_ISF) insert = masterAutoIsf
+                if (isSelectableCharTypeData(m.ordinal) && m.secondary) {
                     createCustomMenuItemView(v.context, m, itemRow, layout, false)
                     itemRow++
                 }

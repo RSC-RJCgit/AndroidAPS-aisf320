@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.collection.LongSparseArray
 import androidx.collection.forEach
+import android.icu.util.Calendar
 import androidx.core.net.toUri
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
@@ -52,6 +53,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntentKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -74,6 +76,7 @@ import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
 import app.aaps.plugins.aps.openAPS.TddStatus
+import com.google.gson.Gson
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Provider
@@ -416,8 +419,12 @@ open class OpenAPSSMBPlugin @Inject constructor(
         }
 
         @Suppress("KotlinConstantConditions")
-        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, SMBDefaults.half_basal_exercise_target, isTempTarget)
+        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens), preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+
+        val calendar = Calendar.getInstance()
+        val lastAppStart = preferences.get(LongKey.AppStart)
+        val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart) / 60000
 
         @Suppress("KotlinConstantConditions")
         val oapsProfile = OapsProfile(
@@ -435,13 +442,31 @@ open class OpenAPSSMBPlugin @Inject constructor(
             max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
             current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
             lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
-            high_temptarget_raises_sensitivity = false,
+            // mod Exercise mode
+            // high_temptarget_raises_sensitivity = false,
+            high_temptarget_raises_sensitivity = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens),
+            // mod finish
             low_temptarget_lowers_sensitivity = false,
             sensitivity_raises_target = preferences.get(BooleanKey.ApsSensitivityRaisesTarget),
             resistance_lowers_target = preferences.get(BooleanKey.ApsResistanceLowersTarget),
             adv_target_adjustments = SMBDefaults.adv_target_adjustments,
-            exercise_mode = SMBDefaults.exercise_mode,
-            half_basal_exercise_target = SMBDefaults.half_basal_exercise_target,
+            // mod Exercise mode
+            // exercise_mode = SMBDefaults.exercise_mode,
+            // half_basal_exercise_target = SMBDefaults.half_basal_exercise_target,
+            exercise_mode = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens),
+            half_basal_exercise_target = preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget),
+            // mod finish
+            // mod activity mode
+            activity_detection = preferences.get(BooleanKey.ApsActivityDetection),
+            recent_steps_5_minutes = StepService.getRecentStepCount5Min(),
+            recent_steps_10_minutes = StepService.getRecentStepCount10Min(),
+            recent_steps_15_minutes = StepService.getRecentStepCount15Min(),
+            recent_steps_30_minutes = StepService.getRecentStepCount30Min(),
+            recent_steps_60_minutes = StepService.getRecentStepCount60Min(),
+            phone_moved = PhoneMovementDetector.phoneMoved(),
+            time_since_start = elapsedTimeSinceLastStart,
+            now = calendar.get(Calendar.HOUR_OF_DAY),
+            // end mod
             maxCOB = SMBDefaults.maxCOB,
             skip_neutral_temps = pump.setNeutralTempAtFullHour(),
             remainingCarbsCap = SMBDefaults.remainingCarbsCap,
@@ -467,11 +492,11 @@ open class OpenAPSSMBPlugin @Inject constructor(
         )
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
-
+        val gson = Gson()
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal SMB <<<")
         aapsLogger.debug(LTag.APS, "Glucose status:     $glucoseStatus")
         aapsLogger.debug(LTag.APS, "Current temp:       $currentTemp")
-        aapsLogger.debug(LTag.APS, "IOB data:           ${iobArray.joinToString()}")
+        aapsLogger.debug(LTag.APS, "IOB data:           ${gson.toJson(iobArray)}")
         aapsLogger.debug(LTag.APS, "Profile:            $oapsProfile")
         aapsLogger.debug(LTag.APS, "Autosens data:      $autosensResult")
         aapsLogger.debug(LTag.APS, "Meal data:          $mealData")
@@ -602,6 +627,20 @@ open class OpenAPSSMBPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsDynIsfAdjustSensitivity, summary = R.string.dynisf_adjust_sensitivity_summary, title = R.string.dynisf_adjust_sensitivity))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsSensitivityRaisesTarget, summary = R.string.sensitivity_raises_target_summary, title = R.string.sensitivity_raises_target_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsResistanceLowersTarget, summary = R.string.resistance_lowers_target_summary, title = R.string.resistance_lowers_target_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfHighTtRaisesSens, summary = R.string.high_temptarget_raises_sensitivity_summary, title = R.string.high_temptarget_raises_sensitivity_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowTtLowersSens, summary = R.string.low_temptarget_lowers_sensitivity_summary, title = R.string.low_temptarget_lowers_sensitivity_title))
+            addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget, dialogMessage = R.string.half_basal_exercise_target_summary, title = R.string.half_basal_exercise_target_title))
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "activity_modifies _sensitivity"
+                title = rh.gs(R.string.activity_mode_title)
+                addPreference(
+                    AdaptiveSwitchPreference(
+                        ctx = context,
+                        booleanKey = BooleanKey.ApsActivityDetection,
+                        summary = R.string.activity_mode_summary,
+                        title = R.string.activity_mode_title)
+                )
+            })
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithHighTt, summary = R.string.enable_smb_with_high_temp_target_summary, title = R.string.enable_smb_with_high_temp_target))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAlways, summary = R.string.enable_smb_always_summary, title = R.string.enable_smb_always))

@@ -61,4 +61,10 @@ interface AndroidPermission {
      * @param activity context of caller
      */
     fun notifyForSystemWindowPermissions(activity: FragmentActivity)
+
+    /**
+     * Check for system window permission. Raise Overview notification if missing.
+     * @param activity context of caller
+     */
+    fun notifyForStepCountPermissions(activity: FragmentActivity)
 }

@@ -382,7 +382,7 @@ public class GridLabelRenderer {
         int p = mGraphView.getGraphContentTop(); // start
         int pixelStep = height / (numVerticalLabels - 1);
         for (int i = 0; i < numVerticalLabels; i++) {
-            mStepsVerticalSecondScale.put(p, v);
+            mStepsVerticalSecondScale.put((int) (p+(1-i)*0.5*pixelStep), v);
             p += pixelStep;
             v -= exactSteps;
         }
@@ -479,7 +479,7 @@ public class GridLabelRenderer {
         for (int i = 0; i < numVerticalLabels; i++) {
             mStepsVertical.put(p, v);
             p += pixelStep;
-            v -= exactSteps;
+            v -= exactSteps;    // active
         }
 
         return true;
@@ -863,7 +863,7 @@ public class GridLabelRenderer {
                 }
             }
             if (mStyles.gridStyle.drawVertical()) {
-                canvas.drawLine(e.getKey(), mGraphView.getGraphContentTop(), e.getKey(), mGraphView.getGraphContentTop() + mGraphView.getGraphContentHeight(), mPaintLine);
+                canvas.drawLine(e.getKey(), mGraphView.getGraphContentTop(), e.getKey(), mGraphView.getGraphContentTop() + mGraphView.getGraphContentHeight(), mPaintLine); // active
             }
 
             // draw label
@@ -883,7 +883,7 @@ public class GridLabelRenderer {
                 for (int li = 0; li < lines.length; li++) {
                     // for the last line y = height
                     float y = (canvas.getHeight() - mStyles.padding - getHorizontalAxisTitleHeight()) - (lines.length - li - 1) * getTextSize() * 1.1f + mStyles.labelsSpace;
-                    canvas.drawText(lines[li], e.getKey(), y, mPaintLabel);
+                    canvas.drawText(lines[li], e.getKey(), y, mPaintLabel); // active
                 }
             }
             i++;
@@ -938,6 +938,7 @@ public class GridLabelRenderer {
         float startLeft = mGraphView.getGraphContentLeft();
         mPaintLabel.setColor(getVerticalLabelsColor());
         mPaintLabel.setTextAlign(getVerticalLabelsAlign());
+        int lIndex = -1;
         for (Map.Entry<Integer, Double> e : mStepsVertical.entrySet()) {
             // draw line
             if (mStyles.highlightZeroLines) {
@@ -948,7 +949,7 @@ public class GridLabelRenderer {
                 }
             }
             if (mStyles.gridStyle.drawHorizontal()) {
-                canvas.drawLine(startLeft, e.getKey(), startLeft + mGraphView.getGraphContentWidth(), e.getKey(), mPaintLine);
+                canvas.drawLine(startLeft, e.getKey(), startLeft + mGraphView.getGraphContentWidth(), e.getKey(), mPaintLine);  // active
             }
 
             // draw label
@@ -963,7 +964,12 @@ public class GridLabelRenderer {
                 }
                 labelsOffset += mStyles.padding + getVerticalAxisTitleWidth();
 
-                float y = e.getKey();
+                float labelMinMaxOffset = 0f;
+                if (mNumVerticalLabels==3) {
+                    lIndex ++;
+                    labelMinMaxOffset = (1-lIndex) * labelsWidth * 0.4f;
+                }
+                float y = e.getKey() + labelMinMaxOffset;
 
                 String label = mLabelFormatter.formatLabel(e.getValue(), false);
                 if (label == null) {
@@ -974,7 +980,7 @@ public class GridLabelRenderer {
                 for (int li = 0; li < lines.length; li++) {
                     // for the last line y = height
                     float y2 = y - (lines.length - li - 1) * getTextSize() * 1.1f;
-                    canvas.drawText(lines[li], labelsOffset, y2, mPaintLabel);
+                    canvas.drawText(lines[li], labelsOffset, y2, mPaintLabel);  // active
                 }
             }
         }

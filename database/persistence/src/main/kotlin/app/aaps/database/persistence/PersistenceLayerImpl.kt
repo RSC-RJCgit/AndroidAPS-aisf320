@@ -1,5 +1,6 @@
 package app.aaps.database.persistence
 
+import app.aaps.core.data.model.AIV
 import android.os.SystemClock
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
@@ -45,6 +46,7 @@ import app.aaps.database.transactions.InsertEffectiveProfileSwitchTransaction
 import app.aaps.database.transactions.InsertIfNewByTimestampCarbsTransaction
 import app.aaps.database.transactions.InsertIfNewByTimestampTherapyEventTransaction
 import app.aaps.database.transactions.InsertOrUpdateApsResultTransaction
+import app.aaps.database.transactions.InsertOrUpdateAutoIsfValuesTransaction
 import app.aaps.database.transactions.InsertOrUpdateBolusCalculatorResultTransaction
 import app.aaps.database.transactions.InsertOrUpdateBolusTransaction
 import app.aaps.database.transactions.InsertOrUpdateCachedTotalDailyDoseTransaction
@@ -1924,6 +1926,28 @@ class PersistenceLayerImpl @Inject constructor(
                 }
                 result.updated.forEach {
                     aapsLogger.debug(LTag.DATABASE, "Updated StepsCount $it")
+                    transactionResult.updated.add(it.fromDb())
+                }
+                transactionResult
+            }
+    // AIV
+    override fun getAutoIsfValuesFromTime(from: Long): List<AIV> =
+        repository.getAutoIsfValuesFromTime(from).map { list -> list.asSequence().map { it.fromDb() }.toList() }.blockingGet()
+
+    override fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV> =
+        repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { list -> list.asSequence().map { it.fromDb() }.toList() }.blockingGet()
+
+    override fun insertOrUpdateAutoIsfValues(autoIsfValues: AIV): Single<PersistenceLayer.TransactionResult<AIV>> =
+        repository.runTransactionForResult(InsertOrUpdateAutoIsfValuesTransaction( autoIsfValues.toDb()))
+            .doOnError { aapsLogger.error(LTag.DATABASE, "Error while saving AutoIsfValues $it") }
+            .map { result ->
+                val transactionResult = PersistenceLayer.TransactionResult<AIV>()
+                result.inserted.forEach {
+                    aapsLogger.debug(LTag.DATABASE, "Inserted AutoIsfValues $it")
+                    transactionResult.inserted.add(it.fromDb())
+                }
+                result.updated.forEach {
+                    aapsLogger.debug(LTag.DATABASE, "Updated AutoIsfValues $it")
                     transactionResult.updated.add(it.fromDb())
                 }
                 transactionResult

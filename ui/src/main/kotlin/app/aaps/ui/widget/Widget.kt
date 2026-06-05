@@ -321,14 +321,24 @@ class Widget : AppWidgetProvider() {
         val ratioUsed = request?.autosensResult?.ratio ?: 1.0
         if (variableSens != isfMgdl && variableSens != 0.0 && isfMgdl != null) {
             val overViewText: ArrayList<String> = ArrayList()
-            if (ratioUsed != 1.0 && ratioUsed != lastAutosensData?.autosensResult?.ratio) overViewText.add(rh.gs(app.aaps.core.ui.R.string.algorithm_short, ratioUsed * 100))
-            overViewText.add(
-                String.format(
-                    Locale.getDefault(), "%1$.1f→%2$.1f",
-                    profileUtil.fromMgdlToUnits(isfMgdl, profileFunction.getUnits()),
-                    profileUtil.fromMgdlToUnits(variableSens, profileFunction.getUnits())
+            if (ratioUsed != 1.0 && ratioUsed != lastAutosensData?.autosensResult?.ratio) overViewText.add(rh.gs(app.aaps.core.ui.R.string.algorithm_short,ratioUsed * 100))
+            if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
+                overViewText.add(
+                    String.format(
+                        Locale.ENGLISH, rh.gs(app.aaps.core.ui.R.string.autoisf_short),
+                        100.0  * profileUtil.fromMgdlToUnits(isfMgdl, profileFunction.getUnits())
+                            / profileUtil.fromMgdlToUnits(variableSens, profileFunction.getUnits())
+                    )
                 )
-            )
+            } else {
+                overViewText.add(
+                    String.format(
+                        Locale.getDefault(), "%1$.1f→%2$.1f",
+                        profileUtil.fromMgdlToUnits(isfMgdl, profileFunction.getUnits()),
+                        profileUtil.fromMgdlToUnits(variableSens, profileFunction.getUnits())
+                    )
+                )
+            }
             views.setTextViewText(R.id.variable_sensitivity, overViewText.joinToString("\n"))
             views.setViewVisibility(R.id.variable_sensitivity, View.VISIBLE)
         } else views.setViewVisibility(R.id.variable_sensitivity, View.GONE)

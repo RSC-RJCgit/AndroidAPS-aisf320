@@ -3,4 +3,12 @@
     <!--    Keys-->
     <string name="key_units_mgdl" translatable="false">units_mgdl</string>
 
+    <string name="key_activity_detection" translatable="false">activity_detection</string>
+    <string name="key_activity_scale_factor" translatable="false">activity_scale_factor</string>
+    <string name="key_inactivity_scale_factor" translatable="false">inactivity_scale_factor</string>
+    <string name="key_ignore_inactivity_overnight" translatable="false">ignore_inactivity_overnight</string>
+    <string name="key_inactivity_idle_start" translatable="false">inactivity_idle_start</string>
+    <string name="key_inactivity_idle_end" translatable="false">inactivity_idle_end</string>
+
+
 </resources>

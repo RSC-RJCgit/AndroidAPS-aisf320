@@ -100,6 +100,15 @@
     <color name="blue">#0000FF</color>
     <color name="sens">#008585</color>
 
+    <!--    AutoISF-->
+    <color name="bgParabolaColor">#FF00FF</color>
+    <color name="acceIsfColor">#0044FF</color>
+    <color name="bgIsfColor">#FF0000</color>
+    <color name="ppIsfColor">#00BB00</color>
+    <color name="duraIsfColor">#FF8800</color>
+    <color name="finalIsfColor">#00FFFF</color>
+    <color name="iobThColor">#00FFFF</color>
+
     <color name="ribbonDefault">#8C8C8C</color>
     <color name="daySelected">#D000FF00</color>
     <color name="weekdayOutline">#1ea3e5</color>

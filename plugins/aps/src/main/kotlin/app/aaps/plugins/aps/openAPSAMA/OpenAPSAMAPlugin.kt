@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAMA
 
 import android.content.Context
 import android.content.Intent
+import android.icu.util.Calendar
 import androidx.core.net.toUri
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -40,6 +41,8 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.LongKey
+//import app.aaps.core.objects.aps.DetermineBasalResult
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.getPassedDurationToTimeInMinutes
@@ -53,6 +56,8 @@ import app.aaps.plugins.aps.OpenAPSFragment
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
+import app.aaps.plugins.aps.openAPSSMB.PhoneMovementDetector
+import app.aaps.plugins.aps.openAPSSMB.StepService
 import app.aaps.plugins.aps.openAPSSMB.GlucoseStatusCalculatorSMB
 import org.json.JSONObject
 import javax.inject.Inject
@@ -60,6 +65,7 @@ import javax.inject.Provider
 import javax.inject.Singleton
 import kotlin.math.floor
 import kotlin.math.min
+import kotlin.time.Duration.Companion.milliseconds
 
 @Singleton
 class OpenAPSAMAPlugin @Inject constructor(
@@ -185,6 +191,9 @@ class OpenAPSAMAPlugin @Inject constructor(
 
         val iobArray = iobCobCalculator.calculateIobArrayInDia(profile)
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+        val calendar = Calendar.getInstance()
+        val lastAppStart = preferences.get(LongKey.AppStart)
+        val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
 
         val oapsProfile = OapsProfile(
             dia = min(profile.dia, 3.0),
@@ -207,7 +216,16 @@ class OpenAPSAMAPlugin @Inject constructor(
             resistance_lowers_target = false, // not used
             adv_target_adjustments = false, // not used
             exercise_mode = false, // not used
-            half_basal_exercise_target = 0, // not used
+            half_basal_exercise_target = 160.0, // not used
+            activity_detection = preferences.get(BooleanKey.ApsActivityDetection), // not used
+            recent_steps_5_minutes = StepService.getRecentStepCount5Min(), // not used
+            recent_steps_10_minutes = StepService.getRecentStepCount10Min(),
+            recent_steps_15_minutes = StepService.getRecentStepCount15Min(), // not used
+            recent_steps_30_minutes = StepService.getRecentStepCount30Min(), // not used
+            recent_steps_60_minutes = StepService.getRecentStepCount60Min(),
+            phone_moved = PhoneMovementDetector.phoneMoved(), // not used
+            time_since_start = elapsedTimeSinceLastStart, // not used
+            now = calendar.get(Calendar.HOUR_OF_DAY),// not used
             maxCOB = 0, // not used
             skip_neutral_temps = pump.setNeutralTempAtFullHour(),
             remainingCarbsCap = 0, // not used
@@ -215,17 +233,17 @@ class OpenAPSAMAPlugin @Inject constructor(
             A52_risk_enable = SMBDefaults.A52_risk_enable,
             SMBInterval = 0, // not used
             enableSMB_with_COB = false, // not used
-            enableSMB_with_temptarget = false, // not used
-            allowSMB_with_high_temptarget = false, // not used
+            enableSMB_with_temptarget = false,
+            allowSMB_with_high_temptarget = false,
             enableSMB_always = false, // not used
-            enableSMB_after_carbs = false, // not used
+            enableSMB_after_carbs = false,
             maxSMBBasalMinutes = 0, // not used
             maxUAMSMBBasalMinutes = 0, // not used
-            bolus_increment = pump.pumpDescription.bolusStep, // not used
-            carbsReqThreshold = 0, // not used
+            bolus_increment = pump.pumpDescription.bolusStep,
+            carbsReqThreshold = 0,
             current_basal = activePlugin.activePump.baseBasalRate,
             temptargetSet = isTempTarget,
-            autosens_max = preferences.get(DoubleKey.AutosensMax), // not used
+            autosens_max = preferences.get(DoubleKey.AutosensMax),
             out_units = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "mmol/L" else "mg/dl",
             variable_sens = 0.0, // not used
             insulinDivisor = 0, // not used

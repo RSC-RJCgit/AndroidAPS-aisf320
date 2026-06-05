@@ -50,6 +50,7 @@ class FileListProviderImpl @Inject constructor(
 
     private val documentsPath get() = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "AAPS")
     override val resultPath get() = File(documentsPath, File.separator + "results")
+    override val aapsLogsPath get() = File(documentsPath, File.separator + "aapsLogs")
 
     val preferencesPath = "preferences"
     val exportsPath = "exports"
@@ -171,6 +172,13 @@ class FileListProviderImpl @Inject constructor(
         return resultPath
     }
 
+    override fun ensureAapsLogsDirExists(): File {
+        if (!aapsLogsPath.exists()) {
+            aapsLogsPath.mkdirs()
+        }
+        return resultPath
+    }
+
     override fun newPreferenceFile(): DocumentFile? {
         val timeLocal = LocalDateTime.now().toString(DateTimeFormat.forPattern("yyyy-MM-dd'_'HHmmss"))
         val dir = ensurePreferenceDirExists()
@@ -192,6 +200,12 @@ class FileListProviderImpl @Inject constructor(
     override fun newResultFile(): File {
         val timeLocal = LocalDateTime.now().toString(DateTimeFormat.forPattern("yyyy-MM-dd'_'HHmmss"))
         return File(resultPath, "$timeLocal.json")
+    }
+
+    override fun newAapsLogsFile(): File {
+        //todo: make this usable somehow
+        val timeLocal = LocalDateTime.now().toString(DateTimeFormat.forPattern("yyyy-MM-dd'_'HHmmss"))
+        return File(aapsLogsPath, "$timeLocal.json")
     }
 
     // check metadata for known issues, change their status and add info with explanations

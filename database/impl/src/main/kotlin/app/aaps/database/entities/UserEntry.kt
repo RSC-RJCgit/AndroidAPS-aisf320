@@ -119,6 +119,10 @@ data class UserEntry(
         RUNNING_MODE,
         RUNNING_MODE_REMOVED,
         RUNNING_MODE_UPDATED,
+        AUTOISF_ENABLED,
+        AUTOISF_DISABLED,
+        IOB_TH_SET,
+        ACCE_WEIGHT_SET,
         UNKNOWN
         ;
     }
