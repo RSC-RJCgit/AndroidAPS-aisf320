@@ -190,6 +190,7 @@ jobs:
         run: |
               ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
               :app:assembleaapsclient2Release \
+              :app:assembleaapsclientRelease \
               :wear:assemble${{ env.BUILD_VARIANT }} \
               -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
               -Dkotlin.daemon.jvm.options="-Xmx2g" \
@@ -207,6 +208,7 @@ jobs:
           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
           mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
           mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
+          mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
 
       - name: Upload APKs to Google Drive
         run: |
@@ -291,5 +293,5 @@ jobs:
           upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
           upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
           upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
-
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
           echo "🎉 APKs successfully uploaded to Google Drive!"
