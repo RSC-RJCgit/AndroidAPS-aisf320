@@ -1393,7 +1393,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                             ctx = context,
                             doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange,
                             dialogMessage =  R.string.openapsama_smb_delivery_ratio_bg_range_summary,
-                            title = R.string.openapsama_smb_delivery_ratio_bg_range
+                            title= R.string.openapsama_smb_delivery_ratio_bg_range
                         )
                     )
                     addPreference (AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
