@@ -110,7 +110,7 @@ class OmnipodDashPumpPlugin @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val pumpEnactResultProvider: Provider<PumpEnactResult>,
     private val dashHistoryDatabase: DashHistoryDatabase
-) : PumpPluginBase(
+) : PumpPluginBase (
     pluginDescription = PluginDescription()
         .mainType(PluginType.PUMP)
         .fragmentClass(OmnipodDashOverviewFragment::class.java.name)
