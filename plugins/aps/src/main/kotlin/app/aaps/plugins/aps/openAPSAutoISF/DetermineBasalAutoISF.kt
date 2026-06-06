@@ -348,7 +348,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD033")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD034")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -845,7 +845,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         //consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append(
-            " 320TDD033 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD034 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -947,6 +947,12 @@ class DetermineBasalAutoISF @Inject constructor(
 
         //var varOffset: Double = 27.0
         var varOffset: Double = 9.0
+        val high_SMB = profile.smb_delivery_ratio_max
+        if (high_SMB == 0.6) {
+            varOffset += 9.0 // 1.0 ;set profile.smb_delivery_ratio_max 0.5
+        } else if (high_SMB == 1.0) {
+            varOffset += 18.0 //1.5; set profile.smb_delivery_ratio_max 1.0
+        }
         val hour= LocalDateTime.now().hour
 
 
@@ -1001,9 +1007,9 @@ class DetermineBasalAutoISF @Inject constructor(
         if (carbsSugg == 1) {
             offset1 = true
         } else if (carbsSugg == 9) {
-            varOffset += 9
+            varOffset -= 9
         } else if (carbsSugg == 10) {
-            varOffset += 18
+            varOffset += 9
         } else if (carbsSugg == 2) {
             offset2 = true
         } else if (carbsSugg == 3) {
@@ -1892,5 +1898,5 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /*
 
-DetermineBasalAutoISF.kt320TDD033
+DetermineBasalAutoISF.kt320TDD034
  */
