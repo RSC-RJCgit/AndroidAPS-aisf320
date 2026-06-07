@@ -724,7 +724,7 @@ class DetermineBasalAutoISF @Inject constructor(
         } else if (iobThUser == 60 ) {
             TOD = "Day PP130%"
         }
-        var TDDfactor = 1.0
+        //var TDDfactor = 1.0
         if (profile.smb_delivery_ratio_max > 0.5) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
