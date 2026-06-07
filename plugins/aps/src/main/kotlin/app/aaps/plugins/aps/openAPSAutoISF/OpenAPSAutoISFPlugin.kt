@@ -820,6 +820,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
                     }
                     val tddRatio = blendedTDD / tdd7D
+                    // Store tddRatio and tdd7D to DetermineBasalAutoISF via class-level properties (Option 3)
+                    // sensitivityRatio is intentionally NOT used for TDDfactor
+                    determineBasalAutoISF.tddRatio = tddRatio.coerceIn(
+                        preferences.get(DoubleKey.AutosensMin),
+                        preferences.get(DoubleKey.AutosensMax)
+                    )
+                    determineBasalAutoISF.tdd7D = tdd7D
                     autosensResult.ratio = tddRatio.coerceIn(
                         preferences.get(DoubleKey.AutosensMin),
                         preferences.get(DoubleKey.AutosensMax)
@@ -839,6 +846,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     autosensResult.sensResult = "autosens disabled, TDD unavailable (missing: $missing)"
                     aapsLogger.debug(LTag.APS, autosensResult.sensResult)
                     consoleError.add("TDD sensitivity: ${autosensResult.sensResult}")
+                    // Reset tddRatio to neutral when TDD data unavailable
+                    determineBasalAutoISF.tddRatio = 1.0
+                    determineBasalAutoISF.tdd7D = 0.0
                 }
             }
             sensitivityRatio = autosensResult.ratio
@@ -855,9 +865,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (calibrationStopsSMB) {
             consoleError.add("AutoISF weights calculated for display but not applied: calibrating")
         } else if (!autoIsfWeights || glucose_status == null) {
-        /*    consoleError.add("AutoISF weights disabled in Preferences")
-            skipWeights = true
-        } else if (maxIobIsEven) {*/
+            /*    consoleError.add("AutoISF weights disabled in Preferences")
+                skipWeights = true
+            } else if (maxIobIsEven) {*/
             consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences")
             applyWeights = false
         } else {
@@ -1405,5 +1415,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD034
+OpenAPSAutoISFPlugin.ktSt 320TDD035
  */
