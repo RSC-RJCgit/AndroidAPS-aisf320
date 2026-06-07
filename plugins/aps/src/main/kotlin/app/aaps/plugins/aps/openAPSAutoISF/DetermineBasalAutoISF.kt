@@ -322,7 +322,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD035")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD036")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -682,7 +682,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         rT.reason.append(
-            " 320TDD035 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD036 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1117,6 +1117,7 @@ class DetermineBasalAutoISF @Inject constructor(
             if (profile.smb_delivery_ratio_max > 0.5) {
                 TDDfactor = min(1.2, max(0.80, tddRatio))
                 consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
+                rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             }
 
             var insulinReq =
@@ -1124,7 +1125,7 @@ class DetermineBasalAutoISF @Inject constructor(
             insulinReq *= TDDfactor
             max_iob *= TDDfactor
             consoleError.add("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
-
+            rT.reason.append("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
             if (insulinReq > max_iob - iob_data.iob) {
                 rT.reason.append("max_iob $max_iob, ")
                 insulinReq = max_iob - iob_data.iob
@@ -1534,5 +1535,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD035
+DetermineBasalAutoISF.kt320TDD036
 */
