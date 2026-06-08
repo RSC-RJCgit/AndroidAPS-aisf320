@@ -522,7 +522,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
-        aapsLogger.debug(LTag.APS, "TDDfactor check: tddRatio=${determineBasalAutoISF.tddRatio} tdd7D=${determineBasalAutoISF.tdd7D}")
+
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -801,9 +801,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
                     autosensResult = it.autosensResult
                 }
-                // Autosens handles sensitivity — reset TDDfactor to neutral
-                determineBasalAutoISF.tddRatio = 1.0
-                determineBasalAutoISF.tdd7D = 0.0
+                // Do NOT reset tddRatio here — autoISF() is called from both invoke() and
+                // calculateVariableIsf(). Resetting here would overwrite the value stored
+                // by the invoke() path before determine_basal() runs.
             } else {
                 // When autosens is off, derive sensitivity ratio from blended TDD (Boost method).
                 // Blends 8H-weighted, 7D, and 1D TDD; ratio = blendedTDD / tdd7D.
@@ -1418,5 +1418,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD038
+OpenAPSAutoISFPlugin.ktSt 320TDD039
  */
