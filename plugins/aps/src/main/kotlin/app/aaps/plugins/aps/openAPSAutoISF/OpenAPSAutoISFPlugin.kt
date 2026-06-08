@@ -801,6 +801,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
                     autosensResult = it.autosensResult
                 }
+                // Autosens handles sensitivity — reset TDDfactor to neutral
+                determineBasalAutoISF.tddRatio = 1.0
+                determineBasalAutoISF.tdd7D = 0.0
             } else {
                 // When autosens is off, derive sensitivity ratio from blended TDD (Boost method).
                 // Blends 8H-weighted, 7D, and 1D TDD; ratio = blendedTDD / tdd7D.
