@@ -522,7 +522,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
-
+        aapsLogger.debug(LTag.APS, "TDDfactor check: tddRatio=${determineBasalAutoISF.tddRatio} tdd7D=${determineBasalAutoISF.tdd7D}")
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1418,5 +1418,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD037
+OpenAPSAutoISFPlugin.ktSt 320TDD038
  */
