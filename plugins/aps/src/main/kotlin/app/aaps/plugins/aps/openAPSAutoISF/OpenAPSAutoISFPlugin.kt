@@ -522,7 +522,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
-
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -825,15 +824,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val tddRatio = blendedTDD / tdd7D
                     // Store tddRatio and tdd7D to DetermineBasalAutoISF via class-level properties (Option 3)
                     // sensitivityRatio is intentionally NOT used for TDDfactor
-                    determineBasalAutoISF.tddRatio = tddRatio.coerceIn(
-                        preferences.get(DoubleKey.AutosensMin),
-                        preferences.get(DoubleKey.AutosensMax)
-                    )
+                    determineBasalAutoISF.tddRatio = tddRatio.coerceIn(0.70, 1.50)
                     determineBasalAutoISF.tdd7D = tdd7D
-                    autosensResult.ratio = tddRatio.coerceIn(
-                        preferences.get(DoubleKey.AutosensMin),
-                        preferences.get(DoubleKey.AutosensMax)
-                    )
+                    autosensResult.ratio = tddRatio.coerceIn(0.70, 1.50)
                     autosensResult.sensResult = "TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
                         " W8H ${Round.roundTo(w8H, 0.1)}U)"
@@ -1418,5 +1411,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD039
+OpenAPSAutoISFPlugin.ktSt 3320TDD041
  */
