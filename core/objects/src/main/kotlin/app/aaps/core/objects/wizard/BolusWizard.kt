@@ -413,7 +413,7 @@ class BolusWizard @Inject constructor(
                 timestamp = dateUtil.now(),
                 amount = 0.0,
                 type = BS.Type.NORMAL,
-                notes = notes.ifEmpty { "Wizard: 0U (IOB/COB covered)" }
+                notes = notes?.ifEmpty { "Wizard: 0U (IOB/COB covered)" } ?: "Wizard: 0U (IOB/COB covered)"
             )
             persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
             persistenceLayer.insertOrUpdateBolusCalculatorResult(createBolusCalculatorResult()).blockingGet()
@@ -563,7 +563,7 @@ class BolusWizard @Inject constructor(
                             timestamp = now,
                             amount = 0.0,
                             type = BS.Type.NORMAL,
-                            notes = notes.ifEmpty { "Wizard: 0U (IOB covered)" }
+                            notes = notes?.ifEmpty { "Wizard: 0U (IOB covered)" } ?: "Wizard: 0U (IOB covered)"
                         )
                         persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
                     }
