@@ -322,7 +322,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 3320TDD041")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD042")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -688,7 +688,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         rT.reason.append(
-            " 3320TDD041 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD042 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -773,11 +773,12 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var varOffset: Double = 9.0
         val high_SMB = profile.smb_delivery_ratio_max
-        if (high_SMB == 0.6) {
+        if (high_SMB > 0.55 && high_SMB < 0.95) {
             varOffset += 9.0
-        } else if (high_SMB == 1.0) {
+        } else if (high_SMB >= 0.95) {
             varOffset += 18.0
         }
+        // high_SMB <= 0.55 (e.g. 0.5): no varOffset change
         val hour= LocalDateTime.now().hour
 
         var targetBgOrig: Double = when {
@@ -1547,5 +1548,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt3320TDD041
+DetermineBasalAutoISF.kt320TDD042
 */
