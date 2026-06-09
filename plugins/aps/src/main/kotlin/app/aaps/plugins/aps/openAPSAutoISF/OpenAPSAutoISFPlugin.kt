@@ -807,6 +807,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // When autosens is off, derive sensitivity ratio from blended TDD (Boost method).
                 // Blends 8H-weighted, 7D, and 1D TDD; ratio = blendedTDD / tdd7D.
                 // ratio > 1 = more insulin needed recently (resistance); < 1 = more sensitive.
+                if (!preferences.get(BooleanKey.ApsAutoIsfTddSensitivity)) {
+                    autosensResult.sensResult = "autosens disabled, TDD sensitivity off"
+                    consoleError.add("TDD sensitivity: off")
+                    determineBasalAutoISF.tddRatio = 1.0
+                    determineBasalAutoISF.tdd7D = 0.0
+                } else {
                 val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
                 val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
                 val tddLast4H  = tddCalculator.calculateDaily(-4, 0)?.totalAmount
@@ -846,6 +852,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     determineBasalAutoISF.tddRatio = 1.0
                     determineBasalAutoISF.tdd7D = 0.0
                 }
+                } // end ApsAutoIsfTddSensitivity
             }
             sensitivityRatio = autosensResult.ratio
         }
@@ -1404,6 +1411,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     )
                     addPreference (AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddSensitivity, summary = R.string.autoisf_tdd_sensitivity_summary, title = R.string.autoisf_tdd_sensitivity))
                 })
             })
         }
@@ -1411,5 +1419,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD042
+OpenAPSAutoISFPlugin.ktSt 320TDD043
  */
