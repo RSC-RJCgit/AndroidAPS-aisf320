@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.text.Spanned
 import app.aaps.core.data.model.BCR
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -407,7 +408,14 @@ class BolusWizard @Inject constructor(
             else
                 commonProcessing(ctx, quickWizardEntry)
         } else {
-            // Record zero wizard result so it's visible in history (e.g. IOB covered BG)
+            // Record zero bolus + wizard result — shows on graph and syncs to NS (e.g. IOB covered BG)
+            val zeroBolus = BS(
+                timestamp = dateUtil.now(),
+                amount = 0.0,
+                type = BS.Type.NORMAL,
+                notes = notes.ifEmpty { "Wizard: 0U (IOB/COB covered)" }
+            )
+            persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
             persistenceLayer.insertOrUpdateBolusCalculatorResult(createBolusCalculatorResult()).blockingGet()
             OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.no_action_selected))
         }
