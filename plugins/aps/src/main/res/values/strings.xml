@@ -226,6 +226,8 @@
     <string name="openapsama_smb_max_range_extension_summary">Default value: 1 This is another key OpenAPS safety cap, and specifies by what factor you can exceed the regular 120 maxSMB/maxUAM minutes. Increase this experimental value slowly and with caution.</string>
     <string name="autoisf_tdd_sensitivity">TDD Sensitivity (ISF/Basal)</string>
     <string name="autoisf_tdd_sensitivity_summary">Use blended TDD ratio to adjust ISF and basal when autosens is off. Disable to keep sensitivity neutral (ratio = 1.0).</string>
+    <string name="autoisf_tdd_factor">TDD Factor (max_iob/insulinReq)</string>
+    <string name="autoisf_tdd_factor_summary">Scale max_iob and insulinReq by blended TDD ratio. When disabled TDDfactor = 1.0 regardless of SMB delivery ratio setting.</string>
     <string name="enableSMB_EvenOn_OddOff_always">Enable alternative activation of SMB depending on active target being even number</string>
     <string name="enableSMB_EvenOn_OddOff_always_summary">\nenabled ...\nif active target(mmol/L) has even decimal\nor active target(mg/dL) is even number\n\ndisabled otherwise</string>
     <string name="openapsama_iob_threshold_percent_summary" formatted="false">Percentage of maxIOB above which SMBs are disabled.\nDefault value: 100%\nWith 100% this feature is effectively disabled.</string>

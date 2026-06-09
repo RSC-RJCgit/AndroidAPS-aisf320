@@ -329,7 +329,7 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.addAll(auto_isf_consoleError)
         }
         var TDDfactor = 1.0
-        if (profile.smb_delivery_ratio_max > 0.5) {
+        if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
@@ -725,7 +725,7 @@ class DetermineBasalAutoISF @Inject constructor(
             TOD = "Day PP130%"
         }
         //var TDDfactor = 1.0
-        if (profile.smb_delivery_ratio_max > 0.5) {
+        if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
@@ -1127,7 +1127,7 @@ class DetermineBasalAutoISF @Inject constructor(
             // sensitivityRatio is intentionally NOT used here.
             // =====================================================
             var TDDfactor = 1.0
-            if (profile.smb_delivery_ratio_max > 0.5) {
+            if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
                 TDDfactor = min(1.2, max(0.80, tddRatio))
                 consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
                 rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
