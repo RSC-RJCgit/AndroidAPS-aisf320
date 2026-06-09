@@ -407,6 +407,8 @@ class BolusWizard @Inject constructor(
             else
                 commonProcessing(ctx, quickWizardEntry)
         } else {
+            // Record zero wizard result so it's visible in history (e.g. IOB covered BG)
+            persistenceLayer.insertOrUpdateBolusCalculatorResult(createBolusCalculatorResult()).blockingGet()
             OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.no_action_selected))
         }
     }
