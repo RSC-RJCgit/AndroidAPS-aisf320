@@ -1340,7 +1340,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
-        category.apply {
+        category.apply{
             key = "openapsautoisf_settings"
             title = rh.gs(R.string.openaps_auto_isf)
             initialExpandedChildrenCount = 0
