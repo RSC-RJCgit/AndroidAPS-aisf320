@@ -773,7 +773,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
          if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
              //======================================
-             var autosensResult = AutosensResult()
+
 
              val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
              val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
@@ -790,10 +790,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                      (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
                  }
                  val tddRatio = blendedTDD / tdd7D
-                 consoleError.add("TDD ratio NOT USED ${Round.roundTo(tddRatio, 0.01)}" +
-                                      " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
-                                      " W8H ${Round.roundTo(w8H, 0.1)}U)")
-
+                 consoleError.add(
+                     "TDD ratio NOT USED ${Round.roundTo(tddRatio, 0.01)}" +
+                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                         " W8H ${Round.roundTo(w8H, 0.1)}U)"
+                 )
+             }
                  //==========================================
             if ( exerciseModeActive || resistanceModeActive ) {
 
