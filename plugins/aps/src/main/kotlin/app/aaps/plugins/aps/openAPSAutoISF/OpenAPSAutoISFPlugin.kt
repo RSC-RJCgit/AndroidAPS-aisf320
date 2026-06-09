@@ -770,33 +770,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var sensitivityRatio = 1.0
         val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
         val resistanceModeActive = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)  && isTempTarget && target_bg < normalTarget
-
-         if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
-             //======================================
-             
-
-             val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
-             val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
-             val tddLast4H  = tddCalculator.calculateDaily(-4, 0)?.totalAmount
-             val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
-             if (tdd7D != null && tdd7D > 0.0 && tdd1D != null &&
-                 tddLast4H != null && tddLast8to4H != null) {
-                 val w8H = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3
-                 val blendedTDD = if (w8H < 0.75 * tdd7D) {
-                     // Recent usage well below average — pull 7D toward recent reality before blending
-                     val adj7D = w8H + ((w8H / tdd7D) * (tdd7D - w8H))
-                     (adj7D * 0.34) + (tdd1D * 0.33) + (w8H * 0.33)
-                 } else {
-                     (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
-                 }
-                 val tddRatio = blendedTDD / tdd7D
-                 consoleError.add("TDD ratio NOT USED ${Round.roundTo(tddRatio, 0.01)}" +
-                                      " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
-                                      " W8H ${Round.roundTo(w8H, 0.1)}U)")
-
-                 //==========================================
+        if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
             if ( exerciseModeActive || resistanceModeActive ) {
-
                 // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
                 // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
                 //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
@@ -1446,5 +1421,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD044
+OpenAPSAutoISFPlugin.ktSt 320TDD043
  */
