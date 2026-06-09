@@ -866,7 +866,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
                         " W8H ${Round.roundTo(w8H, 0.1)}U)"
                     aapsLogger.debug(LTag.APS, autosensResult.sensResult)
-                    consoleError.add("TDD sensitivity: ${autosensResult.sensResult}" "TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
+                    consoleError.add("TDD sensitivity: ${autosensResult.sensResult}  TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
                         " W8H ${Round.roundTo(w8H, 0.1)}U)")
                 } else {
