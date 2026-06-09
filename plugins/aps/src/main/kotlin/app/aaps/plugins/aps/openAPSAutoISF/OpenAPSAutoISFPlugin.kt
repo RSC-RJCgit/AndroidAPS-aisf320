@@ -866,7 +866,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
                         " W8H ${Round.roundTo(w8H, 0.1)}U)"
                     aapsLogger.debug(LTag.APS, autosensResult.sensResult)
-                    consoleError.add("TDD sensitivity: ${autosensResult.sensResult}")
+                    consoleError.add("TDD sensitivity: ${autosensResult.sensResult}" "TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
+                        " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                        " W8H ${Round.roundTo(w8H, 0.1)}U)")
                 } else {
                     val missing = listOfNotNull(
                         if (tdd7D == null || tdd7D <= 0.0) "7D" else null,
@@ -1449,5 +1451,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD050
+OpenAPSAutoISFPlugin.ktSt 320TDD051
  */
