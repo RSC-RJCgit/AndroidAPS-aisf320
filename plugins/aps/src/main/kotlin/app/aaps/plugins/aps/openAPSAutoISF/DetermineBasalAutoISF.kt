@@ -771,14 +771,21 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var CarbAge = lastCarbAge
 
-        var varOffset: Double = 9.0
+        /*var varOffset: Double = 9.0
         val high_SMB = profile.smb_delivery_ratio_max
         if (high_SMB > 0.55 && high_SMB < 0.95) {
             varOffset += 9.0
         } else if (high_SMB >= 0.95) {
             varOffset += 18.0
         }
-        // high_SMB <= 0.55 (e.g. 0.5): no varOffset change
+        // high_SMB <= 0.55 (e.g. 0.5): no varOffset change*/
+
+
+        val high_SMB = profile.smb_delivery_ratio_max
+        var varOffset: Double = high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
+
+
+
         val hour= LocalDateTime.now().hour
 
         var targetBgOrig: Double = when {
