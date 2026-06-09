@@ -80,6 +80,7 @@ import dagger.Reusable
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.FileNotFoundException
@@ -526,6 +527,17 @@ class ImportExportPrefsImpl @Inject constructor(
                 )
                 if (uploadedFileId == null) {
                     uploadedFileId = provider.uploadFile(exportFileName, bytes, "application/json")
+                }
+                // Retry once after 3 seconds if first attempt failed
+                if (uploadedFileId == null) {
+                    aapsLogger.warn(LTag.CORE, "${CloudConstants.LOG_PREFIX} EXPORT_UPLOAD_FAIL_RETRYING")
+                    delay(3000)
+                    uploadedFileId = provider.uploadFileToPath(
+                        exportFileName, bytes, "application/json", CloudConstants.CLOUD_PATH_SETTINGS
+                    )
+                    if (uploadedFileId == null) {
+                        uploadedFileId = provider.uploadFile(exportFileName, bytes, "application/json")
+                    }
                 }
 
                 val exportResultMessage = if (uploadedFileId != null) {
