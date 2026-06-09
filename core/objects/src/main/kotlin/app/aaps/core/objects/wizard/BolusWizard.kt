@@ -557,6 +557,16 @@ class BolusWizard @Inject constructor(
                         })
                     }
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
+                    // Record zero bolus on graph/NS when insulin is 0 (e.g. IOB covers BG, only carbs logged)
+                    if (insulinAfterConstraints == 0.0) {
+                        val zeroBolus = BS(
+                            timestamp = now,
+                            amount = 0.0,
+                            type = BS.Type.NORMAL,
+                            notes = notes.ifEmpty { "Wizard: 0U (IOB covered)" }
+                        )
+                        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
+                    }
                 }
             }
             if (quickWizardEntry != null) {
