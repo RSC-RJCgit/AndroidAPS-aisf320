@@ -10,6 +10,7 @@ import app.aaps.plugins.automation.actions.ActionAutoisfDisable
 import app.aaps.plugins.automation.actions.ActionAutoisfEnable
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDummy
+import app.aaps.plugins.automation.actions.ActionPartialBolusWizard
 import app.aaps.plugins.automation.actions.ActionNotification
 import app.aaps.plugins.automation.actions.ActionProfileSwitch
 import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
@@ -137,6 +138,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionStartTempTargetInjector(): ActionStartTempTarget
     @ContributesAndroidInjector abstract fun actionStopTempTargetInjector(): ActionStopTempTarget
     @ContributesAndroidInjector abstract fun actionDummyInjector(): ActionDummy
+    @ContributesAndroidInjector abstract fun actionPartialBolusWizardInjector(): ActionPartialBolusWizard
     @ContributesAndroidInjector abstract fun contributesLocationService(): LocationService
 
     @Module

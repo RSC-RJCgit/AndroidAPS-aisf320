@@ -425,7 +425,8 @@ class AutomationPlugin @Inject constructor(
             ActionProfileSwitchPercent(injector),
             ActionProfileSwitch(injector),
             ActionSendSMS(injector),
-            ActionSMBChange(injector)
+            ActionSMBChange(injector),
+            ActionPartialBolusWizard(injector)
         )
         if (config.isEngineeringMode() && config.isDev()) {
             actions.add(ActionRunAutotune(injector))

@@ -167,6 +167,9 @@
     <string name="triggerStepsCountDesc">Steps count per %1$s minutes %2$s %3$.0f</string>
     <string name="triggerStepsCountDropdownLabel">Measurement Duration</string>
 
+    <!--    Partial bolus wizard-->
+    <string name="partialboluswizard">Deliver this part of bolus wizard result [%]</string>
+
     <!--    SMB mode-->
     <string name="changeSmbState">Enable/disable SMB</string>
     <string name="changeSmbTo">Change SMB to %1$s</string>
