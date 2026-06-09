@@ -80,9 +80,9 @@
     <string name="enable_smb_with_high_temp_target_summary">Enable SMB when there is high temp target active (exercise, above 100 mg/dl or 5.5 mmol/l)</string>
     <string name="smb_max_minutes_summary">Max minutes of basal to limit SMB to</string>
     <string name="uam_smb_max_minutes">UAM SMB max minutes</string>
-    <string name="uam_smb_max_minutes_summary">Max minutes of basal to limit SMB to for UAM</string>
+    <string name="uam_smb_max_minutes_summary">OFFSET , alsoMax minutes of basal to limit SMB to for UAM</string>
     <string name="carbs_req_threshold">Minimum Carbs Required For Suggestion</string>
-    <string name="carbs_req_threshold_summary">Minimum grams of carbs to display a carbs suggestion alert. Carbs suggestions below this number will not trigger a notification.</string>
+    <string name="carbs_req_threshold_summary">CarbsSuggest threshold , also OFFSET variation over 0.5 1 = -9 overnight, 2 = -9 at 8–10, 3 = +9 at night, 4 = all three, 6 = 1+2, 7 = 1+3, 8 = 2+3, 9 = ALL -9, 10 = ALL +9</string>
     <string name="lgs_threshold_summary">BG value below which insulin is suspended. Default value uses standard target model. User can set value between 60mg/dl (3.3mmol/l) and 100mg/dl(5.5mmol/l). Values below 65/3.6 result in use of default model</string>
     <string name="lgs_threshold_title">BG level below which low glucose suspend occurs</string>
 
