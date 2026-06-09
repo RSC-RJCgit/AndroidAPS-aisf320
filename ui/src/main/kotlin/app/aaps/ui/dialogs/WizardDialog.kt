@@ -534,8 +534,11 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.total.text = HtmlHelper.fromHtml(rh.gs(R.string.result_insulin_carbs, insulinText, carbsText))
                 binding.okcancel.ok.visibility = View.VISIBLE
             } else {
-                binding.total.text = HtmlHelper.fromHtml(rh.gs(R.string.missing_carbs, wizard.carbsEquivalent.toInt()).formatColor(context, rh, app.aaps.core.ui.R.attr.carbsColor))
-                binding.okcancel.ok.visibility = View.INVISIBLE
+                // IOB covers everything — show 0 U and keep OK visible so the result is recorded
+                val zeroText = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, 0.0)
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
+                binding.total.text = HtmlHelper.fromHtml(rh.gs(R.string.result_insulin_carbs, zeroText, ""))
+                binding.okcancel.ok.visibility = View.VISIBLE
             }
             binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, wizard.percentageCorrection)
             calculatedPercentage = wizard.calculatedPercentage
