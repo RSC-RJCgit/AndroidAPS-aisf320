@@ -873,11 +873,22 @@ class ImportExportPrefsImpl @Inject constructor(
                             // Warn if imported settings contained automation states
                             val hasStates = prefs.values.keys.any { it == "automation_state_service" || it == "automation_state_values" }
                             if (hasStates) {
-                                OKDialog.show(
-                                    activity,
-                                    rh.gs(app.aaps.plugins.configuration.R.string.automation_states),
-                                    rh.gs(app.aaps.plugins.configuration.R.string.automation_states_imported_warning)
-                                ) { restartAppAfterImport(activity) }
+                                val checkBox = android.widget.CheckBox(activity).apply {
+                                    text = rh.gs(app.aaps.plugins.configuration.R.string.automation_states_enable_now)
+                                    isChecked = false
+                                    setPadding(48, 16, 16, 16)
+                                }
+                                androidx.appcompat.app.AlertDialog.Builder(activity)
+                                    .setTitle(rh.gs(app.aaps.plugins.configuration.R.string.automation_states))
+                                    .setMessage(rh.gs(app.aaps.plugins.configuration.R.string.automation_states_imported_warning))
+                                    .setView(checkBox)
+                                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                        if (checkBox.isChecked)
+                                            sp.putBoolean(app.aaps.core.keys.BooleanKey.AutomationStatesEnabled.key, true)
+                                        restartAppAfterImport(activity)
+                                    }
+                                    .setCancelable(false)
+                                    .show()
                             } else {
                                 restartAppAfterImport(activity)
                             }
