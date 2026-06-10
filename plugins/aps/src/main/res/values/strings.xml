@@ -81,8 +81,8 @@
     <string name="smb_max_minutes_summary">Max minutes of basal to limit SMB to</string>
     <string name="uam_smb_max_minutes">UAM SMB max minutes</string>
     <string name="uam_smb_max_minutes_summary">Max minutes of basal to limit SMB to for UAM</string>
-    <string name="carbs_req_threshold">OFFSET , also Minimum Carbs Required For Suggestion</string>
-    <string name="carbs_req_threshold_summary">OFFSET , also CarbsSuggest threshold ,  OFFSET variation over 0.5 1 = -9 overnight, 2 = -9 at 8–10, 3 = +9 at night, 4 = all three, 6 = 1+2, 7 = 1+3, 8 = 2+3, 9 = ALL -9, 10 = ALL +9</string>
+    <string name="carbs_req_threshold">OFFSET times, also Minimum Carbs  Suggestion</string>
+    <string name="carbs_req_threshold_summary">OFFSET times, also CarbsSuggest threshold ,  OFFSET variation over set 0.5 etc 1 = -9 overnight, 2 = -9 at 8–10, 3 = +9 at night, 4 = all three, 6 = 1+2, 7 = 1+3, 8 = 2+3, 9 = ALL -9, 10 = ALL +9</string>
     <string name="lgs_threshold_summary">BG value below which insulin is suspended. Default value uses standard target model. User can set value between 60mg/dl (3.3mmol/l) and 100mg/dl(5.5mmol/l). Values below 65/3.6 result in use of default model</string>
     <string name="lgs_threshold_title">BG level below which low glucose suspend occurs</string>
 
