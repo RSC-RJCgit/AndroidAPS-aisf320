@@ -204,7 +204,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.org.skyscreamer.jsonassert)
 
-    debugImplementation(libs.com.squareup.leakcanary.android)
+    debugImplementation (libs.com.squareup.leakcanary.android)
 
 
     kspAndroidTest(libs.com.google.dagger.android.processor)
