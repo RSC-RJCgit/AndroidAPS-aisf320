@@ -14,12 +14,19 @@ import app.aaps.plugins.eversense.callbacks.EversenseWatcher
 import app.aaps.plugins.eversense.enums.EversenseType
 import app.aaps.plugins.eversense.models.EversenseCGMResult
 import app.aaps.plugins.eversense.models.EversenseState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
 class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val eversense get() = EversenseCGMPlugin.instance
 
     private lateinit var bar1: ImageView
@@ -42,14 +49,14 @@ class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
     private fun startPolling() {
         if (polling) return
         polling = true
-        Thread {
+        ioScope.launch {
             while (polling) {
                 if (eversense.isConnected()) {
                     eversense.readSignalStrength()
                 }
-                Thread.sleep(500)
+                delay(500)
             }
-        }.start()
+        }
     }
 
     private fun stopPolling() {
@@ -88,19 +95,21 @@ class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
 
         // Mirrors iOS PlacementGuideViewModel.init: enable diagnostic mode on open
         // so the transmitter increases its signal-strength broadcast frequency.
-        Thread {
-            Thread.sleep(500)
+        ioScope.launch {
+            delay(500)
             eversense.setDiagnosticMode(true)
             startPolling()
-        }.start()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopPolling()
+        ioScope.cancel()
         eversense.removeWatcher(this)
         // Mirrors iOS PlacementGuideViewModel.stop(): disable diagnostic mode on close
-        Thread { eversense.setDiagnosticMode(false) }.start()
+        // Use a standalone scope since ioScope is cancelled
+        CoroutineScope(Dispatchers.IO).launch { eversense.setDiagnosticMode(false) }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {

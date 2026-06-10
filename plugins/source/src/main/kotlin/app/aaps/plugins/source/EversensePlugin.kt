@@ -41,6 +41,7 @@ import app.aaps.plugins.eversense.util.StorageKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
@@ -86,7 +87,7 @@ class EversensePlugin @Inject constructor(
     override var sensorBatteryLevel = -1
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -121,6 +122,7 @@ class EversensePlugin @Inject constructor(
 
     override suspend fun onStart() {
         super.onStart()
+        ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         eversense.addWatcher(this)
         if (hasBluetoothPermissions()) {
             aapsLogger.debug(LTag.BGSOURCE, "onStart — permissions granted, attempting auto-reconnect")
@@ -138,6 +140,8 @@ class EversensePlugin @Inject constructor(
 
     override suspend fun onStop() {
         super.onStop()
+        ioScope.cancel()
+        mainHandler.removeCallbacksAndMessages(null)
         eversense.removeWatcher(this)
     }
 
@@ -229,7 +233,6 @@ class EversensePlugin @Inject constructor(
     )
 
     private fun startOfficialAppReleaseReconnectLoop() {
-        if (false) return
         if (!releaseForOfficialApp) return
         aapsLogger.info(LTag.BGSOURCE, "Release mode — attempting reconnect")
         ioScope.launch {
@@ -250,11 +253,11 @@ class EversensePlugin @Inject constructor(
     }
 
     private fun signalToLabel(strength: Int): String = when {
-        strength >= 75 -> "Excellent"
-        strength >= 48 -> "Good"
-        strength >= 30 -> "Low"
-        strength >= 25 -> "Poor"
-        strength > 0   -> "Very Poor"
+        strength >= 75 -> rh.gs(R.string.eversense_signal_excellent)
+        strength >= 48 -> rh.gs(R.string.eversense_signal_good)
+        strength >= 30 -> rh.gs(R.string.eversense_signal_fair)
+        strength >= 25 -> rh.gs(R.string.eversense_signal_weak)
+        strength > 0   -> rh.gs(R.string.eversense_signal_poor)
         else           -> rh.gs(R.string.eversense_not_connected)
     }
 
@@ -309,21 +312,21 @@ class EversensePlugin @Inject constructor(
                 setSensorExpiryDismissed(state.insertionDate, 60)
                 notificationManager.post(
                     NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — plan your sensor replacement.",
+                    rh.gs(R.string.eversense_sensor_expiry_plan, daysRemaining),
                     level = NotificationLevel.INFO
                 )
             } else if (isAfterNoon && daysRemaining in 11..30 && !isSensorExpiryDismissed(state.insertionDate, 30)) {
                 setSensorExpiryDismissed(state.insertionDate, 30)
                 notificationManager.post(
                     NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — replace your sensor soon.",
+                    rh.gs(R.string.eversense_sensor_expiry_soon, daysRemaining),
                     level = NotificationLevel.NORMAL
                 )
             } else if (isAfterNoon && daysRemaining in 1..10 && !isSensorExpiryDismissed(state.insertionDate, daysRemaining)) {
                 setSensorExpiryDismissed(state.insertionDate, daysRemaining)
                 notificationManager.post(
                     NotificationId.EVERSENSE_ALARM,
-                    "Eversense sensor expires in $daysRemaining days — replace your sensor immediately.",
+                    rh.gs(R.string.eversense_sensor_expiry_urgent, daysRemaining),
                     level = NotificationLevel.URGENT
                 )
             }
@@ -335,7 +338,7 @@ class EversensePlugin @Inject constructor(
             setBatteryLowDismissed()
             notificationManager.post(
                 NotificationId.EVERSENSE_ALARM,
-                "Eversense transmitter battery low: ${state.batteryPercentage}% — please charge your transmitter.",
+                rh.gs(R.string.eversense_battery_low, state.batteryPercentage),
                 level = NotificationLevel.NORMAL
             )
         }
@@ -349,7 +352,7 @@ class EversensePlugin @Inject constructor(
             setCalibrationDueDismissed(calDueDay)
             notificationManager.post(
                 NotificationId.EVERSENSE_ALARM,
-                "Eversense calibration is due — open AAPS to calibrate your sensor.",
+                rh.gs(R.string.eversense_calibration_due),
                 level = NotificationLevel.NORMAL
             )
         }
@@ -360,7 +363,7 @@ class EversensePlugin @Inject constructor(
             aapsLogger.info(LTag.BGSOURCE, "Transmitter firmware: ${state.firmwareVersion}")
             notificationManager.post(
                 NotificationId.EVERSENSE_FIRMWARE,
-                "Eversense firmware: ${state.firmwareVersion} — open the official Eversense app to check for updates",
+                rh.gs(R.string.eversense_firmware_update, state.firmwareVersion),
                 level = NotificationLevel.INFO
             )
         }
@@ -398,7 +401,7 @@ class EversensePlugin @Inject constructor(
             val stateJson = securePrefs.getString(StorageKeys.STATE, null)
             val state = stateJson?.let { json.decodeFromString<EversenseState>(it) }
             if (state != null && state.nextCalibrationDate > 0 && state.nextCalibrationDate < System.currentTimeMillis()) {
-                "Eversense Calibration Due Now"
+                rh.gs(R.string.eversense_calibration_due_now)
             } else {
                 alarm.code.title
             }
@@ -497,7 +500,7 @@ class EversensePlugin @Inject constructor(
                     // Only notify user on failure — success is silent
                     if (!uploadOk) {
                         mainHandler.post {
-                            android.widget.Toast.makeText(context, msg365, android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, rh.gs(R.string.eversense_cloud_upload_failed), android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
 
@@ -551,7 +554,7 @@ class EversensePlugin @Inject constructor(
                     // Only notify user on failure — success is silent
                     if (!eventsOk) {
                         mainHandler.post {
-                            android.widget.Toast.makeText(context, msgE3, android.widget.Toast.LENGTH_LONG).show()
+                            android.widget.Toast.makeText(context, rh.gs(R.string.eversense_cloud_upload_failed), android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
                 }
@@ -584,8 +587,8 @@ class EversensePlugin @Inject constructor(
             if (foundDevices.isEmpty()) {
                 AlertDialog.Builder(context)
                     .setTitle(rh.gs(R.string.eversense_scan_title))
-                    .setMessage("No Eversense transmitters found. Make sure the transmitter is nearby and try again.")
-                    .setPositiveButton("OK", null)
+                    .setMessage(rh.gs(R.string.eversense_no_transmitters_found))
+                    .setPositiveButton(android.R.string.ok, null)
                     .show()
             } else {
                 val items = foundDevices.map { it.name }.toTypedArray()
@@ -603,7 +606,7 @@ class EversensePlugin @Inject constructor(
 
         dialog = AlertDialog.Builder(context)
             .setTitle(rh.gs(R.string.eversense_scan_title))
-            .setMessage("Scanning for Eversense devices (10 seconds)...")
+            .setMessage(rh.gs(R.string.eversense_scan_in_progress))
             .setNegativeButton(rh.gs(R.string.eversense_scan_cancel)) { _, _ ->
                 isCancelled = true
                 eversense.stopScan()
