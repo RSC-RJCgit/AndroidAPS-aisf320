@@ -531,6 +531,14 @@ class ImportExportPrefsImpl @Inject constructor(
                 // Retry once after 3 seconds if first attempt failed
                 if (uploadedFileId == null) {
                     aapsLogger.warn(LTag.CORE, "${CloudConstants.LOG_PREFIX} EXPORT_UPLOAD_FAIL_RETRYING")
+                    disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                        therapyEvent = TE.asSettingsExport(error = "Cloud export: first attempt failed, retrying…"),
+                        timestamp = dateUtil.now(),
+                        action = Action.EXPORT_SETTINGS,
+                        source = Sources.Automation,
+                        note = "Cloud export: first attempt failed, retrying…",
+                        listValues = listOf()
+                    ).subscribe()
                     delay(3000)
                     uploadedFileId = provider.uploadFileToPath(
                         exportFileName, bytes, "application/json", CloudConstants.CLOUD_PATH_SETTINGS
