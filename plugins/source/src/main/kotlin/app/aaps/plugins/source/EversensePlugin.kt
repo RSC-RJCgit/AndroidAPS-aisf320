@@ -380,9 +380,11 @@ class EversensePlugin @Inject constructor(
 
     override fun onConnectionChanged(connected: Boolean) {
         aapsLogger.info(LTag.BGSOURCE, "Connection changed — connected: $connected")
-        if (connected) {
-            eversense.submitToExecutorAndSync(force = true)
-        }
+    }
+
+    override fun onTransmitterReady() {
+        aapsLogger.info(LTag.BGSOURCE, "Transmitter ready — triggering fullSync")
+        eversense.submitToExecutorAndSync(force = true)
     }
 
 
