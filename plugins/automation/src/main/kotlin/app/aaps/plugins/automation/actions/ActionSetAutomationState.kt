@@ -35,6 +35,7 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     }
 
     private fun populateDropdowns() {
+        aapsLogger.debug(app.aaps.core.interfaces.logging.LTag.AUTOMATION, "ActionSetAutomationState: populateDropdowns, states=${automationState.getAllStates()}")
         val stateNames = automationState.getAllStates().map { it.first }.distinct()
         stateNameDropdown.values = stateNames
         stateNameDropdown.updateAdapter()
