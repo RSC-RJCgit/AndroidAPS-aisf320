@@ -19,6 +19,7 @@ import javax.inject.Inject
 class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
 
     @Inject lateinit var automationStateService: AutomationStateInterface
+    @Inject lateinit var preferences: Preferences
 
     // Keep these for backwards compatibility with saved automations
     var stateName = InputString()
