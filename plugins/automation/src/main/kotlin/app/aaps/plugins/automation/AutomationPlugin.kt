@@ -44,6 +44,7 @@ import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
 import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.actions.ActionStopProcessing
@@ -77,6 +78,7 @@ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
@@ -397,6 +399,7 @@ class AutomationPlugin @Inject constructor(
             ActionNotification(injector),
             ActionAlarm(injector),
             ActionSettingsExport(injector),
+            ActionSetAutomationState(injector),
             ActionCarePortalEvent(injector),
             ActionProfileSwitchPercent(injector),
             ActionProfileSwitch(injector),
@@ -411,6 +414,7 @@ class AutomationPlugin @Inject constructor(
 
     fun getTriggerDummyObjects(): List<Trigger> {
         val triggers = mutableListOf(
+            TriggerAutomationState(injector),
             TriggerConnector(injector),
             TriggerTime(injector),
             TriggerRecurringTime(injector),

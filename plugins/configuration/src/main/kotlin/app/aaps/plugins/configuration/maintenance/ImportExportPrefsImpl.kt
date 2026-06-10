@@ -887,7 +887,28 @@ class ImportExportPrefsImpl @Inject constructor(
                             // are now imported from backup file. If tokens are invalid, user can re-authorize.
                             
                             activePlugin.afterImport()
-                            restartAppAfterImport(activity)
+                            sp.putBoolean(app.aaps.core.keys.BooleanKey.AutomationStatesEnabled.key, false)
+                            val hasStates = prefs.values.keys.any { it == "automation_state_service" || it == "automation_state_values" }
+                            if (hasStates) {
+                                val checkBox = android.widget.CheckBox(activity).apply {
+                                    text = rh.gs(R.string.automation_states_enable_now)
+                                    isChecked = false
+                                    setPadding(48, 16, 16, 16)
+                                }
+                                androidx.appcompat.app.AlertDialog.Builder(activity)
+                                    .setTitle(rh.gs(R.string.automation_states))
+                                    .setMessage(rh.gs(R.string.automation_states_imported_warning))
+                                    .setView(checkBox)
+                                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                        if (checkBox.isChecked)
+                                            sp.putBoolean(app.aaps.core.keys.BooleanKey.AutomationStatesEnabled.key, true)
+                                        restartAppAfterImport(activity)
+                                    }
+                                    .setCancelable(false)
+                                    .show()
+                            } else {
+                                restartAppAfterImport(activity)
+                            }
                         } else {
                             // for impossible imports it should not be called
                             ToastUtils.errorToast(activity, rh.gs(R.string.preferences_import_impossible))
