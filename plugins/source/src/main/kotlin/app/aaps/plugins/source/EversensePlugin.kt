@@ -65,7 +65,8 @@ class EversensePlugin @Inject constructor(
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     config: Config,
-    private val notificationManager: NotificationManager
+    private val notificationManager: NotificationManager,
+    private val eversense: EversenseCGMPlugin
 ) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -91,9 +92,7 @@ class EversensePlugin @Inject constructor(
     private val dateFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val securePrefs by lazy {
-        context.getSharedPreferences("EversenseCGMManager", Context.MODE_PRIVATE)
-    }
+    private val securePrefs: SharedPreferences get() = eversense.preferences
 
     private fun cloudUploadEnabled() = preferences.get(BooleanKey.EversenseCloudUploadEnabled)
 
@@ -115,10 +114,6 @@ class EversensePlugin @Inject constructor(
     private val NO_SIGNAL_WARNING_THRESHOLD = 3
     private var releaseForOfficialApp: Boolean = false
     @Volatile private var placementNotificationSnoozed: Boolean = false
-
-    init {
-        eversense.setContext(context, true)
-    }
 
     override suspend fun onStart() {
         super.onStart()
@@ -439,7 +434,7 @@ class EversensePlugin @Inject constructor(
 
         ioScope.launch {
             val state = eversense.getCurrentState()
-            val insertionDate = state?.insertionDate?.takeIf { it > 0 }
+            val insertionDate = state.insertionDate.takeIf { it > 0 }
             val result = persistenceLayer.insertCgmSourceData(
                 Sources.Eversense,
                 glucoseValues,
@@ -449,8 +444,8 @@ class EversensePlugin @Inject constructor(
             aapsLogger.info(LTag.BGSOURCE, "CGM insert complete — inserted: ${result.inserted}, updated: ${result.updated}")
 
             // Upload readings to Eversense cloud so official app sees data without needing BLE
-            if ((type == EversenseType.EVERSENSE_365 || type == EversenseType.EVERSENSE_E3) && state != null && cloudUploadEnabled()) {
-                val prefs = context.getSharedPreferences("EversenseCGMManager", android.content.Context.MODE_PRIVATE)
+            if ((type == EversenseType.EVERSENSE_365 || type == EversenseType.EVERSENSE_E3) && cloudUploadEnabled()) {
+                val prefs = eversense.preferences
                 // Sync credentials from AAPS preferences into SECURE_STATE so EversenseHttp365Util can read them
                 val username = preferences.get(EversenseStringKey.EversenseUsername)
                 val password = preferences.get(EversenseStringKey.EversensePassword)
@@ -462,7 +457,7 @@ class EversensePlugin @Inject constructor(
                     secureState.password = password
                     saveSecureState(secureState)
                     if (credentialsChanged) {
-                        val prefs2 = context.getSharedPreferences("EversenseCGMManager", android.content.Context.MODE_PRIVATE)
+                        val prefs2 = eversense.preferences
                         prefs2.edit(commit = true) {
                             remove(app.aaps.plugins.eversense.util.StorageKeys.ACCESS_TOKEN)
                             remove(app.aaps.plugins.eversense.util.StorageKeys.ACCESS_TOKEN_EXPIRY)
@@ -615,7 +610,4 @@ class EversensePlugin @Inject constructor(
             .show()
     }
 
-    companion object {
-        private val eversense get() = EversenseCGMPlugin.instance
-    }
 }

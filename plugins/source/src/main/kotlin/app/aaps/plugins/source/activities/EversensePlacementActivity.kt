@@ -14,6 +14,7 @@ import app.aaps.plugins.eversense.callbacks.EversenseWatcher
 import app.aaps.plugins.eversense.enums.EversenseType
 import app.aaps.plugins.eversense.models.EversenseCGMResult
 import app.aaps.plugins.eversense.models.EversenseState
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,12 +23,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
+
+    @Inject lateinit var eversense: EversenseCGMPlugin
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val eversense get() = EversenseCGMPlugin.instance
 
     private lateinit var bar1: ImageView
     private lateinit var bar2: ImageView
