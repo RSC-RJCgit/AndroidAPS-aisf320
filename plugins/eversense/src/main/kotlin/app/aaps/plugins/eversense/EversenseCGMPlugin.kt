@@ -46,6 +46,9 @@ class EversenseCGMPlugin(
     // Thread-safe: watchers are added/removed from main thread but iterated from bleExecutor
     val watchers: MutableList<EversenseWatcher> = CopyOnWriteArrayList()
 
+    // Flag to track positioning mode state for safe diagnostic mode toggling
+    var isPositioningMode: Boolean = false
+
     // Credentials set by AAPS layer before any login attempt
     var username: String = ""
     var password: String = ""
@@ -169,6 +172,18 @@ class EversenseCGMPlugin(
         }
     }
 
+    fun enterPositioningMode() {
+        isPositioningMode = true
+        setDiagnosticMode(true)
+        EversenseLogger.info(TAG, "Diagnostic Mode ENABLED: Positioning active")
+    }
+
+    fun exitPositioningMode() {
+        isPositioningMode = false
+        setDiagnosticMode(false)
+        EversenseLogger.info(TAG, "Diagnostic Mode DISABLED: Power saving active")
+    }
+
     fun writeSettings(settings: EversenseTransmitterSettings): Boolean {
         if (!gattCallback.isConnected()) {
             EversenseLogger.error(TAG, "Transmitter is not connected")
@@ -240,6 +255,10 @@ class EversenseCGMPlugin(
             return
         }
         gattCallback.submitToExecutor {
+            if (isPositioningMode) {
+                setDiagnosticMode(true)
+                EversenseLogger.info(TAG, "Re-enabled Diagnostic Mode after reconnect")
+            }
             EversenseLogger.info(TAG, "Running E3 fullSync on bleExecutor after connect")
             EversenseE3Communicator.fullSync(gattCallback, preferences, watchers.toList(), force)
         }

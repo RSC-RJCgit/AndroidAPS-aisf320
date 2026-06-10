@@ -263,9 +263,11 @@ class EversensePlugin @Inject constructor(
         // Update sensor battery level for Overview status lights
         sensorBatteryLevel = if (state.batteryPercentage >= 0) state.batteryPercentage else -1
 
-        // Keep SENSOR_CHANGE therapy event in sync with transmitter insertion date so
-        // the home screen sensor age matches the Eversense Status page insertion date.
-        if (state.insertionDate > 0) {
+        // Keep SENSOR_CHANGE therapy event in sync with transmitter insertion date.
+        // Disabled for E3: the forced overwrite every BT cycle injected raw transmitter
+        // uptime (subject to deep-sleep pauses), causing the home screen timer to drift.
+        // E365 is unaffected and retains the original sync behavior.
+        if (state.insertionDate > 0 && eversense.is365()) {
             ioScope.launch {
                 persistenceLayer.insertCgmSourceData(Sources.Eversense, emptyList(), emptyList(), state.insertionDate)
                 aapsLogger.debug(LTag.BGSOURCE, "Updated SENSOR_CHANGE event to insertionDate: ${state.insertionDate}")
@@ -378,16 +380,11 @@ class EversensePlugin @Inject constructor(
 
     override fun onConnectionChanged(connected: Boolean) {
         aapsLogger.info(LTag.BGSOURCE, "Connection changed — connected: $connected")
-        mainHandler.post { }
+        if (connected) {
+            eversense.submitToExecutorAndSync(force = true)
+        }
     }
 
-    override fun onTransmitterReady() {
-        // onTransmitterReady fires after auth completes and transmitter type is known.
-        // This is the correct place to trigger the initial fullSync — not onConnectionChanged
-        // which fires before auth and doesn't yet know if it's a 365 or E3 transmitter.
-        aapsLogger.info(LTag.BGSOURCE, "Transmitter ready — scheduling immediate fullSync on bleExecutor")
-        eversense.submitToExecutorAndSync(force = true)
-    }
 
     override fun onAlarmReceived(alarm: ActiveAlarm) {
         aapsLogger.info(LTag.BGSOURCE, "Eversense alarm received: ${alarm.code.title}")

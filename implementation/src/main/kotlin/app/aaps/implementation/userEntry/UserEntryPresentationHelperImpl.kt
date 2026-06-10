@@ -93,7 +93,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
     private val profileUtil: ProfileUtil,
     private val rh: ResourceHelper,
     private val dateUtil: DateUtil,
-    private val decimalFormatter: DecimalFormatter
+    private val decimalFormatter: DecimalFormatter,
 ) : UserEntryPresentationHelper {
 
     override fun icon(source: Sources): ImageVector = when (source) {
@@ -280,7 +280,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
         is ValueWithUnit.Minute               -> "${valueWithUnit.value}${translator.translate(valueWithUnit)}"
         is ValueWithUnit.Percent              -> "${valueWithUnit.value}${translator.translate(valueWithUnit)}"
         is ValueWithUnit.Insulin              -> decimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
-        is ValueWithUnit.InsulinConcentration -> "${rh.gs(R.string.ins_concentration_confirmed, valueWithUnit.value)}"
+        is ValueWithUnit.InsulinConcentration -> rh.gs(R.string.ins_concentration_confirmed, valueWithUnit.value)
         is ValueWithUnit.UnitPerHour          -> decimalFormatter.to2Decimal(valueWithUnit.value) + translator.translate(valueWithUnit)
         is ValueWithUnit.SimpleInt            -> valueWithUnit.value.toString()
         is ValueWithUnit.SimpleString         -> valueWithUnit.value

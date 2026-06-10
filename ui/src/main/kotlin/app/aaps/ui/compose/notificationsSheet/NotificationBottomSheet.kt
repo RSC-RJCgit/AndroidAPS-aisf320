@@ -45,7 +45,7 @@ fun NotificationBottomSheet(
     notifications: List<AapsNotification>,
     onDismissSheet: () -> Unit,
     onDismissNotification: (AapsNotification) -> Unit,
-    onNotificationActionClick: (AapsNotification) -> Unit
+    onNotificationActionClick: (AapsNotification) -> Unit,
 ) {
     LocalDateUtil.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -72,9 +72,10 @@ fun NotificationBottomSheet(
                 Box(modifier = Modifier.animateItem()) {
                     NotificationItem(
                         notification = notification,
-                        onDismiss = { onDismissNotification(notification) },
-                        onActionClick = { onNotificationActionClick(notification) }
-                    )
+                        onDismiss = { onDismissNotification(notification) }
+                    ) {
+                        onNotificationActionClick(notification)
+                    }
                 }
             }
         }
