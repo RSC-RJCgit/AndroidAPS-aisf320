@@ -138,7 +138,6 @@ class EversenseGattCallback(
     }
     @SuppressLint("MissingPermission")
     fun cleanUp() {
-        handler.removeCallbacksAndMessages(null)
         bluetoothGatt?.disconnect()
         bluetoothGatt?.close()
         bluetoothGatt = null
