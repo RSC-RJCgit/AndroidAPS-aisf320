@@ -22,17 +22,10 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     @Inject lateinit var automationState: AutomationStateInterface
     @Inject lateinit var preferences: Preferences
 
-    private var stateNameDropdown: InputDropdownStateMenu
-    private var stateValueDropdown: InputDropdownStateMenu
-
-    init {
-        injector.androidInjector().inject(this)
-
-        stateNameDropdown = InputDropdownStateMenu(rh) { stateName ->
-            updateStateValueDropdown(stateName)
-        }
-        stateValueDropdown = InputDropdownStateMenu(rh)
+    private var stateNameDropdown: InputDropdownStateMenu = InputDropdownStateMenu(rh) { stateName ->
+        updateStateValueDropdown(stateName)
     }
+    private var stateValueDropdown: InputDropdownStateMenu = InputDropdownStateMenu(rh)
 
     private fun populateDropdowns() {
         aapsLogger.debug(app.aaps.core.interfaces.logging.LTag.AUTOMATION, "ActionSetAutomationState: populateDropdowns, states=${automationState.getAllStates()}")

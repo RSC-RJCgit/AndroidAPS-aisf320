@@ -24,26 +24,17 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
     var stateName = InputString()
     var stateValue = InputString()
 
-    private var stateNameDropdown: InputDropdownStateMenu
-    private var stateValueDropdown: InputDropdownStateMenu
+    private var stateNameDropdown: InputDropdownStateMenu = InputDropdownStateMenu(rh) { stateName ->
+        updateStateValueDropdown(stateName)
+    }
+    private var stateValueDropdown: InputDropdownStateMenu = InputDropdownStateMenu(rh)
 
     private constructor(injector: HasAndroidInjector, stateName: String, stateValue: String) : this(injector) {
-        injector.androidInjector().inject(this)
-
         this.stateName.value = stateName
         this.stateValue.value = stateValue
         this.stateNameDropdown.value = stateName
         updateStateValueDropdown(stateName)
         this.stateValueDropdown.value = stateValue
-    }
-
-    init {
-        injector.androidInjector().inject(this)
-
-        stateNameDropdown = InputDropdownStateMenu(rh) { stateName ->
-            updateStateValueDropdown(stateName)
-        }
-        stateValueDropdown = InputDropdownStateMenu(rh)
     }
 
     private fun populateDropdowns() {
