@@ -380,14 +380,9 @@ class EversensePlugin @Inject constructor(
 
     override fun onConnectionChanged(connected: Boolean) {
         aapsLogger.info(LTag.BGSOURCE, "Connection changed — connected: $connected")
-    }
-
-    override fun onTransmitterReady() {
-        // onTransmitterReady fires after auth completes and transmitter type is known.
-        // This is the correct place to trigger the initial fullSync — not onConnectionChanged
-        // which fires before auth and doesn't yet know if it's a 365 or E3 transmitter.
-        aapsLogger.info(LTag.BGSOURCE, "Transmitter ready — scheduling immediate fullSync on bleExecutor")
-        eversense.submitToExecutorAndSync(force = true)
+        if (connected) {
+            eversense.submitToExecutorAndSync(force = true)
+        }
     }
 
 
