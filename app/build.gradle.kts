@@ -222,7 +222,7 @@ dependencies {
 }
 
 println("-------------------")
-println("isMaster: ${isMaster()}")
+println ("isMaster: ${isMaster()}")
 println("gitAvailable: ${gitAvailable()}")
 println("allCommitted: ${allCommitted()}")
 println("-------------------")
