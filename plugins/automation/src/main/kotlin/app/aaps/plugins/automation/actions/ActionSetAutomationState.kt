@@ -33,24 +33,14 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
         }
         stateValueDropdown = InputDropdownStateMenu(rh)
 
-        // Populate state names dropdown with all available states
-        val allStates = automationState.getAllStates()
-        val stateNames = allStates.map { it.first }.distinct().toMutableList()
-
-        // Add all states that have defined values but may not have a current value
-        automationState.getAllStates().forEach { (stateName, _) ->
-            if (!stateNames.contains(stateName)) {
-                stateNames.add(stateName)
+        try {
+            val stateNames = automationState.getAllStates().map { it.first }.distinct().toMutableList()
+            if (stateNames.isNotEmpty()) {
+                stateNameDropdown.values = stateNames
+                stateNameDropdown.updateAdapter()
+                updateStateValueDropdown(stateNameDropdown.value)
             }
-        }
-
-        if (stateNames.isNotEmpty()) {
-            stateNameDropdown.values = stateNames
-            stateNameDropdown.updateAdapter()
-
-            // Initialize state values dropdown if we have states
-            updateStateValueDropdown(stateNameDropdown.value)
-        }
+        } catch (_: Exception) {}
     }
 
     private fun updateStateValueDropdown(stateName: String) {
