@@ -179,6 +179,7 @@
     <string name="off">OFF</string>
 
     <!-- State automation -->
+    <string name="automation_states_disabled">Automation States are disabled. Enable in Automation States settings.</string>
     <string name="set_state">Set automation state</string>
     <string name="set_state_description">Set automation state %1$s=%2$s</string>
     <string name="set_state_state_name">"State name: "</string>

@@ -865,10 +865,22 @@ class ImportExportPrefsImpl @Inject constructor(
                                     sp.putString(key, value)
                                 }
                             }
+                            // Ensure AutomationStates are off by default after import
+                            sp.putBoolean(app.aaps.core.keys.BooleanKey.AutomationStatesEnabled.key, false)
                             if (savedAapsDirectory.isNotEmpty())
                                 sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
                             activePlugin.afterImport()
-                            restartAppAfterImport(activity)
+                            // Warn if imported settings contained automation states
+                            val hasStates = prefs.values.keys.any { it == "automation_state_service" || it == "automation_state_values" }
+                            if (hasStates) {
+                                OKDialog.show(
+                                    activity,
+                                    rh.gs(app.aaps.plugins.configuration.R.string.automation_states),
+                                    rh.gs(app.aaps.plugins.configuration.R.string.automation_states_imported_warning)
+                                ) { restartAppAfterImport(activity) }
+                            } else {
+                                restartAppAfterImport(activity)
+                            }
                         } else {
                             // for impossible imports it should not be called
                             ToastUtils.errorToast(activity, rh.gs(R.string.preferences_import_impossible))

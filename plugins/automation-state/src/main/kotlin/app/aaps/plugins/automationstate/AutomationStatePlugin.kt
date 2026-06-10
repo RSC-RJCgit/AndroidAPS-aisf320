@@ -1,11 +1,16 @@
 package app.aaps.plugins.automationstate
 
+import android.content.Context
+import androidx.preference.PreferenceManager
+import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.ui.elements.AdaptiveSwitchPreference
 import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
 import app.aaps.plugins.automationstate.ui.AutomationStateFragment
 import javax.inject.Inject
@@ -28,4 +33,16 @@ class AutomationStatePlugin @Inject constructor(
         .visibleByDefault(true),
     ownPreferences = listOf(AutomationStateStringKey::class.java),
     aapsLogger, rh, preferences
-)
+) {
+    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
+        if (requiredKey != null) return
+        parent.addPreference(
+            AdaptiveSwitchPreference(
+                ctx = context,
+                booleanKey = BooleanKey.AutomationStatesEnabled,
+                summary = R.string.automation_states_enabled_summary,
+                title = R.string.automation_states_enabled
+            )
+        )
+    }
+}

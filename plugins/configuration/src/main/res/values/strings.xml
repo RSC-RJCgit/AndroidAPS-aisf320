@@ -276,4 +276,6 @@
     <string name="authorization_status">Authorization Status</string>
     <string name="google_drive_authorized">Google Drive Authorized</string>
     <string name="google_drive_reauth_required">Please clear settings and re-authorize Google Drive</string>
+    <string name="automation_states">Automation States</string>
+    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
 </resources>
