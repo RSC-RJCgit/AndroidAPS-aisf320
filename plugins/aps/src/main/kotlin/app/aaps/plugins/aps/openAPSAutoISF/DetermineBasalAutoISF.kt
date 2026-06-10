@@ -1218,10 +1218,10 @@ class DetermineBasalAutoISF @Inject constructor(
                 val delivery_ratio = profile.smb_delivery_ratio
                 rT.reason.append("TDDfactor = ${TDDfactor} high_SMB= ${high_SMB2} TDDfactor= ${round(TDDfactor, 2)}   ")
                 rT.reason.append("TDDfactor= ${TDDfactor} high_SMB= ${high_SMB2}  ")
-                var  ThresholForFastRise= TDDfactor * 0.030 * max_iob
+                var  ThresholForFastRise= TDDfactor * 0.030 * profile.max_iob
                 ThresholForFastRise=round(ThresholForFastRise, 2)
-                consoleError.add("Delta threshold TDDfactor * 0.030 * max_iob = ($TDDfactor *  * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
-                rT.reason.append("Delta threshold TDDfactor * 0.030 * max_iob = ($TDDfactor *  * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
+                consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor *  * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
+                rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor *  * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
 
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
@@ -1239,7 +1239,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     val microBolus1 = microBolus
                     if (microBolus > 0.02 * profile.max_iob) {
                         microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * max_iob = ${microBolus} ")
+                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * profile.max_iob = ${microBolus} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1259,7 +1259,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     val microBolus1 = microBolus
                     if (microBolus > 0.02 * profile.max_iob) {
                         microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * max_iob = ${microBolus} ")
+                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * profile.max_iob = ${microBolus} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1411,7 +1411,7 @@ class DetermineBasalAutoISF @Inject constructor(
                                 rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.5 ; microBolus = ${microBolus} ")
                                 rT.reason.append(" CHANGED SIZE 0.507 for mild fast rise 0.507 ")
                             } else {
-                                rT.reason.append("smbUn 0.507 for 0.025 * max_iob microBolus = ${microBolus} ")
+                                rT.reason.append("smbUn 0.507 for 0.025 * profile.max_iob microBolus = ${microBolus} ")
                             }
                         }
                     } else if (Delta >= 0.25 * 18 &&
@@ -1425,7 +1425,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.6 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
                         } else {
-                            rT.reason.append("smbUn 0.608 for 0.030 * max_iob microBolus = ${microBolus} ")
+                            rT.reason.append("smbUn 0.608 for 0.030 * profile.max_iob microBolus = ${microBolus} ")
                         }
 // =====================================================
 // HIGHER BG FAST RISE
@@ -1434,7 +1434,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         SDelta >= 0.7 * 18 &&
                         bg > 11.5 * 18 &&
                         bg < 13.5 * 18 &&
-                        IOB > ThresholForFastRise * max_iob &&
+                        IOB > ThresholForFastRise * profile.max_iob &&
                         COB <= 25
                     ) {
                         microBolus = microBolus * 0.75
