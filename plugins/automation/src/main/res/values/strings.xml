@@ -112,6 +112,7 @@
     <string name="condition">Condition:</string>
     <string name="action">Action:</string>
     <string name="taskname">Task name</string>
+    <string name="automation_note_hint">Note (optional)</string>
     <string name="edit_short">EDIT</string>
     <string name="please_choose_an_action_type">Choose an action type</string>
     <string name="please_choose_a_trigger_type">Choose a trigger type</string>

@@ -75,6 +75,8 @@ class EditEventDialog : BaseDialog() {
 
         binding.inputEventTitle.setText(event.title)
         binding.inputEventTitle.isFocusable = !event.readOnly
+        binding.inputEventNote.setText(event.note)
+        binding.inputEventNote.isFocusable = !event.readOnly
         binding.inputRepeatInterval.setText(event.repeatInterval.toString())
         binding.inputRepeatInterval.isFocusable = !event.readOnly
         binding.triggerDescription.text = event.trigger.friendlyDescription()
@@ -138,6 +140,7 @@ class EditEventDialog : BaseDialog() {
             return false
         }
         event.title = title
+        event.note = binding.inputEventNote.text?.toString() ?: ""
         event.userAction = binding.userAction.isChecked
         event.isEnabled = binding.enabled.isChecked
         event.repeatInterval = binding.inputRepeatInterval.text?.toString()?.toIntOrNull() ?: 0

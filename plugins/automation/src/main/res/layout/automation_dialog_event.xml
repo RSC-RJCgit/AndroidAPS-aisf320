@@ -87,6 +87,15 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/taskname" />
 
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/inputEventNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/automation_note_hint"
+                android:inputType="textMultiLine"
+                android:minLines="1"
+                android:maxLines="3" />
+
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
