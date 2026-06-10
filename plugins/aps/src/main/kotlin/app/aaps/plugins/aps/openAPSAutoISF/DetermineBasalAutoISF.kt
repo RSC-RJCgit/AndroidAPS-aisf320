@@ -322,13 +322,17 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD052")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD053")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
         }
-        var TDDfactor = 1.0
+        var lower_SMB = 1.00
+        if (profile.smb_delivery_ratio_min > 0.8) {
+            lower_SMB = profile.smb_delivery_ratio_min
+        }
+        var TDDfactor = lower_SMB
         if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
@@ -688,7 +692,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         rT.reason.append(
-            " 320TDD052 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD053 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1133,17 +1137,14 @@ class DetermineBasalAutoISF @Inject constructor(
             // tddRatio is set from OpenAPSAutoISFPlugin via class-level property before each invoke().
             // sensitivityRatio is intentionally NOT used here.
             // =====================================================
-            var TDDfactor = 1.0
-            if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
-                TDDfactor = min(1.2, max(0.80, tddRatio))
-                consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
-                rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
-            }
+
 
             var insulinReq =
                 round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
             insulinReq *= TDDfactor
+            insulinReq= round(insulinReq, 2)
             max_iob *= TDDfactor
+            max_iob= round(max_iob, 2)
             consoleError.add("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
             rT.reason.append("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
             if (insulinReq > max_iob - iob_data.iob) {
@@ -1211,18 +1212,16 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
                 val LibreTrue = if (libreActive) 1.0 else 1.0
-                var lower_SMB = 1.00
-                if (profile.smb_delivery_ratio_min > 0.8) {
-                    lower_SMB = profile.smb_delivery_ratio_min
-                }
+
                 val high_SMB2 = profile.smb_delivery_ratio_max
                 val bg_range_SMB = profile.smb_delivery_ratio_bg_range
                 val delivery_ratio = profile.smb_delivery_ratio
-                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB2} TDDfactor= ${round(TDDfactor, 2)}   ")
-                rT.reason.append("lower_SMB= ${lower_SMB} high_SMB= ${high_SMB2}  ")
-                var ThresholForFastRise = lower_SMB * 0.030 * max_iob
-                consoleError.add("Delta threshold lower_SMB * 0.030 * max_iob = ($lower_SMB * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
-                rT.reason.append("Delta threshold lower_SMB * 0.030 * max_iob = ($lower_SMB * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
+                rT.reason.append("TDDfactor = ${TDDfactor} high_SMB= ${high_SMB2} TDDfactor= ${round(TDDfactor, 2)}   ")
+                rT.reason.append("TDDfactor= ${TDDfactor} high_SMB= ${high_SMB2}  ")
+                var  ThresholForFastRise= TDDfactor * 0.030 * max_iob
+                ThresholForFastRise=round(ThresholForFastRise, 2)
+                consoleError.add("Delta threshold TDDfactor * 0.030 * max_iob = ($TDDfactor *  * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
+                rT.reason.append("Delta threshold TDDfactor * 0.030 * max_iob = ($TDDfactor *  * 0.030 * ${max_iob})= ${ThresholForFastRise} ")
 
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
@@ -1555,5 +1554,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD052
+DetermineBasalAutoISF.kt320TDD053
 */
