@@ -32,15 +32,13 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
             updateStateValueDropdown(stateName)
         }
         stateValueDropdown = InputDropdownStateMenu(rh)
+    }
 
-        try {
-            val stateNames = automationState.getAllStates().map { it.first }.distinct().toMutableList()
-            if (stateNames.isNotEmpty()) {
-                stateNameDropdown.values = stateNames
-                stateNameDropdown.updateAdapter()
-                updateStateValueDropdown(stateNameDropdown.value)
-            }
-        } catch (_: Exception) {}
+    private fun populateDropdowns() {
+        val stateNames = automationState.getAllStates().map { it.first }.distinct()
+        stateNameDropdown.values = stateNames
+        stateNameDropdown.updateAdapter()
+        if (stateNames.isNotEmpty()) updateStateValueDropdown(stateNameDropdown.value)
     }
 
     private fun updateStateValueDropdown(stateName: String) {
@@ -104,6 +102,7 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     override fun hasDialog(): Boolean = true
 
     override fun generateDialog(root: LinearLayout) {
+        populateDropdowns()
         LayoutBuilder()
             .add(LabelWithElement(rh, rh.gs(R.string.state_name_label), "", stateNameDropdown))
             .add(LabelWithElement(rh, rh.gs(R.string.state_value_label), "", stateValueDropdown))

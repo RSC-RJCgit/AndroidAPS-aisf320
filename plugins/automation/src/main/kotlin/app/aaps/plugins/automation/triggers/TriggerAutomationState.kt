@@ -44,15 +44,13 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
             updateStateValueDropdown(stateName)
         }
         stateValueDropdown = InputDropdownStateMenu(rh)
+    }
 
-        try {
-            val stateNames = automationStateService.getAllStates().map { it.first }.distinct().toMutableList()
-            if (stateNames.isNotEmpty()) {
-                stateNameDropdown.values = stateNames
-                stateNameDropdown.updateAdapter()
-                updateStateValueDropdown(stateNameDropdown.value)
-            }
-        } catch (_: Exception) {}
+    private fun populateDropdowns() {
+        val stateNames = automationStateService.getAllStates().map { it.first }.distinct()
+        stateNameDropdown.values = stateNames
+        stateNameDropdown.updateAdapter()
+        if (stateNames.isNotEmpty()) updateStateValueDropdown(stateNameDropdown.value)
     }
 
     private fun updateStateValueDropdown(stateName: String) {
@@ -117,6 +115,7 @@ class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
     override fun duplicate(): Trigger = TriggerAutomationState(injector, this.stateNameDropdown.value, this.stateValueDropdown.value)
 
     override fun generateDialog(root: LinearLayout) {
+        populateDropdowns()
         LayoutBuilder()
             .add(StaticLabel(rh, R.string.check_state_name, this))
             .add(LabelWithElement(rh, rh.gs(R.string.state_name_label), "", stateNameDropdown))
