@@ -284,7 +284,6 @@ class EversenseCGMPlugin(
         val stateJson = preferences.getString(StorageKeys.STATE, null) ?: "{}"
         val state = JSON.decodeFromString<EversenseState>(stateJson)
         state.placementSignalRssi = rssi
-        state.sensorSignalStrength = rssiToStrength(rssi)
         preferences.edit { putString(StorageKeys.STATE, JSON.encodeToString(state)) }
         EversenseLogger.debug(TAG, "RSSI updated: $rssi dBm")
         watchers.forEach { it.onStateChanged(state) }
