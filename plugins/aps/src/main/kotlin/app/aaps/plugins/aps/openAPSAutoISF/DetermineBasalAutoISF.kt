@@ -322,7 +322,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD053")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD054")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -338,6 +338,7 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
         }
+        TDDfactor=round(TDDfactor, 2)
         val iobTHtolerance = 130.0
         val iobTHvirtual = iob_threshold_percent * iobTHtolerance / 10000.0 * profile.max_iob * iobTH_reduction_ratio
         var enableSMB =  false
@@ -692,7 +693,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         rT.reason.append(
-            " 320TDD053 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD054 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -729,11 +730,11 @@ class DetermineBasalAutoISF @Inject constructor(
             TOD = "Day PP130%"
         }
         //var TDDfactor = 1.0
-        if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
+        /*if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
-        }
+        }*/
         consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
         consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
         rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
@@ -1220,8 +1221,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 rT.reason.append("TDDfactor= ${TDDfactor} high_SMB= ${high_SMB2}  ")
                 var  ThresholForFastRise= TDDfactor * 0.030 * profile.max_iob
                 ThresholForFastRise=round(ThresholForFastRise, 2)
-                consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor *  * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
-                rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor *  * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
+                consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
+                rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
 
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
@@ -1554,5 +1555,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD053
+DetermineBasalAutoISF.kt320TDD054
 */
