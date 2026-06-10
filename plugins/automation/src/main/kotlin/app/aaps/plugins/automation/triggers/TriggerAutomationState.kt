@@ -4,7 +4,6 @@ import android.widget.LinearLayout
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputDropdownStateMenu
@@ -20,7 +19,6 @@ import javax.inject.Inject
 class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
 
     @Inject lateinit var automationStateService: AutomationStateInterface
-    @Inject lateinit var preferences: Preferences
 
     // Keep these for backwards compatibility with saved automations
     var stateName = InputString()

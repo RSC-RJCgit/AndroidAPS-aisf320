@@ -10,7 +10,7 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.ui.elements.AdaptiveSwitchPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
 import app.aaps.plugins.automationstate.ui.AutomationStateFragment
 import javax.inject.Inject
