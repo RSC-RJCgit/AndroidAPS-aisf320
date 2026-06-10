@@ -29,6 +29,7 @@ class AutomationStatePlugin @Inject constructor(
         .pluginName(R.string.automation_states)
         .shortName(R.string.automation_states_short)
         .description(R.string.description_automation_states)
+        .preferencesId(app.aaps.core.interfaces.plugin.PluginDescription.PREFERENCE_SCREEN)
         .enableByDefault(true)
         .visibleByDefault(true),
     ownPreferences = listOf(AutomationStateStringKey::class.java),
