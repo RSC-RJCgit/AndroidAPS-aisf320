@@ -908,8 +908,11 @@ class ImportExportPrefsImpl @Inject constructor(
                                     .setMessage(rh.gs(R.string.automation_states_imported_warning))
                                     .setView(checkBox)
                                     .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                                        if (checkBox.isChecked)
-                                            sp.putBoolean(BooleanKey.AutomationStatesEnabled.key, true)
+                                        if (checkBox.isChecked) {
+                                            // Synchronous write — the app is killed right after this dialog
+                                            // and an async apply() can be lost before reaching disk
+                                            sp.edit(commit = true) { putBoolean(BooleanKey.AutomationStatesEnabled.key, true) }
+                                        }
                                         restartAppAfterImport(activity)
                                     }
                                     .setCancelable(false)
