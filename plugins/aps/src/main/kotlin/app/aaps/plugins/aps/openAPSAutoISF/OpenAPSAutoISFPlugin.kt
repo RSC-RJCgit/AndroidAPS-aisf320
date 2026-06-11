@@ -1275,3 +1275,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 }
+/*
+OpenAPSAutoISFPluginTobias320T000
+ */
