@@ -30,6 +30,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
     val actions: MutableList<Action> = ArrayList()
 
     var lastRun: Long = 0
+    var repeatInterval: Int = 5 // minimum minutes between re-runs
 
     init {
         injector.androidInjector().inject(this)
@@ -71,6 +72,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
             .put("readOnly", readOnly)
             .put("autoRemove", autoRemove)
             .put("userAction", userAction)
+            .put("repeatInterval", repeatInterval)
             .put("trigger", trigger.toJSON())
             .put("actions", array)
             .toString()
@@ -84,6 +86,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
         readOnly = d.optBoolean("readOnly", false)
         autoRemove = d.optBoolean("autoRemove", false)
         userAction = d.optBoolean("userAction", false)
+        repeatInterval = d.optInt("repeatInterval", 5)
         trigger = TriggerDummy(injector).instantiate(JSONObject(d.getString("trigger"))) as TriggerConnector
         val array = d.getJSONArray("actions")
         actions.clear()
@@ -96,6 +99,6 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
     }
 
     fun shouldRun(): Boolean {
-        return lastRun <= dateUtil.now() - T.mins(5).msecs()
+        return lastRun <= dateUtil.now() - T.mins(repeatInterval.toLong()).msecs()
     }
 }

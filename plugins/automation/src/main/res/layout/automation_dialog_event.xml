@@ -152,6 +152,29 @@
                 android:layout_marginBottom="5dp"
                 android:background="?android:attr/dividerHorizontal" />
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/automation_repeat_interval" />
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputRepeatInterval"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:text="5"
+                    android:textAlignment="center" />
+
+            </LinearLayout>
+
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
