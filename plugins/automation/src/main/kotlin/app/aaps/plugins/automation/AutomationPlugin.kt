@@ -189,23 +189,25 @@ class AutomationPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribe({
                            aapsLogger.debug(LTag.AUTOMATION, "Grabbed location: ${it.location.latitude} ${it.location.longitude} Provider: ${it.location.provider}")
-                           processActions()
+                           // Serialize evaluation on the handler thread: concurrent processActions()
+                           // passes can double-fire events before lastRun is updated
+                           handler?.post { processActions() }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventChargingState::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ processActions() }, fabricPrivacy::logException)
+            .subscribe({ handler?.post { processActions() } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNetworkChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ processActions() }, fabricPrivacy::logException)
+            .subscribe({ handler?.post { processActions() } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventBTChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({
                            aapsLogger.debug(LTag.AUTOMATION, "Grabbed new BT event: $it")
                            btConnects.add(it)
-                           processActions()
+                           handler?.post { processActions() }
                        }, fabricPrivacy::logException)
     }
 
