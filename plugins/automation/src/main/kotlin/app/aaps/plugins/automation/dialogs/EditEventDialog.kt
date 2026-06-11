@@ -1,4 +1,4 @@
-﻿package app.aaps.plugins.automation.dialogs
+package app.aaps.plugins.automation.dialogs
 
 import android.os.Bundle
 import android.view.LayoutInflater
