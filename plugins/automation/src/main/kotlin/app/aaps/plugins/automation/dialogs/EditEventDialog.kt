@@ -1,4 +1,4 @@
-package app.aaps.plugins.automation.dialogs
+﻿package app.aaps.plugins.automation.dialogs
 
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -140,7 +140,7 @@ class EditEventDialog : BaseDialog() {
         event.title = title
         event.userAction = binding.userAction.isChecked
         event.isEnabled = binding.enabled.isChecked
-        event.repeatInterval = binding.inputRepeatInterval.text?.toString()?.toIntOrNull() ?: 0
+        event.repeatInterval = binding.inputRepeatInterval.text?.toString()?.trim()?.toIntOrNull() ?: 5
         // check for at least one trigger
         val con = event.trigger
         if (con.size() == 0 && !event.userAction) {
