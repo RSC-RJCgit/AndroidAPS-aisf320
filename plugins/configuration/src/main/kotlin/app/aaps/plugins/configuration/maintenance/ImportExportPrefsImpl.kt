@@ -418,9 +418,7 @@ class ImportExportPrefsImpl @Inject constructor(
         else
             rh.gs(R.string.exported_failed)
 
-    private fun exportToLocal(activity: FragmentActivity) {
-        prefFileList.ensureExportDirExists()
-        val newFile = prefFileList.newPreferenceFile()
+        ToastUtils.okToast(activity, exportResultMessage)
 
         disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE.asSettingsExport(error = exportResultMessage),
