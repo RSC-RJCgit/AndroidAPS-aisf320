@@ -1538,7 +1538,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
 
-            if (currenttemp.duration == 0) {
+            if(currenttemp.duration == 0) {
                 rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
                 return setTempBasal(rate, 30, profile, rT, currenttemp)
             }
