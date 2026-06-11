@@ -18,6 +18,13 @@ on:
           - pumpcontrolRelease
           - pumpcontrolDebug
 
+  push:
+    branches:
+      - '3.4.0.0+aisf3.2.0'
+      - '**aisf3.2.0'
+      - 'tdd-sensitivity-autosens-off'
+      - '**'
+
 jobs:
   build:
     name: Build AAPS
@@ -66,9 +73,7 @@ jobs:
             fi
           }
 
-          # Check secrets
           check_secret "$GDRIVE_OAUTH2" "GDRIVE_OAUTH2"
-          
           check_secret "$KEYSTORE_BASE64" "KEYSTORE_BASE64"
           check_secret "$KEYSTORE_PASSWORD" "KEYSTORE_PASSWORD"
           check_secret "$KEY_ALIAS" "KEY_ALIAS"
@@ -91,12 +96,10 @@ jobs:
           set -x
           echo "🔐 Validating keystore, alias and password"
 
-          # Create a dummy JAR file (quick method using zip)
           echo "test" > dummy.txt
           zip -q dummy.jar dummy.txt
           rm dummy.txt
-          
-          # Attempt to validate using jarsigner
+
           JARSIGNER_LOG=$(mktemp)
           if ! jarsigner \
               -keystore "$RUNNER_TEMP/keystore/keystore.jks" \
@@ -119,16 +122,16 @@ jobs:
         run: |
           echo "🔐 Decoding GDRIVE_OAUTH2..."
           DECODED=$(echo "${{ secrets.GDRIVE_OAUTH2 }}" | base64 -d)
-          
+
           GDRIVE_CLIENT_ID=$(echo "$DECODED" | cut -d'|' -f1)
           GDRIVE_REFRESH_TOKEN=$(echo "$DECODED" | cut -d'|' -f2)
-          
+
           echo "::add-mask::$GDRIVE_CLIENT_ID"
           echo "::add-mask::$GDRIVE_REFRESH_TOKEN"
-          
+
           echo "GDRIVE_CLIENT_ID=$GDRIVE_CLIENT_ID" >> $GITHUB_ENV
           echo "GDRIVE_REFRESH_TOKEN=$GDRIVE_REFRESH_TOKEN" >> $GITHUB_ENV
-          
+
           echo "✅ GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
 
       - name: Retrieving Google Drive access token
@@ -153,7 +156,7 @@ jobs:
 
       - name: Set BUILD_VARIANT
         run: |
-          BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
+          BUILD_VARIANT="${{ github.event.inputs.buildVariant || 'fullRelease' }}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
@@ -178,7 +181,6 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          # When upgrading the JDK, please update this section accordingly as well.
           java-version: 21
           distribution: 'temurin'
           cache: gradle
@@ -188,7 +190,10 @@ jobs:
 
       - name: Build APKs
         run: |
-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} :wear:assemble${{ env.BUILD_VARIANT }} \
+              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
+              :app:assembleaapsclient2Release \
+              :app:assembleaapsclientRelease \
+              :wear:assemble${{ env.BUILD_VARIANT }} \
               -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
               -Dkotlin.daemon.jvm.options="-Xmx2g" \
               -Dkotlin.compiler.execution.strategy="in-process" \
@@ -204,6 +209,8 @@ jobs:
         run: |
           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
           mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
+          mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
 
       - name: Upload APKs to Google Drive
         run: |
@@ -285,7 +292,8 @@ jobs:
             echo "✅ Uploaded: $NAME"
           }
 
-          upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
-          upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
-
+          upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
+          upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
           echo "🎉 APKs successfully uploaded to Google Drive!"
