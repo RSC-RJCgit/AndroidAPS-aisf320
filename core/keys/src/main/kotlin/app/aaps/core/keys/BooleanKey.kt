@@ -61,6 +61,7 @@ enum class BooleanKey(
     ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", false, defaultedBySM = true),
     ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", false, defaultedBySM = true),
     ApsActivityDetection("activity_detection", false, defaultedBySM = true),
+    AutomationStatesEnabled("automation_states_enabled", false),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
