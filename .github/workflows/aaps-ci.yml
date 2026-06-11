@@ -23,6 +23,7 @@ on:
       - '3.4.0.0+aisf3.2.0'
       - '**aisf3.2.0'
       - 'tdd-sensitivity-autosens-off'
+      - '**'
 
 jobs:
   build:
