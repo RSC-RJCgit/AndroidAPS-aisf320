@@ -75,6 +75,7 @@ abstract class Action(val injector: HasAndroidInjector) {
                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
                 ActionSetAutomationState::class.java.simpleName   -> ActionSetAutomationState(injector).fromJSON(data.toString())
+                ActionPartialBolusWizard::class.java.simpleName   -> ActionPartialBolusWizard(injector).fromJSON(data.toString())
                 else                                              -> throw ClassNotFoundException(type)
             }
         } catch (e: Exception) {
