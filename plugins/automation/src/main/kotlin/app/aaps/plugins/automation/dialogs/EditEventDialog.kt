@@ -143,7 +143,9 @@ class EditEventDialog : BaseDialog() {
         event.note = binding.inputEventNote.text?.toString() ?: ""
         event.userAction = binding.userAction.isChecked
         event.isEnabled = binding.enabled.isChecked
-        event.repeatInterval = binding.inputRepeatInterval.text?.toString()?.toIntOrNull() ?: 0
+        // Trim and default to 5: blank or unparseable input (e.g. a stray space) must not
+        // silently become 0, which disables the re-run guard entirely
+        event.repeatInterval = binding.inputRepeatInterval.text?.toString()?.trim()?.toIntOrNull() ?: 5
         // check for at least one trigger
         val con = event.trigger
         if (con.size() == 0 && !event.userAction) {
