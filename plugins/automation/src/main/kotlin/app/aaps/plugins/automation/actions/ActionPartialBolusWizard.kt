@@ -22,7 +22,7 @@ class ActionPartialBolusWizard(injector: HasAndroidInjector) : Action(injector) 
 
     override fun friendlyName(): Int = R.string.partialboluswizard
     override fun shortDescription(): String = rh.gs(R.string.partialboluswizard) + ": ${percentage.value.toInt()}%"
-    @DrawableRes override fun icon(): Int = app.aaps.core.ui.R.drawable.ic_bolus
+    @DrawableRes override fun icon(): Int = app.aaps.core.objects.R.drawable.ic_bolus
 
     override fun doAction(callback: Callback) {
         preferences.put(IntKey.OverviewBolusPercentage, percentage.value.toInt())
