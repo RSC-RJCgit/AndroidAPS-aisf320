@@ -5,6 +5,8 @@ import androidx.annotation.DrawableRes
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.queue.Callback
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputDropdownStateMenu
@@ -18,6 +20,7 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var automationState: AutomationStateInterface
+    @Inject lateinit var preferences: Preferences
 
     private var stateNameDropdown: InputDropdownStateMenu
     private var stateValueDropdown: InputDropdownStateMenu
@@ -70,6 +73,10 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     override fun isValid(): Boolean = stateNameDropdown.value.isNotEmpty() && stateValueDropdown.value.isNotEmpty()
 
     override fun doAction(callback: Callback) {
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) {
+            callback.result(pumpEnactResultProvider.get().success(false).comment(R.string.automation_states_disabled)).run()
+            return
+        }
         automationState.setState(stateNameDropdown.value, stateValueDropdown.value)
         callback.result(pumpEnactResultProvider.get().success(true).comment(app.aaps.core.ui.R.string.ok)).run()
     }
@@ -86,8 +93,12 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
     override fun fromJSON(data: String): Action {
         val o = JSONObject(data)
+        // Support both a320 format ("inputStateName"/"inputState")
+        // and AndroidAPS1/Boost format ("stateName"/"stateValue")
         val stateName = JsonHelper.safeGetString(o, "inputStateName", "")
+            .ifEmpty { JsonHelper.safeGetString(o, "stateName", "") }
         val stateValue = JsonHelper.safeGetString(o, "inputState", "")
+            .ifEmpty { JsonHelper.safeGetString(o, "stateValue", "") }
 
         stateNameDropdown.value = stateName
 
