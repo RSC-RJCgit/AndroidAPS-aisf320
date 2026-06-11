@@ -235,9 +235,13 @@ jobs:
           fi
 
           echo "📁 Checking or creating version folder: $VERSION"
+          # VERSION can contain '+', which is decoded as a space in a raw URL query.
+          # URL-encode the whole query so the existing folder is found instead of a duplicate being created.
+          VERSION_QUERY="name='${VERSION}' and mimeType='application/vnd.google-apps.folder' and '$AAPS_FOLDER_ID' in parents and trashed=false"
+          ENCODED_VERSION_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$VERSION_QUERY'''))")
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
+            "https://www.googleapis.com/drive/v3/files?q=${ENCODED_VERSION_QUERY}" \
             | jq -r '.files[0].id')
 
           if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
