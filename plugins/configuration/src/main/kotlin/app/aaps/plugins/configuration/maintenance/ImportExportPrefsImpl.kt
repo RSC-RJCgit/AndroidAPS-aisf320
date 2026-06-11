@@ -874,6 +874,8 @@ class ImportExportPrefsImpl @Inject constructor(
                     PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
                         if (importPossible) {
                             activePlugin.beforeImport()
+                            // Preserve device-specific path — never let an import overwrite it
+                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
                             sp.clear()
                             for ((key, value) in prefs.values) {
                                 if (value == "true" || value == "false") {
@@ -885,7 +887,11 @@ class ImportExportPrefsImpl @Inject constructor(
                             
                             // All settings including Google Drive settings and export destination preferences
                             // are now imported from backup file. If tokens are invalid, user can re-authorize.
-                            
+
+                            // Restore local AAPS directory path so it is never lost on import
+                            if (savedAapsDirectory.isNotEmpty()) {
+                                sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
+                            }
                             activePlugin.afterImport()
                             restartAppAfterImport(activity)
                         } else {
