@@ -1276,5 +1276,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 }
 /*
-OpenAPSAutoISFPluginTobias320T000
+OpenAPSAutoISFPluginTobias320TZ000
  */
