@@ -81,8 +81,8 @@
     <string name="smb_max_minutes_summary">Max minutes of basal to limit SMB to</string>
     <string name="uam_smb_max_minutes">UAM SMB max minutes</string>
     <string name="uam_smb_max_minutes_summary">Max minutes of basal to limit SMB to for UAM</string>
-    <string name="carbs_req_threshold">Minimum Carbs Required For Suggestion</string>
-    <string name="carbs_req_threshold_summary">Minimum grams of carbs to display a carbs suggestion alert. Carbs suggestions below this number will not trigger a notification.</string>
+    <string name="carbs_req_threshold">OFFSET times, also Minimum Carbs  Suggestion</string>
+    <string name="carbs_req_threshold_summary">OFFSET times, also CarbsSuggest threshold ,  OFFSET variation over set 0.5 etc 1 = -9 overnight, 2 = -9 at 8–10, 3 = +9 at night, 4 = all three, 6 = 1+2, 7 = 1+3, 8 = 2+3, 9 = ALL -9, 10 = ALL +9</string>
     <string name="lgs_threshold_summary">BG value below which insulin is suspended. Default value uses standard target model. User can set value between 60mg/dl (3.3mmol/l) and 100mg/dl(5.5mmol/l). Values below 65/3.6 result in use of default model</string>
     <string name="lgs_threshold_title">BG level below which low glucose suspend occurs</string>
 
@@ -214,16 +214,20 @@
     <string name="openapsama_bgAccel_ISF_weight">Weight while BG accelerates\n(bgAccel_ISF_weight)</string>
     <string name="openapsama_bgBrake_ISF_weight">Weight while BG decelerates\n(bgBrake_ISF_weight)</string>
     <string name="openapsama_dura_ISF_weight">dura_ISF weight\n(dura_ISF_weight)</string>
-    <string name="openapsama_smb_delivery_ratio">fixed SMB delivery ratio\n(smb_delivery_ratio)</string>
-    <string name="openapsama_smb_delivery_ratio_min">variable SMB delivery ratio, lower end\n(smb_delivery_ratio_min)</string>
-    <string name="openapsama_smb_delivery_ratio_max">variable SMB delivery ratio, upper end\n(smb_delivery_ratio_max)</string>
-    <string name="openapsama_smb_delivery_ratio_bg_range">variable SMB delivery ratio, mapped glucose range\n(smb_delivery_ratio_bg_range)</string>
+    <string name="openapsama_smb_delivery_ratio">FIXED SMB delivery ratio\n(smb_delivery_ratio)</string>
+    <string name="openapsama_smb_delivery_ratio_min">Default ThresholdFastRise , was variable SMB delivery ratio, lower end\n(smb_delivery_ratio_min)</string>
+    <string name="openapsama_smb_delivery_ratio_max">OFFSET , set start 0.5 - 1.0 was variable SMB delivery ratio, upper end\n(smb_delivery_ratio_max)</string>
+    <string name="openapsama_smb_delivery_ratio_bg_range">KEEP 0 for FIXED , was variable SMB delivery ratio, mapped glucose range\n(smb_delivery_ratio_bg_range)</string>
     <string name="openapsama_smb_max_range_extension">SMB/UAM max range extension\n(smb_max_range_extension)</string>
     <string name="openapsama_smb_delivery_ratio_summary">Default value: 0.5 This is another key OpenAPS safety cap, and specifies what share of the total insulin required can be delivered as SMB. This is to prevent people from getting into dangerous territory by setting SMB requests from the caregivers phone at the same time. Increase this experimental value slowly and with caution.</string>
     <string name="openapsama_smb_delivery_ratio_min_summary">Default value: 0.5 This is the lower end of a linearly increasing ratio rather than the fix value above.</string>
     <string name="openapsama_smb_delivery_ratio_max_summary">Default value: 0.5 This is the upper end of a linearly increasing ratio rather than the fix value above.</string>
     <string name="openapsama_smb_delivery_ratio_bg_range_summary">Default value: 0. The linearly increasing SMB delivery ratio is mapped to the glucose range [target_bg, target_bg+bg_range].\nAt target_bg the SMB ratio is smb_delivery_ratio_min, at target_bg+bg_range it is smb_delivery_ratio_max\nWith 0 the linearly increasing SMB ratio is disabled and the fixed smb_delivery_ratio is used.</string>
     <string name="openapsama_smb_max_range_extension_summary">Default value: 1 This is another key OpenAPS safety cap, and specifies by what factor you can exceed the regular 120 maxSMB/maxUAM minutes. Increase this experimental value slowly and with caution.</string>
+    <string name="autoisf_tdd_sensitivity">TDD Sensitivity (ISF/Basal)</string>
+    <string name="autoisf_tdd_sensitivity_summary">Use blended TDD ratio to adjust ISF and basal when autosens is off. Disable to keep sensitivity neutral (ratio = 1.0).</string>
+    <string name="autoisf_tdd_factor">TDD Factor (max_iob/insulinReq)</string>
+    <string name="autoisf_tdd_factor_summary">Scale max_iob and insulinReq by blended TDD ratio. When disabled TDDfactor = 1.0 regardless of SMB delivery ratio setting.</string>
     <string name="enableSMB_EvenOn_OddOff_always">Enable alternative activation of SMB depending on active target being even number</string>
     <string name="enableSMB_EvenOn_OddOff_always_summary">\nenabled ...\nif active target(mmol/L) has even decimal\nor active target(mg/dL) is even number\n\ndisabled otherwise</string>
     <string name="openapsama_iob_threshold_percent_summary" formatted="false">Percentage of maxIOB above which SMBs are disabled.\nDefault value: 100%\nWith 100% this feature is effectively disabled.</string>

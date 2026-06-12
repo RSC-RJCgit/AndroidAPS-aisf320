@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -83,6 +84,7 @@ import com.google.gson.Gson
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
+import java.time.LocalDateTime
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Provider
@@ -116,7 +118,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val determineBasalAutoISF: DetermineBasalAutoISF,
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    private val tddCalculator: TddCalculator
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -131,6 +134,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     aapsLogger, rh
 ), APS, PluginConstraints {
 
+    private var bgAcce: Double = 0.0  // <-- here
+    private var steps180: Int = 0  // add this
+    private var steps15: Int = 0  // add this
+    private var steps5: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
 
     // last values
@@ -160,7 +167,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val exerciseMode; get() = SMBDefaults.exercise_mode
     private val highTemptargetRaisesSensitivity; get() = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
     val mgdlHalfBasalExerciseTarget;  get() = preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget) * if (profileFunction.getUnits() == GlucoseUnit.MMOL) GlucoseUnit.MMOLL_TO_MGDL else 1.0
-    val normalTarget = Constants.NORMAL_TARGET_MGDL
+    val normalTarget = 100
     val calibrationDuration = preferences.get(IntKey.FslCalibrationDuration)
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val disposable = CompositeDisposable()
@@ -242,6 +249,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 true
             }
     }
+    /*fun isEven(value: Double): Boolean {
+        return value % 1 == 0.0 && value.toInt() % 2 == 0
+    }*/
 
     override fun specialShowInListCondition(): Boolean {
         try {
@@ -386,7 +396,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsActive, stepActivityDetected)
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
-            variableSensitivity = autoISF(profile)
+            val graphActivity = 100  * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -511,7 +522,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
-
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -530,10 +540,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             iob_threshold_percent = iobThresholdPercent,
             activity_consoleLog = activityLog,
             auto_isf_consoleError = consoleError,
-            auto_isf_consoleLog = consoleLog
+            auto_isf_consoleLog = consoleLog,
+            bg_acce = bgAcce,
+            steps180M = steps180,
+            steps15M = steps15,
+            steps5M = steps5
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
-            // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
             determineBasalResult.iobData = iobArray
@@ -546,11 +559,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
         }
+
         autoIsfValues.timestamp = now
-        //aapsLogger.debug(LTag.APS, "autoIsfValues to write contains: $autoIsfValues")
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
-        //val autoIsfRecords = persistenceLayer.getAutoIsfValuesFromTime(now-100000L)
-        //aapsLogger.debug(LTag.APS, "autoIsfValues records read contain: $autoIsfRecords")
         rxBus.send(EventOpenAPSUpdateGui())
     }
 
@@ -634,12 +645,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     fun convert_bg(value: Double): String =
         profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
 
+    fun convert_isf(value: Double): String =
+        String.format("%.1f", profileUtil.fromMgdlToUnits(value))
+
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
     fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int): Double
     {
-       if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
+        if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
             val nowMillis = System.currentTimeMillis()
             val stepsCount = SC(
                 duration = 0,
@@ -671,7 +685,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val useSleepState = automationStateService.inState("Sleeping", "True")
         aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
         // really still sleeping?
-            if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
+        if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
             automationStateService.setState("query_got_up", "query_it")
         }
         aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
@@ -688,7 +702,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else if ( useSleepState && recentSteps60Minutes <= 200) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping state")
             } else if ( (( inactivity_idle_start>inactivity_idle_end && ( now>=inactivity_idle_start || now<inactivity_idle_end ) )  // includes midnight
-                || ( now>=inactivity_idle_start && now<inactivity_idle_end)  )                                                       // excludes midnight
+                    || ( now>=inactivity_idle_start && now<inactivity_idle_end)  )                                                       // excludes midnight
                 && recentSteps60Minutes <= 200 && ignore_inactivity_overnight && !existSleepState) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping hours")
             } else if ( recentSteps5Minutes > 300 || recentSteps10Minutes > 300  || recentSteps15Minutes > 300  || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500 ) {
@@ -720,7 +734,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return activityRatio
     }
 
-    fun autoISF(profile: Profile): Double {
+    fun autoISF(profile: Profile, currentActivity: Double = 0.0, smbActivity: Double = 0.0): Double {
+
+        var steps180min = StepService.getRecentStepCount180Min()
+        var steps15min = StepService.getRecentStepCount15Min()
+        var steps5min = StepService.getRecentStepCount5Min()
+
+        //var steps180 = steps180min  // add this
+        //var steps15 = steps15min  // add this
+        this.steps180 = steps180min
+        this.steps15 = steps15min
+        this.steps5 = steps5min
+        val nowHour = LocalDateTime.now().hour
+        consoleError.add("steps5min is ${recentSteps5Minutes} ;;")
+        consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
+        consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        consoleError.add("steps180min is ${steps180min} ;;")
+
+
+
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = glucoseStatusProvider.glucoseStatusData as GlucoseStatusAutoIsf?
 
@@ -737,8 +770,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var sensitivityRatio = 1.0
         val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
         val resistanceModeActive = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)  && isTempTarget && target_bg < normalTarget
-        if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
+
+         if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
+             //======================================
+
+
+             val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
+             val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
+             val tddLast4H  = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+             val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+             if (tdd7D != null && tdd7D > 0.0 && tdd1D != null &&
+                 tddLast4H != null && tddLast8to4H != null) {
+                 val w8H = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3
+                 val blendedTDD = if (w8H < 0.75 * tdd7D) {
+                     // Recent usage well below average — pull 7D toward recent reality before blending
+                     val adj7D = w8H + ((w8H / tdd7D) * (tdd7D - w8H))
+                     (adj7D * 0.34) + (tdd1D * 0.33) + (w8H * 0.33)
+                 } else {
+                     (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
+                 }
+                 val tddRatio = blendedTDD / tdd7D
+                 consoleError.add(
+                     "TDD ratio NOT USED ${Round.roundTo(tddRatio, 0.01)}" +
+                         " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                         " W8H ${Round.roundTo(w8H, 0.1)}U)"
+                 )
+             }
+                 //==========================================
             if ( exerciseModeActive || resistanceModeActive ) {
+
                 // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
                 // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
                 //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
@@ -754,11 +814,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
                 sensitivityRatio = min(sensitivityRatio, resistanceMax)
                 sensitivityRatio = round(sensitivityRatio, 2)
-
+                consoleError.add("exerciseModeActive or resistanceModeActive sensitivityRatio: ${sensitivityRatio}")
             } else if ( stepActivityDetected ) {
                 sensitivityRatio = activityRatio
+                consoleError.add("stepActivityDetected : sensitivityRatio: ${activityRatio}")
             } else if ( stepInactivityDetected ) {
                 sensitivityRatio = activityRatio
+                consoleError.add("stepInactivityDetected : sensitivityRatio: ${activityRatio}")
             }
         } else {
             var autosensResult = AutosensResult()
@@ -767,18 +829,84 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
                     autosensResult = it.autosensResult
                 }
-            } else autosensResult.sensResult = "autosens disabled"
+                // Do NOT reset tddRatio here — autoISF() is called from both invoke() and
+                // calculateVariableIsf(). Resetting here would overwrite the value stored
+                // by the invoke() path before determine_basal() runs.
+            } else {
+                // When autosens is off, derive sensitivity ratio from blended TDD (Boost method).
+                // Blends 8H-weighted, 7D, and 1D TDD; ratio = blendedTDD / tdd7D.
+                // ratio > 1 = more insulin needed recently (resistance); < 1 = more sensitive.
+                if (!preferences.get(BooleanKey.ApsAutoIsfTddSensitivity)) {
+                    autosensResult.sensResult = "autosens disabled, TDD sensitivity off"
+                    consoleError.add("TDD sensitivity: off")
+                    determineBasalAutoISF.tddRatio = 1.0
+                    determineBasalAutoISF.tdd7D = 0.0
+                } else {
+                val tdd7D      = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
+                val tdd1D      = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
+                val tddLast4H  = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+                val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+                if (tdd7D != null && tdd7D > 0.0 && tdd1D != null &&
+                    tddLast4H != null && tddLast8to4H != null) {
+                    val w8H = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3
+                    val blendedTDD = if (w8H < 0.75 * tdd7D) {
+                        // Recent usage well below average — pull 7D toward recent reality before blending
+                        val adj7D = w8H + ((w8H / tdd7D) * (tdd7D - w8H))
+                        (adj7D * 0.34) + (tdd1D * 0.33) + (w8H * 0.33)
+                    } else {
+                        (w8H * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
+                    }
+                    val tddRatio = blendedTDD / tdd7D
+                    // Store tddRatio and tdd7D to DetermineBasalAutoISF via class-level properties (Option 3)
+                    // sensitivityRatio is intentionally NOT used for TDDfactor
+                    determineBasalAutoISF.tddRatio = tddRatio.coerceIn(0.70, 1.50)
+                    determineBasalAutoISF.tdd7D = tdd7D
+                    autosensResult.ratio = tddRatio.coerceIn(0.70, 1.50)
+                    autosensResult.sensResult = "TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
+                        " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                        " W8H ${Round.roundTo(w8H, 0.1)}U)"
+                    aapsLogger.debug(LTag.APS, autosensResult.sensResult)
+                    /*consoleError.add("TDD sensitivity: ${autosensResult.sensResult}  TDD ratio ${Round.roundTo(tddRatio, 0.01)}" +
+                        " (blended ${Round.roundTo(blendedTDD, 0.1)}U / 7D avg ${Round.roundTo(tdd7D, 0.1)}U," +
+                        " W8H ${Round.roundTo(w8H, 0.1)}U)")*/
+                } else {
+                    val missing = listOfNotNull(
+                        if (tdd7D == null || tdd7D <= 0.0) "7D" else null,
+                        if (tdd1D == null) "1D" else null,
+                        if (tddLast4H == null) "4H" else null,
+                        if (tddLast8to4H == null) "8-4H" else null
+                    ).joinToString()
+                    autosensResult.sensResult = "autosens disabled, TDD unavailable (missing: $missing)"
+                    aapsLogger.debug(LTag.APS, autosensResult.sensResult)
+                    consoleError.add("TDD sensitivity: ${autosensResult.sensResult}")
+                    // Reset tddRatio to neutral when TDD data unavailable
+                    determineBasalAutoISF.tddRatio = 1.0
+                    determineBasalAutoISF.tdd7D = 0.0
+                }
+                } // end ApsAutoIsfTddSensitivity
+            }
             sensitivityRatio = autosensResult.ratio
         }
-        var skipWeights = false
         val calibrationMinutes = calibrationDuration - (dateUtil.now() - preferences.get(LongKey.FslCalibrationStart)) / 60000
         val calibrationStopsSMB = calibrationMinutes > 0 && !preferences.get(BooleanKey.FslCalibrationEnd)
+        val maxIob = constraintsChecker.getMaxIOBAllowed().value()
+        fun isEven(value: Double): Boolean =
+            if (value % 1 == 0.0) value.toInt() % 2 == 0          // whole number: check integer
+            else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
+        val maxIobIsEven = isEven(maxIob)
+        var skipWeights = false
+        var applyWeights = false
         if (calibrationStopsSMB) {
-            consoleError.add("AutoISF weights disabled while calibrating")
-            skipWeights = true
-        } else if ( !autoIsfWeights || glucose_status == null) {
-            consoleError.add("AutoISF weights disabled in Preferences")
-            skipWeights = true
+            consoleError.add("AutoISF weights calculated for display but not applied: calibrating")
+        } else if (!autoIsfWeights || glucose_status == null) {
+            /*    consoleError.add("AutoISF weights disabled in Preferences")
+                skipWeights = true
+            } else if (maxIobIsEven) {*/
+            consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences")
+            applyWeights = false
+        } else {
+            consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences")
+            applyWeights = true
         }
         if (skipWeights) {
             consoleError.add("----------------------------------")
@@ -809,6 +937,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // calculate acce_ISF from bg acceleration and adapt ISF accordingly
         val fit_corr: Double = glucose_status.corrSqu
         val bg_acce: Double = glucose_status.bgAcceleration
+        bgAcce = bg_acce  // store for use in determine_basal
+        //val nowHour = LocalDateTime.now().hour
+        //consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
+        //consoleError.add("steps180min is ${steps180min} ;;")
+        consoleError.add("nowHour is ${nowHour} ;;")
+        //consoleError.add("nowDate is ${nowDate} ;;")
+        consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
+        //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight,4)} ;;")
+        consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
+        consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
+        consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;;")
+        //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
+        //consoleError.add("bg_acce  is $bg_acce ;;")
+        //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
+
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
         if (glucose_status.a2 != 0.0 && fit_corr >= 0.9) {
             var minmax_delta: Double = -glucose_status.a1 / 2 / glucose_status.a2 * 5      // back from 5min block to 1 min
@@ -858,7 +1002,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
         autoIsfValues.bgIsf = bg_ISF
         var liftISF: Double
-        val final_ISF: Double
+        var final_ISF: Double = 1.0
         if (bg_ISF < 1.0) {
             liftISF = min(bg_ISF, acce_ISF)
             if (acce_ISF > 1.0) {
@@ -866,7 +1010,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
+            if (applyWeights) {
+                consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            } else {
+                consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences " +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            //                                       "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            if (applyWeights) return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
         }
@@ -875,7 +1028,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val deltaType = "pp"
         when {
             bg_off > 0.0                     -> {
-                consoleError.add("${deltaType}_ISF adaptation by-passed as average glucose < $target_bg+10")
+                consoleError.add("${deltaType}_ISF adaptation by-passed as average glucose < ${convert_bg(target_bg)}+10")
             }
 
             glucose_status.shortAvgDelta < 0 -> {
@@ -897,11 +1050,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val weightISF: Double = dura_ISF_weight
         when {
             dura05 < 10.0      -> {
-                consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level $avg05")
+                consoleError.add("dura_ISF by-passed; bg is only $dura05 m at level ${convert_bg(avg05)}")
             }
 
             avg05 <= target_bg -> {
-                consoleError.add("dura_ISF by-passed; avg. glucose $avg05 below target $target_bg")
+                consoleError.add("dura_ISF by-passed; avg. glucose ${convert_bg(avg05)} below target ${convert_bg(target_bg)}")
             }
 
             else               -> {
@@ -910,7 +1063,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val avg05Weight = weightISF / target_bg
                 dura_ISF += dura05Weight * avg05Weight * (avg05 - target_bg)
                 sens_modified = true
-                consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${round(sens, 1)} did not do it for ${round(dura05, 1)}m")
+                consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${convert_isf(sens)} did not do it for ${round(dura05, 1)}m")
             }
         }
         autoIsfValues.duraIsf = dura_ISF
@@ -922,8 +1075,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return round(sens / final_ISF, 1)
+            if (applyWeights) {
+                consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences "+
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            } else {
+                consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences" +
+                                     "ISF " + convert_isf(min(720.0, sens / final_ISF)))
+            }
+            //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+            //                                       "ISF " + convert_isf(sens / final_ISF))
+            if (applyWeights) return round(sens / final_ISF, 1)
+            return round(sens / sensitivityRatio, 1) // display only: weights calculated but not applied
         }
+        if (applyWeights) {
+            consoleError.add("AutoISF weights ACTIVE AutoISF weights enabled in Preferences "+
+                                 "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
+        } else {
+            consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences"+
+                                 "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
+        }
+        //if (applyWeights) consoleError.add("AutoISF weights ACTIVE: max_iob ${round(maxIob, 1)} is odd, " +
+        //                                       "ISF (unchanged) " + convert_isf(sens / sensitivityRatio))
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
@@ -1170,7 +1342,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ) return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
-        category.apply {
+        category.apply{
             key = "openapsautoisf_settings"
             title = rh.gs(R.string.openaps_auto_isf)
             initialExpandedChildrenCount = 0
@@ -1264,17 +1436,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         AdaptiveDoublePreference(
                             ctx = context,
                             doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange,
-                            dialogMessage = R.string.openapsama_smb_delivery_ratio_bg_range_summary,
-                            title = R.string.openapsama_smb_delivery_ratio_bg_range
+                            dialogMessage =  R.string.openapsama_smb_delivery_ratio_bg_range_summary,
+                            title= R.string.openapsama_smb_delivery_ratio_bg_range
                         )
                     )
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
+                    addPreference (AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddSensitivity, summary = R.string.autoisf_tdd_sensitivity_summary, title = R.string.autoisf_tdd_sensitivity))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddFactor, summary = R.string.autoisf_tdd_factor_summary, title = R.string.autoisf_tdd_factor))
                 })
-             })
+            })
         }
     }
 }
 /*
-OpenAPSAutoISFPluginTobias320T000
+
+OpenAPSAutoISFPlugin.ktSt 320TDD058
  */

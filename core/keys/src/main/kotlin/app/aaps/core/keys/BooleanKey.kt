@@ -60,6 +60,8 @@ enum class BooleanKey(
     ApsAmaAutosensAdjustTargets("autosens_adjust_targets", true, defaultedBySM = true),
     ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", false, defaultedBySM = true),
     ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", false, defaultedBySM = true),
+    ApsAutoIsfTddSensitivity("autoisf_tdd_sensitivity", true, defaultedBySM = true),
+    ApsAutoIsfTddFactor("autoisf_tdd_factor", true, defaultedBySM = true),
     ApsActivityDetection("activity_detection", false, defaultedBySM = true),
     AutomationStatesEnabled("automation_states_enabled", true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
