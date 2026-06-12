@@ -1,6 +1,8 @@
 package app.aaps.plugins.automationstate.services
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.sharedPreferences.SP
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -8,7 +10,8 @@ import javax.inject.Singleton
 
 @Singleton
 class AutomationStateService  @Inject constructor(
-    private val sp: SP
+    private val sp: SP,
+    private val rxBus: RxBus
 ) : AutomationStateInterface {
 
     private var automationStates: HashMap<String, String> = HashMap()
@@ -50,6 +53,8 @@ class AutomationStateService  @Inject constructor(
 
         automationStates[trimmedName] = trimmedState
         sp.putString(spKey, Json.encodeToString(automationStates))
+        // Notify UI (States tab) — covers changes made by automations, not just the dialogs
+        rxBus.send(EventPreferenceChange(spKey))
     }
 
     override fun getState(stateName: String):String {

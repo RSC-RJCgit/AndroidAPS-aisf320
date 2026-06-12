@@ -17,4 +17,7 @@
     <string name="automation_state_last_value_cannot_be_deleted">Cannot delete the last state value</string>
     <string name="delete_state">Delete State</string>
     <string name="delete_state_confirmation">Are you sure you want to delete this state?</string>
+    <string name="automation_states_enabled">Enable Automation States</string>
+    <string name="automation_states_enabled_summary">Allow automations to use State triggers and actions. Off by default — enable after reviewing imported states.</string>
+    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
 </resources> 
