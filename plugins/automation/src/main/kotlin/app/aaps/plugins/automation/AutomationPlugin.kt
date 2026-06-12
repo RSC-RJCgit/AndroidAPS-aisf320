@@ -78,7 +78,8 @@ import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
-//import app.aaps.plugins.automation.triggers.TriggerProfile
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -451,7 +452,8 @@ class AutomationPlugin @Inject constructor(
             TriggerIob(injector),
             TriggerCOB(injector),
             TriggerProfilePercent(injector),
-            //TriggerProfile(injector),
+            TriggerProfile(injector),
+            TriggerPhoneBattery(injector),
             TriggerAutomationState(injector), TriggerTempTarget(injector),
             TriggerTempTargetValue(injector),
             TriggerWifiSsid(injector),

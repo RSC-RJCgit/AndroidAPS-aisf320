@@ -53,7 +53,7 @@ enum class DoubleKey(
     ApsAutoIsfSmbMaxRangeExtension("openapsama_smb_max_range_extension", 1.0, 1.0, 5.0, defaultedBySM = true),
     FslCalOffset("fslCal_Offset", 0.0, -50.0, 50.0, defaultedBySM = true),      //dependency = BooleanKey.ApsCalibrationTrigger),
     FslCalSlope("fslCal_Slope", 1.0, 0.5, 1.5, defaultedBySM = true),           //dependency = BooleanKey.ApsCalibrationTrigger),
-    FslSmoothAlpha("fsl_exp1_factor", 1.0, 0.1, 1.0, defaultedBySM = true),
+    FslSmoothAlpha("fsl_exp1_factor", 0.3, 0.1, 1.0, defaultedBySM = true),
     //FslSmoothCorrection("fsl_exp1_correction", 0.0, 0.0, 1.0, defaultedBySM = true),
     FslLastRaw("fsl_last_raw", -1.0, 40.0, 400.0, defaultedBySM = true),
     FslLastSmooth("fsl_last_smooth", -1.0, 40.0, 400.0, defaultedBySM = true),

@@ -60,10 +60,13 @@ enum class BooleanKey(
     ApsAmaAutosensAdjustTargets("autosens_adjust_targets", true, defaultedBySM = true),
     ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", false, defaultedBySM = true),
     ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", false, defaultedBySM = true),
+    ApsAutoIsfTddSensitivity("autoisf_tdd_sensitivity", true, defaultedBySM = true),
+    ApsAutoIsfTddFactor("autoisf_tdd_factor", true, defaultedBySM = true),
     ApsActivityDetection("activity_detection", false, defaultedBySM = true),
     AutomationStatesEnabled("automation_states_enabled", true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
+    FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
 
@@ -76,7 +79,7 @@ enum class BooleanKey(
 
     MaintenanceEnableFabric("enable_fabric2", true, defaultedBySM = true, hideParentScreenIfHidden = true),
 
-    MaintenanceEnableExportSettingsAutomation("enable_unattended_export", false, defaultedBySM = false),
+    MaintenanceEnableExportSettingsAutomation("enable_unattended_export", true, defaultedBySM = false),
 
     AutotuneAutoSwitchProfile("autotune_auto", false),
     AutotuneCategorizeUamAsBasal("categorize_uam_as_basal", false),
@@ -86,6 +89,7 @@ enum class BooleanKey(
 
     SmsAllowRemoteCommands("smscommunicator_remotecommandsallowed", false),
     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true),
+    SmsReportMissedBgReadings("smscommunicator_report_missed_bg_readings", true),
 
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, showInNsClientMode = false),
     NsClientUploadData("ns_upload", true, showInNsClientMode = false, hideParentScreenIfHidden = true),
@@ -94,6 +98,7 @@ enum class BooleanKey(
     NsClientAcceptTempTarget("ns_receive_temp_target", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptProfileSwitch("ns_receive_profile_switch", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptInsulin("ns_receive_insulin", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    NsClientAcceptInsulinExcludeSmb("ns_receive_insulin_exclude_smb", false, showInNsClientMode = false, dependency = NsClientAcceptInsulin),
     NsClientAcceptCarbs("ns_receive_carbs", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptRunningMode("ns_receive_running_mode", false, showInNsClientMode = false, hideParentScreenIfHidden = true),

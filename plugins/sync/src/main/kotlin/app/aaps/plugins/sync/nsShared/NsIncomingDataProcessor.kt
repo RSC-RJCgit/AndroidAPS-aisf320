@@ -1,6 +1,8 @@
 package app.aaps.plugins.sync.nsShared
 
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.FD
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.IDs
@@ -16,6 +18,7 @@ import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileSource
 import app.aaps.core.interfaces.profile.ProfileStore
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
@@ -24,6 +27,9 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
@@ -58,6 +64,9 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 
 @Singleton
 class NsIncomingDataProcessor @Inject constructor(
@@ -66,6 +75,7 @@ class NsIncomingDataProcessor @Inject constructor(
     private val preferences: Preferences,
     private val rxBus: RxBus,
     private val dateUtil: DateUtil,
+    private val profileUtil: ProfileUtil,
     private val activePlugin: ActivePlugin,
     private val storeDataForDb: StoreDataForDb,
     private val config: Config,
@@ -124,6 +134,29 @@ class NsIncomingDataProcessor @Inject constructor(
             }
         }
         if (glucoseValues.isNotEmpty()) {
+            // Apply FSL calibration + smoothing if enabled (e.g. Juggluco uploading raw data via NS)
+            if (preferences.get(BooleanKey.FslApplySmoothing)) {
+                val slope = preferences.get(DoubleKey.FslCalSlope)
+                val offset = preferences.get(DoubleKey.FslCalOffset)
+                val factor = preferences.get(DoubleKey.FslSmoothAlpha)
+                val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+                val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+                glucoseValues.sortBy { it.timestamp }
+                for (gv in glucoseValues) {
+                    val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
+                    val lastTimeRaw = preferences.get(LongKey.FslSmoothLastTimeRaw)
+                    val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
+                    val calibrated = max(40.0, gv.value * slope + offset * unitFactor)
+                    val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
+                    val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+                    gv.noise = gv.value     // preserve original raw sensor value
+                    gv.raw = calibrated     // calibrated but unsmoothed
+                    gv.value = smooth       // final smoothed value
+                    preferences.put(DoubleKey.FslLastSmooth, smooth)
+                    preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
+                    aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.noise} calibrated=${gv.raw} smooth=${gv.value} alpha=$effectiveAlpha")
+                }
+            }
             activePlugin.activeNsClient?.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -150,8 +183,13 @@ class NsIncomingDataProcessor @Inject constructor(
 
                 when (treatment) {
                     is NSBolus                  ->
-                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync)
-                            storeDataForDb.addToBoluses(treatment.toBolus())
+                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync) {
+                            val bolus = treatment.toBolus()
+                            if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT && !doFullSync)
+                                aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus (excluded by setting): $treatment")
+                            else
+                                storeDataForDb.addToBoluses(bolus)
+                        }
 
                     is NSCarbs                  ->
                         if (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT || doFullSync)

@@ -1340,6 +1340,7 @@ class SmsCommunicatorPlugin @Inject constructor(
                 )
             )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.SmsReportPumpUnreachable, summary = R.string.smscommunicator_report_pump_unreachable_summary, title = R.string.smscommunicator_pump_unreachable))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.SmsReportMissedBgReadings, summary = R.string.smscommunicator_report_missed_bg_readings_summary, title = R.string.smscommunicator_missed_bg_readings))
         }
     }
 }

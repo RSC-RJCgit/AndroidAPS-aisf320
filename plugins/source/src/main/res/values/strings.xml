@@ -29,6 +29,24 @@
     <string name="bgsource_settings">BG source settings</string>
     <string name="bgsource_log_sensor_change_title">Accept sensor start</string>
     <string name="bgsource_log_sensor_change_summary">Create event \"CGM Sensor Insert\" in Careportal automatically on received sensor start from BG source local broadcast</string>
+
+    <!-- Libre / FSL special settings -->
+    <string name="libre_special_settings">Libre Special Settings</string>
+    <string name="fsl_apply_smoothing_title">Enable Libre calibration + smoothing</string>
+    <string name="fsl_apply_smoothing_summary">Apply offset/slope calibration and exponential smoothing to all readings from this source (required for Juggluco and any source that already sends a raw value)</string>
+    <string name="fsl_cal_offset_title">Calibration offset</string>
+    <string name="fsl_cal_offset_summary">OFFSET in: calibrated = OFFSET + slope × raw</string>
+    <string name="fsl_cal_slope_title">Calibration slope</string>
+    <string name="fsl_cal_slope_summary">SLOPE in: calibrated = offset + SLOPE × raw</string>
+    <string name="fsl_smooth_alpha_title">Smoothing factor (alpha)</string>
+    <string name="fsl_smooth_alpha_summary">1st-order exponential smoothing. 1.0 = no smoothing, 0.1 = max smoothing</string>
+    <string name="fsl_calibration_trigger_title">Start sensor calibration</string>
+    <string name="fsl_calibration_trigger_summary">Enables calibration mode — SMBs are paused during warm-up</string>
+    <string name="fsl_calibration_end_title">Ignore remaining calibration time</string>
+    <string name="fsl_calibration_end_summary">Skip the rest of the calibration warm-up period</string>
+    <string name="fsl_max_smooth_gap_title">Max gap to smooth (min)</string>
+    <string name="fsl_max_smooth_gap_summary">Gaps longer than this skip smoothing and use the raw value directly</string>
+
     <string name="direction">direction</string>
     <string name="bg_generation_interval_minutes">BG generation interval minutes</string>
     <!-- Patched Syai Tag App -->
