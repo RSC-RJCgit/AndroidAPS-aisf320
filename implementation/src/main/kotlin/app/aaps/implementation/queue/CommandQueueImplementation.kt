@@ -14,6 +14,8 @@ import androidx.work.WorkManager
 import app.aaps.annotations.OpenForTesting
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.EPS
+import app.aaps.core.data.model.PS
+import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.configuration.Config
@@ -147,6 +149,7 @@ class CommandQueueImplementation @Inject constructor(
                                            ).also { eps ->
                                                disposable += persistenceLayer.insertEffectiveProfileSwitch(eps).subscribe()
                                            }
+                                           scheduleExpiryCheck(it)
                                        }
                                    }
                                })
@@ -156,6 +159,22 @@ class CommandQueueImplementation @Inject constructor(
          * Clear old WorkManager jobs, because they survive restart
          */
         workManager.cancelUniqueWork(jobName.name)
+    }
+
+    // Expiry of a timed profile switch fires no event on its own and KeepAliveWorker
+    // may be delayed by Doze, so schedule an explicit check at the expiry time
+    private fun scheduleExpiryCheck(ps: PS) {
+        if (ps.duration != 0L && ps.end > dateUtil.now()) {
+            workManager.enqueueUniqueWork(
+                ProfileSwitchExpiryWorker.WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequest.Builder(ProfileSwitchExpiryWorker::class.java)
+                    .setInitialDelay(ps.end - dateUtil.now() + T.secs(10).msecs(), TimeUnit.MILLISECONDS)
+                    .build()
+            )
+        } else {
+            workManager.cancelUniqueWork(ProfileSwitchExpiryWorker.WORK_NAME)
+        }
     }
 
     private fun executingNowError(): PumpEnactResult =
