@@ -112,6 +112,7 @@
     <string name="condition">Condition:</string>
     <string name="action">Action:</string>
     <string name="taskname">Task name</string>
+    <string name="automation_note_hint">Note (optional)</string>
     <string name="edit_short">EDIT</string>
     <string name="please_choose_an_action_type">Choose an action type</string>
     <string name="please_choose_a_trigger_type">Choose a trigger type</string>
@@ -119,6 +120,7 @@
     <string name="triggers">Triggers:</string>
     <string name="preconditions">Preconditions:</string>
     <string name="automation_event">Automation event</string>
+    <string name="automation_repeat_interval">Min interval (min)</string>
     <string name="reorder_label">Reorder</string>
     <string name="user_action">User action</string>
     <string name="remove_selected_items">Remove selected items</string>
@@ -165,6 +167,9 @@
     <string name="triggerStepsCountLabel">Steps Count</string>
     <string name="triggerStepsCountDesc">Steps count per %1$s minutes %2$s %3$.0f</string>
     <string name="triggerStepsCountDropdownLabel">Measurement Duration</string>
+
+    <!--    Partial bolus wizard-->
+    <string name="partialboluswizard">Deliver this part of bolus wizard result [%]</string>
 
     <!--    SMB mode-->
     <string name="changeSmbState">Enable/disable SMB</string>

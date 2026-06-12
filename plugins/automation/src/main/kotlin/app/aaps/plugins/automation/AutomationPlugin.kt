@@ -41,6 +41,7 @@ import app.aaps.plugins.automation.actions.ActionAutoisfDisable
 import app.aaps.plugins.automation.actions.ActionAutoisfEnable
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionNotification
+import app.aaps.plugins.automation.actions.ActionPartialBolusWizard
 import app.aaps.plugins.automation.actions.ActionProfileSwitch
 import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
 import app.aaps.plugins.automation.actions.ActionRunAutotune
@@ -187,23 +188,25 @@ class AutomationPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribe({
                            aapsLogger.debug(LTag.AUTOMATION, "Grabbed location: ${it.location.latitude} ${it.location.longitude} Provider: ${it.location.provider}")
-                           processActions()
+                           // Serialize evaluation on the handler thread: concurrent processActions()
+                           // passes can double-fire events before lastRun is updated
+                           handler?.post { processActions() }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventChargingState::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ processActions() }, fabricPrivacy::logException)
+            .subscribe({ handler?.post { processActions() } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNetworkChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ processActions() }, fabricPrivacy::logException)
+            .subscribe({ handler?.post { processActions() } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventBTChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({
                            aapsLogger.debug(LTag.AUTOMATION, "Grabbed new BT event: $it")
                            btConnects.add(it)
-                           processActions()
+                           handler?.post { processActions() }
                        }, fabricPrivacy::logException)
     }
 
@@ -424,7 +427,8 @@ class AutomationPlugin @Inject constructor(
             ActionProfileSwitchPercent(injector),
             ActionProfileSwitch(injector),
             ActionSendSMS(injector),
-            ActionSMBChange(injector)
+            ActionSMBChange(injector),
+            ActionPartialBolusWizard(injector)
         )
         if (config.isEngineeringMode() && config.isDev()) {
             actions.add(ActionRunAutotune(injector))
