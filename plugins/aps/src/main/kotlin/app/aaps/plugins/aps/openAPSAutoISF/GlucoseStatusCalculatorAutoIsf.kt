@@ -52,7 +52,7 @@ class GlucoseStatusCalculatorAutoIsf @Inject constructor(
         val fslValue = fsl.raw
         val fslRaw = fsl.noise
         val fslSmooth = fsl.value
-        val fslReally = cgm.text=="Libre2" || cgm.text=="Libre2 Native" || cgm.text=="Libre3"   // || cgm.text=="G7"
+        val fslReally = cgm.text=="Libre2" || cgm.text=="Libre2 Native" || cgm.text=="Libre3" || preferences.get(BooleanKey.FslApplySmoothing)   // || cgm.text=="G7"
         var fslMinDur = 15
         if (sizeRecords == 1) {
             aapsLogger.debug(LTag.GLUCOSE, "sizeRecords==1")
@@ -265,6 +265,7 @@ class GlucoseStatusCalculatorAutoIsf @Inject constructor(
             a0 = a0,
             a1 = a1,
             a2 = a2,
+            libreActive = fslReally,
         )   //.also { aapsLogger.debug(LTag.GLUCOSE, it.log(decimalFormatter)) }.asRounded()
     }
 

@@ -60,6 +60,8 @@
     <string name="ns_receive_tbr_eb_summary">Accept TBR and EB entered through another instance</string>
     <string name="ns_receive_insulin">Receive insulin</string>
     <string name="ns_receive_insulin_summary">Accept insulin entered through NS or AAPSClient (it\'s not delivered, only calculated towards IOB)</string>
+    <string name="ns_receive_insulin_exclude_smb">Exclude SMB from download</string>
+    <string name="ns_receive_insulin_exclude_smb_summary">Skip automated micro-boluses (SMB) when downloading insulin — only manual boluses are accepted</string>
     <string name="ns_receive_carbs">Receive carbs</string>
     <string name="ns_receive_carbs_summary">Accept carbs entered through NS or AAPSClient</string>
     <string name="ns_receive_therapy_events">Receive therapy events</string>
