@@ -52,6 +52,7 @@ import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.aps.autotune.AutotunePlugin
 import app.aaps.plugins.automation.AutomationPlugin
+import app.aaps.plugins.automationstate.AutomationStatePlugin
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.plugins.main.general.smsCommunicator.SmsCommunicatorPlugin
 import app.aaps.plugins.main.skins.SkinProvider
@@ -72,6 +73,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
     @Inject lateinit var config: Config
     @Inject lateinit var passwordCheck: PasswordCheck
     @Inject lateinit var automationPlugin: AutomationPlugin
+    @Inject lateinit var automationStatePlugin: AutomationStatePlugin
     @Inject lateinit var autotunePlugin: AutotunePlugin
     @Inject lateinit var smsCommunicatorPlugin: SmsCommunicatorPlugin
     @Inject lateinit var maintenancePlugin: MaintenancePlugin
@@ -151,6 +153,7 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             activePlugin.getSpecificPluginsList(PluginType.SYNC).forEach { addPreferencesIfEnabled(it, rootKey) }
             addPreferencesIfEnabled(smsCommunicatorPlugin, rootKey)
             addPreferencesIfEnabled(automationPlugin, rootKey)
+            addPreferencesIfEnabled(automationStatePlugin, rootKey)
             addPreferencesIfEnabled(autotunePlugin, rootKey)
             addAlertScreen(rootKey)
             addPreferencesIfEnabled(maintenancePlugin, rootKey)

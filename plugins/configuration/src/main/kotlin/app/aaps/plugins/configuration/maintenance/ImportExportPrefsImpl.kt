@@ -874,6 +874,8 @@ class ImportExportPrefsImpl @Inject constructor(
                     PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
                         if (importPossible) {
                             activePlugin.beforeImport()
+                            // Preserve device-specific path — never let an import overwrite it
+                            val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
                             sp.clear()
                             for ((key, value) in prefs.values) {
                                 if (value == "true" || value == "false") {
@@ -885,9 +887,39 @@ class ImportExportPrefsImpl @Inject constructor(
                             
                             // All settings including Google Drive settings and export destination preferences
                             // are now imported from backup file. If tokens are invalid, user can re-authorize.
-                            
+
+                            // Ensure AutomationStates are off by default after import
+                            sp.putBoolean(BooleanKey.AutomationStatesEnabled.key, false)
+                            // Restore local AAPS directory path so it is never lost on import
+                            if (savedAapsDirectory.isNotEmpty()) {
+                                sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
+                            }
                             activePlugin.afterImport()
-                            restartAppAfterImport(activity)
+                            // Warn if imported settings contained automation states
+                            val hasStates = prefs.values.keys.any { it == "automation_state_service" || it == "automation_state_values" }
+                            if (hasStates) {
+                                val checkBox = android.widget.CheckBox(activity).apply {
+                                    text = rh.gs(R.string.automation_states_enable_now)
+                                    isChecked = false
+                                    setPadding(48, 16, 16, 16)
+                                }
+                                androidx.appcompat.app.AlertDialog.Builder(activity)
+                                    .setTitle(rh.gs(R.string.automation_states))
+                                    .setMessage(rh.gs(R.string.automation_states_imported_warning))
+                                    .setView(checkBox)
+                                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                        if (checkBox.isChecked) {
+                                            // Synchronous write — the app is killed right after this dialog
+                                            // and an async apply() can be lost before reaching disk
+                                            sp.edit(commit = true) { putBoolean(BooleanKey.AutomationStatesEnabled.key, true) }
+                                        }
+                                        restartAppAfterImport(activity)
+                                    }
+                                    .setCancelable(false)
+                                    .show()
+                            } else {
+                                restartAppAfterImport(activity)
+                            }
                         } else {
                             // for impossible imports it should not be called
                             ToastUtils.errorToast(activity, rh.gs(R.string.preferences_import_impossible))
