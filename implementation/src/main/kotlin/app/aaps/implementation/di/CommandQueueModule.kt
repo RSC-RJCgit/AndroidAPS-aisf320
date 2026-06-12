@@ -3,6 +3,7 @@ package app.aaps.implementation.di
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.implementation.queue.CommandQueueImplementation
 import app.aaps.implementation.queue.CommandQueueName
+import app.aaps.implementation.queue.ProfileSwitchExpiryWorker
 import app.aaps.implementation.queue.QueueWorker
 import app.aaps.implementation.queue.commands.CommandBolus
 import app.aaps.implementation.queue.commands.CommandCancelExtendedBolus
@@ -44,6 +45,7 @@ open class CommandQueueModule {
         @Binds fun bindCommandQueueInjector(commandQueueImplementation: CommandQueueImplementation): CommandQueue
 
         @ContributesAndroidInjector fun queueWorkerInjector(): QueueWorker
+        @ContributesAndroidInjector fun profileSwitchExpiryWorkerInjector(): ProfileSwitchExpiryWorker
         @ContributesAndroidInjector fun commandBolusInjector(): CommandBolus
         @ContributesAndroidInjector fun commandCancelExtendedBolusInjector(): CommandCancelExtendedBolus
         @ContributesAndroidInjector fun commandCancelTempBasalInjector(): CommandCancelTempBasal
