@@ -70,6 +70,24 @@ fun AfrezzaDialogScreen(
         )
     }
 
+    // Max basal prompt — shown after bolus is logged
+    if (uiState.showMaxBasalPrompt) {
+        OkCancelDialog(
+            title = stringResource(R.string.afrezza_max_basal_title),
+            message = stringResource(R.string.afrezza_max_basal_message),
+            onConfirm = { viewModel.acceptMaxBasalPrompt() },
+            onDismiss = { viewModel.dismissMaxBasalPrompt() }
+        )
+    }
+
+    // Duration selector — shown after accepting max basal
+    if (uiState.showDurationSelector) {
+        DurationSelectorDialog(
+            onDurationSelected = { minutes -> viewModel.applyMaxBasal(minutes) },
+            onDismiss = { viewModel.dismissDurationSelector() }
+        )
+    }
+
     ModalBottomSheet(
         onDismissRequest = onNavigateBack,
         sheetState = sheetState,
@@ -176,6 +194,96 @@ private fun AfrezzaNotConfiguredContent() {
             color = MaterialTheme.colorScheme.onErrorContainer,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun DurationSelectorDialog(
+    onDurationSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.afrezza_max_basal_duration),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(R.string.afrezza_max_basal_rate),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                ) {
+                    DurationButton(minutes = 30, onClick = { onDurationSelected(30) })
+                    DurationButton(minutes = 60, onClick = { onDurationSelected(60) })
+                    DurationButton(minutes = 120, onClick = { onDurationSelected(120) })
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Text(stringResource(CoreUiR.string.cancel))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DurationButton(
+    minutes: Int,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.size(90.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "$minutes",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "min",
+                fontSize = 12.sp
+            )
+        }
     }
 }
 

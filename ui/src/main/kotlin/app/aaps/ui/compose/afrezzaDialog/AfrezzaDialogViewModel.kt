@@ -16,6 +16,9 @@ import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.ui.R
@@ -39,7 +42,9 @@ class AfrezzaDialogViewModel @Inject constructor(
     private val uel: UserEntryLogger,
     private val dateUtil: DateUtil,
     private val rh: ResourceHelper,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val commandQueue: CommandQueue,
+    private val profileFunction: ProfileFunction
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AfrezzaDialogUiState())
@@ -125,11 +130,58 @@ class AfrezzaDialogViewModel @Inject constructor(
                 aapsLogger.info(LTag.UI, "Afrezza ${units}U logged with ICfg: ${iCfg.insulinLabel}")
 
                 _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_logged, units)))
-                _sideEffect.tryEmit(SideEffect.DoseLogged)
+                // Show max basal prompt instead of navigating back immediately
+                _uiState.update { it.copy(isLogging = false, showConfirmation = false, showMaxBasalPrompt = true) }
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "Failed to log Afrezza dose", e)
-            } finally {
                 _uiState.update { it.copy(isLogging = false, showConfirmation = false, selectedCartridge = null) }
+            }
+        }
+    }
+
+    fun dismissMaxBasalPrompt() {
+        _uiState.update { it.copy(showMaxBasalPrompt = false, selectedCartridge = null) }
+        _sideEffect.tryEmit(SideEffect.DoseLogged)
+    }
+
+    fun acceptMaxBasalPrompt() {
+        _uiState.update { it.copy(showMaxBasalPrompt = false, showDurationSelector = true) }
+    }
+
+    fun dismissDurationSelector() {
+        _uiState.update { it.copy(showDurationSelector = false, selectedCartridge = null) }
+        _sideEffect.tryEmit(SideEffect.DoseLogged)
+    }
+
+    fun applyMaxBasal(durationMinutes: Int) {
+        viewModelScope.launch {
+            try {
+                val profile = profileFunction.getProfile()
+                if (profile == null) {
+                    aapsLogger.error(LTag.UI, "No active profile — cannot set temp basal")
+                    _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_no_profile)))
+                    return@launch
+                }
+                val result = commandQueue.tempBasalAbsolute(
+                    absoluteRate = 2.0,
+                    durationInMinutes = durationMinutes,
+                    enforceNew = true,
+                    profile = profile,
+                    tbrType = PumpSync.TemporaryBasalType.NORMAL
+                )
+                if (result.success) {
+                    aapsLogger.info(LTag.UI, "Max basal 2.0 U/h set for ${durationMinutes} min after Afrezza")
+                    _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_set, durationMinutes)))
+                } else {
+                    aapsLogger.error(LTag.UI, "Failed to set max basal: ${result.comment}")
+                    _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_failed)))
+                }
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.UI, "Exception setting max basal", e)
+                _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_failed)))
+            } finally {
+                _uiState.update { it.copy(showDurationSelector = false, selectedCartridge = null) }
+                _sideEffect.tryEmit(SideEffect.DoseLogged)
             }
         }
     }

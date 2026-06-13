@@ -9,5 +9,7 @@ data class AfrezzaDialogUiState(
     val afrezzaIcfg: ICfg? = null,           // Resolved Afrezza ICfg from InsulinManager
     val isConfigured: Boolean = false,        // Whether Afrezza insulin exists in InsulinManager
     val showConfirmation: Boolean = false,
-    val isLogging: Boolean = false
+    val isLogging: Boolean = false,
+    val showMaxBasalPrompt: Boolean = false,
+    val showDurationSelector: Boolean = false
 )
