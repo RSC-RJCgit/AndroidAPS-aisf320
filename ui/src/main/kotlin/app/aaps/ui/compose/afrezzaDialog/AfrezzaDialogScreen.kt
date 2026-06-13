@@ -236,11 +236,11 @@ private fun DurationSelectorDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    DurationButton(minutes = 30, onClick = { onDurationSelected(30) })
-                    DurationButton(minutes = 60, onClick = { onDurationSelected(60) })
-                    DurationButton(minutes = 120, onClick = { onDurationSelected(120) })
+                    DurationButton(minutes = 30, onClick = { onDurationSelected(30) }, modifier = Modifier.weight(1f))
+                    DurationButton(minutes = 60, onClick = { onDurationSelected(60) }, modifier = Modifier.weight(1f))
+                    DurationButton(minutes = 120, onClick = { onDurationSelected(120) }, modifier = Modifier.weight(1f))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -262,11 +262,12 @@ private fun DurationSelectorDialog(
 @Composable
 private fun DurationButton(
     minutes: Int,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier.size(90.dp),
+        modifier = modifier.height(90.dp),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
