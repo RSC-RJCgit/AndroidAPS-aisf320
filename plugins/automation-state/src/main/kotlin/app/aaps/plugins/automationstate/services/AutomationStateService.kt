@@ -63,7 +63,7 @@ class AutomationStateService  @Inject constructor(
     }
 
     override fun getAllStates(): List<Pair<String, String>> {
-        return automationStates.toList()
+        return stateValues.keys.map { stateName -> Pair(stateName, automationStates[stateName] ?: "") }
     }
 
     fun clearStates() {
