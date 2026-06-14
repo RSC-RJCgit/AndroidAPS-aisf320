@@ -84,6 +84,7 @@ class EversenseGattCallback(
     // being non-null, which is not a reliable indicator of actual connection state.
     @Volatile
     private var connected: Boolean = false
+    private var transmitterReady: Boolean = false
 
     // Tracks consecutive status-19 failures to detect transmitter placement issues
     @Volatile
@@ -116,7 +117,8 @@ class EversenseGattCallback(
     @Volatile
     private var shortcutFailCount: Int = 0
 
-    fun isConnected(): Boolean = connected
+    fun isConnected(): Boolean = connected && transmitterReady
+    fun isBleConnected(): Boolean = connected
     fun is365(): Boolean = security == EversenseSecurityType.SecureV2
 
     // Submit a task to the bleExecutor and return a Future so callers can block until complete.
@@ -133,6 +135,7 @@ class EversenseGattCallback(
         bluetoothGatt?.close()
         bluetoothGatt = null
         connected = false
+        transmitterReady = false
         EversenseLogger.info(TAG, "GATT disconnected and closed")
     }
     @SuppressLint("MissingPermission")
@@ -141,6 +144,7 @@ class EversenseGattCallback(
         bluetoothGatt?.close()
         bluetoothGatt = null
         connected = false
+        transmitterReady = false
         bleExecutor.shutdownNow()
         bleExecutor = Executors.newSingleThreadExecutor()
         EversenseLogger.info(TAG, "GATT cleaned up before reconnect")
@@ -200,6 +204,7 @@ class EversenseGattCallback(
             // without needing internet. For all other disconnects, close and reconnect fresh.
             if (status == 19 && is365()) {
                 connected = false
+                transmitterReady = false
                 handler.post {
                     plugin.watchers.forEach { it.onConnectionChanged(false) }
                 }
@@ -211,6 +216,7 @@ class EversenseGattCallback(
             gatt.close()
             bluetoothGatt = null
             connected = false
+            transmitterReady = false
 
             handler.post {
                 plugin.watchers.forEach { it.onConnectionChanged(false) }
@@ -560,6 +566,7 @@ class EversenseGattCallback(
         EversenseLogger.info(TAG, "E3 auth complete — notifying watchers")
         // fullSync is triggered by onConnectionChanged via triggerFullSync on the bleExecutor.
         // Do NOT call fullSync here — it would race with the triggerFullSync call.
+        transmitterReady = true
         handler.post { plugin.watchers.forEach { it.onTransmitterReady() } }
     }
 
@@ -653,6 +660,7 @@ val authSession = networkExecutor.submit<Any?> {
                 EversenseLogger.warning(TAG, "[365] readGlucose after auth failed (non-fatal): $e")
             }
 EversenseLogger.info(TAG, "365 transmitter ready — notifying watchers")
+            transmitterReady = true
             handler.post { plugin.watchers.forEach { it.onTransmitterReady() } }
 
         } catch (exception: Exception) {
