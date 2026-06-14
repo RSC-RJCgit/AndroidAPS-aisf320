@@ -114,7 +114,7 @@ class EversenseCGMPlugin(
                 EversenseLogger.info(TAG, "Connecting to supplied device: ${device.name}")
                 preferences.edit { putString(StorageKeys.REMOTE_DEVICE_KEY, device.address) }
                 EversenseLogger.info(TAG, "Saved device address for auto-reconnect: ${device.address}")
-                device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                device.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
                 true
             } else {
                 val address = preferences.getString(StorageKeys.REMOTE_DEVICE_KEY, null) ?: run {
@@ -126,7 +126,7 @@ class EversenseCGMPlugin(
                     return false
                 }
                 EversenseLogger.info(TAG, "Reconnecting to stored device: $address")
-                remoteDevice.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                remoteDevice.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
                 true
             }
         }
