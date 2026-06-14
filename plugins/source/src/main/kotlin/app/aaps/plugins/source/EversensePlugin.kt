@@ -13,7 +13,10 @@ import androidx.core.content.edit
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
+import app.aaps.core.interfaces.constraints.Constraint
+import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
 import app.aaps.plugins.eversense.models.ActiveAlarm
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
@@ -610,4 +613,10 @@ class EversensePlugin @Inject constructor(
             .show()
     }
 
+    override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
+        if (AfrezzaMaxBasalState.isActive) {
+            absoluteRate.setIfGreater(2.0, "Afrezza max basal active", this)
+        }
+        return absoluteRate
+    }
 }

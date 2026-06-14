@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
@@ -167,10 +168,11 @@ class AfrezzaDialogViewModel @Inject constructor(
                     durationInMinutes = durationMinutes,
                     enforceNew = true,
                     profile = profile,
-                    tbrType = PumpSync.TemporaryBasalType.SUPERBOLUS
+                    tbrType = PumpSync.TemporaryBasalType.NORMAL
                 )
                 if (result.success) {
                     aapsLogger.info(LTag.UI, "Max basal 2.0 U/h set for ${durationMinutes} min after Afrezza")
+                    AfrezzaMaxBasalState.endTime = System.currentTimeMillis() + (durationMinutes * 60_000L)
                     _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_set, durationMinutes)))
                 } else {
                     aapsLogger.error(LTag.UI, "Failed to set max basal: ${result.comment}")
