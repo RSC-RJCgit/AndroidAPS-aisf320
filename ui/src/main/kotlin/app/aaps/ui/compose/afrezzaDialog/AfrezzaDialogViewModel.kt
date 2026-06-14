@@ -167,7 +167,7 @@ class AfrezzaDialogViewModel @Inject constructor(
                     durationInMinutes = durationMinutes,
                     enforceNew = true,
                     profile = profile,
-                    tbrType = PumpSync.TemporaryBasalType.NORMAL
+                    tbrType = PumpSync.TemporaryBasalType.SUPERBOLUS
                 )
                 if (result.success) {
                     aapsLogger.info(LTag.UI, "Max basal 2.0 U/h set for ${durationMinutes} min after Afrezza")
