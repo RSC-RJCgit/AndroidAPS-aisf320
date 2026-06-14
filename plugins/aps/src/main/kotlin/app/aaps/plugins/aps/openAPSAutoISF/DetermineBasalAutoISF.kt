@@ -863,7 +863,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val nowHour = LocalDateTime.now().hour
         val standardTempDuration = if (nowHour in 0..6) 15 else 30  // overnight 15min temps, else 30min
 
-        if (enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
+        if(enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
             varOffset = varOffset - 9
             rT.reason.append("offset1 ${offset1} ;")
             rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
