@@ -322,7 +322,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD060")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD061")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -693,7 +693,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins =0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
         rT.reason.append(
-            " 320TDD060 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD061 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -861,6 +861,7 @@ class DetermineBasalAutoISF @Inject constructor(
             enableButton = true
         }
         val nowHour = LocalDateTime.now().hour
+        val standardTempDuration = if (nowHour in 0..6) 15 else 30  // overnight 15min temps, else 30min
 
         if (enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
             varOffset = varOffset - 9
@@ -1041,7 +1042,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     return rT
                 } else {
                     rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
-                    return setTempBasal(basal, 30, profile, rT, currenttemp)
+                    return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
 
@@ -1060,7 +1061,7 @@ class DetermineBasalAutoISF @Inject constructor(
             val minInsulinReq = Math.min(insulinReq, naiveInsulinReq)
             if (insulinScheduled < minInsulinReq - basal * 0.3) {
                 rT.reason.append(", ${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} is a lot less than needed. ")
-                return setTempBasal(rate, 30, profile, rT, currenttemp)
+                return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
             if (currenttemp.duration > 5 && rate >= currenttemp.rate * 0.8) {
                 rT.reason.append(", temp ${currenttemp.rate} ~< req ${round(rate, 2)}U/hr. ")
@@ -1083,7 +1084,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else {
                     rT.reason.append(", setting ${round(rate, 2)}U/hr. ")
                 }
-                return setTempBasal(rate, 30, profile, rT, currenttemp)
+                return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
         }
 
@@ -1103,7 +1104,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     return rT
                 } else {
                     rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
-                    return setTempBasal(basal, 30, profile, rT, currenttemp)
+                    return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
         }
@@ -1115,7 +1116,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     return rT
                 } else {
                     rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
-                    return setTempBasal(basal, 30, profile, rT, currenttemp)
+                    return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
         }
@@ -1130,7 +1131,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 return rT
             } else {
                 rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
-                return setTempBasal(basal, 30, profile, rT, currenttemp)
+                return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
             }
         } else {
             // =====================================================
@@ -1535,12 +1536,12 @@ class DetermineBasalAutoISF @Inject constructor(
             val insulinScheduled = currenttemp.duration *  (currenttemp.rate - basal) / 60
             if (insulinScheduled >= TDDfactor * insulinReq * 2) {
                 rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
-                return setTempBasal(rate, 30, profile, rT, currenttemp)
+                return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
 
             if(currenttemp.duration == 0) {
                 rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
-                return setTempBasal(rate, 30, profile, rT, currenttemp)
+                return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
 
             if (currenttemp.duration > 5 && (round_basal(rate) <= round_basal(currenttemp.rate))) {
@@ -1549,11 +1550,11 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             rT.reason.append("temp ${currenttemp.rate.toFixed2()} un ${round(rate, 2).withoutZeros()}U/hr. ")
-            return setTempBasal(rate, 30, profile, rT, currenttemp)
+            return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
         }
     }
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD060
+DetermineBasalAutoISF.kt320TDD061
 */
