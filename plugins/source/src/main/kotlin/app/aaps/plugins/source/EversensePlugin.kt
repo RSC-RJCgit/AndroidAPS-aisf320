@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
+import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
 import app.aaps.plugins.eversense.models.ActiveAlarm
@@ -85,7 +86,7 @@ class EversensePlugin @Inject constructor(
         .description(R.string.description_source_eversense),
     ownPreferences = emptyList(),
     aapsLogger, rh, preferences, config
-), BgSource, EversenseWatcher {
+), BgSource, EversenseWatcher, PluginConstraints {
 
     @Inject lateinit var persistenceLayer: PersistenceLayer
 
