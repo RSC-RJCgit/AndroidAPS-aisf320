@@ -96,45 +96,25 @@ class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
         } else {
             showWaiting()
         }
-
-        // E3: start diagnostic mode and polling in onCreate (stable, doesn't toggle on app switch)
-        if (!eversense.is365()) {
-            ioScope.launch {
-                delay(500)
-                eversense.setDiagnosticMode(true)
-                startPolling()
-            }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        // E365 only: use onResume/onPause lifecycle for diagnostic mode
-        if (eversense.is365()) {
-            ioScope.launch {
-                delay(500)
-                eversense.enterPositioningMode()
-                startPolling()
-            }
+        ioScope.launch {
+            delay(500)
+            eversense.enterPositioningMode()
+            startPolling()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        // E365 only: disable diagnostic mode on pause
-        if (eversense.is365()) {
-            stopPolling()
-            CoroutineScope(Dispatchers.IO).launch { eversense.exitPositioningMode() }
-        }
+        stopPolling()
+        CoroutineScope(Dispatchers.IO).launch { eversense.exitPositioningMode() }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // E3: disable diagnostic mode on destroy
-        if (!eversense.is365()) {
-            stopPolling()
-            CoroutineScope(Dispatchers.IO).launch { eversense.setDiagnosticMode(false) }
-        }
         ioScope.cancel()
         eversense.removeWatcher(this)
     }
