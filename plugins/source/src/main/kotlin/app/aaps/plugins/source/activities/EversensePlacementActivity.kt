@@ -96,29 +96,45 @@ class EversensePlacementActivity : AppCompatActivity(), EversenseWatcher {
         } else {
             showWaiting()
         }
+
+        // E3: start diagnostic mode and polling in onCreate (stable, doesn't toggle on app switch)
+        if (!eversense.is365()) {
+            ioScope.launch {
+                delay(500)
+                eversense.setDiagnosticMode(true)
+                startPolling()
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // Mirrors iOS PlacementGuideViewModel.init: enable diagnostic mode on open
-        // so the transmitter increases its signal-strength broadcast frequency.
-        ioScope.launch {
-            delay(500)
-            eversense.enterPositioningMode()
-            startPolling()
+        // E365 only: use onResume/onPause lifecycle for diagnostic mode
+        if (eversense.is365()) {
+            ioScope.launch {
+                delay(500)
+                eversense.enterPositioningMode()
+                startPolling()
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
-        stopPolling()
-        // Mirrors iOS PlacementGuideViewModel.stop(): disable diagnostic mode on close
-        // so the transmitter returns to standard power-saving broadcast frequency.
-        CoroutineScope(Dispatchers.IO).launch { eversense.exitPositioningMode() }
+        // E365 only: disable diagnostic mode on pause
+        if (eversense.is365()) {
+            stopPolling()
+            CoroutineScope(Dispatchers.IO).launch { eversense.exitPositioningMode() }
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        // E3: disable diagnostic mode on destroy
+        if (!eversense.is365()) {
+            stopPolling()
+            CoroutineScope(Dispatchers.IO).launch { eversense.setDiagnosticMode(false) }
+        }
         ioScope.cancel()
         eversense.removeWatcher(this)
     }
