@@ -1,6 +1,8 @@
 package app.aaps.plugins.automationstate.services
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
 import kotlinx.serialization.json.Json
@@ -9,7 +11,8 @@ import javax.inject.Singleton
 
 @Singleton
 class AutomationStateService  @Inject constructor(
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val rxBus: RxBus
 ) : AutomationStateInterface {
 
     private var automationStates: HashMap<String, String> = HashMap()
@@ -32,7 +35,7 @@ class AutomationStateService  @Inject constructor(
         }
     }
 
-   override fun inState(stateName: String, state: String): Boolean {
+    override fun inState(stateName: String, state: String): Boolean {
         if (automationStates.containsKey(stateName.trim())) {
             return automationStates[stateName.trim()] == state.trim()
         }
@@ -40,16 +43,17 @@ class AutomationStateService  @Inject constructor(
     }
 
     override fun setState(stateName: String, state: String) {
-        val trimmedName = stateName.trim()
-        val trimmedState = state.trim()
+       val trimmedName = stateName.trim()
+       val trimmedState = state.trim()
 
-        // Validate that the state value is in the allowed list
-        require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
-        require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
-
-        automationStates[trimmedName] = trimmedState
-        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
-    }
+       // Validate that the state value is in the allowed list
+       require(stateValues.containsKey(trimmedName) ) { "Invalid state name: $trimmedName" }
+       require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
+       automationStates[trimmedName] = trimmedState
+       preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
+       // Notify UI (States tab) — covers changes made by automations or Kotlin, not just manually
+       rxBus.send(EventPreferenceChange(Json.encodeToString(automationStates)))
+   }
 
     override fun getState(stateName: String):String {
         val trimmedName = stateName.trim()
@@ -96,9 +100,9 @@ class AutomationStateService  @Inject constructor(
     }
 
    override fun deleteState(stateName: String) {
-        val trimmedName = stateName.trim()
-        automationStates.remove(trimmedName)
-        stateValues.remove(trimmedName)
+       val trimmedName = stateName.trim()
+       automationStates.remove(trimmedName)
+       stateValues.remove(trimmedName)
        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
        preferences.put(AutomationStateStringKey.AutomationStateValues, Json.encodeToString(stateValues))
     }
