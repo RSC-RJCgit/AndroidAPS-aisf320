@@ -194,11 +194,6 @@ jobs:
               :app:assembleaapsclient2Release \
               :app:assembleaapsclientRelease \
               :wear:assemble${{ env.BUILD_VARIANT }} \
-        run: |
-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
-              :app:assembleaapsclient2Release \
-              :app:assembleaapsclientRelease \
-              :wear:assemble${{ env.BUILD_VARIANT }} \
               -Dorg.gradle.jvmargs="-Xmx10g" \
               -Dkotlin.daemon.jvm.options="-Xmx4g" \
               -Dkotlin.compiler.execution.strategy="in-process" \
