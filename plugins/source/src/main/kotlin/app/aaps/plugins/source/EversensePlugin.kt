@@ -212,6 +212,7 @@ class EversensePlugin @Inject constructor(
         items = listOf(
             EversenseIntentKey.EversenseStatus.withActivity(EversenseStatusActivity::class.java),
             BooleanKey.EversenseCloudUploadEnabled,
+            app.aaps.core.keys.DoubleKey.AfrezzaMaxBasalRate,
             PreferenceSubScreenDef(
                 key = "eversense_credentials_screen",
                 titleResId = R.string.eversense_credentials_title,
@@ -634,5 +635,7 @@ class EversensePlugin @Inject constructor(
         }
         return absoluteRate
     }
+}
+
 
 
