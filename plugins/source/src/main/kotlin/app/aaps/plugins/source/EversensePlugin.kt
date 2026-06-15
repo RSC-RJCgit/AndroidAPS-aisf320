@@ -212,7 +212,6 @@ class EversensePlugin @Inject constructor(
         items = listOf(
             EversenseIntentKey.EversenseStatus.withActivity(EversenseStatusActivity::class.java),
             BooleanKey.EversenseCloudUploadEnabled,
-            app.aaps.core.keys.DoubleKey.AfrezzaMaxBasalRate,
             PreferenceSubScreenDef(
                 key = "eversense_credentials_screen",
                 titleResId = R.string.eversense_credentials_title,
@@ -631,11 +630,12 @@ class EversensePlugin @Inject constructor(
                 aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal skipped — no active carbs (COB: $cob)")
                 return absoluteRate
             }
-            absoluteRate.setIfGreater(AfrezzaMaxBasalState.rate, "Afrezza max basal active (COB: $cob)", this)
+            absoluteRate.setIfGreater(AfrezzaMaxBasalState.rate, "Afrezza max basal active", this)
         }
         return absoluteRate
     }
 }
+
 
 
 

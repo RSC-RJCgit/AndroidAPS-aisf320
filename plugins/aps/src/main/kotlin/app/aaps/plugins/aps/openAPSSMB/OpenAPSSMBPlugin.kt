@@ -593,6 +593,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
         titleResId = R.string.openapssmb,
         items = listOf(
             DoubleKey.ApsMaxBasal,
+            DoubleKey.AfrezzaMaxBasalRate,
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseDynamicSensitivity,
             BooleanKey.ApsUseAutosens,
