@@ -33,7 +33,7 @@ jobs:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         run: |
           if [ -n "${{ secrets.KEYSTORE_SET }}" ]; then
-            echo "?? Decoding KEYSTORE_SET..."
+            echo "🔐 Decoding KEYSTORE_SET..."
             DECODED=$(echo "${{ secrets.KEYSTORE_SET }}" | base64 -d)
 
             KEYSTORE_BASE64=$(echo "$DECODED" | cut -d'|' -f1)
@@ -51,9 +51,9 @@ jobs:
             echo "::add-mask::$KEY_ALIAS"
             echo "::add-mask::$KEY_PASSWORD"
 
-            echo "? Keystore parameters extracted from KEYSTORE_SET"
+            echo "✅ Keystore parameters extracted from KEYSTORE_SET"
           else
-            echo "?? KEYSTORE_SET not provided, using separate secrets."
+            echo "ℹ️ KEYSTORE_SET not provided, using separate secrets."
             echo "KEYSTORE_BASE64=${{ secrets.KEYSTORE_BASE64 }}" >> $GITHUB_ENV
             echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
@@ -63,12 +63,12 @@ jobs:
 
       - name: Check Secrets
         run: |
-          echo "?? Checking required secrets..."
+          echo "🔍 Checking required secrets..."
           MISSING=0
 
           check_secret() {
             if [ -z "$1" ]; then
-              echo "? Missing secret: $2"
+              echo "❌ Missing secret: $2"
               MISSING=1
             fi
           }
@@ -80,11 +80,11 @@ jobs:
           check_secret "$KEY_PASSWORD" "KEY_PASSWORD"
 
           if [ "$MISSING" -eq 1 ]; then
-            echo "?? Missing required secrets. Stopping build."
+            echo "🛑 Missing required secrets. Stopping build."
             exit 1
           fi
 
-          echo "? All required secrets are present."
+          echo "✅ All required secrets are present."
 
       - name: Decode keystore file
         run: |
@@ -94,7 +94,7 @@ jobs:
       - name: Validating keystore, alias and password
         run: |
           set -x
-          echo "?? Validating keystore, alias and password"
+          echo "🔐 Validating keystore, alias and password"
 
           echo "test" > dummy.txt
           zip -q dummy.jar dummy.txt
@@ -106,21 +106,21 @@ jobs:
               -storepass "$KEYSTORE_PASSWORD" \
               -keypass "$KEY_PASSWORD" \
               dummy.jar "$KEY_ALIAS" > "$JARSIGNER_LOG" 2>&1; then
-            echo "? Either KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD, or KEY_ALIAS is incorrect"
-            echo "?? jarsigner error output:"
+            echo "❌ Either KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD, or KEY_ALIAS is incorrect"
+            echo "🔍 jarsigner error output:"
             cat "$JARSIGNER_LOG"
             rm -f "$JARSIGNER_LOG" dummy.jar
             exit 1
           fi
           rm -f "$JARSIGNER_LOG" dummy.jar
-          echo "? Keystore, alias, and key password are valid."
+          echo "✅ Keystore, alias, and key password are valid."
 
           rm -f "$KEYTOOL_LOG"
-          echo "? Keystore and credentials validated."
+          echo "✅ Keystore and credentials validated."
 
       - name: Decode GDrive OAuth2 secrets
         run: |
-          echo "?? Decoding GDRIVE_OAUTH2..."
+          echo "🔐 Decoding GDRIVE_OAUTH2..."
           DECODED=$(echo "${{ secrets.GDRIVE_OAUTH2 }}" | base64 -d)
 
           GDRIVE_CLIENT_ID=$(echo "$DECODED" | cut -d'|' -f1)
@@ -132,11 +132,11 @@ jobs:
           echo "GDRIVE_CLIENT_ID=$GDRIVE_CLIENT_ID" >> $GITHUB_ENV
           echo "GDRIVE_REFRESH_TOKEN=$GDRIVE_REFRESH_TOKEN" >> $GITHUB_ENV
 
-          echo "? GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
+          echo "✅ GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
 
       - name: Retrieving Google Drive access token
         run: |
-          echo "?? Getting Google OAuth2 access token..."
+          echo "🔐 Getting Google OAuth2 access token..."
           TOKEN_RESPONSE=$(curl -s -X POST https://oauth2.googleapis.com/token \
             -d client_id="$GDRIVE_CLIENT_ID" \
             -d refresh_token="$GDRIVE_REFRESH_TOKEN" \
@@ -144,12 +144,12 @@ jobs:
           ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .access_token)
           echo "::add-mask::$ACCESS_TOKEN"
           if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
-            echo "? Failed to get access token."
+            echo "❌ Failed to get access token."
             echo "$TOKEN_RESPONSE"
             exit 1
           fi
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
-          echo "? Access token obtained."
+          echo "✅ Access token obtained."
 
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -194,8 +194,8 @@ jobs:
               :app:assembleaapsclient2Release \
               :app:assembleaapsclientRelease \
               :wear:assemble${{ env.BUILD_VARIANT }} \
-              -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
-              -Dkotlin.daemon.jvm.options="-Xmx2g" \
+              -Dorg.gradle.jvmargs="-Xmx10g -XX:+UseParallelGC -Xss1024m" \
+              -Dkotlin.daemon.jvm.options="-Xmx4g -XX:+UseParallelGC -Xss1024m" \
               -Dkotlin.compiler.execution.strategy="in-process" \
               -Dorg.gradle.daemon=true \
               -Dorg.gradle.workers.max=8 \
@@ -215,9 +215,9 @@ jobs:
       - name: Upload APKs to Google Drive
         run: |
           set -e
-          echo "?? Start uploading APKs to Google Drive..."
+          echo "🔐 Start uploading APKs to Google Drive..."
 
-          echo "?? Checking or creating AAPS folder"
+          echo "📁 Checking or creating AAPS folder"
           AAPS_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://www.googleapis.com/drive/v3/files?q=name='AAPS'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false" \
@@ -229,12 +229,12 @@ jobs:
               -H "Content-Type: application/json" \
               -d '{"name": "AAPS", "mimeType": "application/vnd.google-apps.folder"}' \
               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
-            echo "?? Created AAPS folder: $AAPS_FOLDER_ID"
+            echo "📂 Created AAPS folder: $AAPS_FOLDER_ID"
           else
-            echo "?? Found AAPS folder: $AAPS_FOLDER_ID"
+            echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
           fi
 
-          echo "?? Checking or creating version folder: $VERSION"
+          echo "📁 Checking or creating version folder: $VERSION"
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
@@ -246,20 +246,20 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{\"name\": \"${VERSION}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
-            echo "?? Created version folder: $VERSION_FOLDER_ID"
+            echo "📂 Created version folder: $VERSION_FOLDER_ID"
           else
-            echo "?? Found version folder: $VERSION_FOLDER_ID"
+            echo "📂 Found version folder: $VERSION_FOLDER_ID"
           fi
 
           upload_to_gdrive() {
             FILE=$1
             NAME=$2
             if [ ! -f "$FILE" ]; then
-              echo "? File not found: $FILE"
+              echo "❌ File not found: $FILE"
               exit 26
             fi
 
-            echo "?? Checking if file $NAME already exists in Google Drive..."
+            echo "📄 Checking if file $NAME already exists in Google Drive..."
             QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
             ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
             FILE_ID=$(curl -s \
@@ -268,13 +268,13 @@ jobs:
               | jq -r '.files[0].id')
 
             if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
-              echo "??? Deleting existing file with ID: $FILE_ID"
+              echo "🗑️ Deleting existing file with ID: $FILE_ID"
               curl -s -X DELETE \
                 -H "Authorization: Bearer $ACCESS_TOKEN" \
                 "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
             fi
 
-            echo "?? Uploading $FILE as $NAME to Google Drive..."
+            echo "⬆️ Uploading $FILE as $NAME to Google Drive..."
             RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
               -X POST \
               -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -284,16 +284,16 @@ jobs:
 
             HTTP_CODE="${RESPONSE: -3}"
             if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
-              echo "? Upload failed with HTTP status: $HTTP_CODE"
+              echo "❌ Upload failed with HTTP status: $HTTP_CODE"
               cat /tmp/gdrive_response.json
               exit 1
             fi
 
-            echo "? Uploaded: $NAME"
+            echo "✅ Uploaded: $NAME"
           }
 
           upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
           upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
           upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
           upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
-          echo "?? APKs successfully uploaded to Google Drive!"
+          echo "🎉 APKs successfully uploaded to Google Drive!"
