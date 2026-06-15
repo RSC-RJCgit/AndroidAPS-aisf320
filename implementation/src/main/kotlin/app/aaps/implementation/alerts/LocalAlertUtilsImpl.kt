@@ -155,3 +155,4 @@ class LocalAlertUtilsImpl @Inject constructor(
         if (preferences.get(BooleanKey.SmsReportPumpUnreachable))
             smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.pump_unreachable))
     }
+}
