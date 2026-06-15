@@ -100,7 +100,7 @@
     <string name="smscommunicator_missed_bg_readings">Report missed BG readings</string>
     <string name="smscommunicator_report_missed_bg_readings_summary">Send SMS to all numbers if missed BG readings alarm is triggered</string>
     <!-- Virtual pump preferences -->
-    <string name="pref_title_virtual_pump_status_upload">Upload pump status to NS</string>
+    <string name= "pref_title_virtual_pump_status_upload">Upload pump status to NS</string>
 
     <!-- NS Client preferences -->
     <string name="pref_title_ns_upload_data">Upload data to NS</string>
