@@ -314,7 +314,10 @@ class InsulinManagementViewModel @Inject constructor(
         editedICfg.setPeak(state.editorPeakMinutes)
 
         // Validation
-        if (editedICfg.dia < hardLimits.minDia() || editedICfg.dia > hardLimits.maxDia()) {
+        val isInhaled = _editorState.value.editorTemplate?.isInhaled == true
+        val minDia = if (isInhaled) hardLimits.minDiaInhaled() else hardLimits.minDia()
+        val maxDia = if (isInhaled) hardLimits.maxDiaInhaled() else hardLimits.maxDia()
+        if (editedICfg.dia < minDia || editedICfg.dia > maxDia) {
             showSnackbar(rh.gs(CoreUiR.string.value_out_of_hard_limits, rh.gs(CoreUiR.string.insulin_dia), editedICfg.dia))
             return false
         }
@@ -446,6 +449,10 @@ class InsulinManagementViewModel @Inject constructor(
     val concentrationEnabled: Boolean
         get() = preferences.get(BooleanKey.GeneralInsulinConcentration)
 
-    fun diaRange(): ClosedFloatingPointRange<Double> = hardLimits.minDia()..hardLimits.maxDia()
+    fun diaRange(): ClosedFloatingPointRange<Double> {
+        val isInhaled = _editorState.value.editorTemplate?.isInhaled == true
+        return if (isInhaled) hardLimits.minDiaInhaled()..hardLimits.maxDiaInhaled()
+        else hardLimits.minDia()..hardLimits.maxDia()
+    }
     fun peakRange(): ClosedFloatingPointRange<Double> = hardLimits.minPeak().toDouble()..hardLimits.maxPeak().toDouble()
 }
