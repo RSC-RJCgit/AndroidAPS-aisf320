@@ -624,12 +624,12 @@ class EversensePlugin @Inject constructor(
                 AfrezzaMaxBasalState.cancel()
                 return absoluteRate
             }
-            val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
-            val cob = lastAutosens?.cob ?: 0.0
-            if (cob <= 0.0) {
-                aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal skipped — no active carbs (COB: $cob)")
-                return absoluteRate
-            }
+            //val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
+            //val cob = lastAutosens?.cob ?: 0.0
+            //if (cob <= 0.0) {
+            //    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal skipped — no active carbs (COB: $cob)")
+            //    return absoluteRate
+            //}
             absoluteRate.setIfGreater(AfrezzaMaxBasalState.rate, "Afrezza max basal active", this)
         }
         return absoluteRate
