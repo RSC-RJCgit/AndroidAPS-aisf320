@@ -74,7 +74,7 @@ fun AfrezzaDialogScreen(
     if (uiState.showMaxBasalPrompt) {
         OkCancelDialog(
             title = stringResource(R.string.afrezza_max_basal_title),
-            message = stringResource(R.string.afrezza_max_basal_message),
+            message = stringResource(R.string.afrezza_max_basal_message, uiState.maxBasalRate),
             onConfirm = { viewModel.acceptMaxBasalPrompt() },
             onDismiss = { viewModel.dismissMaxBasalPrompt() }
         )
@@ -83,6 +83,7 @@ fun AfrezzaDialogScreen(
     // Duration selector — shown after accepting max basal
     if (uiState.showDurationSelector) {
         DurationSelectorDialog(
+            rate = uiState.maxBasalRate,
             onDurationSelected = { minutes -> viewModel.applyMaxBasal(minutes) },
             onDismiss = { viewModel.dismissDurationSelector() }
         )
@@ -97,6 +98,14 @@ fun AfrezzaDialogScreen(
             // Afrezza not yet added in Insulin Management
             AfrezzaNotConfiguredContent()
         } else {
+            // Show cancel option when max basal is active
+            if (uiState.maxBasalActive) {
+                ActiveMaxBasalCard(
+                    rate = uiState.maxBasalRate,
+                    remainingMinutes = uiState.maxBasalRemainingMinutes,
+                    onCancel = { viewModel.cancelMaxBasal() }
+                )
+            }
             AfrezzaCartridgeSelector(
                 onCartridgeSelected = { units -> viewModel.selectCartridge(units) },
                 isLogging = uiState.isLogging,
@@ -178,6 +187,53 @@ private fun CartridgeButton(
 }
 
 @Composable
+private fun ActiveMaxBasalCard(
+    rate: Double,
+    remainingMinutes: Int,
+    onCancel: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 24.dp, top = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Max basal active: %.1f U/h".format(rate),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    text = "${remainingMinutes} min remaining",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Cancel")
+            }
+        }
+    }
+}
+
+@Composable
 private fun AfrezzaNotConfiguredContent() {
     Card(
         modifier = Modifier
@@ -199,6 +255,7 @@ private fun AfrezzaNotConfiguredContent() {
 
 @Composable
 private fun DurationSelectorDialog(
+    rate: Double,
     onDurationSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -227,7 +284,7 @@ private fun DurationSelectorDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = stringResource(R.string.afrezza_max_basal_rate),
+                    text = stringResource(R.string.afrezza_max_basal_rate, rate),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

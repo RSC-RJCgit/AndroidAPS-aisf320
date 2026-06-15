@@ -18,6 +18,8 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.Preferences
 import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -45,7 +47,8 @@ class AfrezzaDialogViewModel @Inject constructor(
     private val rh: ResourceHelper,
     private val aapsLogger: AAPSLogger,
     private val commandQueue: CommandQueue,
-    private val profileFunction: ProfileFunction
+    private val profileFunction: ProfileFunction,
+    private val preferences: Preferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AfrezzaDialogUiState())
@@ -65,10 +68,14 @@ class AfrezzaDialogViewModel @Inject constructor(
 
     init {
         val afrezzaIcfg = findAfrezzaIcfg()
+        val maxBasalRate = preferences.get(DoubleKey.AfrezzaMaxBasalRate)
         _uiState.update {
             AfrezzaDialogUiState(
                 afrezzaIcfg = afrezzaIcfg,
-                isConfigured = afrezzaIcfg != null
+                isConfigured = afrezzaIcfg != null,
+                maxBasalRate = maxBasalRate,
+                maxBasalActive = AfrezzaMaxBasalState.isActive,
+                maxBasalRemainingMinutes = AfrezzaMaxBasalState.remainingMinutes
             )
         }
     }
@@ -154,7 +161,14 @@ class AfrezzaDialogViewModel @Inject constructor(
         _sideEffect.tryEmit(SideEffect.DoseLogged)
     }
 
+    fun cancelMaxBasal() {
+        AfrezzaMaxBasalState.cancel()
+        _uiState.update { it.copy(maxBasalActive = false, maxBasalRemainingMinutes = 0) }
+        _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_cancelled)))
+    }
+
     fun applyMaxBasal(durationMinutes: Int) {
+        val maxBasalRate = preferences.get(DoubleKey.AfrezzaMaxBasalRate)
         viewModelScope.launch {
             try {
                 val profile = profileFunction.getProfile()
@@ -164,16 +178,16 @@ class AfrezzaDialogViewModel @Inject constructor(
                     return@launch
                 }
                 val result = commandQueue.tempBasalAbsolute(
-                    absoluteRate = 2.0,
+                    absoluteRate = maxBasalRate,
                     durationInMinutes = durationMinutes,
                     enforceNew = true,
                     profile = profile,
                     tbrType = PumpSync.TemporaryBasalType.NORMAL
                 )
                 if (result.success) {
-                    aapsLogger.info(LTag.UI, "Max basal 2.0 U/h set for ${durationMinutes} min after Afrezza")
-                    AfrezzaMaxBasalState.endTime = System.currentTimeMillis() + (durationMinutes * 60_000L)
-                    _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_set, durationMinutes)))
+                    aapsLogger.info(LTag.UI, "Max basal $maxBasalRate U/h set for ${durationMinutes} min after Afrezza")
+                    AfrezzaMaxBasalState.activate(maxBasalRate, durationMinutes)
+                    _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_set, maxBasalRate, durationMinutes)))
                 } else {
                     aapsLogger.error(LTag.UI, "Failed to set max basal: ${result.comment}")
                     _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_failed)))

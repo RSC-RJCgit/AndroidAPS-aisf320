@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
@@ -71,7 +72,8 @@ class EversensePlugin @Inject constructor(
     preferences: Preferences,
     config: Config,
     private val notificationManager: NotificationManager,
-    private val eversense: EversenseCGMPlugin
+    private val eversense: EversenseCGMPlugin,
+    private val iobCobCalculator: IobCobCalculator
 ) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -616,8 +618,21 @@ class EversensePlugin @Inject constructor(
 
     override fun applyBasalConstraints(absoluteRate: Constraint<Double>, profile: Profile): Constraint<Double> {
         if (AfrezzaMaxBasalState.isActive) {
-            absoluteRate.setIfGreater(2.0, "Afrezza max basal active", this)
+            val currentBg = iobCobCalculator.ads.actualBg()?.recalculated ?: 0.0
+            if (currentBg in 1.0..70.0) {
+                aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal cancelled — BG is $currentBg mg/dL (hypo guard)")
+                AfrezzaMaxBasalState.cancel()
+                return absoluteRate
+            }
+            val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
+            val cob = lastAutosens?.cob ?: 0.0
+            if (cob <= 0.0) {
+                aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal skipped — no active carbs (COB: $cob)")
+                return absoluteRate
+            }
+            absoluteRate.setIfGreater(AfrezzaMaxBasalState.rate, "Afrezza max basal active (COB: $cob)", this)
         }
         return absoluteRate
     }
-}
+
+

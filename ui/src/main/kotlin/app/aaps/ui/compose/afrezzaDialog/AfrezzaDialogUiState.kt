@@ -11,5 +11,8 @@ data class AfrezzaDialogUiState(
     val showConfirmation: Boolean = false,
     val isLogging: Boolean = false,
     val showMaxBasalPrompt: Boolean = false,
-    val showDurationSelector: Boolean = false
+    val showDurationSelector: Boolean = false,
+    val maxBasalRate: Double = 2.0,
+    val maxBasalActive: Boolean = false,
+    val maxBasalRemainingMinutes: Int = 0
 )
