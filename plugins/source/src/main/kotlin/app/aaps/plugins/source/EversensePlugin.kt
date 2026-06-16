@@ -621,21 +621,26 @@ class EversensePlugin @Inject constructor(
             val currentBg = iobCobCalculator.ads.actualBg()?.recalculated ?: 0.0
             if (currentBg in 1.0..70.0) {
                 aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal paused — BG is $currentBg mg/dL (hypo guard)")
-
                 return absoluteRate
             }
-            //val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
-            //val cob = lastAutosens?.cob ?: 0.0
-            //if (cob <= 0.0) {
-            //    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal skipped — no active carbs (COB: $cob)")
-            //    return absoluteRate
-            //}
+
+            val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
+            val cob = lastAutosens?.cob ?: 0.0
+            if (cob <= 0.0) {
+                if (AfrezzaMaxBasalState.cobZeroSince == 0L) {
+                    AfrezzaMaxBasalState.cobZeroSince = System.currentTimeMillis()
+                    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal — COB hit 0, starting 15-min grace period")
+                } else if (System.currentTimeMillis() - AfrezzaMaxBasalState.cobZeroSince > 15 * 60_000L) {
+                    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal stopped — no carbs for 15 minutes")
+                    AfrezzaMaxBasalState.cancel()
+                    return absoluteRate
+                }
+            } else {
+                AfrezzaMaxBasalState.cobZeroSince = 0L
+            }
+
             absoluteRate.setIfGreater(AfrezzaMaxBasalState.rate, "Afrezza max basal active", this)
         }
         return absoluteRate
     }
 }
-
-
-
-
