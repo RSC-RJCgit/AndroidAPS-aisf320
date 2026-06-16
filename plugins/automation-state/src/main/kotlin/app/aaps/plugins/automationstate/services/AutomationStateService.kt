@@ -1,8 +1,8 @@
-﻿package app.aaps.plugins.automationstate.services
+package app.aaps.plugins.automationstate.services
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventPreferenceChange
+import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
 import kotlinx.serialization.json.Json
@@ -39,7 +39,7 @@ class AutomationStateService @Inject constructor(
         require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
         automationStates[trimmedName] = trimmedState
         preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
-        rxBus.send(EventPreferenceChange(AutomationStateStringKey.AutomationCurrentStates.key))
+        rxBus.send(EventAutomationDataChanged())
     }
 
     override fun getState(stateName: String): String {
