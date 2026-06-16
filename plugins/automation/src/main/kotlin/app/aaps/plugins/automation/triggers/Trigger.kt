@@ -1,4 +1,4 @@
-package app.aaps.plugins.automation.triggers
+﻿package app.aaps.plugins.automation.triggers
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -99,6 +99,7 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
                 TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
+                TriggerAutomationState::class.java.simpleName   -> TriggerAutomationState(injector).fromJSON(data.toString())
 
                 else                                             -> TriggerConnector(injector)
             }

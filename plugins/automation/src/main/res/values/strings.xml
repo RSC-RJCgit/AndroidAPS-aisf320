@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="automation_short">Auto</string>
     <string name="automation">Automation</string>
@@ -166,4 +166,10 @@
     <string name="permission_location_description">Needed for location-based automation triggers and WiFi network identification</string>
     <string name="permission_background_location_description">Needed for automation triggers to work when the app is in the background</string>
 
+
+    <string name="set_state">Set Automation State</string>
+    <string name="set_state_description">Set state %1$s to %2$s</string>
+    <string name="automation_states_disabled">Automation States are disabled. Enable in Automation States settings.</string>
+    <string name="check_state_name">Check Automation State</string>
+    <string name="check_state_description">State %1$s is %2$s</string>
 </resources>

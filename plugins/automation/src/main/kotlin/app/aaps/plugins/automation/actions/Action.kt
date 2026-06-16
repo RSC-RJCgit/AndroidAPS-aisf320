@@ -1,4 +1,4 @@
-package app.aaps.plugins.automation.actions
+﻿package app.aaps.plugins.automation.actions
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,6 +78,7 @@ abstract class Action(val injector: HasAndroidInjector) {
                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
                 ActionStopProcessing::class.java.simpleName       -> ActionStopProcessing(injector).fromJSON(data.toString())
                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
+                ActionSetAutomationState::class.java.simpleName  -> ActionSetAutomationState(injector).fromJSON(data.toString())
                 else                                              -> throw ClassNotFoundException(type)
             }
         } catch (e: Exception) {

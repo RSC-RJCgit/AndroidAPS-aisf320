@@ -1,4 +1,4 @@
-package app.aaps.plugins.automation.di
+﻿package app.aaps.plugins.automation.di
 
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.plugins.automation.AutomationEventObject
@@ -16,6 +16,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.actions.ActionStopProcessing
@@ -45,7 +46,9 @@ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSceneActive
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
 import app.aaps.plugins.automation.triggers.TriggerTimeRange
@@ -114,6 +117,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionEnableSceneInjector(): ActionEnableScene
     @ContributesAndroidInjector abstract fun actionDisableSceneInjector(): ActionDisableScene
     @ContributesAndroidInjector abstract fun actionDummyInjector(): ActionDummy
+    @ContributesAndroidInjector abstract fun actionSetAutomationStateInjector(): ActionSetAutomationState
+    @ContributesAndroidInjector abstract fun triggerAutomationStateInjector(): TriggerAutomationState
     @ContributesAndroidInjector abstract fun contributesLocationService(): LocationService
 
     @Module
