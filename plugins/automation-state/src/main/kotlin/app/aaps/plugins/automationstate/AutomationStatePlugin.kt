@@ -1,49 +1,24 @@
 ﻿package app.aaps.plugins.automationstate
 
-import android.content.Context
-import androidx.preference.PreferenceManager
-import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
+import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
-import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
-import app.aaps.plugins.automationstate.ui.AutomationStateFragment
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AutomationStatePlugin @Inject constructor(
     aapsLogger: AAPSLogger,
-    rh: ResourceHelper,
-    preferences: Preferences
-) : PluginBaseWithPreferences(
-    pluginDescription = PluginDescription()
+    rh: ResourceHelper
+) : PluginBase(
+    PluginDescription()
         .mainType(PluginType.GENERAL)
-        .fragmentClass(AutomationStateFragment::class.java.name)
-        .pluginIcon(app.aaps.core.objects.R.drawable.ic_automation)
         .pluginName(R.string.automation_states)
         .shortName(R.string.automation_states_short)
         .description(R.string.description_automation_states)
-        .preferencesId(app.aaps.core.interfaces.plugin.PluginDescription.PREFERENCE_SCREEN)
         .enableByDefault(true)
-        .visibleByDefault(true),
-    ownPreferences = listOf(AutomationStateStringKey::class.java),
-    aapsLogger, rh, preferences
-) {
-    override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null) return
-        parent.addPreference(
-            AdaptiveSwitchPreference(
-                ctx = context,
-                booleanKey = BooleanKey.AutomationStatesEnabled,
-                summary = R.string.automation_states_enabled_summary,
-                title = R.string.automation_states_enabled
-            )
-        )
-    }
-}
+        .visibleByDefault(false),
+    aapsLogger, rh
+)
