@@ -10,12 +10,9 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-@Suppress("unused")
-class AutomationStateModule {
+object AutomationStateModule {
 
-    companion object {
-        @Provides
-        @Singleton
-        fun provideAutomationStateService(service: AutomationStateService): AutomationStateInterface = service
-    }
+    @Provides
+    @Singleton
+    fun provideAutomationStateService(service: AutomationStateService): AutomationStateInterface = service
 }
