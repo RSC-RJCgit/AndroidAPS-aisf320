@@ -2,17 +2,17 @@
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.plugins.automationstate.services.AutomationStateService
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-object AutomationStateModule {
+abstract class AutomationStateModule {
 
-    @Provides
+    @Binds
     @Singleton
-    fun provideAutomationStateService(service: AutomationStateService): AutomationStateInterface = service
+    abstract fun bindAutomationStateService(service: AutomationStateService): AutomationStateInterface
 }
