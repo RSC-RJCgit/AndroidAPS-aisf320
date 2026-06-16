@@ -19,6 +19,6 @@ class AutomationStatePlugin @Inject constructor(
         .shortName(R.string.automation_states_short)
         .description(R.string.description_automation_states)
         .enableByDefault(true)
-        .visibleByDefault(false),
+        .neverVisible(true),
     aapsLogger, rh
 )
