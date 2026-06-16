@@ -146,9 +146,13 @@ class LocalAlertUtilsImpl @Inject constructor(
                         listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
                     )
                 }
+                if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                    smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
+            } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
+                notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
             }
-        } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
-            notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
         }
+        if (preferences.get(BooleanKey.SmsReportPumpUnreachable))
+            smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.pump_unreachable))
     }
 }

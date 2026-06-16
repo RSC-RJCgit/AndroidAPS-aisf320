@@ -1142,11 +1142,11 @@ class SmsCommunicatorPlugin @Inject constructor(
                     )
                 }
             ),
-            BooleanKey.SmsReportPumpUnreachable
+            BooleanKey.SmsReportPumpUnreachable,
+            BooleanKey.SmsReportMissedBgReadings
 
         ),
         icon = pluginDescription.icon
     )
 }
-
 object SmsInbox : Inbox<Bundle>("sms-received", SmsCommunicatorPlugin.SmsCommunicatorWorker::class.java)
