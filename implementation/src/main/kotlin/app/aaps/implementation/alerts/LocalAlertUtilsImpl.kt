@@ -152,7 +152,7 @@ class LocalAlertUtilsImpl @Inject constructor(
                 notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
             }
         }
-        if(preferences.get(BooleanKey.SmsReportPumpUnreachable))
+        if (preferences.get(BooleanKey.SmsReportPumpUnreachable))
             smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.pump_unreachable))
     }
 }
