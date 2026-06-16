@@ -343,6 +343,8 @@
 
     <!-- Afrezza Inhaled Insulin -->
     <string name="log_afrezza_dose">Log Afrezza Dose</string>
+    <string name="afrezza_confirm_title">Confirm Afrezza Dose</string>
+    <string name="afrezza_select_dose">Select Afrezza Dose</string>
     <string name="afrezza_confirm_log">Log %1$dU Afrezza?</string>
     <string name="afrezza_logged">%1$dU Afrezza logged</string>
     <string name="afrezza_inhaled">Afrezza inhaled</string>
