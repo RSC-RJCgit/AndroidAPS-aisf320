@@ -319,7 +319,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD064")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD065")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -690,7 +690,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD064 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD065 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -840,11 +840,8 @@ class DetermineBasalAutoISF @Inject constructor(
             enableButton = true
         }
         val nowHour = LocalDateTime.now().hour
-        // FIX: use nowHour < 6 (exclusive) so hour 6 correctly uses 30-min daytime temps.
-        // FIX: tempDurationThreshold scales proportionally so the "keep existing temp" guard
-        //      fires correctly for both 15-min overnight and 30-min daytime temps.
-        val standardTempDuration = if (nowHour < 6) 15 else 30
-        val tempDurationThreshold = standardTempDuration / 2  // 7 overnight, 15 daytime
+        // Omnipod Dash requires durationInMinutes divisible by 30; 15-min temps are rejected.
+        val standardTempDuration = 30
 
         if (enableButton && nowHour >= 1 && nowHour <= 7 && offset1) {
             varOffset = varOffset - 9
@@ -1020,7 +1017,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else {
                     rT.reason.append(", but Min. Delta ${minDelta.toFixed2()} > Exp. Delta ${convert_bg(expectedDelta)}")
                 }
-                if (currenttemp.duration > tempDurationThreshold && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
                     rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
                     return rT
                 } else {
@@ -1082,7 +1079,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else {
                     rT.reason.append("Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Min. Delta ${minDelta.toFixed2()} < Exp. Delta ${convert_bg(expectedDelta)}")
                 }
-                if (currenttemp.duration > tempDurationThreshold && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
                     rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
                     return rT
                 } else {
@@ -1094,7 +1091,7 @@ class DetermineBasalAutoISF @Inject constructor(
         if (min(eventualBG, minPredBG) < max_bg) {
             if (!(microBolusAllowed && enableSMB)) {
                 rT.reason.append("${convert_bg(eventualBG)}-${convert_bg(minPredBG)} in range: no temp required")
-                if (currenttemp.duration > tempDurationThreshold && (round_basal(basal) == round_basal(currenttemp.rate))) {
+                if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
                     rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
                     return rT
                 } else {
@@ -1109,7 +1106,7 @@ class DetermineBasalAutoISF @Inject constructor(
         }
         if (iob_data.iob > max_iob) {
             rT.reason.append("IOB ${round(iob_data.iob, 2)} ov max_iob $max_iob")
-            if (currenttemp.duration > tempDurationThreshold && (round_basal(basal) == round_basal(currenttemp.rate))) {
+            if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
                 rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
                 return rT
             } else {
@@ -1538,5 +1535,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD064
+DetermineBasalAutoISF.kt320TDD065b
 */
