@@ -11,17 +11,12 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 class InputDropdownStateMenu(
     private val rh: ResourceHelper,
     val onValueSelected: ((String) -> Unit)? = null
-) : Element {
-
+) {
     var value: String = ""
     var values: List<String> = listOf()
     private var spinner: Spinner? = null
 
-    constructor(rh: ResourceHelper, name: String, onValueSelected: ((String) -> Unit)? = null) : this(rh, onValueSelected) {
-        value = name
-    }
-
-    override fun addToLayout(root: LinearLayout) {
+    fun addToLayout(root: LinearLayout) {
         spinner = Spinner(root.context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -43,17 +38,13 @@ class InputDropdownStateMenu(
         root.addView(spinner)
     }
 
-    fun setValue(name: String): InputDropdownStateMenu { value = name; return this }
-    fun setList(newValues: List<String>) { values = ArrayList(newValues); updateAdapter() }
-    fun add(item: String) { values = values.toMutableList().also { it.add(item) }; updateAdapter() }
-
     fun updateAdapter() {
         if (values.isEmpty() || spinner?.context == null) return
         val adapter = ArrayAdapter(spinner?.context ?: return, android.R.layout.simple_spinner_item, values)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinner?.adapter = adapter
         val position = values.indexOf(value)
-        if (position >= 0) { spinner?.setSelection(position) }
+        if (position >= 0) spinner?.setSelection(position)
         else if (values.isNotEmpty()) { value = values[0]; spinner?.setSelection(0); onValueSelected?.invoke(value) }
     }
 }
