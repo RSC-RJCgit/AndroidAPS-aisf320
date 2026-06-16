@@ -144,7 +144,7 @@ class LocalAlertUtilsImpl @Inject constructor(
                         source = Sources.Aaps,
                         note = rh.gs(R.string.missed_bg_readings),
                         listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
-                    )  // Remove .subscribe() — launch already handles it
+                    )
                 }
                 if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
                     smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
