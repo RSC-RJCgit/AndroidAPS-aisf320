@@ -49,6 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -626,14 +627,27 @@ class EversensePlugin @Inject constructor(
 
             val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
             val cob = lastAutosens?.cob ?: 0.0
+
             if (cob <= 0.0) {
-                if (AfrezzaMaxBasalState.cobZeroSince == 0L) {
-                    AfrezzaMaxBasalState.cobZeroSince = System.currentTimeMillis()
-                    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal — COB hit 0, starting 15-min grace period")
-                } else if (System.currentTimeMillis() - AfrezzaMaxBasalState.cobZeroSince > 15 * 60_000L) {
-                    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal stopped — no carbs for 15 minutes")
-                    AfrezzaMaxBasalState.cancel()
-                    return absoluteRate
+                val hasActiveExtendedCarbs = runBlocking {
+                    val recentCarbs = persistenceLayer.getCarbsFromTime(
+                        AfrezzaMaxBasalState.activatedAt - 30 * 60_000L, true
+                    )
+                    recentCarbs.any { it.duration > 0 && (it.timestamp + it.duration) > System.currentTimeMillis() }
+                }
+
+                if (hasActiveExtendedCarbs) {
+                    AfrezzaMaxBasalState.cobZeroSince = 0L
+                    aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal — COB=0 but extended carbs active, continuing")
+                } else {
+                    if (AfrezzaMaxBasalState.cobZeroSince == 0L) {
+                        AfrezzaMaxBasalState.cobZeroSince = System.currentTimeMillis()
+                        aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal — COB hit 0, bread carbs absorbing")
+                    } else if (System.currentTimeMillis() - AfrezzaMaxBasalState.cobZeroSince > 5 * 60_000L) {
+                        aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal stopped — bread carbs absorbed")
+                        AfrezzaMaxBasalState.cancel()
+                        return absoluteRate
+                    }
                 }
             } else {
                 AfrezzaMaxBasalState.cobZeroSince = 0L
