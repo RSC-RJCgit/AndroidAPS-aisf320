@@ -24,6 +24,8 @@ on:
       - '**aisf3.2.0'
       - 'tdd-sensitivity-autosens-off'
       - '**'
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   build:
