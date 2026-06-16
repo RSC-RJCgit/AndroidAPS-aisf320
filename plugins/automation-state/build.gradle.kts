@@ -2,6 +2,7 @@
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.compose.compiler)
     id("android-module-dependencies")
     id("test-module-dependencies")
     id("jacoco-module-dependencies")
@@ -9,6 +10,9 @@
 
 android {
     namespace = "app.aaps.plugins.automationstate"
+    buildFeatures {
+        compose = true
+    }
 }
 
 dependencies {
@@ -21,6 +25,12 @@ dependencies {
     implementation(project(":plugins:automation"))
 
     implementation(libs.com.google.dagger.hilt.android)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     testImplementation(project(":shared:tests"))
     testImplementation(project(":shared:impl"))

@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.plugins.automationstate.compose.AutomationStateComposeContent
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,6 +20,6 @@ class AutomationStatePlugin @Inject constructor(
         .shortName(R.string.automation_states_short)
         .description(R.string.description_automation_states)
         .enableByDefault(true)
-        .neverVisible(true),
+        .composeContent { AutomationStateComposeContent() },
     aapsLogger, rh
 )
