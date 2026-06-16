@@ -354,6 +354,8 @@
     <string name="afrezza_max_basal_set">Max basal %1$.1f U/h set for %2$d minutes</string>
     <string name="afrezza_max_basal_failed">Failed to set max basal</string>
     <string name="afrezza_max_basal_cancelled">Afrezza max basal cancelled</string>
+    <string name="afrezza_carb_prompt_title">Enter Carbs?</string>
+    <string name="afrezza_carb_prompt_message">Open the Bolus Calculator to enter carbs for this meal?</string>
     <string name="afrezza_no_profile">No active profile — cannot set temp basal</string>
 
 </resources>

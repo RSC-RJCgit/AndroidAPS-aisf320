@@ -20,7 +20,6 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.ui.compose.afrezzaDialog.AfrezzaMaxBasalState
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
@@ -57,6 +56,7 @@ class AfrezzaDialogViewModel @Inject constructor(
     sealed class SideEffect {
         data class ShowMessage(val message: String) : SideEffect()
         data object DoseLogged : SideEffect()
+        data object OpenWizard : SideEffect()
     }
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
@@ -80,15 +80,10 @@ class AfrezzaDialogViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Find the Afrezza ICfg from InsulinManager's configured insulins.
-     * Matches by peak time against the OREF_INHALED_AFREZZA template.
-     */
     private fun findAfrezzaIcfg(): ICfg? {
         val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
         return insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
             ?: insulinManager.insulins.firstOrNull {
-                // Fallback: match any insulin with DIA <= 4h (likely inhaled)
                 val template = InsulinType.fromPeak(it.insulinPeakTime)
                 template.isInhaled
             }
@@ -136,9 +131,7 @@ class AfrezzaDialogViewModel @Inject constructor(
                 )
 
                 aapsLogger.info(LTag.UI, "Afrezza ${units}U logged with ICfg: ${iCfg.insulinLabel}")
-
                 _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_logged, units)))
-                // Show max basal prompt instead of navigating back immediately
                 _uiState.update { it.copy(isLogging = false, showConfirmation = false, showMaxBasalPrompt = true) }
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "Failed to log Afrezza dose", e)
@@ -148,8 +141,7 @@ class AfrezzaDialogViewModel @Inject constructor(
     }
 
     fun dismissMaxBasalPrompt() {
-        _uiState.update { it.copy(showMaxBasalPrompt = false, selectedCartridge = null) }
-        _sideEffect.tryEmit(SideEffect.DoseLogged)
+        _uiState.update { it.copy(showMaxBasalPrompt = false, showCarbPrompt = true) }
     }
 
     fun acceptMaxBasalPrompt() {
@@ -157,14 +149,23 @@ class AfrezzaDialogViewModel @Inject constructor(
     }
 
     fun dismissDurationSelector() {
-        _uiState.update { it.copy(showDurationSelector = false, selectedCartridge = null) }
-        _sideEffect.tryEmit(SideEffect.DoseLogged)
+        _uiState.update { it.copy(showDurationSelector = false, showCarbPrompt = true) }
     }
 
     fun cancelMaxBasal() {
         AfrezzaMaxBasalState.cancel()
         _uiState.update { it.copy(maxBasalActive = false, maxBasalRemainingMinutes = 0) }
         _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_cancelled)))
+    }
+
+    fun openWizard() {
+        _uiState.update { it.copy(showCarbPrompt = false, selectedCartridge = null) }
+        _sideEffect.tryEmit(SideEffect.OpenWizard)
+    }
+
+    fun dismissCarbPrompt() {
+        _uiState.update { it.copy(showCarbPrompt = false, selectedCartridge = null) }
+        _sideEffect.tryEmit(SideEffect.DoseLogged)
     }
 
     fun applyMaxBasal(durationMinutes: Int) {
@@ -196,8 +197,7 @@ class AfrezzaDialogViewModel @Inject constructor(
                 aapsLogger.error(LTag.UI, "Exception setting max basal", e)
                 _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_failed)))
             } finally {
-                _uiState.update { it.copy(showDurationSelector = false, selectedCartridge = null) }
-                _sideEffect.tryEmit(SideEffect.DoseLogged)
+                _uiState.update { it.copy(showDurationSelector = false, showCarbPrompt = true) }
             }
         }
     }

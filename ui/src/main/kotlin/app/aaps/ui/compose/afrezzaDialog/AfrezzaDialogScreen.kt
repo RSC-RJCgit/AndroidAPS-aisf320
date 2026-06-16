@@ -26,9 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
@@ -43,25 +43,26 @@ import app.aaps.core.ui.R as CoreUiR
 fun AfrezzaDialogScreen(
     viewModel: AfrezzaDialogViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
+    onOpenWizard: () -> Unit = {},
     onShowMessage: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Observe side effects
     LaunchedEffect(Unit) {
         viewModel.sideEffect.collect { effect ->
             when (effect) {
                 is AfrezzaDialogViewModel.SideEffect.ShowMessage -> onShowMessage(effect.message)
                 is AfrezzaDialogViewModel.SideEffect.DoseLogged -> onNavigateBack()
+                is AfrezzaDialogViewModel.SideEffect.OpenWizard -> onOpenWizard()
             }
         }
     }
 
-    // Confirmation dialog
-    if (uiState.showConfirmation && uiState.selectedCartridge != null) {
+    // Step 2: Confirm dose
+    if (uiState.showConfirmation) {
         OkCancelDialog(
-            title = stringResource(R.string.log_afrezza_dose),
+            title = stringResource(R.string.afrezza_confirm_title),
             message = stringResource(R.string.afrezza_confirm_log, uiState.selectedCartridge!!),
             icon = ElementType.INSULIN.icon(),
             iconTint = ElementType.INSULIN.color(),
@@ -70,7 +71,7 @@ fun AfrezzaDialogScreen(
         )
     }
 
-    // Max basal prompt — shown after bolus is logged
+    // Step 3: Max basal prompt
     if (uiState.showMaxBasalPrompt) {
         OkCancelDialog(
             title = stringResource(R.string.afrezza_max_basal_title),
@@ -80,7 +81,7 @@ fun AfrezzaDialogScreen(
         )
     }
 
-    // Duration selector — shown after accepting max basal
+    // Step 4: Duration selector
     if (uiState.showDurationSelector) {
         DurationSelectorDialog(
             rate = uiState.maxBasalRate,
@@ -89,16 +90,25 @@ fun AfrezzaDialogScreen(
         )
     }
 
+    // Step 5: Open bolus calculator for carbs?
+    if (uiState.showCarbPrompt) {
+        OkCancelDialog(
+            title = stringResource(R.string.afrezza_carb_prompt_title),
+            message = stringResource(R.string.afrezza_carb_prompt_message),
+            onConfirm = { viewModel.openWizard() },
+            onDismiss = { viewModel.dismissCarbPrompt() }
+        )
+    }
+
+    // Step 1: Cartridge selector (bottom sheet)
     ModalBottomSheet(
         onDismissRequest = onNavigateBack,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         if (!uiState.isConfigured) {
-            // Afrezza not yet added in Insulin Management
             AfrezzaNotConfiguredContent()
         } else {
-            // Show cancel option when max basal is active
             if (uiState.maxBasalActive) {
                 ActiveMaxBasalCard(
                     rate = uiState.maxBasalRate,
@@ -124,35 +134,35 @@ private fun AfrezzaCartridgeSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = stringResource(R.string.log_afrezza_dose),
+            text = stringResource(R.string.afrezza_select_dose),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        if (insulinLabel.isNotEmpty()) {
+            Text(
+                text = insulinLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
-        Text(
-            text = insulinLabel,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             CartridgeButton(units = 4, onClick = { onCartridgeSelected(4) }, enabled = !isLogging)
             CartridgeButton(units = 8, onClick = { onCartridgeSelected(8) }, enabled = !isLogging)
             CartridgeButton(units = 12, onClick = { onCartridgeSelected(12) }, enabled = !isLogging)
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -160,27 +170,19 @@ private fun AfrezzaCartridgeSelector(
 private fun CartridgeButton(
     units: Int,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean
 ) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(100.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
+        modifier = Modifier.size(width = 100.dp, height = 80.dp),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "$units",
-                fontSize = 28.sp,
+                text = "${units}U",
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "units",
-                fontSize = 12.sp
             )
         }
     }
@@ -235,21 +237,18 @@ private fun ActiveMaxBasalCard(
 
 @Composable
 private fun AfrezzaNotConfiguredContent() {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
-        )
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = stringResource(R.string.afrezza_not_configured),
-            modifier = Modifier.padding(16.dp),
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onErrorContainer,
             textAlign = TextAlign.Center
         )
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -259,20 +258,14 @@ private fun DurationSelectorDialog(
     onDurationSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
+                modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -285,74 +278,31 @@ private fun DurationSelectorDialog(
 
                 Text(
                     text = stringResource(R.string.afrezza_max_basal_rate, rate),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    DurationButton(minutes = 30, onClick = { onDurationSelected(30) }, modifier = Modifier.weight(1f))
-                    DurationButton(minutes = 60, onClick = { onDurationSelected(60) }, modifier = Modifier.weight(1f))
-                    DurationButton(minutes = 120, onClick = { onDurationSelected(120) }, modifier = Modifier.weight(1f))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Text(stringResource(CoreUiR.string.cancel))
+                    listOf(30, 60, 120).forEach { minutes ->
+                        Button(
+                            onClick = { onDurationSelected(minutes) },
+                            modifier = Modifier.weight(1f).height(56.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "${minutes}\nmin",
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun DurationButton(
-    minutes: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.height(90.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "$minutes",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "min",
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun AfrezzaCartridgeSelectorPreview() {
-    MaterialTheme {
-        AfrezzaCartridgeSelector(
-            onCartridgeSelected = {},
-            isLogging = false,
-            insulinLabel = "Afrezza (Inhaled) 40m 2.5h U100"
-        )
     }
 }
