@@ -1,4 +1,4 @@
-name: AAPS CI v4000
+name: AAPS CI v4000 - fullRelease Only
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   build:
-    name: Build AAPS v4000
+    name: Build AAPS v4000 (fullRelease)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -189,10 +189,9 @@ jobs:
           ./gradlew clean --no-build-cache
           echo "✅ Gradle cache cleaned"
 
-      - name: Build APKs (fullRelease + aapsclient2)
+      - name: Build fullRelease APK
         run: |
           ./gradlew :app:assembleFullRelease \
-          :app:assembleaapsclient2Release \
           -Dorg.gradle.jvmargs="-Xmx8g" \
           -Dkotlin.daemon.jvm.options="-Xmx3g" \
           -Dkotlin.compiler.execution.strategy="in-process" \
@@ -205,15 +204,14 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Rename APKs with version
+      - name: Rename APK with version
         run: |
           mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
-          mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
 
-      - name: Upload APKs to Google Drive
+      - name: Upload APK to Google Drive
         run: |
           set -e
-          echo "🔐 Start uploading APKs to Google Drive..."
+          echo "🔐 Start uploading APK to Google Drive..."
 
           echo "📁 Checking or creating AAPS folder"
           AAPS_FOLDER_ID=$(curl -s -X GET \
@@ -291,5 +289,4 @@ jobs:
           }
 
           upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
-          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
-          echo "🎉 APKs successfully uploaded to Google Drive!"
+          echo "🎉 APK successfully uploaded to Google Drive!"
