@@ -337,6 +337,7 @@
 
     <!-- StringKey: Directory preferences -->
     <string name="pref_title_aaps_directory">AAPS directory</string>
+    <string name="pref_title_automation_states_enabled">Automation States</string>
 
     <!-- StringKey: Protection preferences -->
     <string name="pref_title_master_password">Master password</string>
