@@ -29,6 +29,7 @@ jobs:
   build:
     name: Build AAPS
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         run: |
@@ -188,22 +189,29 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Clean Gradle cache
+        run: |
+          echo "🧹 Cleaning Gradle cache to free disk space..."
+          ./gradlew clean --no-build-cache
+          echo "✅ Gradle cache cleaned"
+
       - name: Build APKs
         run: |
-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
-              :app:assembleaapsclient2Release \
-              :app:assembleaapsclientRelease \
-              :wear:assemble${{ env.BUILD_VARIANT }} \
-              -Dorg.gradle.jvmargs="-Xmx10g" \
-              -Dkotlin.daemon.jvm.options="-Xmx4g" \
-              -Dkotlin.compiler.execution.strategy="in-process" \
-              -Dorg.gradle.daemon=true \
-              -Dorg.gradle.workers.max=8 \
-              -Dorg.gradle.caching=true \
-              -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
-              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
+          :app:assembleaapsclient2Release \
+          :app:assembleaapsclientRelease \
+          :wear:assemble${{ env.BUILD_VARIANT }} \
+          -Dorg.gradle.jvmargs="-Xmx8g" \
+          -Dkotlin.daemon.jvm.options="-Xmx3g" \
+          -Dkotlin.compiler.execution.strategy="in-process" \
+          -Dorg.gradle.daemon=true \
+          -Dorg.gradle.parallel=false \
+          -Dorg.gradle.workers.max=2 \
+          -Dorg.gradle.caching=true \
+          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
       - name: Rename APKs with version
         run: |
