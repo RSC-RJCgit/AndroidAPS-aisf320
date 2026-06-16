@@ -620,8 +620,8 @@ class EversensePlugin @Inject constructor(
         if (AfrezzaMaxBasalState.isActive) {
             val currentBg = iobCobCalculator.ads.actualBg()?.recalculated ?: 0.0
             if (currentBg in 1.0..70.0) {
-                aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal cancelled — BG is $currentBg mg/dL (hypo guard)")
-                AfrezzaMaxBasalState.cancel()
+                aapsLogger.info(LTag.BGSOURCE, "Afrezza max basal paused — BG is $currentBg mg/dL (hypo guard)")
+
                 return absoluteRate
             }
             //val lastAutosens = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("Afrezza constraint")
