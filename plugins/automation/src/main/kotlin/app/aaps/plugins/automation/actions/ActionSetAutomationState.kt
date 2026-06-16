@@ -3,9 +3,7 @@
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.pump.PumpEnactResult
-import app.aaps.core.keys.BooleanKey
 import app.aaps.plugins.automation.R
-import app.aaps.plugins.automation.elements.InputDropdownStateMenu
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import javax.inject.Inject
@@ -25,11 +23,6 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
     override fun isValid(): Boolean = stateName.isNotEmpty() && stateValue.isNotEmpty()
 
     override suspend fun doAction(): PumpEnactResult {
-        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) {
-            aapsLogger.debug(LTag.AUTOMATION, "Automation states disabled")
-            return pumpEnactResultProvider.get().success(false)
-                .comment(rh.gs(R.string.automation_states_disabled))
-        }
         return try {
             automationState.setState(stateName, stateValue)
             pumpEnactResultProvider.get().success(true)
