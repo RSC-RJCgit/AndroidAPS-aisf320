@@ -288,7 +288,7 @@ private fun DurationSelectorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(30, 60, 120).forEach { minutes ->
+                    listOf(60, 120, 180).forEach { minutes ->
                         Button(
                             onClick = { onDurationSelected(minutes) },
                             modifier = Modifier.weight(1f).height(56.dp),
