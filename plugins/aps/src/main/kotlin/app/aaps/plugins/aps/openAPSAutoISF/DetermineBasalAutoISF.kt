@@ -163,7 +163,6 @@ class DetermineBasalAutoISF @Inject constructor(
         if (value % 1 == 0.0) value.toInt() % 2 == 0          // whole number: check integer
         else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
 
-
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
@@ -221,13 +220,11 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var max_iob = profile.max_iob
         val iobThUser = profile.iob_threshold_percent
-        if ( iobThUser == 95 ) {
+        if (iobThUser == 95) {
             max_iob = max_iob * 1.2
-        }
-        else if ( iobThUser == 96 ) {
+        } else if (iobThUser == 96) {
             max_iob = max_iob * 1.5
-        }
-        else if ( iobThUser == 97 ) {
+        } else if (iobThUser == 97) {
             max_iob = max_iob * 2.0
         }
 
@@ -243,8 +240,8 @@ class DetermineBasalAutoISF @Inject constructor(
         val exerciseModeActive = (profile.exercise_mode || profile.high_temptarget_raises_sensitivity) && profile.temptargetSet && target_bg > normalTarget
         val resistanceModeActive = profile.low_temptarget_lowers_sensitivity && profile.temptargetSet && target_bg < normalTarget
         val mgdlHalfBasalTarget = profile.half_basal_exercise_target * if (profile.out_units == "mmol/L") GlucoseUnit.MMOLL_TO_MGDL else 1.0
-        if ( exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected ) {
-            if ( exerciseModeActive || resistanceModeActive ) {
+        if (exerciseModeActive || resistanceModeActive || stepActivityDetected || stepInactivityDetected) {
+            if (exerciseModeActive || resistanceModeActive) {
                 val resistanceMax = min(1.5, profile.autosens_max)
                 val c = (mgdlHalfBasalTarget - normalTarget).toDouble()
                 if (c * (c + target_bg - normalTarget) <= 0.0) {
@@ -255,9 +252,9 @@ class DetermineBasalAutoISF @Inject constructor(
                     sensitivityRatio = round(sensitivityRatio, 2)
                 }
                 consoleError.add("Sensitivity ratio set to $sensitivityRatio based on temp target of ${convert_bg(target_bg)}; ")
-            } else if ( stepActivityDetected ) {
+            } else if (stepActivityDetected) {
                 sensitivityRatio = activityRatio
-            } else if ( stepInactivityDetected ) {
+            } else if (stepInactivityDetected) {
                 sensitivityRatio = activityRatio
             }
         } else {
@@ -322,7 +319,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD061")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD062")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -338,10 +335,10 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
         }
-        TDDfactor=round(TDDfactor, 2)
+        TDDfactor = round(TDDfactor, 2)
         val iobTHtolerance = 130.0
         val iobTHvirtual = iob_threshold_percent * iobTHtolerance / 10000.0 * profile.max_iob * iobTH_reduction_ratio
-        var enableSMB =  false
+        var enableSMB = false
         if (microBolusAllowed && loop_wanted_smb != "AAPS") {
             if (loop_wanted_smb == "enforced" || loop_wanted_smb == "fullLoop") {
                 enableSMB = true
@@ -687,13 +684,13 @@ class DetermineBasalAutoISF @Inject constructor(
             100 * round((Delta - SDelta) / abs(SDelta), 2)
         }
 
-        var CR = round ( profile.carb_ratio , 2 )
+        var CR = round(profile.carb_ratio, 2)
 
-        val TwilightTimeAM =8
-        val TwilightTimeMins =0
-        val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins /  100
+        val TwilightTimeAM = 8
+        val TwilightTimeMins = 0
+        val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD061 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD062 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -710,23 +707,23 @@ class DetermineBasalAutoISF @Inject constructor(
         rT.reason.append("IOB: ${round(IOB, 2)} ;")
         rT.reason.append("iobThUser is ${iobThUser} ;;")
         var TOD = "not set TOD"
-        if (iobThUser == 12 ) {
+        if (iobThUser == 12) {
             TOD = "Night"
-        } else if (iobThUser == 15 ) {
+        } else if (iobThUser == 15) {
             TOD = "Twilight"
-        } else if (iobThUser == 20 ) {
+        } else if (iobThUser == 20) {
             TOD = "SemiTwilight"
-        }else if (iobThUser == 15 ) {
+        } else if (iobThUser == 15) {
             TOD = "Evening"
-        } else if (iobThUser == 30 ) {
+        } else if (iobThUser == 30) {
             TOD = "PP90%"
-        } else if (iobThUser == 50 ) {
+        } else if (iobThUser == 50) {
             TOD = "Day PP100%"
-        } else if (iobThUser == 40 ) {
+        } else if (iobThUser == 40) {
             TOD = "Day PP100%"
-        } else if (iobThUser == 55 ) {
+        } else if (iobThUser == 55) {
             TOD = "Day PP110%"
-        } else if (iobThUser == 60 ) {
+        } else if (iobThUser == 60) {
             TOD = "Day PP130%"
         }
         //var TDDfactor = 1.0
@@ -735,19 +732,19 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
             rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
         }*/
-        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
-        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
-        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
-        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
-        rT.reason.append("Delta: ${convert_bg2(Delta )} ;")
-        rT.reason.append("SDelta: ${convert_bg2(SDelta )} ;")
-        rT.reason.append("LDelta: ${convert_bg2(LDelta )} ;")
-        consoleError.add("IOB: "+round(IOB, 2)+" ; ")
-        consoleError.add("Delta: "+convert_bg2(Delta )+" ; ")
-        consoleError.add("SDelta: "+convert_bg2(SDelta )+" ; ")
-        consoleError.add("LDelta: "+convert_bg2(LDelta )+" ; ")
+        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        rT.reason.append("delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append("Delta: ${convert_bg2(Delta)} ;")
+        rT.reason.append("SDelta: ${convert_bg2(SDelta)} ;")
+        rT.reason.append("LDelta: ${convert_bg2(LDelta)} ;")
+        consoleError.add("IOB: " + round(IOB, 2) + " ; ")
+        consoleError.add("Delta: " + convert_bg2(Delta) + " ; ")
+        consoleError.add("SDelta: " + convert_bg2(SDelta) + " ; ")
+        consoleError.add("LDelta: " + convert_bg2(LDelta) + " ; ")
         consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
-        consoleError.add("delta_accl: "+round(delta_accl, 1).withoutZeros()+" ; ")
+        consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("Steps5M: ${Steps5M} ;")
@@ -758,15 +755,15 @@ class DetermineBasalAutoISF @Inject constructor(
         rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
-        rT.reason.append( "delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
-        rT.reason.append( "bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight,4)} ;;")
-        rT.reason.append( "dura_ISF_weight is ${round(profile.dura_ISF_weight,2)} ;;")
-        rT.reason.append( "higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight,2)} ;;")
+        rT.reason.append("delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        rT.reason.append("dura_ISF_weight is ${round(profile.dura_ISF_weight, 2)} ;;")
+        rT.reason.append("higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight, 2)} ;;")
         rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
-        rT.reason.append( "pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
-        consoleError.add("Steps60M: "+Steps60M+" ; ")
-        consoleError.add("Steps30M: "+Steps30M+" ; ")
-        consoleError.add("TwilightTimeDec: "+TwilightTimeDec+" ; ")
+        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("Steps60M: " + Steps60M + " ; ")
+        consoleError.add("Steps30M: " + Steps30M + " ; ")
+        consoleError.add("TwilightTimeDec: " + TwilightTimeDec + " ; ")
 
         //================================================================================/
         var lastCarbAge = 361.0
@@ -785,24 +782,21 @@ class DetermineBasalAutoISF @Inject constructor(
         }
         // high_SMB <= 0.55 (e.g. 0.5): no varOffset change*/
 
-
         val high_SMB = profile.smb_delivery_ratio_max
         var varOffset: Double = high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
 
-
-
-        val hour= LocalDateTime.now().hour
+        val hour = LocalDateTime.now().hour
 
         var targetBgOrig: Double = when {
             !profile.temptargetSet && profile.min_bg != null -> profile.min_bg!!.toDouble()
-            hour >= 22 -> 5.2 * 18
-            hour in 20 until 22 -> 5.2 * 18
-            hour in 16 until 20 -> 5.0 * 18
-            hour in 10 until 16 -> 5.0 * 18
-            hour in 8 until 10  -> 5.0 * 18
-            hour in 6 until 8   -> 5.0 * 18
-            hour in 5 until 6   -> 5.0 * 18
-            else                -> 5.4 * 18
+            hour >= 22                                       -> 5.2 * 18
+            hour in 20 until 22                              -> 5.2 * 18
+            hour in 16 until 20                              -> 5.0 * 18
+            hour in 10 until 16                              -> 5.0 * 18
+            hour in 8 until 10                               -> 5.0 * 18
+            hour in 6 until 8                                -> 5.0 * 18
+            hour in 5 until 6                                -> 5.0 * 18
+            else                                             -> 5.4 * 18
         }
 
         var eatSoon = false
@@ -863,65 +857,65 @@ class DetermineBasalAutoISF @Inject constructor(
         val nowHour = LocalDateTime.now().hour
         val standardTempDuration = if (nowHour in 0..6) 15 else 30  // overnight 15min temps, else 30min
 
-        if(enableButton && nowHour >=1 && nowHour <=7 && offset1 ) {
+        if (enableButton && nowHour >= 1 && nowHour <= 7 && offset1) {
             varOffset = varOffset - 9
             rT.reason.append("offset1 ${offset1} ;")
-            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
         } else if (nowHour >= 8 && nowHour < 10 && offset2) {
             varOffset = varOffset - 9
             rT.reason.append("offset2 ${offset2} ;")
-            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset )} ;")
+            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
         }
-        if ( (enableButton && delta_accl < -10 ) || (nowHour >= 20  && offset3) ) {
+        if ((enableButton && delta_accl < -10) || (nowHour >= 20 && offset3)) {
             varOffset = varOffset + 9
             rT.reason.append("offset3 ${offset3} ;")
-            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset )} ;")
+            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset)} ;")
         }
 
-        var offsetSoZeroSMB= false
-        if(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
-            offsetSoZeroSMB= true
+        var offsetSoZeroSMB = false
+        if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
+            offsetSoZeroSMB = true
             rT.reason.append("bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
         if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120)))) {
-            offsetSoZeroSMB= false
+            offsetSoZeroSMB = false
             rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
         rT.reason.append("offset1 ${offset1} ;")
         rT.reason.append("offset2 ${offset2} ;")
         rT.reason.append("offset3 ${offset3} ;")
-        rT.reason.append("varOffset ${convert_bg(varOffset )} ;")
+        rT.reason.append("varOffset ${convert_bg(varOffset)} ;")
         rT.reason.append("varOffset ${varOffset} ;")
         consoleError.add("offset1 ${offset1} ;")
         consoleError.add("offset2 ${offset2} ;")
         consoleError.add("offset3 ${offset3} ;")
-        consoleError.add("varOffset ${convert_bg(varOffset )} ;")
+        consoleError.add("varOffset ${convert_bg(varOffset)} ;")
         consoleError.add("varOffset ${varOffset} ;")
-        varOffset =  min(36.0, varOffset )
+        varOffset = min(36.0, varOffset)
 
         rT.reason.append("varOffset ($varOffset)")
         targetBgOffset = min(targetBgOrig + varOffset, 126.0)
-        rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset )} ;")
-        if (bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120))) {
-            offsetSoZeroSMB= true
+        rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset)} ;")
+        if (bg < targetBgOffset && (COB == 0.0 || (COB < 5 && CarbAge > 120))) {
+            offsetSoZeroSMB = true
             rT.reason.append("bg un targetBgOffset && no/low COB: ")
         }
 
-        consoleError.add("target_bgOrigmmcarbsSuggOrig: "+carbsSuggOrig+" ; ")
-        consoleError.add("target_bgOrigmm: "+target_bgOrigmm+" ; ")
-        consoleError.add("targetBgOrig: "+convert_bg(targetBgOrig )+" ; ")
-        consoleError.add("targetBgOffset: "+convert_bg(targetBgOffset )+" ; ")
-        consoleError.add("offsetSoZeroSMB: "+offsetSoZeroSMB+" ; ")
-        consoleError.add("enableButton: "+enableButton+" ; ")
-        rT.reason.append("carbsSuggOrig: "+carbsSuggOrig+" ; ")
+        consoleError.add("target_bgOrigmmcarbsSuggOrig: " + carbsSuggOrig + " ; ")
+        consoleError.add("target_bgOrigmm: " + target_bgOrigmm + " ; ")
+        consoleError.add("targetBgOrig: " + convert_bg(targetBgOrig) + " ; ")
+        consoleError.add("targetBgOffset: " + convert_bg(targetBgOffset) + " ; ")
+        consoleError.add("offsetSoZeroSMB: " + offsetSoZeroSMB + " ; ")
+        consoleError.add("enableButton: " + enableButton + " ; ")
+        rT.reason.append("carbsSuggOrig: " + carbsSuggOrig + " ; ")
         rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
         rT.reason.append("enableButton: ${enableButton} ;")
-        rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset )} ;")
-        rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig )} ;")
+        rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset)} ;")
+        rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig)} ;")
         rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")
 
-        if (!(bg < targetBgOffset && ( COB == 0.0 || ( COB < 5 && CarbAge > 120)))) {
-            offsetSoZeroSMB= false
+        if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5 && CarbAge > 120)))) {
+            offsetSoZeroSMB = false
             rT.reason.append("offsetSoZeroSMBcleared: BG ov targetBgOffset, SMB restored; ")
             if (bg > targetBgOffset) {
                 // boostActive restored
@@ -1140,13 +1134,12 @@ class DetermineBasalAutoISF @Inject constructor(
             // sensitivityRatio is intentionally NOT used here.
             // =====================================================
 
-
             var insulinReq =
                 round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
             insulinReq *= TDDfactor
-            insulinReq= round(insulinReq, 2)
+            insulinReq = round(insulinReq, 2)
             max_iob *= TDDfactor
-            max_iob= round(max_iob, 2)
+            max_iob = round(max_iob, 2)
             consoleError.add("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
             rT.reason.append("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
             if (insulinReq > max_iob - iob_data.iob) {
@@ -1220,8 +1213,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 val delivery_ratio = profile.smb_delivery_ratio
                 rT.reason.append("TDDfactor = ${TDDfactor} high_SMB= ${high_SMB2} TDDfactor= ${round(TDDfactor, 2)}   ")
                 rT.reason.append("TDDfactor= ${TDDfactor} high_SMB= ${high_SMB2}  ")
-                var  ThresholForFastRise= TDDfactor * 0.030 * profile.max_iob
-                ThresholForFastRise=round(ThresholForFastRise, 2)
+                var ThresholForFastRise = TDDfactor * 0.030 * profile.max_iob
+                ThresholForFastRise = round(ThresholForFastRise, 2)
                 consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
                 rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
 
@@ -1309,12 +1302,12 @@ class DetermineBasalAutoISF @Inject constructor(
                 } else if (Delta >= 0.50 * 18 &&
                     nowHour >= 18 &&
                     COB > 10 &&
-                    Delta <=  0.95 * 18 &&
+                    Delta <= 0.95 * 18 &&
                     bg < 10.0 * 18
                 ) {
                     microBolus = microBolus * 0.7
                     rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
-                    rT.reason.append (" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
+                    rT.reason.append(" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
 // =====================================================
 // HIGH TT PROTECTION [low TT 4.0 but delta High]
 // =====================================================
@@ -1533,13 +1526,13 @@ class DetermineBasalAutoISF @Inject constructor(
                 rate = round_basal(maxSafeBasal)
             }
 
-            val insulinScheduled = currenttemp.duration *  (currenttemp.rate - basal) / 60
+            val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
             if (insulinScheduled >= TDDfactor * insulinReq * 2) {
                 rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
 
-            if(currenttemp.duration == 0) {
+            if (currenttemp.duration == 0) {
                 rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
@@ -1556,5 +1549,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD061
+DetermineBasalAutoISF.kt320TDD062
 */
