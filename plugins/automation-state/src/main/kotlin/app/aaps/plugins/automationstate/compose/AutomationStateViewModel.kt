@@ -34,9 +34,17 @@ class AutomationStateViewModel @Inject constructor(
 
     fun addState(name: String, values: List<String>) {
         automationState.setStateValues(name, values)
-        try {
-            automationState.setState(name, values.first())
-        } catch (e: Exception) { }
+        try { automationState.setState(name, values.first()) } catch (e: Exception) { }
+        refresh()
+    }
+
+    fun updateStateValues(name: String, values: List<String>) {
+        automationState.setStateValues(name, values)
+        // If current value no longer valid, set first
+        val current = automationState.getState(name)
+        if (current.isEmpty() || !values.contains(current)) {
+            try { automationState.setState(name, values.first()) } catch (e: Exception) { }
+        }
         refresh()
     }
 

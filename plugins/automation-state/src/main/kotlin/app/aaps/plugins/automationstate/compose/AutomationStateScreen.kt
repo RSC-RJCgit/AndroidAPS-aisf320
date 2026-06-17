@@ -22,6 +22,7 @@ fun AutomationStateScreen(
     onNavigateBack: () -> Unit
 ) {
     var showAddStateDialog by remember { mutableStateOf(false) }
+    var editingState by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         setToolbarConfig(ToolbarConfig(
@@ -51,6 +52,22 @@ fun AutomationStateScreen(
         )
     }
 
+    editingState?.let { stateName ->
+        EditStateDialog(
+            stateName = stateName,
+            currentValues = viewModel.getValues(stateName),
+            onDismiss = { editingState = null },
+            onConfirm = { values ->
+                viewModel.updateStateValues(stateName, values)
+                editingState = null
+            },
+            onDelete = {
+                viewModel.deleteState(stateName)
+                editingState = null
+            }
+        )
+    }
+
     if (states.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -66,7 +83,10 @@ fun AutomationStateScreen(
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
         items(states) { (name, current) ->
-            Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                onClick = { editingState = name }
+            ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -133,7 +153,7 @@ fun AddStateDialog(
                     Text(error, color = MaterialTheme.colorScheme.error)
                 }
                 Text(
-                    "Example: state name = 'Exercise', values = 'High,Low,Rest'",
+                    "Example: name = 'Exercise', values = 'High,Low,Rest'",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -149,6 +169,69 @@ fun AddStateDialog(
                     else -> onConfirm(name, values)
                 }
             }) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun EditStateDialog(
+    stateName: String,
+    currentValues: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit,
+    onDelete: () -> Unit
+) {
+    var valuesText by remember { mutableStateOf(currentValues.joinToString(", ")) }
+    var error by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete State") },
+            text = { Text("Delete '$stateName' and all its values?") },
+            confirmButton = {
+                Button(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit: $stateName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = valuesText,
+                    onValueChange = { valuesText = it; error = "" },
+                    label = { Text("Values (comma separated)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error.isNotEmpty()) {
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = { showDeleteConfirm = true }) {
+                    Text("Delete this state", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val values = valuesText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                if (values.isEmpty()) error = "At least one value required"
+                else onConfirm(values)
+            }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
