@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Source -->
     <string name="ns_client_bg">NSClient BG</string>
@@ -58,7 +58,7 @@
     <string name="eversense_information_connected">Connected</string>
     <string name="eversense_information_battery">Battery percentage</string>
     <string name="eversense_information_insertion_date">Insertion date</string>
-    <string name="eversense_information_last_sync">Synchronise now</string>
+    <string name="eversense_information_last_sync">START SYNC</string>
     <string name="eversense_calibration_title">Calibration</string>
     <string name="eversense_calibration_phase">Phase</string>
     <string name="eversense_calibration_last">Last calibration</string>
@@ -95,6 +95,7 @@
     <string name="eversense_calibration_success">Calibration submitted successfully</string>
     <string name="eversense_calibration_failed">Failed to submit calibration. Make sure the transmitter is connected and ready.</string>
     <string name="eversense_information_last_sync_tap">Tap to trigger a full sync</string>
+    <string name="eversense_default_sync_days_label">Default Sync Days</string>
     <string name="eversense_placement_signal">Placement signal</string>
     <string name="eversense_placement_title">Transmitter Placement</string>
     <string name="eversense_placement_guide_heading">Transmitter Placement Guide</string>

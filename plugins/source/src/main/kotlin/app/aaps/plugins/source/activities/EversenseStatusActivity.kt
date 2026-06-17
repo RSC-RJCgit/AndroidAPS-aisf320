@@ -6,7 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MenuItem
 import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
 import android.widget.Button
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
@@ -77,6 +80,25 @@ class EversenseStatusActivity : AppCompatActivity(), EversenseWatcher {
                 ioScope.launch { eversense.triggerFullSync(force = true) }
                 mainHandler.postDelayed({ updateStatus() }, 5000)
             }
+        }
+
+        // Default Sync Days spinner
+        val syncDaysOptions = intArrayOf(1, 3, 7, 14, 30)
+        val spinner = findViewById<Spinner>(R.id.eversense_sync_days_spinner)
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, syncDaysOptions.map { "$it" })
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner.adapter = adapter
+
+        val prefs = getSharedPreferences("EversenseCGMManager", Context.MODE_PRIVATE)
+        val savedDays = prefs.getInt("eversense_sync_days", 14)
+        val savedIndex = syncDaysOptions.indexOf(savedDays)
+        if (savedIndex >= 0) spinner.setSelection(savedIndex)
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                prefs.edit().putInt("eversense_sync_days", syncDaysOptions[position]).apply()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 
