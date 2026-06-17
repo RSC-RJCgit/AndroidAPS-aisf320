@@ -59,6 +59,10 @@ import app.aaps.core.ui.compose.bottomBarSafeArea
 import app.aaps.core.ui.compose.clearFocusOnTap
 import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.R as CoreUiR
+import androidx.compose.material3.Checkbox
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 @Composable
 fun ImportSettingsScreen(
@@ -407,7 +411,7 @@ private fun ImportReviewContent(
     val focusManager = LocalFocusManager.current
     val successResult = state.decryptResult as? ImportDecryptResult.Success
     val canImport = successResult != null && successResult.importPossible
-
+    var statesAcknowledged by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             AapsTopAppBar(
@@ -428,17 +432,38 @@ private fun ImportReviewContent(
                         .padding(16.dp)
                 ) {
                     val importOk = successResult.importOk
-                    Button(
-                        onClick = onImport,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !state.isProcessing,
-                        colors = if (importOk) ButtonDefaults.buttonColors()
-                        else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(
-                            if (importOk) stringResource(CoreUiR.string.import_btn)
-                            else stringResource(CoreUiR.string.import_anyway_btn)
-                        )
+                    Column {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = statesAcknowledged,
+                                    onCheckedChange = { statesAcknowledged = it }
+                                )
+                                Text(
+                                    "Automation States will be DISABLED after import. Enable in States tab.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = onImport,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !state.isProcessing && statesAcknowledged,
+                            colors = if (importOk) ButtonDefaults.buttonColors()
+                            else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text(
+                                if (importOk) stringResource(CoreUiR.string.import_btn)
+                                else stringResource(CoreUiR.string.import_anyway_btn)
+                            )
+                        }
                     }
                 }
             }
