@@ -23,6 +23,7 @@ fun AutomationStateScreen(
 ) {
     var showAddStateDialog by remember { mutableStateOf(false) }
     var editingState by remember { mutableStateOf<String?>(null) }
+    var enabled by remember { mutableStateOf(viewModel.isEnabled) }
 
     LaunchedEffect(Unit) {
         setToolbarConfig(ToolbarConfig(
@@ -68,51 +69,95 @@ fun AutomationStateScreen(
         )
     }
 
-    if (states.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No automation states defined.")
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { showAddStateDialog = true }) {
-                    Text("Add State")
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        // Enable/disable toggle always visible at top
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (enabled)
+                    MaterialTheme.colorScheme.primaryContainer
+                else
+                    MaterialTheme.colorScheme.errorContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = if (enabled) "Automation States: ENABLED" else "Automation States: DISABLED",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    if (!enabled) {
+                        Text(
+                            text = "States are inactive — automations will not trigger",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
                 }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        enabled = it
+                        viewModel.setEnabled(it)
+                    }
+                )
             }
         }
-        return
-    }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-        items(states) { (name, current) ->
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(4.dp),
-                onClick = { editingState = name }
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = name, style = MaterialTheme.typography.titleMedium)
-                        IconButton(onClick = { viewModel.deleteState(name) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete")
-                        }
-                    }
+        if (states.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No automation states defined.")
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    Button(onClick = { showAddStateDialog = true }) {
+                        Text("Add State")
+                    }
+                }
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                items(states) { (name, current) ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(4.dp),
+                        onClick = { editingState = name }
                     ) {
-                        viewModel.getValues(name).forEach { value ->
-                            FilterChip(
-                                selected = value == current,
-                                onClick = { viewModel.setState(name, value) },
-                                label = { Text(value) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = name, style = MaterialTheme.typography.titleMedium)
+                                IconButton(onClick = { viewModel.deleteState(name) }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                viewModel.getValues(name).forEach { value ->
+                                    FilterChip(
+                                        selected = value == current,
+                                        onClick = { viewModel.setState(name, value) },
+                                        label = { Text(value) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }

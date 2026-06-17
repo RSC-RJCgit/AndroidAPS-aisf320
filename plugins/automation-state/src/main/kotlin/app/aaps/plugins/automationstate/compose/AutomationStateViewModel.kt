@@ -1,4 +1,4 @@
-package app.aaps.plugins.automationstate.compose
+﻿package app.aaps.plugins.automationstate.compose
 
 import androidx.lifecycle.ViewModel
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -21,6 +21,10 @@ class AutomationStateViewModel @Inject constructor(
     val isEnabled: Boolean
         get() = preferences.get(BooleanKey.AutomationStatesEnabled)
 
+    fun setEnabled(enabled: Boolean) {
+        preferences.put(BooleanKey.AutomationStatesEnabled, enabled)
+    }
+
     fun refresh() {
         _states.value = automationState.getAllStates().toList()
     }
@@ -40,7 +44,6 @@ class AutomationStateViewModel @Inject constructor(
 
     fun updateStateValues(name: String, values: List<String>) {
         automationState.setStateValues(name, values)
-        // If current value no longer valid, set first
         val current = automationState.getState(name)
         if (current.isEmpty() || !values.contains(current)) {
             try { automationState.setState(name, values.first()) } catch (e: Exception) { }

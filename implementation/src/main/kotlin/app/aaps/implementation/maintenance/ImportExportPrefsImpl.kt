@@ -909,6 +909,8 @@ class ImportExportPrefsImpl @Inject constructor(
                 sp.putString(key, value)
             }
         }
+        // Safety: disable automation states after import - user must explicitly re-enable
+        sp.putBoolean("automation_states_enabled", false)
         activePlugin.afterImport()
     }
 
