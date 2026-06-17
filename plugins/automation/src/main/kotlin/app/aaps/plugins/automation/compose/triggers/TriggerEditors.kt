@@ -577,19 +577,38 @@ fun TriggerLocationEditor(
 
 @Composable
 fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit) {
-    val stateNames = t.automationStateService.getAllStates().map { it.first }
-    val stateValues = if (t.stateName.isNotEmpty()) t.automationStateService.getStateValues(t.stateName) else emptyList()
+    val allStates = t.automationStateService.getAllStates()
+    val stateNames = allStates.map { it.first }
+    var selectedName by remember { mutableStateOf(t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" }) }
+    var selectedValue by remember { mutableStateOf(t.stateValue) }
+    val stateValues = if (selectedName.isNotEmpty()) t.automationStateService.getStateValues(selectedName) else emptyList()
+
+    if (stateNames.isEmpty()) {
+        Text("No automation states defined. Create states in the Automation States tab first.")
+        return
+    }
+
     AutomationDropdown(
-        value = t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" },
+        value = selectedName,
         options = stateNames,
-        onValueChange = { t.stateName = it; t.stateValue = ""; onChange() },
+        onValueChange = {
+            selectedName = it
+            selectedValue = ""
+            t.stateName = it
+            t.stateValue = ""
+            onChange()
+        },
         label = "State"
     )
     if (stateValues.isNotEmpty()) {
         AutomationDropdown(
-            value = t.stateValue.ifEmpty { stateValues.firstOrNull() ?: "" },
+            value = selectedValue.ifEmpty { stateValues.firstOrNull() ?: "" },
             options = stateValues,
-            onValueChange = { t.stateValue = it; onChange() },
+            onValueChange = {
+                selectedValue = it
+                t.stateValue = it
+                onChange()
+            },
             label = "Value"
         )
     }
