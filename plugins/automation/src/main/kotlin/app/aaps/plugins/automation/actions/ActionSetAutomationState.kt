@@ -12,8 +12,8 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
     @Inject lateinit var automationState: AutomationStateInterface
 
-    private var stateName: String = ""
-    private var stateValue: String = ""
+    var stateName: String = ""
+    var stateValue: String = ""
 
     override fun friendlyName(): Int = R.string.set_state
 
