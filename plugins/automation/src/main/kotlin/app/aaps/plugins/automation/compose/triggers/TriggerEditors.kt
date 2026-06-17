@@ -53,6 +53,7 @@ import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
 import app.aaps.plugins.automation.triggers.TriggerTimeRange
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerWifiSsid
 import app.aaps.core.keys.R as KeysR
 
@@ -98,6 +99,7 @@ fun TriggerEditor(
             is TriggerWifiSsid           -> TriggerWifiSsidEditor(trigger, onChange)
             is TriggerBTDevice           -> TriggerBTDeviceEditor(trigger, bondedDevices, onChange)
             is TriggerLocation           -> TriggerLocationEditor(trigger, onChange, tick, showCurrentLocation, onUseCurrentLocation, onPickLocationFromMap)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
             is TriggerConnector          -> Text("Connector")
             else                         -> Text(trigger.javaClass.simpleName)
         }
@@ -571,4 +573,24 @@ fun TriggerLocationEditor(
         value = t.modeSelected.value,
         onValueChange = { t.modeSelected.value = it; onChange() }
     )
+}
+
+@Composable
+fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit) {
+    val stateNames = t.automationStateService.getAllStates().map { it.first }
+    val stateValues = if (t.stateName.isNotEmpty()) t.automationStateService.getStateValues(t.stateName) else emptyList()
+    AutomationDropdown(
+        value = t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" },
+        options = stateNames,
+        onValueChange = { t.stateName = it; t.stateValue = ""; onChange() },
+        label = "State"
+    )
+    if (stateValues.isNotEmpty()) {
+        AutomationDropdown(
+            value = t.stateValue.ifEmpty { stateValues.firstOrNull() ?: "" },
+            options = stateValues,
+            onValueChange = { t.stateValue = it; onChange() },
+            label = "Value"
+        )
+    }
 }

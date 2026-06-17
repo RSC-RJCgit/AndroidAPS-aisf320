@@ -1,4 +1,4 @@
-﻿package app.aaps.plugins.automation.actions
+package app.aaps.plugins.automation.actions
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.logging.LTag
@@ -19,6 +19,8 @@ class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) 
 
     override fun shortDescription(): String =
         rh.gs(R.string.set_state_description, stateName, stateValue)
+
+    override fun hasDialog(): Boolean = true
 
     override fun isValid(): Boolean = stateName.isNotEmpty() && stateValue.isNotEmpty()
 
