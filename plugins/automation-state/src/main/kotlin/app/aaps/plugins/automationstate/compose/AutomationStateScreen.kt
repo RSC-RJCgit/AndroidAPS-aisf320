@@ -1,4 +1,4 @@
-﻿package app.aaps.plugins.automationstate.compose
+package app.aaps.plugins.automationstate.compose
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.unit.dp
 import app.aaps.core.ui.compose.ToolbarConfig
 
@@ -16,7 +18,7 @@ fun AutomationStateScreen(
     onNavigateBack: () -> Unit
 ) {
     LaunchedEffect(Unit) {
-        setToolbarConfig(ToolbarConfig(title = "Automation States", onBack = onNavigateBack))
+        setToolbarConfig(ToolbarConfig(title = "Automation States", navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }, actions = {}))
         viewModel.refresh()
     }
 
@@ -56,3 +58,4 @@ fun AutomationStateScreen(
         }
     }
 }
+
