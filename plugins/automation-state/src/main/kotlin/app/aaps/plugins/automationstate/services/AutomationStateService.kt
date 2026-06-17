@@ -52,7 +52,7 @@ class AutomationStateService  @Inject constructor(
        automationStates[trimmedName] = trimmedState
        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
        // Notify UI (States tab) — covers changes made by automations or Kotlin, not just manually
-       rxBus.send(EventPreferenceChange(Json.encodeToString(automationStates)))
+       rxBus.send(EventPreferenceChange(AutomationStateStringKey.AutomationCurrentStates.key))
    }
 
     override fun getState(stateName: String):String {
