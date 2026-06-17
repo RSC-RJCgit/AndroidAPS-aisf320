@@ -407,7 +407,9 @@ private fun ImportReviewContent(
     onDecryptionPasswordChanged: (String) -> Unit,
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    statesAcknowledged: Boolean,
+    onStatesAcknowledgedChange: (Boolean) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val successResult = state.decryptResult as? ImportDecryptResult.Success
