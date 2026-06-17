@@ -3,44 +3,6 @@ name: AAPS CI
 on:
   workflow_dispatch:
     inputs:
-      tagName:
-        description: 'Select AAPS Version'
-        required: true
-        default: '3.4.2.3'
-        type: choice
-        options:
-          # ── 3.4.x (JDK 21) ──────────────────────────────
-          - 3.4.2.3
-          - 3.4.2.2
-          - 3.4.2.1
-          - 3.4.2.0
-          - 3.4.1.0
-          - 3.4.0.0
-          # ── 3.3.x (JDK 21) ──────────────────────────────
-          - 3.3.2.1
-          - 3.3.2.0
-          - 3.3.1.3
-          # ── 3.2.x (JDK 17) ──────────────────────────────
-          - 3.2.0.4
-          - 3.2.0.3
-          - 3.2.0.2
-          - 3.2.0.1
-          - 3.2.0.0
-          # ── 3.1.x (JDK 17) ──────────────────────────────
-          - 3.1.0.3
-          - 3.1.0.2
-          - 3.1.0.1
-          - 3.1.0
-          # ── 3.0.x (JDK 11) ──────────────────────────────
-          - 3.0.0.2
-          - 3.0.0.1
-          - 3.0.0
-          # ── 2.x (build not supported) ────────────────────
-          # ⚠️  2.x versions depend on packages such as
-          #     com.google.android:flexbox that were only published
-          #     on JCenter. JCenter shut down in 2022 and these
-          #     dependencies can no longer be resolved, causing
-          #     the build to fail.
       buildVariant:
         description: 'Select Build Variant'
         required: true
@@ -55,6 +17,11 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
+  push:
+    branches:
+      - '*RJC*'
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   build:
@@ -104,9 +71,7 @@ jobs:
             fi
           }
 
-          # Check secrets
           check_secret "$GDRIVE_OAUTH2" "GDRIVE_OAUTH2"
-
           check_secret "$KEYSTORE_BASE64" "KEYSTORE_BASE64"
           check_secret "$KEYSTORE_PASSWORD" "KEYSTORE_PASSWORD"
           check_secret "$KEY_ALIAS" "KEY_ALIAS"
@@ -129,12 +94,10 @@ jobs:
           set -x
           echo "🔐 Validating keystore, alias and password"
 
-          # Create a dummy JAR file (quick method using zip)
           echo "test" > dummy.txt
           zip -q dummy.jar dummy.txt
           rm dummy.txt
 
-          # Attempt to validate using jarsigner
           JARSIGNER_LOG=$(mktemp)
           if ! jarsigner \
               -keystore "$RUNNER_TEMP/keystore/keystore.jks" \
@@ -186,40 +149,25 @@ jobs:
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
           echo "✅ Access token obtained."
 
-      - name: Checkout source code at tag
+      - name: Checkout source code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Fetch selected tag from upstream
-        run: |
-          git remote add upstream https://github.com/nightscout/AndroidAPS.git || true
-          git fetch upstream refs/tags/${{ github.event.inputs.tagName }}:refs/tags/${{ github.event.inputs.tagName }}
-          echo "✅ Tag ${{ github.event.inputs.tagName }} fetched from upstream."
+      # ── REMOVED: Fetch selected tag from upstream ──
+      # ── REMOVED: Determine JVM version from tag   ──
+      # ── REMOVED: Switch to selected tag           ──
 
-      - name: Determine JVM version from tag
+      - name: Set JDK version
         run: |
-          # jdk-map.json must be read before switching to the upstream tag,
-          # as the upstream tag does not contain this file.
-          TAG="${{ github.event.inputs.tagName }}"
-          JAVA_VERSION=$(jq -r '.default' .github/jdk-map.json)
-          while IFS=$'\t' read -r pattern jdk; do
-            if [[ "$TAG" == $pattern ]]; then
-              JAVA_VERSION="$jdk"
-              break
-            fi
-          done < <(jq -r '.mappings[] | "\(.pattern)\t\(.jdk)"' .github/jdk-map.json)
-          echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
-          echo "ℹ️ Tag $TAG → JDK $JAVA_VERSION (from jdk-map.json)"
-
-      - name: Switch to selected tag
-        run: |
-          git checkout refs/tags/${{ github.event.inputs.tagName }}
-          echo "✅ Checked out tag ${{ github.event.inputs.tagName }}"
+          echo "JAVA_VERSION=21" >> $GITHUB_ENV
+          echo "ℹ️ Using JDK 21 for 3.4.x branches"
 
       - name: Set BUILD_VARIANT
         run: |
           BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
+          # Fallback for push triggers (no manual input)
+          BUILD_VARIANT="${BUILD_VARIANT:-fullRelease}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
@@ -354,15 +302,3 @@ jobs:
           upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
 
           echo "🎉 APKs successfully uploaded to Google Drive!"
-
-  # Configuration: Threshold-based cleanup
-  # Clean up only occurs when total runs exceed: keep_runs + keep_threshold (e.g., 20 + 5 = 25)
-  cleanup:
-    name: Cleanup Old Workflow Runs
-    needs: build
-    if: always()
-    uses: ./.github/workflows/cleanup-workflow-runs.yml
-    with:
-      workflow_name: 'AAPS CI'
-      keep_runs: 20
-      keep_threshold: 5
