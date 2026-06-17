@@ -79,6 +79,7 @@ fun ActionEditor(
             is ActionRunScene             -> ActionRunSceneEditor(action, sceneOptions, onChange)
             is ActionEnableScene          -> ActionEnableSceneEditor(action, sceneOptions, onChange)
             is ActionDisableScene         -> ActionDisableSceneEditor(action, sceneOptions, onChange)
+            is ActionSetAutomationState  -> ActionSetAutomationStateEditor(action, onChange)
             else                          -> Text(action.javaClass.simpleName)
         }
     }

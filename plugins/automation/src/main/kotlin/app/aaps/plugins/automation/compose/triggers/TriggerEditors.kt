@@ -104,6 +104,7 @@ fun TriggerEditor(
             is TriggerBTDevice           -> TriggerBTDeviceEditor(trigger, bondedDevices, onChange)
             is TriggerLocation           -> TriggerLocationEditor(trigger, onChange, tick, showCurrentLocation, onUseCurrentLocation, onPickLocationFromMap)
             is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
             is TriggerConnector          -> Text("Connector")
             else                         -> Text(trigger.javaClass.simpleName)
         }
