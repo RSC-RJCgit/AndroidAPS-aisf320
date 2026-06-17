@@ -48,7 +48,7 @@ data class ExportPreparation(
 )
 
 interface ImportExportPrefs {
-
+    fun setAutomationStatesEnabled(enabled: Boolean)
     fun exportCustomWatchface(customWatchface: CwfData, withDate: Boolean = true)
     fun exportSharedPreferences(activity: FragmentActivity)
     fun exportSharedPreferencesNonInteractive(context: Context, password: String): Boolean

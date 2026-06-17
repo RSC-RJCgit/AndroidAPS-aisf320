@@ -113,13 +113,14 @@ fun ImportSettingsScreen(
         }
 
         is ImportStep.Review         -> {
+            var statesAcknowledged by remember { mutableStateOf(false) }
             ImportReviewContent(
                 state = currentStep,
                 rxBus = rxBus,
                 onMasterPasswordChanged = { viewModel.onMasterPasswordChanged(it) },
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
-                onImport = { viewModel.confirmImport() },
+                onImport = { viewModel.confirmImport(keepStatesEnabled = statesAcknowledged) },
                 onBack = { viewModel.goBackToFilePicker() }
             )
         }
@@ -443,7 +444,7 @@ private fun ImportReviewContent(
                             ) {
                                 Checkbox(
                                     checked = statesAcknowledged,
-                                    onCheckedChange = { statesAcknowledged = it }
+                                    onCheckedChange = onStatesAcknowledgedChange
                                 )
                                 Text(
                                     "Automation States will be DISABLED after import. Enable in States tab.",
@@ -455,7 +456,7 @@ private fun ImportReviewContent(
                         Button(
                             onClick = onImport,
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !state.isProcessing && statesAcknowledged,
+                            enabled = !state.isProcessing,
                             colors = if (importOk) ButtonDefaults.buttonColors()
                             else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) {

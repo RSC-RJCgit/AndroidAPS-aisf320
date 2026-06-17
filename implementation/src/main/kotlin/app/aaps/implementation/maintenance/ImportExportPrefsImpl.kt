@@ -90,6 +90,7 @@ private fun filenameTimestamp(): String =
 
 @Reusable
 class ImportExportPrefsImpl @Inject constructor(
+
     private var aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -111,7 +112,9 @@ class ImportExportPrefsImpl @Inject constructor(
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val storage: Storage
 ) : ImportExportPrefs {
-
+    override fun setAutomationStatesEnabled(enabled: Boolean) {
+        sp.putBoolean("automation_states_enabled", enabled)
+    }
     private var pendingExportFile: DocumentFile? = null
 
     // Compose export support — discrete steps

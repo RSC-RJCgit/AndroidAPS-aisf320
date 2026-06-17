@@ -263,7 +263,7 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    fun confirmImport(keepStatesEnabled: Boolean = false) {
         val current = importStep.value
         if (current !is ImportStep.Review) return
         val result = current.decryptResult
@@ -274,6 +274,9 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 importExportPrefs.executeImport(result.prefs)
+                if (keepStatesEnabled) {
+                    importExportPrefs.setAutomationStatesEnabled(true)
+                }
                 importExportPrefs.prepareImportRestart()
             }
             _importStep.value = ImportStep.RestartConfirm
