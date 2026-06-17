@@ -1,4 +1,4 @@
-﻿package app.aaps.plugins.automationstate.compose
+package app.aaps.plugins.automationstate.compose
 
 import androidx.lifecycle.ViewModel
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -22,7 +22,7 @@ class AutomationStateViewModel @Inject constructor(
         get() = preferences.get(BooleanKey.AutomationStatesEnabled)
 
     fun refresh() {
-        _states.value = automationState.getAllStates()
+        _states.value = automationState.getAllStates().toList()
     }
 
     fun setState(stateName: String, value: String) {
