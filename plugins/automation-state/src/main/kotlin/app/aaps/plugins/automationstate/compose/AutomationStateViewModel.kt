@@ -32,6 +32,19 @@ class AutomationStateViewModel @Inject constructor(
         } catch (e: Exception) { }
     }
 
+    fun addState(name: String, values: List<String>) {
+        automationState.setStateValues(name, values)
+        try {
+            automationState.setState(name, values.first())
+        } catch (e: Exception) { }
+        refresh()
+    }
+
+    fun deleteState(name: String) {
+        automationState.deleteState(name)
+        refresh()
+    }
+
     fun getValues(stateName: String): List<String> = automationState.getStateValues(stateName)
 
     init { refresh() }
