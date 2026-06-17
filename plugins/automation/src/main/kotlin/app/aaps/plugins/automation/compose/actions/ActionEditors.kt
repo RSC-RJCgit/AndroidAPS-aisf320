@@ -328,3 +328,41 @@ fun ActionDisableSceneEditor(a: ActionDisableScene, sceneOptions: List<Scene>, o
         onPicked = { a.scene.value = it; onChange() }
     )
 }
+
+@Composable
+fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> Unit) {
+    val stateNames = a.automationState.getAllStates().map { it.first }
+    var selectedName by remember { mutableStateOf(if (a.stateName.isEmpty()) stateNames.firstOrNull() ?: "" else a.stateName) }
+    var selectedValue by remember { mutableStateOf(a.stateValue) }
+    val stateValues = if (selectedName.isNotEmpty()) a.automationState.getStateValues(selectedName) else emptyList()
+
+    if (stateNames.isEmpty()) {
+        Text("No automation states defined. Create states in the Automation States tab first.")
+        return
+    }
+
+    AutomationDropdown(
+        value = selectedName,
+        options = stateNames,
+        onValueChange = { newName ->
+            selectedName = newName
+            selectedValue = ""
+            a.stateName = newName
+            a.stateValue = ""
+            onChange()
+        },
+        label = "State"
+    )
+    if (stateValues.isNotEmpty()) {
+        AutomationDropdown(
+            value = if (selectedValue.isEmpty()) stateValues.firstOrNull() ?: "" else selectedValue,
+            options = stateValues,
+            onValueChange = { newVal ->
+                selectedValue = newVal
+                a.stateValue = newVal
+                onChange()
+            },
+            label = "Value"
+        )
+    }
+}
