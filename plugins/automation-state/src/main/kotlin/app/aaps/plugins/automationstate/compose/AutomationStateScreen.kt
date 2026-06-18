@@ -42,6 +42,8 @@ fun AutomationStateScreen(
     }
 
     val states by viewModel.states.collectAsStateWithLifecycle()
+    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
+    if (refreshTick >= 0) Unit // force recomposition
 
     if (showAddStateDialog) {
         AddStateDialog(
@@ -125,7 +127,7 @@ fun AutomationStateScreen(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-                items(states) { (name, current) ->
+                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         onClick = { editingState = name },
