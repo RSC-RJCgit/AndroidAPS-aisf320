@@ -25,33 +25,23 @@ fun AutomationStateScreen(
     var editingState by remember { mutableStateOf<String?>(null) }
     var enabled by remember { mutableStateOf(viewModel.isEnabled) }
 
-    LaunchedEffect(Unit) {
-        setToolbarConfig(ToolbarConfig(
-            title = "Automation States",
-            navigationIcon = {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            },
-            actions = {
-                IconButton(onClick = { showAddStateDialog = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add State")
-                }
+    setToolbarConfig(ToolbarConfig(
+        title = "Automation States",
+        navigationIcon = @Composable {
+            IconButton(onClick = onNavigateBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-        ))
-    }
+        },
+        actions = @Composable {
+            IconButton(onClick = { showAddStateDialog = true }) {
+                Icon(Icons.Filled.Add, contentDescription = "Add State")
+            }
+        }
+    ))
 
     val states by viewModel.states.collectAsStateWithLifecycle()
 
     if (showAddStateDialog) {
-        AddStateDialog(
-            onDismiss = { showAddStateDialog = false },
-            onConfirm = { name, values ->
-                viewModel.addState(name, values)
-                showAddStateDialog = false
-            }
-        )
-    }
 
     editingState?.let { stateName ->
         EditStateDialog(
