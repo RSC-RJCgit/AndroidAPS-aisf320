@@ -1,4 +1,4 @@
-﻿package app.aaps.plugins.automationstate.compose
+package app.aaps.plugins.automationstate.compose
 
 import androidx.lifecycle.ViewModel
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -26,7 +26,8 @@ class AutomationStateViewModel @Inject constructor(
     }
 
     fun refresh() {
-        _states.value = automationState.getAllStates().toList()
+        // Force new list reference for Compose recomposition
+        _states.value = emptyList(); _states.value = automationState.getAllStates().toList()
     }
 
     fun setState(stateName: String, value: String) {

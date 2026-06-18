@@ -275,6 +275,7 @@ class ImportViewModel @Inject constructor(
 
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                android.util.Log.e("STATES_DEBUG", "confirmImport keepStatesEnabled=$keepStatesEnabled statesAcknowledged=$statesAcknowledged")
                 importExportPrefs.executeImport(result.prefs)
                 if (keepStatesEnabled) {
                     importExportPrefs.setAutomationStatesEnabled(true)
