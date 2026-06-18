@@ -113,6 +113,7 @@ fun ImportSettingsScreen(
         }
 
         is ImportStep.Review         -> {
+            var statesAcknowledged by remember { mutableStateOf(false) }
             ImportReviewContent(
                 state = currentStep,
                 rxBus = rxBus,
