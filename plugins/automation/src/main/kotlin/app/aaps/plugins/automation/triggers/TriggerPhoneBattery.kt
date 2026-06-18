@@ -61,6 +61,6 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyDescription(): String =
         "Phone battery ${rh.gs(comparator.value.stringRes)} ${batteryLevel.value.toInt()}%"
     override fun composeIcon() = null
-    override fun composeIconTint() = IconTint.Default
+    override fun composeIconTint() = IconTint.Device
     override fun duplicate(): Trigger = TriggerPhoneBattery(injector, this)
 }

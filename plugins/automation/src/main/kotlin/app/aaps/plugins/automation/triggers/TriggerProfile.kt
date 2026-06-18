@@ -10,10 +10,10 @@ import org.json.JSONObject
 
 class TriggerProfile(injector: HasAndroidInjector) : Trigger(injector) {
 
-    var profileName: InputProfileName = InputProfileName(rh, activePlugin, "")
+    var profileName: InputProfileName = InputProfileName("")
 
     constructor(injector: HasAndroidInjector, triggerProfile: TriggerProfile) : this(injector) {
-        profileName = InputProfileName(rh, activePlugin, triggerProfile.profileName.value)
+        profileName = InputProfileName(triggerProfile.profileName.value)
     }
 
     fun setValue(value: String): TriggerProfile {
@@ -45,6 +45,6 @@ class TriggerProfile(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyDescription(): String =
         "${rh.gs(R.string.profilecheck)}: ${profileName.value}"
     override fun composeIcon() = null
-    override fun composeIconTint() = IconTint.Default
+    override fun composeIconTint() = IconTint.Profile
     override fun duplicate(): Trigger = TriggerProfile(injector, this)
 }
