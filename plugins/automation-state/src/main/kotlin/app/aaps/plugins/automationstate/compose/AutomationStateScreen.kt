@@ -160,7 +160,6 @@ fun AutomationStateScreen(
                                             selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
                                             containerColor = androidx.compose.ui.graphics.Color(0xFFBDBDBD),
                                             labelColor = androidx.compose.ui.graphics.Color(0xFF212121),
-                                            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
                                             selectedLabelColor = androidx.compose.ui.graphics.Color.White
                                         )
                                     )
