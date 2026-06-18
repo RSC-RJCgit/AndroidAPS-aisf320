@@ -430,7 +430,7 @@ private fun ImportReviewContent(
         },
         bottomBar = {
             if (canImport) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .bottomBarSafeArea()
@@ -451,7 +451,7 @@ private fun ImportReviewContent(
                                     onCheckedChange = onStatesAcknowledgedChange
                                 )
                                 Text(
-                                    "Automation States will be DISABLED after import. Enable in States tab.",
+                                    "Tick to keep Automation States ENABLED after import (not recommended for new imports)",
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.padding(start = 4.dp)
                                 )
