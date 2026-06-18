@@ -129,7 +129,8 @@ fun AutomationStateScreen(
                 items(states) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
-                        onClick = { editingState = name }
+                        onClick = { editingState = name },
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFEEEEEE))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -153,8 +154,8 @@ fun AutomationStateScreen(
                                         onClick = { viewModel.setState(name, value) },
                                         label = { Text(value) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                            selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
+                                            selectedLabelColor = androidx.compose.ui.graphics.Color.White
                                         )
                                     )
                                 }
