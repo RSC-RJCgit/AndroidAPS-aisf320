@@ -416,7 +416,6 @@ private fun ImportReviewContent(
     val focusManager = LocalFocusManager.current
     val successResult = state.decryptResult as? ImportDecryptResult.Success
     val canImport = successResult != null && successResult.importPossible
-    var statesAcknowledged by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             AapsTopAppBar(
