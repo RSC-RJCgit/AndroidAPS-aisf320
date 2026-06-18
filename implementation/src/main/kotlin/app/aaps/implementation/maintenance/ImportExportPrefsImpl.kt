@@ -906,6 +906,7 @@ class ImportExportPrefsImpl @Inject constructor(
         activePlugin.beforeImport()
         sp.clear()
         for ((key, value) in prefs.values) {
+            if (key == "automation_states_enabled") continue // handled explicitly after import
             if (value == "true" || value == "false") {
                 sp.putBoolean(key, value.toBoolean())
             } else {
