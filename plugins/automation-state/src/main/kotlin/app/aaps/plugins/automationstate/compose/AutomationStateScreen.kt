@@ -1,5 +1,6 @@
 package app.aaps.plugins.automationstate.compose
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.ui.compose.ToolbarConfig
@@ -42,6 +44,14 @@ fun AutomationStateScreen(
     val states by viewModel.states.collectAsStateWithLifecycle()
 
     if (showAddStateDialog) {
+        AddStateDialog(
+            onDismiss = { showAddStateDialog = false },
+            onConfirm = { name, values ->
+                viewModel.addState(name, values)
+                showAddStateDialog = false
+            }
+        )
+    }
 
     editingState?.let { stateName ->
         EditStateDialog(
@@ -60,12 +70,8 @@ fun AutomationStateScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-
-        // Enable/disable toggle always visible at top
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (enabled)
                     MaterialTheme.colorScheme.primaryContainer
@@ -74,9 +80,7 @@ fun AutomationStateScreen(
             )
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -87,7 +91,7 @@ fun AutomationStateScreen(
                     )
                     if (!enabled) {
                         Text(
-                            text = "States are inactive ΓÇö automations will not trigger",
+                            text = "States are inactive — automations will not trigger",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -114,11 +118,12 @@ fun AutomationStateScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(Color(0xFFF5F5F5))) {
                 items(states) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
-                        onClick = { editingState = name }
+                        onClick = { editingState = name },
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD0D0D0))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -126,9 +131,17 @@ fun AutomationStateScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = name, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color(0xFF212121)
+                                )
                                 IconButton(onClick = { viewModel.deleteState(name) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Delete",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -142,8 +155,10 @@ fun AutomationStateScreen(
                                         onClick = { viewModel.setState(name, value) },
                                         label = { Text(value) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                            selectedContainerColor = Color(0xFF2E7D32),
+                                            containerColor = Color(0xFFBDBDBD),
+                                            labelColor = Color(0xFF212121),
+                                            selectedLabelColor = Color.White
                                         )
                                     )
                                 }
@@ -219,7 +234,8 @@ fun EditStateDialog(
     onConfirm: (List<String>) -> Unit,
     onDelete: () -> Unit
 ) {
-    var valuesText by remember { mutableStateOf(currentValues.joinToString(", ")) }
+    var values by remember { mutableStateOf(currentValues.toMutableList()) }
+    var newValue by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -246,15 +262,69 @@ fun EditStateDialog(
         title = { Text("Edit: $stateName") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = valuesText,
-                    onValueChange = { valuesText = it; error = "" },
-                    label = { Text("Values (comma separated)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (values.isEmpty()) {
+                    Text(
+                        "No values - add one below",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    values.toList().forEach { value ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = value,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = {
+                                    values = values.toMutableList().also { it.remove(value) }
+                                    error = ""
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Remove",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newValue,
+                        onValueChange = { newValue = it; error = "" },
+                        label = { Text("New value") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            val v = newValue.trim()
+                            when {
+                                v.isEmpty() -> error = "Enter a value"
+                                values.contains(v) -> error = "Already exists"
+                                else -> {
+                                    values = values.toMutableList().also { it.add(v) }
+                                    newValue = ""
+                                }
+                            }
+                        }
+                    ) { Text("Add") }
+                }
                 if (error.isNotEmpty()) {
-                    Text(error, color = MaterialTheme.colorScheme.error)
+                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = { showDeleteConfirm = true }) {
                     Text("Delete this state", color = MaterialTheme.colorScheme.error)
@@ -263,9 +333,8 @@ fun EditStateDialog(
         },
         confirmButton = {
             Button(onClick = {
-                val values = valuesText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                 if (values.isEmpty()) error = "At least one value required"
-                else onConfirm(values)
+                else onConfirm(values.toList())
             }) { Text("Save") }
         },
         dismissButton = {
