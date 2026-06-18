@@ -444,7 +444,7 @@ private fun ImportReviewContent(
                             ) {
                                 Checkbox(
                                     checked = statesAcknowledged,
-                                    onCheckedChange = { statesAcknowledged = it; viewModel.statesAcknowledged = it }
+                                    onCheckedChange = onStatesAcknowledgedChange
                                 )
                                 Text(
                                     "Tick to keep Automation States ENABLED after import (else will be disabled - re-enable in States tab)",
