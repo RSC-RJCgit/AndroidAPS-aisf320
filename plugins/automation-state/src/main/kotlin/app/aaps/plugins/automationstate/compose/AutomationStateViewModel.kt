@@ -15,6 +15,9 @@ class AutomationStateViewModel @Inject constructor(
     private val preferences: Preferences
 ) : ViewModel() {
 
+    private val _refreshTick = MutableStateFlow(0)
+    val refreshTick: StateFlow<Int> = _refreshTick
+
     private val _states = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     val states: StateFlow<List<Pair<String, String>>> = _states
 
@@ -28,6 +31,7 @@ class AutomationStateViewModel @Inject constructor(
     fun refresh() {
         // Force new list reference for Compose recomposition
         _states.value = emptyList(); _states.value = automationState.getAllStates().toList()
+        _refreshTick.value += 1
     }
 
     fun setState(stateName: String, value: String) {

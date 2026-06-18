@@ -44,6 +44,8 @@ fun AutomationStateScreen(
     }
 
     val states by viewModel.states.collectAsStateWithLifecycle()
+    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
+    @Suppress("UNUSED_EXPRESSION") refreshTick
 
     if (showAddStateDialog) {
         AddStateDialog(
@@ -139,7 +141,7 @@ fun AutomationStateScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = name, style = MaterialTheme.typography.titleMedium)
+                                Text(text = name, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFF212121))
                                 IconButton(onClick = { viewModel.deleteState(name) }) {
                                     Icon(Icons.Filled.Delete, contentDescription = "Delete")
                                 }
@@ -157,6 +159,8 @@ fun AutomationStateScreen(
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
                                             containerColor = androidx.compose.ui.graphics.Color(0xFFBDBDBD),
+                                            labelColor = androidx.compose.ui.graphics.Color(0xFF212121),
+                                            selectedLabelColor = androidx.compose.ui.graphics.Color.White,
                                             selectedLabelColor = androidx.compose.ui.graphics.Color.White
                                         )
                                     )
@@ -288,7 +292,7 @@ fun EditStateDialog(
                                 Icon(
                                     Icons.Filled.Delete,
                                     contentDescription = "Remove",
-                                    tint = MaterialTheme.colorScheme.error
+                                    tint = androidx.compose.ui.graphics.Color(0xFF212121)
                                 )
                             }
                         }
