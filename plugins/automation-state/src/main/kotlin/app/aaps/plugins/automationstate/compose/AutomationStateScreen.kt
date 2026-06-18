@@ -42,6 +42,8 @@ fun AutomationStateScreen(
     ))
 
     val states by viewModel.states.collectAsStateWithLifecycle()
+    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
+    if (refreshTick >= 0) Unit // force recomposition
 
     if (showAddStateDialog) {
         AddStateDialog(
