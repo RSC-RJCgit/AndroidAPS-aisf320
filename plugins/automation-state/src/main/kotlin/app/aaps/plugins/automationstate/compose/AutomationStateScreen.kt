@@ -1,6 +1,5 @@
 package app.aaps.plugins.automationstate.compose
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.ui.compose.ToolbarConfig
@@ -27,23 +25,23 @@ fun AutomationStateScreen(
     var editingState by remember { mutableStateOf<String?>(null) }
     var enabled by remember { mutableStateOf(viewModel.isEnabled) }
 
-    setToolbarConfig(ToolbarConfig(
-        title = "Automation States",
-        navigationIcon = @Composable {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    LaunchedEffect(Unit) {
+        setToolbarConfig(ToolbarConfig(
+            title = "Automation States",
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            },
+            actions = {
+                IconButton(onClick = { showAddStateDialog = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add State")
+                }
             }
-        },
-        actions = @Composable {
-            IconButton(onClick = { showAddStateDialog = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add State")
-            }
-        }
-    ))
+        ))
+    }
 
     val states by viewModel.states.collectAsStateWithLifecycle()
-    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
-    if (refreshTick >= 0) Unit // force recomposition
 
     if (showAddStateDialog) {
         AddStateDialog(
@@ -72,8 +70,12 @@ fun AutomationStateScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+
+        // Enable/disable toggle always visible at top
         Card(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (enabled)
                     MaterialTheme.colorScheme.primaryContainer
@@ -82,7 +84,9 @@ fun AutomationStateScreen(
             )
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -93,7 +97,7 @@ fun AutomationStateScreen(
                     )
                     if (!enabled) {
                         Text(
-                            text = "States are inactive ΓÇö automations will not trigger",
+                            text = "States are inactive Î“Ã‡Ã¶ automations will not trigger",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -120,12 +124,12 @@ fun AutomationStateScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(Color(0xFFF5F5F5))) {
-                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                items(states) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         onClick = { editingState = name },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD0D0D0))
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFD0D0D0))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -133,17 +137,9 @@ fun AutomationStateScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color(0xFF212121)
-                                )
+                                Text(text = name, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFF212121))
                                 IconButton(onClick = { viewModel.deleteState(name) }) {
-                                    Icon(
-                                        Icons.Filled.Delete,
-                                        contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -157,10 +153,10 @@ fun AutomationStateScreen(
                                         onClick = { viewModel.setState(name, value) },
                                         label = { Text(value) },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = Color(0xFF2E7D32),
-                                            containerColor = Color(0xFFBDBDBD),
-                                            labelColor = Color(0xFF212121),
-                                            selectedLabelColor = Color.White
+                                            selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
+                                            containerColor = androidx.compose.ui.graphics.Color(0xFFBDBDBD),
+                                            labelColor = androidx.compose.ui.graphics.Color(0xFF212121),
+                                            selectedLabelColor = androidx.compose.ui.graphics.Color.White
                                         )
                                     )
                                 }
