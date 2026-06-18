@@ -121,7 +121,9 @@ fun ImportSettingsScreen(
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport(keepStatesEnabled = statesAcknowledged) },
-                onBack = { viewModel.goBackToFilePicker() }
+                onBack = { viewModel.goBackToFilePicker() },
+                statesAcknowledged = statesAcknowledged,
+                onStatesAcknowledgedChange = { statesAcknowledged = it }
             )
         }
 
