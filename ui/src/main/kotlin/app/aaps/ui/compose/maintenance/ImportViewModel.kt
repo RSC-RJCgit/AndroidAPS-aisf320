@@ -263,7 +263,11 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    var statesAcknowledged = false
+    private val _statesAcknowledged = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val statesAcknowledgedFlow = _statesAcknowledged
+    var statesAcknowledged: Boolean
+        get() = _statesAcknowledged.value
+        set(value) { _statesAcknowledged.value = value }
 
     fun confirmImport(keepStatesEnabled: Boolean = false) {
         val current = importStep.value
