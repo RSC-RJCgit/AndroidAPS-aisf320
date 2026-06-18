@@ -46,6 +46,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.actions.ActionStopProcessing
@@ -79,6 +80,7 @@ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
@@ -349,7 +351,7 @@ class AutomationPlugin @Inject constructor(
                     val sb = StringBuilder()
                         .append(dateUtil.timeString(dateUtil.now()))
                         .append(" ")
-                        .append(if (result.success) "☺" else "▼")
+                        .append(if (result.success) "Γÿ║" else "Γû╝")
                         .append(" <b>")
                         .append(event.title)
                         .append(":</b> ")
@@ -436,6 +438,7 @@ class AutomationPlugin @Inject constructor(
             ActionStopTempTarget(injector),
             ActionNotification(injector),
             ActionAlarm(injector),
+            ActionSetAutomationState(injector),
             ActionSettingsExport(injector),
             ActionCarePortalEvent(injector),
             ActionProfileSwitchPercent(injector),
@@ -454,6 +457,7 @@ class AutomationPlugin @Inject constructor(
 
     fun getTriggerDummyObjects(): List<Trigger> {
         val triggers = mutableListOf(
+            TriggerAutomationState(injector),
             TriggerConnector(injector),
             TriggerTime(injector),
             TriggerRecurringTime(injector),

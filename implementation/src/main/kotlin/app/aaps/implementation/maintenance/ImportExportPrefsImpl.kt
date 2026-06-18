@@ -90,6 +90,7 @@ private fun filenameTimestamp(): String =
 
 @Reusable
 class ImportExportPrefsImpl @Inject constructor(
+
     private var aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -111,10 +112,12 @@ class ImportExportPrefsImpl @Inject constructor(
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val storage: Storage
 ) : ImportExportPrefs {
-
+    override fun setAutomationStatesEnabled(enabled: Boolean) {
+        sp.putBoolean("automation_states_enabled", enabled)
+    }
     private var pendingExportFile: DocumentFile? = null
 
-    // Compose export support — discrete steps
+    // Compose export support ╬ô├ç├╢ discrete steps
 
     override fun isMasterPasswordSet(): Boolean =
         !preferences.getIfExists(StringKey.ProtectionMasterPassword).isNullOrEmpty()
@@ -335,7 +338,7 @@ class ImportExportPrefsImpl @Inject constructor(
     override fun cacheExportPassword(password: String): String =
         exportPasswordDataStore.putPasswordToDataStore(context, password)
 
-    // Legacy export — uses dialogs via uiInteraction (kept for old UI)
+    // Legacy export ╬ô├ç├╢ uses dialogs via uiInteraction (kept for old UI)
 
     override fun exportSharedPreferences(activity: FragmentActivity) {
         exportSharedPreferencesLegacy(activity)
@@ -811,7 +814,7 @@ class ImportExportPrefsImpl @Inject constructor(
         return importOk
     }
 
-    // Compose import support — discrete steps, no UI
+    // Compose import support ╬ô├ç├╢ discrete steps, no UI
 
     override suspend fun getLocalImportFiles(): List<PrefsFile> =
         kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -880,7 +883,7 @@ class ImportExportPrefsImpl @Inject constructor(
 
             val importOk = checkIfImportIsOk(prefs)
 
-            // Check if encryption metadata has ERROR → wrong password
+            // Check if encryption metadata has ERROR ╬ô├Ñ├å wrong password
             if (!importOk && prefs.metadata[PrefsMetadataKeyImpl.ENCRYPTION]?.status == PrefsStatusImpl.ERROR) {
                 return ImportDecryptResult.WrongPassword
             }
@@ -903,12 +906,15 @@ class ImportExportPrefsImpl @Inject constructor(
         activePlugin.beforeImport()
         sp.clear()
         for ((key, value) in prefs.values) {
+            if (key == "automation_states_enabled") continue // handled explicitly after import
             if (value == "true" || value == "false") {
                 sp.putBoolean(key, value.toBoolean())
             } else {
                 sp.putString(key, value)
             }
         }
+        // Safety: disable automation states after import - user must explicitly re-enable
+        sp.putBoolean("automation_states_enabled", false)
         activePlugin.afterImport()
     }
 
