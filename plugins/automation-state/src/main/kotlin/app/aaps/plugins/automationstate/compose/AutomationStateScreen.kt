@@ -121,7 +121,7 @@ fun AutomationStateScreen(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(Color(0xFFF5F5F5))) {
-                items(states) { (name, current) ->
+                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         onClick = { editingState = name },
