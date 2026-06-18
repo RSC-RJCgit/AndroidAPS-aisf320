@@ -48,6 +48,7 @@ class AutomationStateViewModel @Inject constructor(
     }
 
     fun updateStateValues(name: String, values: List<String>) {
+        if (values.isEmpty()) return // safety guard
         automationState.setStateValues(name, values)
         val current = automationState.getState(name)
         if (current.isEmpty() || !values.contains(current)) {

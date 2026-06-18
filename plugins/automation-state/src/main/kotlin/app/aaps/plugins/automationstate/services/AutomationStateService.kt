@@ -57,6 +57,7 @@ class AutomationStateService @Inject constructor(
     override fun getStateValues(stateName: String): List<String> = stateValues[stateName.trim()] ?: emptyList()
 
     override fun setStateValues(stateName: String, values: List<String>) {
+        if (values.isEmpty()) return // safety guard - never set empty values list
         val trimmedName = stateName.trim()
         val trimmedValues = values.map { it.trim() }
         val currentState = automationStates[trimmedName]
