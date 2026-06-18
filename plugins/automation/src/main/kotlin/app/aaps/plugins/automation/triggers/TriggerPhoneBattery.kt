@@ -4,19 +4,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
-import android.widget.LinearLayout
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
+import app.aaps.plugins.automation.compose.IconTint
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.elements.InputDouble
-import app.aaps.plugins.automation.elements.LabelWithElement
-import app.aaps.plugins.automation.elements.LayoutBuilder
-import app.aaps.plugins.automation.elements.StaticLabel
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import java.text.DecimalFormat
-import java.util.Optional
 import javax.inject.Inject
 
 class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
@@ -31,11 +27,12 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
         comparator = Comparator(rh, triggerPhoneBattery.comparator.value)
     }
 
-    override fun shouldRun(): Boolean {
+    override suspend fun shouldRun(): Boolean {
         val level = getPhoneBatteryLevel()
         if (level < 0) return false
         val doRun = comparator.value.check(level, batteryLevel.value)
         if (doRun) aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
+        else aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
         return doRun
     }
 
@@ -61,19 +58,9 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
     }
 
     override fun friendlyName(): Int = R.string.trigger_phone_battery_label
-
     override fun friendlyDescription(): String =
         "Phone battery ${rh.gs(comparator.value.stringRes)} ${batteryLevel.value.toInt()}%"
-
-    override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_age_battery)
-
+    override fun composeIcon() = null
+    override fun composeIconTint() = IconTint.Default
     override fun duplicate(): Trigger = TriggerPhoneBattery(injector, this)
-
-    override fun generateDialog(root: LinearLayout) {
-        LayoutBuilder()
-            .add(StaticLabel(rh, R.string.trigger_phone_battery_label, this))
-            .add(comparator)
-            .add(LabelWithElement(rh, "Phone battery %", "", batteryLevel))
-            .build(root)
-    }
 }
