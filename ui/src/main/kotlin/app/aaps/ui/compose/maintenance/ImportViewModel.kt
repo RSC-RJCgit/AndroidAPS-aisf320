@@ -263,6 +263,8 @@ class ImportViewModel @Inject constructor(
         }
     }
 
+    var statesAcknowledged = false
+
     fun confirmImport(keepStatesEnabled: Boolean = false) {
         val current = importStep.value
         if (current !is ImportStep.Review) return
