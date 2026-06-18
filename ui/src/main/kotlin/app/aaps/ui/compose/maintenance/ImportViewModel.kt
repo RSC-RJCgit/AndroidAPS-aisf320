@@ -71,7 +71,7 @@ class ImportViewModel @Inject constructor(
 
     fun startImport(source: ImportSource) {
         // Always reload on a fresh entry so newly exported files appear in the list.
-        // Returning from the Review step uses goBackToFilePicker(), which keeps the cache —
+        // Returning from the Review step uses goBackToFilePicker(), which keeps the cache ΓÇö
         // Review is an internal ImportStep, not a nav route, so it never re-enters here.
         cachedSource = source
         cachedFiles = emptyList()
@@ -108,7 +108,7 @@ class ImportViewModel @Inject constructor(
                 }
             }
         } else {
-            // Cloud only — show loading with progress
+            // Cloud only ΓÇö show loading with progress
             _importStep.value = ImportStep.FilePicker(
                 files = emptyList(),
                 hasMoreCloud = false,
@@ -186,7 +186,7 @@ class ImportViewModel @Inject constructor(
         _importStep.value = ImportStep.Review(
             file = item.prefsFile,
             fileSource = item.source,
-            // No local master password → skip the "try master password first" optimization
+            // No local master password ΓåÆ skip the "try master password first" optimization
             // and ask for the file's decryption password directly.
             needsDecryptionPassword = !importExportPrefs.isMasterPasswordSet()
         )
@@ -237,7 +237,7 @@ class ImportViewModel @Inject constructor(
             when (result) {
                 is ImportDecryptResult.WrongPassword -> {
                     if (!prev.needsDecryptionPassword) {
-                        // Master password didn't decrypt → show decryption password field
+                        // Master password didn't decrypt ΓåÆ show decryption password field
                         _importStep.value = prev.copy(
                             isProcessing = false,
                             needsDecryptionPassword = true,
@@ -263,7 +263,13 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    private val _statesAcknowledged = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val statesAcknowledgedFlow = _statesAcknowledged
+    var statesAcknowledged: Boolean
+        get() = _statesAcknowledged.value
+        set(value) { _statesAcknowledged.value = value }
+
+    fun confirmImport(keepStatesEnabled: Boolean = false) {
         val current = importStep.value
         if (current !is ImportStep.Review) return
         val result = current.decryptResult
@@ -273,7 +279,11 @@ class ImportViewModel @Inject constructor(
 
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                android.util.Log.e("STATES_DEBUG", "confirmImport keepStatesEnabled=$keepStatesEnabled statesAcknowledged=$statesAcknowledged")
                 importExportPrefs.executeImport(result.prefs)
+                if (keepStatesEnabled) {
+                    importExportPrefs.setAutomationStatesEnabled(true)
+                }
                 importExportPrefs.prepareImportRestart()
             }
             _importStep.value = ImportStep.RestartConfirm

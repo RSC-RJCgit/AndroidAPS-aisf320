@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,7 @@ import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
 import app.aaps.plugins.automation.triggers.TriggerTimeRange
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerWifiSsid
 import app.aaps.core.keys.R as KeysR
 
@@ -98,6 +103,8 @@ fun TriggerEditor(
             is TriggerWifiSsid           -> TriggerWifiSsidEditor(trigger, onChange)
             is TriggerBTDevice           -> TriggerBTDeviceEditor(trigger, bondedDevices, onChange)
             is TriggerLocation           -> TriggerLocationEditor(trigger, onChange, tick, showCurrentLocation, onUseCurrentLocation, onPickLocationFromMap)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
             is TriggerConnector          -> Text("Connector")
             else                         -> Text(trigger.javaClass.simpleName)
         }
@@ -571,4 +578,47 @@ fun TriggerLocationEditor(
         value = t.modeSelected.value,
         onValueChange = { t.modeSelected.value = it; onChange() }
     )
+}
+
+@Composable
+fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit) {
+    val allStates = t.automationStateService.getAllStates()
+    val stateNames = allStates.map { it.first }
+    var selectedName by remember { mutableStateOf(t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" }) }
+    var selectedValue by remember { mutableStateOf(t.stateValue) }
+    val stateValues = if (selectedName.isNotEmpty()) t.automationStateService.getStateValues(selectedName) else emptyList()
+    if (t.stateValue.isEmpty() && stateValues.isNotEmpty()) {
+        t.stateValue = stateValues.first()
+        selectedValue = stateValues.first()
+    }
+
+    if (stateNames.isEmpty()) {
+        Text("No automation states defined. Create states in the Automation States tab first.")
+        return
+    }
+
+    AutomationDropdown(
+        value = selectedName,
+        options = stateNames,
+        onValueChange = {
+            selectedName = it
+            selectedValue = ""
+            t.stateName = it
+            t.stateValue = ""
+            onChange()
+        },
+        label = "State"
+    )
+    if (stateValues.isNotEmpty()) {
+        AutomationDropdown(
+            value = if (selectedValue.isEmpty()) stateValues.firstOrNull() ?: "" else selectedValue,
+            options = stateValues,
+            onValueChange = {
+                selectedValue = it
+                t.stateValue = it
+                onChange()
+            },
+            label = "Value"
+        )
+    }
 }

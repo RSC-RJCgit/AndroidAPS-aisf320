@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -26,6 +30,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.compose.elements.AutomationDropdown
@@ -47,7 +52,7 @@ fun ActionEditor(
 ) {
     @Suppress("UNUSED_EXPRESSION") tick
     if (!action.hasDialog()) {
-        // Actions with no user input — show a short description.
+        // Actions with no user input ΓÇö show a short description.
         Text(
             text = staticDescription(action),
             style = MaterialTheme.typography.bodyMedium,
@@ -74,6 +79,7 @@ fun ActionEditor(
             is ActionRunScene             -> ActionRunSceneEditor(action, sceneOptions, onChange)
             is ActionEnableScene          -> ActionEnableSceneEditor(action, sceneOptions, onChange)
             is ActionDisableScene         -> ActionDisableSceneEditor(action, sceneOptions, onChange)
+            is ActionSetAutomationState  -> ActionSetAutomationStateEditor(action, onChange)
             else                          -> Text(action.javaClass.simpleName)
         }
     }
@@ -327,4 +333,46 @@ fun ActionDisableSceneEditor(a: ActionDisableScene, sceneOptions: List<Scene>, o
         sceneOptions = sceneOptions,
         onPicked = { a.scene.value = it; onChange() }
     )
+}
+
+@Composable
+fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> Unit) {
+    val stateNames = a.automationState.getAllStates().map { it.first }
+    var selectedName by remember { mutableStateOf(if (a.stateName.isEmpty()) stateNames.firstOrNull() ?: "" else a.stateName) }.also { if (a.stateName.isEmpty() && stateNames.isNotEmpty()) { a.stateName = stateNames.first() } }
+    var selectedValue by remember { mutableStateOf(a.stateValue) }
+    val stateValues = if (selectedName.isNotEmpty()) a.automationState.getStateValues(selectedName) else emptyList()
+    if (a.stateValue.isEmpty() && stateValues.isNotEmpty()) {
+        a.stateValue = stateValues.first()
+        selectedValue = stateValues.first()
+    }
+
+    if (stateNames.isEmpty()) {
+        Text("No automation states defined. Create states in the Automation States tab first.")
+        return
+    }
+
+    AutomationDropdown(
+        value = selectedName,
+        options = stateNames,
+        onValueChange = { newName ->
+            selectedName = newName
+            selectedValue = ""
+            a.stateName = newName
+            a.stateValue = ""
+            onChange()
+        },
+        label = "State"
+    )
+    if (stateValues.isNotEmpty()) {
+        AutomationDropdown(
+            value = if (selectedValue.isEmpty()) stateValues.firstOrNull() ?: "" else selectedValue,
+            options = stateValues,
+            onValueChange = { newVal ->
+                selectedValue = newVal
+                a.stateValue = newVal
+                onChange()
+            },
+            label = "Value"
+        )
+    }
 }
