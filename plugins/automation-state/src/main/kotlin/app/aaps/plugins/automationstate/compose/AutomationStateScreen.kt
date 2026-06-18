@@ -125,12 +125,12 @@ fun AutomationStateScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(androidx.compose.ui.graphics.Color(0xFFF5F5F5))) {
                 items(states) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
                         onClick = { editingState = name },
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFEEEEEE))
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFD0D0D0))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -155,6 +155,7 @@ fun AutomationStateScreen(
                                         label = { Text(value) },
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
+                                            containerColor = androidx.compose.ui.graphics.Color(0xFFBDBDBD),
                                             selectedLabelColor = androidx.compose.ui.graphics.Color.White
                                         )
                                     )
