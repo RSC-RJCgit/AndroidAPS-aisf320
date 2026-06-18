@@ -121,7 +121,9 @@ fun ImportSettingsScreen(
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport(keepStatesEnabled = viewModel.statesAcknowledged) },
-                onBack = { viewModel.goBackToFilePicker() }
+                onBack = { viewModel.goBackToFilePicker() },
+                statesAcknowledged = statesAcknowledged,
+                onStatesAcknowledgedChange = { statesAcknowledged = it; viewModel.statesAcknowledged = it }
             )
         }
 
@@ -407,7 +409,9 @@ private fun ImportReviewContent(
     onDecryptionPasswordChanged: (String) -> Unit,
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    statesAcknowledged: Boolean,
+    onStatesAcknowledgedChange: (Boolean) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val successResult = state.decryptResult as? ImportDecryptResult.Success
