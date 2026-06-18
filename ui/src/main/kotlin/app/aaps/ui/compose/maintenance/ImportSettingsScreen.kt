@@ -447,7 +447,7 @@ private fun ImportReviewContent(
                                     onCheckedChange = { statesAcknowledged = it }
                                 )
                                 Text(
-                                    "Automation States will be DISABLED after import. Enable in States tab.",
+                                    "Tick to keep Automation States ENABLED after import (else will be disabled - re-enable in States tab)",
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.padding(start = 4.dp)
                                 )
