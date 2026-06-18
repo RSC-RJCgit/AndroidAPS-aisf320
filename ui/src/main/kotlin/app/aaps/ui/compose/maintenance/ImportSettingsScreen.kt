@@ -437,38 +437,17 @@ private fun ImportReviewContent(
                         .padding(16.dp)
                 ) {
                     val importOk = successResult.importOk
-                    Column {
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = statesAcknowledged,
-                                    onCheckedChange = onStatesAcknowledgedChange
-                                )
-                                Text(
-                                    "Tick to keep Automation States ENABLED after import (not recommended for new imports)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
-                            }
-                        }
-                        Button(
-                            onClick = onImport,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !state.isProcessing,
-                            colors = if (importOk) ButtonDefaults.buttonColors()
-                            else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text(
-                                if (importOk) stringResource(CoreUiR.string.import_btn)
-                                else stringResource(CoreUiR.string.import_anyway_btn)
-                            )
-                        }
+                    Button(
+                        onClick = onImport,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !state.isProcessing,
+                        colors = if (importOk) ButtonDefaults.buttonColors()
+                        else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text(
+                            if (importOk) stringResource(CoreUiR.string.import_btn)
+                            else stringResource(CoreUiR.string.import_anyway_btn)
+                        )
                     }
                 }
             }
