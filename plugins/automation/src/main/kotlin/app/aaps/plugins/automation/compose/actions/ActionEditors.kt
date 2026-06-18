@@ -338,9 +338,13 @@ fun ActionDisableSceneEditor(a: ActionDisableScene, sceneOptions: List<Scene>, o
 @Composable
 fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> Unit) {
     val stateNames = a.automationState.getAllStates().map { it.first }
-    var selectedName by remember { mutableStateOf(if (a.stateName.isEmpty()) stateNames.firstOrNull() ?: "" else a.stateName) }
+    var selectedName by remember { mutableStateOf(if (a.stateName.isEmpty()) stateNames.firstOrNull() ?: "" else a.stateName) }.also { if (a.stateName.isEmpty() && stateNames.isNotEmpty()) { a.stateName = stateNames.first() } }
     var selectedValue by remember { mutableStateOf(a.stateValue) }
     val stateValues = if (selectedName.isNotEmpty()) a.automationState.getStateValues(selectedName) else emptyList()
+    if (a.stateValue.isEmpty() && stateValues.isNotEmpty()) {
+        a.stateValue = stateValues.first()
+        selectedValue = stateValues.first()
+    }
 
     if (stateNames.isEmpty()) {
         Text("No automation states defined. Create states in the Automation States tab first.")

@@ -587,6 +587,10 @@ fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit
     var selectedName by remember { mutableStateOf(t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" }) }
     var selectedValue by remember { mutableStateOf(t.stateValue) }
     val stateValues = if (selectedName.isNotEmpty()) t.automationStateService.getStateValues(selectedName) else emptyList()
+    if (t.stateValue.isEmpty() && stateValues.isNotEmpty()) {
+        t.stateValue = stateValues.first()
+        selectedValue = stateValues.first()
+    }
 
     if (stateNames.isEmpty()) {
         Text("No automation states defined. Create states in the Automation States tab first.")

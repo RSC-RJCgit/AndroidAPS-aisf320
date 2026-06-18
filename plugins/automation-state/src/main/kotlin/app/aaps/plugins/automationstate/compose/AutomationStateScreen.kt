@@ -291,7 +291,7 @@ fun EditStateDialog(
                                 Icon(
                                     Icons.Filled.Delete,
                                     contentDescription = "Remove",
-                                    tint = androidx.compose.ui.graphics.Color(0xFF212121)
+                                    tint = MaterialTheme.colorScheme.error
                                 )
                             }
                         }
