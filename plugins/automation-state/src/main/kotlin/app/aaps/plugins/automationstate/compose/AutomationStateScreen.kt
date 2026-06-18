@@ -11,11 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.background
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.ui.compose.ToolbarConfig
-import androidx.compose.material3.HorizontalDivider
 
 @Composable
 fun AutomationStateScreen(
@@ -30,12 +28,12 @@ fun AutomationStateScreen(
     LaunchedEffect(Unit) {
         setToolbarConfig(ToolbarConfig(
             title = "Automation States",
-            navigationIcon = {
+            navigationIcon = @Composable {
                 IconButton(onClick = onNavigateBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             },
-            actions = {
+            actions = @Composable {
                 IconButton(onClick = { showAddStateDialog = true }) {
                     Icon(Icons.Filled.Add, contentDescription = "Add State")
                 }
@@ -44,8 +42,6 @@ fun AutomationStateScreen(
     }
 
     val states by viewModel.states.collectAsStateWithLifecycle()
-    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
-    @Suppress("UNUSED_EXPRESSION") refreshTick
 
     if (showAddStateDialog) {
         AddStateDialog(
@@ -101,7 +97,7 @@ fun AutomationStateScreen(
                     )
                     if (!enabled) {
                         Text(
-                            text = "States are inactive â€” automations will not trigger",
+                            text = "States are inactive Î“Ã‡Ã¶ automations will not trigger",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -128,7 +124,7 @@ fun AutomationStateScreen(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(androidx.compose.ui.graphics.Color(0xFFF5F5F5))) {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 items(states) { (name, current) ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(4.dp),
