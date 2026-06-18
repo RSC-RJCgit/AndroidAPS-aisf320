@@ -25,6 +25,8 @@ import app.aaps.plugins.automation.services.LocationService
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
@@ -90,6 +92,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerProfilePercentInjector(): TriggerProfilePercent
     @ContributesAndroidInjector abstract fun triggerPumpLastConnectionInjector(): TriggerPumpLastConnection
     @ContributesAndroidInjector abstract fun triggerBTDeviceInjector(): TriggerBTDevice
+    @ContributesAndroidInjector abstract fun triggerPhoneBatteryInjector(): TriggerPhoneBattery
+    @ContributesAndroidInjector abstract fun triggerProfileInjector(): TriggerProfile
     @ContributesAndroidInjector abstract fun triggerRecurringTimeInjector(): TriggerRecurringTime
     @ContributesAndroidInjector abstract fun triggerSceneActiveInjector(): TriggerSceneActive
     @ContributesAndroidInjector abstract fun triggerTempTargetInjector(): TriggerTempTarget

@@ -1,5 +1,9 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="key_google_apis_android" translatable="false">AIzaSyDcZpDRMaGjdhihXp531cVYM6LkEL8KbgM</string>
+    <string name="trigger_phone_battery_label">Phone battery level</string>
+    <string name="profilecheck">Profile check</string>
+
     <string name="automation_short">Auto</string>
     <string name="automation">Automation</string>
     <string name="automation_description">User defined automation tasks</string>
