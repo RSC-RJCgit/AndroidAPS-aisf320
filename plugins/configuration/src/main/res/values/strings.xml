@@ -8,7 +8,7 @@
     <string name="welcome">Welcome</string>
     <string name="welcometosetupwizard">Welcome to setup wizard. It will guide you through the setup process\n</string>
     <string name="end_user_license_agreement">End User License Agreement</string>
-    <string name="end_user_license_agreement_text">MUST NOT BE USED TO MAKE MEDICAL DECISIONS. THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM “AS IS” WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU. SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.</string>
+    <string name="end_user_license_agreement_text">MUST NOT BE USED TO MAKE MEDICAL DECISIONS. THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM ΓÇ£AS ISΓÇ¥ WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU. SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.</string>
     <string name="end_user_license_agreement_i_understand">I UNDERSTAND AND AGREE</string>
     <string name="display_settings">Display Settings</string>
     <string name="low_mark">LOW mark</string>
@@ -21,7 +21,7 @@
     <string name="common_values">Use values of your largest food you usually eat\n</string>
     <string name="syncinfotext">Synchronize data to the cloud. You can skip this part now but you will not be able to pass objectives until you set up Nightscout or Tidepool client.</string>
     <string name="status">Status:</string>
-    <string name="diawarning">Please remember: new insulin profiles require DIA at least 5h. DIA 5–6h on new profile is equal to DIA 3h on old insulin profiles.</string>
+    <string name="diawarning">Please remember: new insulin profiles require DIA at least 5h. DIA 5ΓÇô6h on new profile is equal to DIA 3h on old insulin profiles.</string>
     <string name="profile">Profile</string>
     <string name="doprofileswitch">Do Profile Switch</string>
     <string name="exitwizard">Skip setup wizard</string>
@@ -65,7 +65,7 @@
     <!-- Google Drive Storage -->
 
     <!-- Import source selection dialog -->
-    <string name="loading">Loading…</string>
+    <string name="loading">LoadingΓÇª</string>
     <string name="warning_wrong_directory_selected">Wrong Directory Selected</string>
     <string name="warning_wrong_directory_message">You have selected the \"%1$s\" subdirectory instead of the root AAPS directory. Please select the parent AAPS directory. The app will automatically create and manage subdirectories.</string>
 
@@ -74,4 +74,8 @@
     <!-- Provider-agnostic cloud storage strings -->
 
     <!-- Authorization status strings -->
+
+    <string name="automation_states">Automation States</string>
+    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
+    <string name="automation_states_enable_now">Enable Automation States now</string>
 </resources>

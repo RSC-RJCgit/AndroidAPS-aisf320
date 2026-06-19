@@ -8,6 +8,7 @@ import app.aaps.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
 import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import app.aaps.plugins.automation.AutomationPlugin
+import app.aaps.plugins.automationstate.AutomationStatePlugin
 import app.aaps.plugins.calibration.LinearCalibrationPlugin
 import app.aaps.plugins.calibration.NoCalibrationPlugin
 import app.aaps.plugins.constraints.bgQualityCheck.BgQualityCheckPlugin
@@ -97,7 +98,7 @@ abstract class PluginsListModule {
     @IntKey(80)
     abstract fun bindSensitivityOref1Plugin(plugin: SensitivityOref1Plugin): PluginBase
 
-    // Pumps use @IntKey range 1000–1200. VirtualPump=1000, real drivers start at 1010.
+    // Pumps use @IntKey range 1000ΓÇô1200. VirtualPump=1000, real drivers start at 1010.
     // Each pump module registers its own @PumpDriver binding.
     @Multibinds
     @PumpDriver
@@ -138,6 +139,12 @@ abstract class PluginsListModule {
     @IntoMap
     @IntKey(250)
     abstract fun bindAutomationPlugin(plugin: AutomationPlugin): PluginBase
+
+    @Binds
+    @AllConfigs
+    @IntoMap
+    @IntKey(251)
+    abstract fun bindAutomationStatePlugin(plugin: AutomationStatePlugin): PluginBase
 
     @Binds
     @AllConfigs

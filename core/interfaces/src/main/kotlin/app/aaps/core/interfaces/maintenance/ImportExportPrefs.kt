@@ -48,7 +48,7 @@ data class ExportPreparation(
 )
 
 interface ImportExportPrefs {
-
+    fun setAutomationStatesEnabled(enabled: Boolean)
     fun exportCustomWatchface(customWatchface: CwfData, withDate: Boolean = true)
     fun exportSharedPreferences(activity: FragmentActivity)
     fun exportSharedPreferencesNonInteractive(context: Context, password: String): Boolean
@@ -56,7 +56,7 @@ interface ImportExportPrefs {
     suspend fun executeCsvExport(): ExportResult
     fun exportApsResult(algorithm: String?, input: JSONObject, output: JSONObject?)
 
-    // Compose export support — discrete steps, no UI
+    // Compose export support ╬ô├ç├╢ discrete steps, no UI
 
     /** Check if master password has been configured */
     fun isMasterPasswordSet(): Boolean
@@ -81,7 +81,7 @@ interface ImportExportPrefs {
     fun setCsvLocalEnabled(enabled: Boolean)
     fun setCsvCloudEnabled(enabled: Boolean)
 
-    // Compose import support — discrete steps, no UI
+    // Compose import support ╬ô├ç├╢ discrete steps, no UI
 
     /** Get list of local preference files. */
     suspend fun getLocalImportFiles(): List<PrefsFile>
