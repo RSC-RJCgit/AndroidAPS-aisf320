@@ -26,6 +26,7 @@ fun AutomationStateScreen(
     var showAddStateDialog by remember { mutableStateOf(false) }
     var editingState by remember { mutableStateOf<String?>(null) }
     var enabled by remember { mutableStateOf(viewModel.isEnabled) }
+    var stateToDelete by remember { mutableStateOf<String?>(null) }
 
     setToolbarConfig(ToolbarConfig(
         title = "Automation States",
@@ -67,6 +68,26 @@ fun AutomationStateScreen(
             onDelete = {
                 viewModel.deleteState(stateName)
                 editingState = null
+            }
+        )
+    }
+
+    stateToDelete?.let { name ->
+        AlertDialog(
+            onDismissRequest = { stateToDelete = null },
+            title = { Text("Delete State") },
+            text = { Text("Delete '$name' and all its values?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteState(name)
+                        stateToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { stateToDelete = null }) { Text("Cancel") }
             }
         )
     }
@@ -138,11 +159,11 @@ fun AutomationStateScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     color = Color(0xFF212121)
                                 )
-                                IconButton(onClick = { viewModel.deleteState(name) }) {
+                                IconButton(onClick = { stateToDelete = name }) {
                                     Icon(
                                         Icons.Filled.Delete,
                                         contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.error
+                                        tint = androidx.compose.ui.graphics.Color.Black
                                     )
                                 }
                             }
@@ -291,7 +312,7 @@ fun EditStateDialog(
                                 Icon(
                                     Icons.Filled.Delete,
                                     contentDescription = "Remove",
-                                    tint = MaterialTheme.colorScheme.error
+                                    tint = androidx.compose.ui.graphics.Color.Black
                                 )
                             }
                         }
