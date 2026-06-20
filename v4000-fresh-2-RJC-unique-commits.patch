@@ -1,0 +1,2739 @@
+From a5686cfd6a89df2e1ecc2b8a6d37d519db88acec Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 22:33:01 +0930
+Subject: [PATCH 01/10] 138-rc
+
+---
+ .github/workflows/aaps-ci.yml                 | 154 ++++++------------
+ app/build.gradle.kts                          |   2 +-
+ .../kotlin/app/aaps/di/PluginsListModule.kt   |   7 +
+ buildSrc/src/main/kotlin/Versions.kt          |   4 +-
+ .../maintenance/ImportExportPrefs.kt          |   6 +-
+ .../kotlin/app/aaps/core/keys/BooleanKey.kt   |   4 +-
+ core/keys/src/main/res/values/strings.xml     |   9 +-
+ .../maintenance/ImportExportPrefsImpl.kt      |  18 +-
+ .../plugins/automation/AutomationPlugin.kt    |   6 +-
+ .../aaps/plugins/automation/actions/Action.kt |   1 +
+ .../compose/actions/ActionEditors.kt          |  50 +++++-
+ .../compose/triggers/TriggerEditors.kt        |  50 ++++++
+ .../plugins/automation/di/AutomationModule.kt |   4 +
+ .../plugins/automation/triggers/Trigger.kt    |   1 +
+ .../src/main/res/values/strings.xml           |   6 +
+ .../src/main/res/values/strings.xml           |   4 +
+ settings.gradle                               |   3 +-
+ .../maintenance/ImportSettingsScreen.kt       |  65 ++++++--
+ .../ui/compose/maintenance/ImportViewModel.kt |  22 ++-
+ 19 files changed, 271 insertions(+), 145 deletions(-)
+
+diff --git a/.github/workflows/aaps-ci.yml b/.github/workflows/aaps-ci.yml
+index bc8071a315..3ea2b7b72a 100644
+--- a/.github/workflows/aaps-ci.yml
++++ b/.github/workflows/aaps-ci.yml
+@@ -3,44 +3,6 @@ name: AAPS CI
+ on:
+   workflow_dispatch:
+     inputs:
+-      tagName:
+-        description: 'Select AAPS Version'
+-        required: true
+-        default: '3.4.2.3'
+-        type: choice
+-        options:
+-          # ── 3.4.x (JDK 21) ──────────────────────────────
+-          - 3.4.2.3
+-          - 3.4.2.2
+-          - 3.4.2.1
+-          - 3.4.2.0
+-          - 3.4.1.0
+-          - 3.4.0.0
+-          # ── 3.3.x (JDK 21) ──────────────────────────────
+-          - 3.3.2.1
+-          - 3.3.2.0
+-          - 3.3.1.3
+-          # ── 3.2.x (JDK 17) ──────────────────────────────
+-          - 3.2.0.4
+-          - 3.2.0.3
+-          - 3.2.0.2
+-          - 3.2.0.1
+-          - 3.2.0.0
+-          # ── 3.1.x (JDK 17) ──────────────────────────────
+-          - 3.1.0.3
+-          - 3.1.0.2
+-          - 3.1.0.1
+-          - 3.1.0
+-          # ── 3.0.x (JDK 11) ──────────────────────────────
+-          - 3.0.0.2
+-          - 3.0.0.1
+-          - 3.0.0
+-          # ── 2.x (build not supported) ────────────────────
+-          # ⚠️  2.x versions depend on packages such as
+-          #     com.google.android:flexbox that were only published
+-          #     on JCenter. JCenter shut down in 2022 and these
+-          #     dependencies can no longer be resolved, causing
+-          #     the build to fail.
+       buildVariant:
+         description: 'Select Build Variant'
+         required: true
+@@ -55,6 +17,11 @@ on:
+           - aapsclient2Debug
+           - pumpcontrolRelease
+           - pumpcontrolDebug
++  push:
++    branches:
++      - '*RJC*'
++    paths-ignore:
++      - '.github/workflows/**'
+ 
+ jobs:
+   build:
+@@ -64,7 +31,7 @@ jobs:
+       - name: Decode Secrets Keystore Set and Oauth2 to Env
+         run: |
+           if [ -n "${{ secrets.KEYSTORE_SET }}" ]; then
+-            echo "🔐 Decoding KEYSTORE_SET..."
++            echo "≡ƒöÉ Decoding KEYSTORE_SET..."
+             DECODED=$(echo "${{ secrets.KEYSTORE_SET }}" | base64 -d)
+ 
+             KEYSTORE_BASE64=$(echo "$DECODED" | cut -d'|' -f1)
+@@ -82,9 +49,9 @@ jobs:
+             echo "::add-mask::$KEY_ALIAS"
+             echo "::add-mask::$KEY_PASSWORD"
+ 
+-            echo "✅ Keystore parameters extracted from KEYSTORE_SET"
++            echo "Γ£à Keystore parameters extracted from KEYSTORE_SET"
+           else
+-            echo "ℹ️ KEYSTORE_SET not provided, using separate secrets."
++            echo "Γä╣∩╕Å KEYSTORE_SET not provided, using separate secrets."
+             echo "KEYSTORE_BASE64=${{ secrets.KEYSTORE_BASE64 }}" >> $GITHUB_ENV
+             echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+             echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+@@ -94,30 +61,28 @@ jobs:
+ 
+       - name: Check Secrets
+         run: |
+-          echo "🔍 Checking required secrets..."
++          echo "≡ƒöì Checking required secrets..."
+           MISSING=0
+ 
+           check_secret() {
+             if [ -z "$1" ]; then
+-              echo "❌ Missing secret: $2"
++              echo "Γ¥î Missing secret: $2"
+               MISSING=1
+             fi
+           }
+ 
+-          # Check secrets
+           check_secret "$GDRIVE_OAUTH2" "GDRIVE_OAUTH2"
+-
+           check_secret "$KEYSTORE_BASE64" "KEYSTORE_BASE64"
+           check_secret "$KEYSTORE_PASSWORD" "KEYSTORE_PASSWORD"
+           check_secret "$KEY_ALIAS" "KEY_ALIAS"
+           check_secret "$KEY_PASSWORD" "KEY_PASSWORD"
+ 
+           if [ "$MISSING" -eq 1 ]; then
+-            echo "🛑 Missing required secrets. Stopping build."
++            echo "≡ƒ¢æ Missing required secrets. Stopping build."
+             exit 1
+           fi
+ 
+-          echo "✅ All required secrets are present."
++          echo "Γ£à All required secrets are present."
+ 
+       - name: Decode keystore file
+         run: |
+@@ -127,35 +92,33 @@ jobs:
+       - name: Validating keystore, alias and password
+         run: |
+           set -x
+-          echo "🔐 Validating keystore, alias and password"
++          echo "≡ƒöÉ Validating keystore, alias and password"
+ 
+-          # Create a dummy JAR file (quick method using zip)
+           echo "test" > dummy.txt
+           zip -q dummy.jar dummy.txt
+           rm dummy.txt
+ 
+-          # Attempt to validate using jarsigner
+           JARSIGNER_LOG=$(mktemp)
+           if ! jarsigner \
+               -keystore "$RUNNER_TEMP/keystore/keystore.jks" \
+               -storepass "$KEYSTORE_PASSWORD" \
+               -keypass "$KEY_PASSWORD" \
+               dummy.jar "$KEY_ALIAS" > "$JARSIGNER_LOG" 2>&1; then
+-            echo "❌ Either KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD, or KEY_ALIAS is incorrect"
+-            echo "🔍 jarsigner error output:"
++            echo "Γ¥î Either KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD, or KEY_ALIAS is incorrect"
++            echo "≡ƒöì jarsigner error output:"
+             cat "$JARSIGNER_LOG"
+             rm -f "$JARSIGNER_LOG" dummy.jar
+             exit 1
+           fi
+           rm -f "$JARSIGNER_LOG" dummy.jar
+-          echo "✅ Keystore, alias, and key password are valid."
++          echo "Γ£à Keystore, alias, and key password are valid."
+ 
+           rm -f "$KEYTOOL_LOG"
+-          echo "✅ Keystore and credentials validated."
++          echo "Γ£à Keystore and credentials validated."
+ 
+       - name: Decode GDrive OAuth2 secrets
+         run: |
+-          echo "🔐 Decoding GDRIVE_OAUTH2..."
++          echo "≡ƒöÉ Decoding GDRIVE_OAUTH2..."
+           DECODED=$(echo "${{ secrets.GDRIVE_OAUTH2 }}" | base64 -d)
+ 
+           GDRIVE_CLIENT_ID=$(echo "$DECODED" | cut -d'|' -f1)
+@@ -167,11 +130,11 @@ jobs:
+           echo "GDRIVE_CLIENT_ID=$GDRIVE_CLIENT_ID" >> $GITHUB_ENV
+           echo "GDRIVE_REFRESH_TOKEN=$GDRIVE_REFRESH_TOKEN" >> $GITHUB_ENV
+ 
+-          echo "✅ GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
++          echo "Γ£à GDRIVE_CLIENT_ID and GDRIVE_REFRESH_TOKEN extracted from GDRIVE_OAUTH2"
+ 
+       - name: Retrieving Google Drive access token
+         run: |
+-          echo "🔐 Getting Google OAuth2 access token..."
++          echo "≡ƒöÉ Getting Google OAuth2 access token..."
+           TOKEN_RESPONSE=$(curl -s -X POST https://oauth2.googleapis.com/token \
+             -d client_id="$GDRIVE_CLIENT_ID" \
+             -d refresh_token="$GDRIVE_REFRESH_TOKEN" \
+@@ -179,47 +142,32 @@ jobs:
+           ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .access_token)
+           echo "::add-mask::$ACCESS_TOKEN"
+           if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+-            echo "❌ Failed to get access token."
++            echo "Γ¥î Failed to get access token."
+             echo "$TOKEN_RESPONSE"
+             exit 1
+           fi
+           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
+-          echo "✅ Access token obtained."
++          echo "Γ£à Access token obtained."
+ 
+-      - name: Checkout source code at tag
++      - name: Checkout source code
+         uses: actions/checkout@v5
+         with:
+           fetch-depth: 0
+ 
+-      - name: Fetch selected tag from upstream
+-        run: |
+-          git remote add upstream https://github.com/nightscout/AndroidAPS.git || true
+-          git fetch upstream refs/tags/${{ github.event.inputs.tagName }}:refs/tags/${{ github.event.inputs.tagName }}
+-          echo "✅ Tag ${{ github.event.inputs.tagName }} fetched from upstream."
+-
+-      - name: Determine JVM version from tag
+-        run: |
+-          # jdk-map.json must be read before switching to the upstream tag,
+-          # as the upstream tag does not contain this file.
+-          TAG="${{ github.event.inputs.tagName }}"
+-          JAVA_VERSION=$(jq -r '.default' .github/jdk-map.json)
+-          while IFS=$'\t' read -r pattern jdk; do
+-            if [[ "$TAG" == $pattern ]]; then
+-              JAVA_VERSION="$jdk"
+-              break
+-            fi
+-          done < <(jq -r '.mappings[] | "\(.pattern)\t\(.jdk)"' .github/jdk-map.json)
+-          echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
+-          echo "ℹ️ Tag $TAG → JDK $JAVA_VERSION (from jdk-map.json)"
++      # ΓöÇΓöÇ REMOVED: Fetch selected tag from upstream ΓöÇΓöÇ
++      # ΓöÇΓöÇ REMOVED: Determine JVM version from tag   ΓöÇΓöÇ
++      # ΓöÇΓöÇ REMOVED: Switch to selected tag           ΓöÇΓöÇ
+ 
+-      - name: Switch to selected tag
++      - name: Set JDK version
+         run: |
+-          git checkout refs/tags/${{ github.event.inputs.tagName }}
+-          echo "✅ Checked out tag ${{ github.event.inputs.tagName }}"
++          echo "JAVA_VERSION=21" >> $GITHUB_ENV
++          echo "Γä╣∩╕Å Using JDK 21 for 3.4.x branches"
+ 
+       - name: Set BUILD_VARIANT
+         run: |
+           BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
++          # Fallback for push triggers (no manual input)
++          BUILD_VARIANT="${BUILD_VARIANT:-fullRelease}"
+           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
+           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
+           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
+@@ -253,7 +201,7 @@ jobs:
+ 
+       - name: Build APKs
+         run: |
+-              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} :wear:assemble${{ env.BUILD_VARIANT }} \
++              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
+               -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
+               -Dkotlin.daemon.jvm.options="-Xmx2g" \
+               -Dkotlin.compiler.execution.strategy="in-process" \
+@@ -268,14 +216,18 @@ jobs:
+       - name: Rename APKs with version
+         run: |
+           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+-          mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+-
++      - name: Upload APKs as artifacts
++        uses: actions/upload-artifact@v4
++        with:
++          name: aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}
++          path: aaps-*.apk
++          retention-days: 90
+       - name: Upload APKs to Google Drive
+         run: |
+           set -e
+-          echo "🔐 Start uploading APKs to Google Drive..."
++          echo "≡ƒöÉ Start uploading APKs to Google Drive..."
+ 
+-          echo "📁 Checking or creating AAPS folder"
++          echo "≡ƒôü Checking or creating AAPS folder"
+           AAPS_FOLDER_ID=$(curl -s -X GET \
+             -H "Authorization: Bearer $ACCESS_TOKEN" \
+             "https://www.googleapis.com/drive/v3/files?q=name='AAPS'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false" \
+@@ -287,12 +239,12 @@ jobs:
+               -H "Content-Type: application/json" \
+               -d '{"name": "AAPS", "mimeType": "application/vnd.google-apps.folder"}' \
+               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
+-            echo "📂 Created AAPS folder: $AAPS_FOLDER_ID"
++            echo "≡ƒôé Created AAPS folder: $AAPS_FOLDER_ID"
+           else
+-            echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
++            echo "≡ƒôé Found AAPS folder: $AAPS_FOLDER_ID"
+           fi
+ 
+-          echo "📁 Checking or creating version folder: $VERSION"
++          echo "≡ƒôü Checking or creating version folder: $VERSION"
+           VERSION_FOLDER_ID=$(curl -s -X GET \
+             -H "Authorization: Bearer $ACCESS_TOKEN" \
+             "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
+@@ -304,20 +256,20 @@ jobs:
+               -H "Content-Type: application/json" \
+               -d "{\"name\": \"${VERSION}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
+               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
+-            echo "📂 Created version folder: $VERSION_FOLDER_ID"
++            echo "≡ƒôé Created version folder: $VERSION_FOLDER_ID"
+           else
+-            echo "📂 Found version folder: $VERSION_FOLDER_ID"
++            echo "≡ƒôé Found version folder: $VERSION_FOLDER_ID"
+           fi
+ 
+           upload_to_gdrive() {
+             FILE=$1
+             NAME=$2
+             if [ ! -f "$FILE" ]; then
+-              echo "❌ File not found: $FILE"
++              echo "Γ¥î File not found: $FILE"
+               exit 26
+             fi
+ 
+-            echo "📄 Checking if file $NAME already exists in Google Drive..."
++            echo "≡ƒôä Checking if file $NAME already exists in Google Drive..."
+             QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
+             ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
+             FILE_ID=$(curl -s \
+@@ -326,13 +278,13 @@ jobs:
+               | jq -r '.files[0].id')
+ 
+             if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
+-              echo "🗑️ Deleting existing file with ID: $FILE_ID"
++              echo "≡ƒùæ∩╕Å Deleting existing file with ID: $FILE_ID"
+               curl -s -X DELETE \
+                 -H "Authorization: Bearer $ACCESS_TOKEN" \
+                 "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
+             fi
+ 
+-            echo "⬆️ Uploading $FILE as $NAME to Google Drive..."
++            echo "Γ¼å∩╕Å Uploading $FILE as $NAME to Google Drive..."
+             RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
+               -X POST \
+               -H "Authorization: Bearer $ACCESS_TOKEN" \
+@@ -342,15 +294,15 @@ jobs:
+ 
+             HTTP_CODE="${RESPONSE: -3}"
+             if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
+-              echo "❌ Upload failed with HTTP status: $HTTP_CODE"
++              echo "Γ¥î Upload failed with HTTP status: $HTTP_CODE"
+               cat /tmp/gdrive_response.json
+               exit 1
+             fi
+ 
+-            echo "✅ Uploaded: $NAME"
++            echo "Γ£à Uploaded: $NAME"
+           }
+ 
+           upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
+-          upload_to_gdrive "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk" "aaps-wear-${VERSION}${VERSION_SUFFIX}.apk"
++          
+ 
+-          echo "🎉 APKs successfully uploaded to Google Drive!"
++          echo "≡ƒÄë APKs successfully uploaded to Google Drive!"
+\ No newline at end of file
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 2cdf258431..68818f1649 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -179,6 +179,7 @@ dependencies {
+     implementation(project(":ui"))
+     implementation(project(":plugins:aps"))
+     implementation(project(":plugins:automation"))
++    implementation(project(":plugins:automation-state"))
+     implementation(project(":plugins:calibration"))
+     implementation(project(":plugins:configuration"))
+     implementation(project(":plugins:constraints"))
+@@ -271,4 +272,3 @@ if (!gitAvailable()) {
+ if (isMaster() && !allCommitted()) {
+     throw GradleException("There are uncommitted changes. Clone sources again as described in wiki and do not allow gradle update")
+ }
+-
+diff --git a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+index 759c023837..8534de61d3 100644
+--- a/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
++++ b/app/src/main/kotlin/app/aaps/di/PluginsListModule.kt
+@@ -8,6 +8,7 @@ import app.aaps.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
+ import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
+ import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
+ import app.aaps.plugins.automation.AutomationPlugin
++import app.aaps.plugins.automationstate.AutomationStatePlugin
+ import app.aaps.plugins.calibration.LinearCalibrationPlugin
+ import app.aaps.plugins.calibration.NoCalibrationPlugin
+ import app.aaps.plugins.constraints.bgQualityCheck.BgQualityCheckPlugin
+@@ -139,6 +140,12 @@ abstract class PluginsListModule {
+     @IntKey(250)
+     abstract fun bindAutomationPlugin(plugin: AutomationPlugin): PluginBase
+ 
++    @Binds
++    @AllConfigs
++    @IntoMap
++    @IntKey(251)
++    abstract fun bindAutomationStatePlugin(plugin: AutomationStatePlugin): PluginBase
++
+     @Binds
+     @AllConfigs
+     @IntoMap
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 1b2faf3366..79aede51f7 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-dev-a"
++    const val appVersion = "4.0.0-137-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+@@ -17,4 +17,4 @@ object Versions {
+     val javaVersion = JavaVersion.VERSION_21
+     val jvmTarget = JvmTarget.JVM_21
+     const val jacoco = "0.8.11"
+-}
++}
+\ No newline at end of file
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
+index 9341b25797..932d4073bf 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
+@@ -48,7 +48,7 @@ data class ExportPreparation(
+ )
+ 
+ interface ImportExportPrefs {
+-
++    fun setAutomationStatesEnabled(enabled: Boolean)
+     fun exportCustomWatchface(customWatchface: CwfData, withDate: Boolean = true)
+     fun exportSharedPreferences(activity: FragmentActivity)
+     fun exportSharedPreferencesNonInteractive(context: Context, password: String): Boolean
+@@ -56,7 +56,7 @@ interface ImportExportPrefs {
+     suspend fun executeCsvExport(): ExportResult
+     fun exportApsResult(algorithm: String?, input: JSONObject, output: JSONObject?)
+ 
+-    // Compose export support — discrete steps, no UI
++    // Compose export support ΓÇö discrete steps, no UI
+ 
+     /** Check if master password has been configured */
+     fun isMasterPasswordSet(): Boolean
+@@ -81,7 +81,7 @@ interface ImportExportPrefs {
+     fun setCsvLocalEnabled(enabled: Boolean)
+     fun setCsvCloudEnabled(enabled: Boolean)
+ 
+-    // Compose import support — discrete steps, no UI
++    // Compose import support ΓÇö discrete steps, no UI
+ 
+     /** Get list of local preference files. */
+     suspend fun getLocalImportFiles(): List<PrefsFile>
+diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+index 64f1c66cbe..8b2959de94 100644
+--- a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
++++ b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+@@ -118,6 +118,8 @@ enum class BooleanKey(
+     SmsAllowRemoteCommands("smscommunicator_remotecommandsallowed", false, R.string.pref_title_sms_allow_remote_commands),
+     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true, R.string.pref_title_sms_report_pump_unreachable, R.string.pref_summary_sms_report_pump_unreachable),
+ 
++    AutomationStatesEnabled("automation_states_enabled", true, R.string.pref_title_automation_states_enabled),
++
+     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, R.string.pref_title_virtual_pump_status_upload, showInNsClientMode = false),
+     NsClientUploadData("ns_upload", true, R.string.pref_title_ns_upload_data, R.string.pref_summary_ns_upload_data, showInNsClientMode = false, hideParentScreenIfHidden = true),
+     NsClientAcceptCgmData("ns_receive_cgm", false, R.string.pref_title_ns_receive_cgm, R.string.pref_summary_ns_receive_cgm, showInNsClientMode = false, hideParentScreenIfHidden = true),
+@@ -162,4 +164,4 @@ enum class BooleanKey(
+     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, titleResId = R.string.pref_title_site_rotation_manage_pump),
+     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, titleResId = R.string.pref_title_site_rotation_manage_cgm),
+ 
+-}
++}
+\ No newline at end of file
+diff --git a/core/keys/src/main/res/values/strings.xml b/core/keys/src/main/res/values/strings.xml
+index 9939d0dfeb..4c2babe5ec 100644
+--- a/core/keys/src/main/res/values/strings.xml
++++ b/core/keys/src/main/res/values/strings.xml
+@@ -337,6 +337,7 @@
+ 
+     <!-- StringKey: Directory preferences -->
+     <string name="pref_title_aaps_directory">AAPS directory</string>
++    <string name="pref_title_automation_states_enabled">Automation States</string>
+ 
+     <!-- StringKey: Protection preferences -->
+     <string name="pref_title_master_password">Master password</string>
+@@ -408,11 +409,11 @@
+     <string name="pref_title_ama_max_iob">Max IOB for AMA</string>
+     <string name="openapsma_max_iob_summary">This value is called Max IOB in OpenAPS context\nThis is maximal insulin in [U] APS can deliver at once. Value is affected by patient type too.</string>
+     <string name="pref_title_max_daily_multiplier">Max daily safety multiplier</string>
+-    <string name="openapsama_max_daily_safety_multiplier_summary">Default value: 3 This is a key OpenAPS safety cap. What this does is limit your basals to be 3x (in this people) your biggest basal rate. You likely will not need to change this, but you should be aware that’s what is discussed about “3x max daily; 4x current” for safety caps.</string>
++    <string name="openapsama_max_daily_safety_multiplier_summary">Default value: 3 This is a key OpenAPS safety cap. What this does is limit your basals to be 3x (in this people) your biggest basal rate. You likely will not need to change this, but you should be aware thatΓÇÖs what is discussed about ΓÇ£3x max daily; 4x currentΓÇ¥ for safety caps.</string>
+     <string name="pref_title_current_basal_multiplier">Current basal safety multiplier</string>
+-    <string name="openapsama_current_basal_safety_multiplier_summary">Default value: 4 This is the other half of the key OpenAPS safety caps, and the other half of “3x max daily; 4x current” of the safety caps. This means your basal, regardless of max basal set on your pump, cannot be any higher than this number times the current level of your basal. This is to prevent people from getting into dangerous territory by setting excessively high max basals before understanding how the algorithm works. Again, the default is 4x; most people will never need to adjust this and are instead more likely to need to adjust other settings if they feel like they are “running into” this safety cap.</string>
++    <string name="openapsama_current_basal_safety_multiplier_summary">Default value: 4 This is the other half of the key OpenAPS safety caps, and the other half of ΓÇ£3x max daily; 4x currentΓÇ¥ of the safety caps. This means your basal, regardless of max basal set on your pump, cannot be any higher than this number times the current level of your basal. This is to prevent people from getting into dangerous territory by setting excessively high max basals before understanding how the algorithm works. Again, the default is 4x; most people will never need to adjust this and are instead more likely to need to adjust other settings if they feel like they are ΓÇ£running intoΓÇ¥ this safety cap.</string>
+     <string name="pref_title_bolus_snooze_divisor">Bolus snooze DIA divisor</string>
+-    <string name="openapsama_bolus_snooze_dia_divisor_summary">Default value: 2\nBolus snooze is enacted after you do a meal bolus, so the loop won’t counteract with low temps when you’ve just eaten. The example here and default is 2; so a 3 hour DIA means that bolus snooze will be gradually phased out over 1.5 hours (3DIA/2).</string>
++    <string name="openapsama_bolus_snooze_dia_divisor_summary">Default value: 2\nBolus snooze is enacted after you do a meal bolus, so the loop wonΓÇÖt counteract with low temps when youΓÇÖve just eaten. The example here and default is 2; so a 3 hour DIA means that bolus snooze will be gradually phased out over 1.5 hours (3DIA/2).</string>
+     <string name="pref_title_ama_min_5m_carbs_impact">AMA min 5m carbs impact</string>
+     <string name="pref_title_smb_min_5m_carbs_impact">SMB min 5m carbs impact</string>
+     <string name="openapsama_min_5m_carb_impact_summary">Default value: 3.0 (AMA) or 8.0 (SMB). This is a setting for default carb absorption impact per 5 minutes. The default is an expected 3mg/dl/5min. This affects how fast COB are decayed, and how much carb absorption is assumed in calculating future predicted BG, when BG is falling more than expected, or not rising as much as expected.</string>
+@@ -464,4 +465,4 @@
+     <!--    Appearance preferences-->
+     <string name="prefs_range_title">Range for visualization</string>
+ 
+-</resources>
++</resources>
+\ No newline at end of file
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
+index 94aac07f18..6d2ca42e46 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
+@@ -90,6 +90,7 @@ private fun filenameTimestamp(): String =
+ 
+ @Reusable
+ class ImportExportPrefsImpl @Inject constructor(
++
+     private var aapsLogger: AAPSLogger,
+     private val rh: ResourceHelper,
+     private val sp: SP,
+@@ -111,10 +112,12 @@ class ImportExportPrefsImpl @Inject constructor(
+     private val userEntryPresentationHelper: UserEntryPresentationHelper,
+     private val storage: Storage
+ ) : ImportExportPrefs {
+-
++    override fun setAutomationStatesEnabled(enabled: Boolean) {
++        sp.putBoolean("automation_states_enabled", enabled)
++    }
+     private var pendingExportFile: DocumentFile? = null
+ 
+-    // Compose export support — discrete steps
++    // Compose export support ΓÇö discrete steps
+ 
+     override fun isMasterPasswordSet(): Boolean =
+         !preferences.getIfExists(StringKey.ProtectionMasterPassword).isNullOrEmpty()
+@@ -335,7 +338,7 @@ class ImportExportPrefsImpl @Inject constructor(
+     override fun cacheExportPassword(password: String): String =
+         exportPasswordDataStore.putPasswordToDataStore(context, password)
+ 
+-    // Legacy export — uses dialogs via uiInteraction (kept for old UI)
++    // Legacy export ΓÇö uses dialogs via uiInteraction (kept for old UI)
+ 
+     override fun exportSharedPreferences(activity: FragmentActivity) {
+         exportSharedPreferencesLegacy(activity)
+@@ -811,7 +814,7 @@ class ImportExportPrefsImpl @Inject constructor(
+         return importOk
+     }
+ 
+-    // Compose import support — discrete steps, no UI
++    // Compose import support ΓÇö discrete steps, no UI
+ 
+     override suspend fun getLocalImportFiles(): List<PrefsFile> =
+         kotlinx.coroutines.withContext(Dispatchers.IO) {
+@@ -880,7 +883,7 @@ class ImportExportPrefsImpl @Inject constructor(
+ 
+             val importOk = checkIfImportIsOk(prefs)
+ 
+-            // Check if encryption metadata has ERROR → wrong password
++            // Check if encryption metadata has ERROR ΓåÆ wrong password
+             if (!importOk && prefs.metadata[PrefsMetadataKeyImpl.ENCRYPTION]?.status == PrefsStatusImpl.ERROR) {
+                 return ImportDecryptResult.WrongPassword
+             }
+@@ -903,12 +906,15 @@ class ImportExportPrefsImpl @Inject constructor(
+         activePlugin.beforeImport()
+         sp.clear()
+         for ((key, value) in prefs.values) {
++            if (key == "automation_states_enabled") continue // handled explicitly after import
+             if (value == "true" || value == "false") {
+                 sp.putBoolean(key, value.toBoolean())
+             } else {
+                 sp.putString(key, value)
+             }
+         }
++        // Safety: disable automation states after import - user must explicitly re-enable
++        sp.putBoolean("automation_states_enabled", false)
+         activePlugin.afterImport()
+     }
+ 
+@@ -1176,4 +1182,4 @@ class ImportExportPrefsImpl @Inject constructor(
+ object ApsExportInbox : Inbox<ImportExportPrefsImpl.ApsResultExportWorker.ApsResultData>(
+     "aps-export",
+     ImportExportPrefsImpl.ApsResultExportWorker::class.java
+-)
++)
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index 393849ad62..215f1439ea 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -46,6 +46,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
+ import app.aaps.plugins.automation.actions.ActionRunScene
+ import app.aaps.plugins.automation.actions.ActionSMBChange
+ import app.aaps.plugins.automation.actions.ActionSendSMS
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
+ import app.aaps.plugins.automation.actions.ActionSettingsExport
+ import app.aaps.plugins.automation.actions.ActionStartTempTarget
+ import app.aaps.plugins.automation.actions.ActionStopProcessing
+@@ -79,6 +80,7 @@ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
+ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
+ import app.aaps.plugins.automation.triggers.TriggerSensorAge
+ import app.aaps.plugins.automation.triggers.TriggerStepsCount
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerTempTarget
+ import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
+ import app.aaps.plugins.automation.triggers.TriggerTime
+@@ -436,6 +438,7 @@ class AutomationPlugin @Inject constructor(
+             ActionStopTempTarget(injector),
+             ActionNotification(injector),
+             ActionAlarm(injector),
++            ActionSetAutomationState(injector),
+             ActionSettingsExport(injector),
+             ActionCarePortalEvent(injector),
+             ActionProfileSwitchPercent(injector),
+@@ -454,6 +457,7 @@ class AutomationPlugin @Inject constructor(
+ 
+     fun getTriggerDummyObjects(): List<Trigger> {
+         val triggers = mutableListOf(
++            TriggerAutomationState(injector),
+             TriggerConnector(injector),
+             TriggerTime(injector),
+             TriggerRecurringTime(injector),
+@@ -611,4 +615,4 @@ class AutomationPlugin @Inject constructor(
+         icon = pluginDescription.icon
+     )
+ 
+-}
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+index ee7a853f18..d0e4e3b6d1 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+@@ -78,6 +78,7 @@ abstract class Action(val injector: HasAndroidInjector) {
+                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
+                 ActionStopProcessing::class.java.simpleName       -> ActionStopProcessing(injector).fromJSON(data.toString())
+                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
++                ActionSetAutomationState::class.java.simpleName  -> ActionSetAutomationState(injector).fromJSON(data.toString())
+                 else                                              -> throw ClassNotFoundException(type)
+             }
+         } catch (e: Exception) {
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+index 45021c71f1..3d45c10114 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+@@ -26,6 +30,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
+ import app.aaps.plugins.automation.actions.ActionRunScene
+ import app.aaps.plugins.automation.actions.ActionSMBChange
+ import app.aaps.plugins.automation.actions.ActionSendSMS
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
+ import app.aaps.plugins.automation.actions.ActionSettingsExport
+ import app.aaps.plugins.automation.actions.ActionStartTempTarget
+ import app.aaps.plugins.automation.compose.elements.AutomationDropdown
+@@ -47,7 +52,7 @@ fun ActionEditor(
+ ) {
+     @Suppress("UNUSED_EXPRESSION") tick
+     if (!action.hasDialog()) {
+-        // Actions with no user input — show a short description.
++        // Actions with no user input ΓÇö show a short description.
+         Text(
+             text = staticDescription(action),
+             style = MaterialTheme.typography.bodyMedium,
+@@ -74,6 +79,7 @@ fun ActionEditor(
+             is ActionRunScene             -> ActionRunSceneEditor(action, sceneOptions, onChange)
+             is ActionEnableScene          -> ActionEnableSceneEditor(action, sceneOptions, onChange)
+             is ActionDisableScene         -> ActionDisableSceneEditor(action, sceneOptions, onChange)
++            is ActionSetAutomationState  -> ActionSetAutomationStateEditor(action, onChange)
+             else                          -> Text(action.javaClass.simpleName)
+         }
+     }
+@@ -328,3 +334,45 @@ fun ActionDisableSceneEditor(a: ActionDisableScene, sceneOptions: List<Scene>, o
+         onPicked = { a.scene.value = it; onChange() }
+     )
+ }
++
++@Composable
++fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> Unit) {
++    val stateNames = a.automationState.getAllStates().map { it.first }
++    var selectedName by remember { mutableStateOf(if (a.stateName.isEmpty()) stateNames.firstOrNull() ?: "" else a.stateName) }.also { if (a.stateName.isEmpty() && stateNames.isNotEmpty()) { a.stateName = stateNames.first() } }
++    var selectedValue by remember { mutableStateOf(a.stateValue) }
++    val stateValues = if (selectedName.isNotEmpty()) a.automationState.getStateValues(selectedName) else emptyList()
++    if (a.stateValue.isEmpty() && stateValues.isNotEmpty()) {
++        a.stateValue = stateValues.first()
++        selectedValue = stateValues.first()
++    }
++
++    if (stateNames.isEmpty()) {
++        Text("No automation states defined. Create states in the Automation States tab first.")
++        return
++    }
++
++    AutomationDropdown(
++        value = selectedName,
++        options = stateNames,
++        onValueChange = { newName ->
++            selectedName = newName
++            selectedValue = ""
++            a.stateName = newName
++            a.stateValue = ""
++            onChange()
++        },
++        label = "State"
++    )
++    if (stateValues.isNotEmpty()) {
++        AutomationDropdown(
++            value = if (selectedValue.isEmpty()) stateValues.firstOrNull() ?: "" else selectedValue,
++            options = stateValues,
++            onValueChange = { newVal ->
++                selectedValue = newVal
++                a.stateValue = newVal
++                onChange()
++            },
++            label = "Value"
++        )
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+index 2b8c6ece7d..71f847485d 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.material3.OutlinedButton
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+@@ -53,6 +57,7 @@ import app.aaps.plugins.automation.triggers.TriggerTempTarget
+ import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
+ import app.aaps.plugins.automation.triggers.TriggerTime
+ import app.aaps.plugins.automation.triggers.TriggerTimeRange
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerWifiSsid
+ import app.aaps.core.keys.R as KeysR
+ 
+@@ -98,6 +103,8 @@ fun TriggerEditor(
+             is TriggerWifiSsid           -> TriggerWifiSsidEditor(trigger, onChange)
+             is TriggerBTDevice           -> TriggerBTDeviceEditor(trigger, bondedDevices, onChange)
+             is TriggerLocation           -> TriggerLocationEditor(trigger, onChange, tick, showCurrentLocation, onUseCurrentLocation, onPickLocationFromMap)
++            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
++            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
+             is TriggerConnector          -> Text("Connector")
+             else                         -> Text(trigger.javaClass.simpleName)
+         }
+@@ -572,3 +579,46 @@ fun TriggerLocationEditor(
+         onValueChange = { t.modeSelected.value = it; onChange() }
+     )
+ }
++
++@Composable
++fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit) {
++    val allStates = t.automationStateService.getAllStates()
++    val stateNames = allStates.map { it.first }
++    var selectedName by remember { mutableStateOf(t.stateName.ifEmpty { stateNames.firstOrNull() ?: "" }) }
++    var selectedValue by remember { mutableStateOf(t.stateValue) }
++    val stateValues = if (selectedName.isNotEmpty()) t.automationStateService.getStateValues(selectedName) else emptyList()
++    if (t.stateValue.isEmpty() && stateValues.isNotEmpty()) {
++        t.stateValue = stateValues.first()
++        selectedValue = stateValues.first()
++    }
++
++    if (stateNames.isEmpty()) {
++        Text("No automation states defined. Create states in the Automation States tab first.")
++        return
++    }
++
++    AutomationDropdown(
++        value = selectedName,
++        options = stateNames,
++        onValueChange = {
++            selectedName = it
++            selectedValue = ""
++            t.stateName = it
++            t.stateValue = ""
++            onChange()
++        },
++        label = "State"
++    )
++    if (stateValues.isNotEmpty()) {
++        AutomationDropdown(
++            value = if (selectedValue.isEmpty()) stateValues.firstOrNull() ?: "" else selectedValue,
++            options = stateValues,
++            onValueChange = {
++                selectedValue = it
++                t.stateValue = it
++                onChange()
++            },
++            label = "Value"
++        )
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+index b45766b8d1..a9809a993a 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+@@ -16,6 +16,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
+ import app.aaps.plugins.automation.actions.ActionRunScene
+ import app.aaps.plugins.automation.actions.ActionSMBChange
+ import app.aaps.plugins.automation.actions.ActionSendSMS
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
+ import app.aaps.plugins.automation.actions.ActionSettingsExport
+ import app.aaps.plugins.automation.actions.ActionStartTempTarget
+ import app.aaps.plugins.automation.actions.ActionStopProcessing
+@@ -45,6 +46,7 @@ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
+ import app.aaps.plugins.automation.triggers.TriggerSceneActive
+ import app.aaps.plugins.automation.triggers.TriggerSensorAge
+ import app.aaps.plugins.automation.triggers.TriggerStepsCount
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerTempTarget
+ import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
+ import app.aaps.plugins.automation.triggers.TriggerTime
+@@ -114,6 +116,8 @@ abstract class AutomationModule {
+     @ContributesAndroidInjector abstract fun actionEnableSceneInjector(): ActionEnableScene
+     @ContributesAndroidInjector abstract fun actionDisableSceneInjector(): ActionDisableScene
+     @ContributesAndroidInjector abstract fun actionDummyInjector(): ActionDummy
++    @ContributesAndroidInjector abstract fun actionSetAutomationStateInjector(): ActionSetAutomationState
++    @ContributesAndroidInjector abstract fun triggerAutomationStateInjector(): TriggerAutomationState
+     @ContributesAndroidInjector abstract fun contributesLocationService(): LocationService
+ 
+     @Module
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+index ebbd687421..7d8ae14011 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+@@ -99,6 +99,7 @@ abstract class Trigger(val injector: HasAndroidInjector) {
+                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
+                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
+                 TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
++                TriggerAutomationState::class.java.simpleName   -> TriggerAutomationState(injector).fromJSON(data.toString())
+ 
+                 else                                             -> TriggerConnector(injector)
+             }
+diff --git a/plugins/automation/src/main/res/values/strings.xml b/plugins/automation/src/main/res/values/strings.xml
+index 011f343483..ff9c21639e 100644
+--- a/plugins/automation/src/main/res/values/strings.xml
++++ b/plugins/automation/src/main/res/values/strings.xml
+@@ -166,4 +166,10 @@
+     <string name="permission_location_description">Needed for location-based automation triggers and WiFi network identification</string>
+     <string name="permission_background_location_description">Needed for automation triggers to work when the app is in the background</string>
+ 
++
++    <string name="set_state">Set Automation State</string>
++    <string name="set_state_description">Set state %1$s to %2$s</string>
++    <string name="automation_states_disabled">Automation States are disabled. Enable in Automation States settings.</string>
++    <string name="check_state_name">Check Automation State</string>
++    <string name="check_state_description">State %1$s is %2$s</string>
+ </resources>
+\ No newline at end of file
+diff --git a/plugins/configuration/src/main/res/values/strings.xml b/plugins/configuration/src/main/res/values/strings.xml
+index 393228ee4e..213e7aaf0a 100644
+--- a/plugins/configuration/src/main/res/values/strings.xml
++++ b/plugins/configuration/src/main/res/values/strings.xml
+@@ -74,4 +74,8 @@
+     <!-- Provider-agnostic cloud storage strings -->
+ 
+     <!-- Authorization status strings -->
++
++    <string name="automation_states">Automation States</string>
++    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
++    <string name="automation_states_enable_now">Enable Automation States now</string>
+ </resources>
+\ No newline at end of file
+diff --git a/settings.gradle b/settings.gradle
+index 86453a00be..91b03ec6c7 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -17,6 +17,7 @@ include ':database:persistence'
+ include ':implementation'
+ include ':plugins:aps'
+ include ':plugins:automation'
++include ':plugins:automation-state'
+ include ':plugins:calibration'
+ include ':plugins:configuration'
+ include ':plugins:constraints'
+@@ -48,4 +49,4 @@ include ':pump:virtual'
+ include ':shared:impl'
+ include ':shared:tests'
+ include ':ui'
+-include ':workflow'
++include ':workflow'
+\ No newline at end of file
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
+index f04c067802..9c6842e60d 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
+@@ -59,6 +59,10 @@ import app.aaps.core.ui.compose.bottomBarSafeArea
+ import app.aaps.core.ui.compose.clearFocusOnTap
+ import app.aaps.core.ui.compose.dialogs.OkDialog
+ import app.aaps.core.ui.R as CoreUiR
++import androidx.compose.material3.Checkbox
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
+ 
+ @Composable
+ fun ImportSettingsScreen(
+@@ -109,14 +113,17 @@ fun ImportSettingsScreen(
+         }
+ 
+         is ImportStep.Review         -> {
++            var statesAcknowledged by remember { mutableStateOf(false) }
+             ImportReviewContent(
+                 state = currentStep,
+                 rxBus = rxBus,
+                 onMasterPasswordChanged = { viewModel.onMasterPasswordChanged(it) },
+                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
+                 onDecrypt = { viewModel.decrypt() },
+-                onImport = { viewModel.confirmImport() },
+-                onBack = { viewModel.goBackToFilePicker() }
++                onImport = { viewModel.confirmImport(keepStatesEnabled = viewModel.statesAcknowledged) },
++                onBack = { viewModel.goBackToFilePicker() },
++                statesAcknowledged = statesAcknowledged,
++                onStatesAcknowledgedChange = { statesAcknowledged = it; viewModel.statesAcknowledged = it }
+             )
+         }
+ 
+@@ -402,12 +409,13 @@ private fun ImportReviewContent(
+     onDecryptionPasswordChanged: (String) -> Unit,
+     onDecrypt: () -> Unit,
+     onImport: () -> Unit,
+-    onBack: () -> Unit
++    onBack: () -> Unit,
++    statesAcknowledged: Boolean,
++    onStatesAcknowledgedChange: (Boolean) -> Unit
+ ) {
+     val focusManager = LocalFocusManager.current
+     val successResult = state.decryptResult as? ImportDecryptResult.Success
+     val canImport = successResult != null && successResult.importPossible
+-
+     Scaffold(
+         topBar = {
+             AapsTopAppBar(
+@@ -428,17 +436,38 @@ private fun ImportReviewContent(
+                         .padding(16.dp)
+                 ) {
+                     val importOk = successResult.importOk
+-                    Button(
+-                        onClick = onImport,
+-                        modifier = Modifier.fillMaxWidth(),
+-                        enabled = !state.isProcessing,
+-                        colors = if (importOk) ButtonDefaults.buttonColors()
+-                        else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+-                    ) {
+-                        Text(
+-                            if (importOk) stringResource(CoreUiR.string.import_btn)
+-                            else stringResource(CoreUiR.string.import_anyway_btn)
+-                        )
++                    Column {
++                        Card(
++                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
++                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
++                        ) {
++                            Row(
++                                modifier = Modifier.padding(8.dp),
++                                verticalAlignment = Alignment.CenterVertically
++                            ) {
++                                Checkbox(
++                                    checked = statesAcknowledged,
++                                    onCheckedChange = onStatesAcknowledgedChange
++                                )
++                                Text(
++                                    "Tick to keep Automation States ENABLED after import (else will be disabled - re-enable in States tab)",
++                                    style = MaterialTheme.typography.bodySmall,
++                                    modifier = Modifier.padding(start = 4.dp)
++                                )
++                            }
++                        }
++                        Button(
++                            onClick = onImport,
++                            modifier = Modifier.fillMaxWidth(),
++                            enabled = !state.isProcessing,
++                            colors = if (importOk) ButtonDefaults.buttonColors()
++                            else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
++                        ) {
++                            Text(
++                                if (importOk) stringResource(CoreUiR.string.import_btn)
++                                else stringResource(CoreUiR.string.import_anyway_btn)
++                            )
++                        }
+                     }
+                 }
+             }
+@@ -456,8 +485,8 @@ private fun ImportReviewContent(
+             // File details card
+             FileDetailsCard(file = state.file, source = state.fileSource, rxBus = rxBus)
+ 
+-            // Master password (shown only if user has a local master password — we try it first
+-            // as a shortcut for "importing your own backup". No local master pw → skip straight
++            // Master password (shown only if user has a local master password ╬ô├ç├╢ we try it first
++            // as a shortcut for "importing your own backup". No local master pw ╬ô├Ñ├å skip straight
+             // to the decryption password field below.)
+             if (!state.needsDecryptionPassword) {
+                 OutlinedTextField(
+@@ -654,4 +683,4 @@ private fun FileDetailsCard(
+             }
+         }
+     }
+-}
++}
+\ No newline at end of file
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
+index 173f6c3c00..46aca6f635 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
+@@ -71,7 +71,7 @@ class ImportViewModel @Inject constructor(
+ 
+     fun startImport(source: ImportSource) {
+         // Always reload on a fresh entry so newly exported files appear in the list.
+-        // Returning from the Review step uses goBackToFilePicker(), which keeps the cache —
++        // Returning from the Review step uses goBackToFilePicker(), which keeps the cache ΓÇö
+         // Review is an internal ImportStep, not a nav route, so it never re-enters here.
+         cachedSource = source
+         cachedFiles = emptyList()
+@@ -108,7 +108,7 @@ class ImportViewModel @Inject constructor(
+                 }
+             }
+         } else {
+-            // Cloud only — show loading with progress
++            // Cloud only ΓÇö show loading with progress
+             _importStep.value = ImportStep.FilePicker(
+                 files = emptyList(),
+                 hasMoreCloud = false,
+@@ -186,7 +186,7 @@ class ImportViewModel @Inject constructor(
+         _importStep.value = ImportStep.Review(
+             file = item.prefsFile,
+             fileSource = item.source,
+-            // No local master password → skip the "try master password first" optimization
++            // No local master password ΓåÆ skip the "try master password first" optimization
+             // and ask for the file's decryption password directly.
+             needsDecryptionPassword = !importExportPrefs.isMasterPasswordSet()
+         )
+@@ -237,7 +237,7 @@ class ImportViewModel @Inject constructor(
+             when (result) {
+                 is ImportDecryptResult.WrongPassword -> {
+                     if (!prev.needsDecryptionPassword) {
+-                        // Master password didn't decrypt → show decryption password field
++                        // Master password didn't decrypt ΓåÆ show decryption password field
+                         _importStep.value = prev.copy(
+                             isProcessing = false,
+                             needsDecryptionPassword = true,
+@@ -263,7 +263,13 @@ class ImportViewModel @Inject constructor(
+         }
+     }
+ 
+-    fun confirmImport() {
++    private val _statesAcknowledged = kotlinx.coroutines.flow.MutableStateFlow(false)
++    val statesAcknowledgedFlow = _statesAcknowledged
++    var statesAcknowledged: Boolean
++        get() = _statesAcknowledged.value
++        set(value) { _statesAcknowledged.value = value }
++
++    fun confirmImport(keepStatesEnabled: Boolean = false) {
+         val current = importStep.value
+         if (current !is ImportStep.Review) return
+         val result = current.decryptResult
+@@ -273,7 +279,11 @@ class ImportViewModel @Inject constructor(
+ 
+         viewModelScope.launch {
+             withContext(Dispatchers.IO) {
++                android.util.Log.e("STATES_DEBUG", "confirmImport keepStatesEnabled=$keepStatesEnabled statesAcknowledged=$statesAcknowledged")
+                 importExportPrefs.executeImport(result.prefs)
++                if (keepStatesEnabled) {
++                    importExportPrefs.setAutomationStatesEnabled(true)
++                }
+                 importExportPrefs.prepareImportRestart()
+             }
+             _importStep.value = ImportStep.RestartConfirm
+@@ -300,4 +310,4 @@ class ImportViewModel @Inject constructor(
+     fun cancelImport() {
+         _importStep.value = ImportStep.Idle
+     }
+-}
++}
+\ No newline at end of file
+-- 
+2.43.0.windows.1
+
+
+From 4e9cf2f9853bb6b328cc2b3f060230395707c35e Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 22:36:16 +0930
+Subject: [PATCH 02/10] 138-rc
+
+---
+ .../automation/AutomationStateInterface.kt    |  16 +
+ .../kotlin/app/aaps/core/keys/BooleanKey.kt   |   2 +-
+ core/keys/src/main/res/values/strings.xml     |   2 +-
+ plugins/automation-state/.gitignore           |   1 +
+ plugins/automation-state/build.gradle.kts     |  46 +++
+ plugins/automation-state/proguard-rules.pro   |  21 ++
+ .../src/main/AndroidManifest.xml              |   2 +
+ .../automationstate/AutomationStatePlugin.kt  |  32 ++
+ .../compose/AutomationStateComposeContent.kt  |  22 ++
+ .../compose/AutomationStateScreen.kt          | 346 ++++++++++++++++++
+ .../compose/AutomationStateViewModel.kt       |  67 ++++
+ .../di/AutomationStateModule.kt               |  18 +
+ .../keys/AutomationStateStringKey.kt          |  13 +
+ .../services/AutomationStateService.kt        |  80 ++++
+ .../automation_state_active_background.xml    |   6 +
+ .../drawable/automation_state_background.xml  |   6 +
+ .../src/main/res/values/colors.xml            |   5 +
+ .../src/main/res/values/strings.xml           |  25 ++
+ .../actions/ActionSetAutomationState.kt       |  49 +++
+ .../elements/InputDropdownStateMenu.kt        |  50 +++
+ .../triggers/TriggerAutomationState.kt        |  47 +++
+ .../src/main/res/values/strings.xml           |   2 +-
+ .../src/main/res/values/strings.xml           |   2 +-
+ .../maintenance/ImportSettingsScreen.kt       |   2 +-
+ .../ui/compose/maintenance/ImportViewModel.kt |   2 +-
+ 25 files changed, 858 insertions(+), 6 deletions(-)
+ create mode 100644 core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
+ create mode 100644 plugins/automation-state/.gitignore
+ create mode 100644 plugins/automation-state/build.gradle.kts
+ create mode 100644 plugins/automation-state/proguard-rules.pro
+ create mode 100644 plugins/automation-state/src/main/AndroidManifest.xml
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateComposeContent.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+ create mode 100644 plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+ create mode 100644 plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+ create mode 100644 plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+ create mode 100644 plugins/automation-state/src/main/res/values/colors.xml
+ create mode 100644 plugins/automation-state/src/main/res/values/strings.xml
+ create mode 100644 plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+ create mode 100644 plugins/automation/src/main/kotlin/app/aaps/plugins/automation/elements/InputDropdownStateMenu.kt
+ create mode 100644 plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
+new file mode 100644
+index 0000000000..11cf38af55
+--- /dev/null
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/automation/AutomationStateInterface.kt
+@@ -0,0 +1,16 @@
++package app.aaps.core.interfaces.automation
++
++/**
++ * Interface for the AutomationStateService to allow independent compilation
++ * of automation and automation-state plugins
++ */
++interface AutomationStateInterface {
++    fun inState(stateName: String, state: String): Boolean
++    fun setState(stateName: String, state: String)
++    fun getState(stateName: String): String
++    fun getAllStates(): List<Pair<String, String>>
++    fun getStateValues(stateName: String): List<String>
++    fun setStateValues(stateName: String, values: List<String>)
++    fun hasStateValues(stateName: String): Boolean
++    fun deleteState(stateName: String)
++}
+\ No newline at end of file
+diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+index 8b2959de94..0a7433cd77 100644
+--- a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
++++ b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+@@ -164,4 +164,4 @@ enum class BooleanKey(
+     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, titleResId = R.string.pref_title_site_rotation_manage_pump),
+     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, titleResId = R.string.pref_title_site_rotation_manage_cgm),
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/core/keys/src/main/res/values/strings.xml b/core/keys/src/main/res/values/strings.xml
+index 4c2babe5ec..7553d01631 100644
+--- a/core/keys/src/main/res/values/strings.xml
++++ b/core/keys/src/main/res/values/strings.xml
+@@ -465,4 +465,4 @@
+     <!--    Appearance preferences-->
+     <string name="prefs_range_title">Range for visualization</string>
+ 
+-</resources>
+\ No newline at end of file
++</resources>
+diff --git a/plugins/automation-state/.gitignore b/plugins/automation-state/.gitignore
+new file mode 100644
+index 0000000000..42afabfd2a
+--- /dev/null
++++ b/plugins/automation-state/.gitignore
+@@ -0,0 +1 @@
++/build
+\ No newline at end of file
+diff --git a/plugins/automation-state/build.gradle.kts b/plugins/automation-state/build.gradle.kts
+new file mode 100644
+index 0000000000..20e76df583
+--- /dev/null
++++ b/plugins/automation-state/build.gradle.kts
+@@ -0,0 +1,46 @@
++plugins {
++    alias(libs.plugins.android.library)
++    alias(libs.plugins.ksp)
++    alias(libs.plugins.hilt)
++    alias(libs.plugins.compose.compiler)
++    id("android-module-dependencies")
++    id("test-module-dependencies")
++    id("jacoco-module-dependencies")
++}
++
++android {
++    namespace = "app.aaps.plugins.automationstate"
++    buildFeatures {
++        compose = true
++    }
++}
++
++dependencies {
++    implementation(project(":core:data"))
++    implementation(project(":core:interfaces"))
++    implementation(project(":core:keys"))
++    implementation(project(":core:objects"))
++    implementation(project(":core:utils"))
++    implementation(project(":core:ui"))
++    implementation(project(":plugins:automation"))
++
++    implementation(libs.com.google.dagger.hilt.android)
++    implementation(platform(libs.androidx.compose.bom))
++    implementation(libs.androidx.compose.material3)
++    implementation(libs.androidx.compose.ui.tooling.preview)
++    implementation(libs.androidx.compose.runtime)
++    implementation(libs.androidx.lifecycle.runtime.compose)
++    implementation(libs.androidx.hilt.navigation.compose)
++
++    testImplementation(project(":shared:tests"))
++    testImplementation(project(":shared:impl"))
++    testImplementation(project(":implementation"))
++    testImplementation(project(":plugins:main"))
++    testImplementation(project(":pump:virtual"))
++
++    api(libs.kotlin.reflect)
++
++    ksp(libs.com.google.dagger.compiler)
++    ksp(libs.com.google.dagger.hilt.compiler)
++    ksp(libs.com.google.dagger.android.processor)
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/proguard-rules.pro b/plugins/automation-state/proguard-rules.pro
+new file mode 100644
+index 0000000000..481bb43481
+--- /dev/null
++++ b/plugins/automation-state/proguard-rules.pro
+@@ -0,0 +1,21 @@
++# Add project specific ProGuard rules here.
++# You can control the set of applied configuration files using the
++# proguardFiles setting in build.gradle.
++#
++# For more details, see
++#   http://developer.android.com/guide/developing/tools/proguard.html
++
++# If your project uses WebView with JS, uncomment the following
++# and specify the fully qualified class name to the JavaScript interface
++# class:
++#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
++#   public *;
++#}
++
++# Uncomment this to preserve the line number information for
++# debugging stack traces.
++#-keepattributes SourceFile,LineNumberTable
++
++# If you keep the line number information, uncomment this to
++# hide the original source file name.
++#-renamesourcefileattribute SourceFile
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/AndroidManifest.xml b/plugins/automation-state/src/main/AndroidManifest.xml
+new file mode 100644
+index 0000000000..de749acb75
+--- /dev/null
++++ b/plugins/automation-state/src/main/AndroidManifest.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+new file mode 100644
+index 0000000000..74cfe127b0
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/AutomationStatePlugin.kt
+@@ -0,0 +1,32 @@
++package app.aaps.plugins.automationstate
++
++import app.aaps.core.data.plugin.PluginType
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
++import app.aaps.core.interfaces.plugin.PluginDescription
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.keys.BooleanKey
++import app.aaps.core.keys.interfaces.Preferences
++import app.aaps.core.ui.compose.icons.IcPluginAutomation
++import app.aaps.plugins.automationstate.compose.AutomationStateComposeContent
++import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
++import javax.inject.Inject
++import javax.inject.Singleton
++
++@Singleton
++class AutomationStatePlugin @Inject constructor(
++    aapsLogger: AAPSLogger,
++    rh: ResourceHelper,
++    preferences: Preferences
++) : PluginBaseWithPreferences(
++    pluginDescription = PluginDescription()
++        .mainType(PluginType.GENERAL)
++        .icon(IcPluginAutomation)
++        .pluginName(R.string.automation_states)
++        .shortName(R.string.automation_states_short)
++        .description(R.string.description_automation_states)
++        .enableByDefault(true)
++        .composeContent { AutomationStateComposeContent() },
++    ownPreferences = listOf(AutomationStateStringKey::class.java, BooleanKey::class.java),
++    aapsLogger, rh, preferences
++)
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateComposeContent.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateComposeContent.kt
+new file mode 100644
+index 0000000000..9a599dfd9f
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateComposeContent.kt
+@@ -0,0 +1,22 @@
++package app.aaps.plugins.automationstate.compose
++
++import androidx.compose.runtime.Composable
++import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
++import app.aaps.core.ui.compose.ComposablePluginContent
++import app.aaps.core.ui.compose.ToolbarConfig
++
++class AutomationStateComposeContent : ComposablePluginContent {
++    @Composable
++    override fun Render(
++        setToolbarConfig: (ToolbarConfig) -> Unit,
++        onNavigateBack: () -> Unit,
++        onSettings: (() -> Unit)?
++    ) {
++        val viewModel: AutomationStateViewModel = hiltViewModel()
++        AutomationStateScreen(
++            viewModel = viewModel,
++            setToolbarConfig = setToolbarConfig,
++            onNavigateBack = onNavigateBack
++        )
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+new file mode 100644
+index 0000000000..efc4554099
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+@@ -0,0 +1,346 @@
++package app.aaps.plugins.automationstate.compose
++
++import androidx.compose.foundation.background
++import androidx.compose.foundation.layout.*
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.items
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.automirrored.filled.ArrowBack
++import androidx.compose.material.icons.filled.Add
++import androidx.compose.material.icons.filled.Delete
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.unit.dp
++import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import app.aaps.core.ui.compose.ToolbarConfig
++
++@Composable
++fun AutomationStateScreen(
++    viewModel: AutomationStateViewModel,
++    setToolbarConfig: (ToolbarConfig) -> Unit,
++    onNavigateBack: () -> Unit
++) {
++    var showAddStateDialog by remember { mutableStateOf(false) }
++    var editingState by remember { mutableStateOf<String?>(null) }
++    var enabled by remember { mutableStateOf(viewModel.isEnabled) }
++
++    setToolbarConfig(ToolbarConfig(
++        title = "Automation States",
++        navigationIcon = @Composable {
++            IconButton(onClick = onNavigateBack) {
++                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
++            }
++        },
++        actions = @Composable {
++            IconButton(onClick = { showAddStateDialog = true }) {
++                Icon(Icons.Filled.Add, contentDescription = "Add State")
++            }
++        }
++    ))
++
++    val states by viewModel.states.collectAsStateWithLifecycle()
++    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
++    if (refreshTick >= 0) Unit // force recomposition
++
++    if (showAddStateDialog) {
++        AddStateDialog(
++            onDismiss = { showAddStateDialog = false },
++            onConfirm = { name, values ->
++                viewModel.addState(name, values)
++                showAddStateDialog = false
++            }
++        )
++    }
++
++    editingState?.let { stateName ->
++        EditStateDialog(
++            stateName = stateName,
++            currentValues = viewModel.getValues(stateName),
++            onDismiss = { editingState = null },
++            onConfirm = { values ->
++                viewModel.updateStateValues(stateName, values)
++                editingState = null
++            },
++            onDelete = {
++                viewModel.deleteState(stateName)
++                editingState = null
++            }
++        )
++    }
++
++    Column(modifier = Modifier.fillMaxSize()) {
++        Card(
++            modifier = Modifier.fillMaxWidth().padding(8.dp),
++            colors = CardDefaults.cardColors(
++                containerColor = if (enabled)
++                    MaterialTheme.colorScheme.primaryContainer
++                else
++                    MaterialTheme.colorScheme.errorContainer
++            )
++        ) {
++            Row(
++                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically
++            ) {
++                Column {
++                    Text(
++                        text = if (enabled) "Automation States: ENABLED" else "Automation States: DISABLED",
++                        style = MaterialTheme.typography.titleSmall
++                    )
++                    if (!enabled) {
++                        Text(
++                            text = "States are inactive ΓÇö automations will not trigger",
++                            style = MaterialTheme.typography.bodySmall,
++                            color = MaterialTheme.colorScheme.onErrorContainer
++                        )
++                    }
++                }
++                Switch(
++                    checked = enabled,
++                    onCheckedChange = {
++                        enabled = it
++                        viewModel.setEnabled(it)
++                    }
++                )
++            }
++        }
++
++        if (states.isEmpty()) {
++            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
++                Column(horizontalAlignment = Alignment.CenterHorizontally) {
++                    Text("No automation states defined.")
++                    Spacer(modifier = Modifier.height(8.dp))
++                    Button(onClick = { showAddStateDialog = true }) {
++                        Text("Add State")
++                    }
++                }
++            }
++        } else {
++            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(Color(0xFFF5F5F5))) {
++                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
++                    Card(
++                        modifier = Modifier.fillMaxWidth().padding(4.dp),
++                        onClick = { editingState = name },
++                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD0D0D0))
++                    ) {
++                        Column(modifier = Modifier.padding(12.dp)) {
++                            Row(
++                                modifier = Modifier.fillMaxWidth(),
++                                horizontalArrangement = Arrangement.SpaceBetween,
++                                verticalAlignment = Alignment.CenterVertically
++                            ) {
++                                Text(
++                                    text = name,
++                                    style = MaterialTheme.typography.titleMedium,
++                                    color = Color(0xFF212121)
++                                )
++                                IconButton(onClick = { viewModel.deleteState(name) }) {
++                                    Icon(
++                                        Icons.Filled.Delete,
++                                        contentDescription = "Delete",
++                                        tint = MaterialTheme.colorScheme.error
++                                    )
++                                }
++                            }
++                            Spacer(modifier = Modifier.height(8.dp))
++                            Row(
++                                horizontalArrangement = Arrangement.spacedBy(8.dp),
++                                modifier = Modifier.fillMaxWidth()
++                            ) {
++                                viewModel.getValues(name).forEach { value ->
++                                    FilterChip(
++                                        selected = value == current,
++                                        onClick = { viewModel.setState(name, value) },
++                                        label = { Text(value) },
++                                        colors = FilterChipDefaults.filterChipColors(
++                                            selectedContainerColor = Color(0xFF2E7D32),
++                                            containerColor = Color(0xFFBDBDBD),
++                                            labelColor = Color(0xFF212121),
++                                            selectedLabelColor = Color.White
++                                        )
++                                    )
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
++
++@Composable
++fun AddStateDialog(
++    onDismiss: () -> Unit,
++    onConfirm: (String, List<String>) -> Unit
++) {
++    var stateName by remember { mutableStateOf("") }
++    var valuesText by remember { mutableStateOf("") }
++    var error by remember { mutableStateOf("") }
++
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text("Add Automation State") },
++        text = {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                OutlinedTextField(
++                    value = stateName,
++                    onValueChange = { stateName = it; error = "" },
++                    label = { Text("State name") },
++                    singleLine = true,
++                    modifier = Modifier.fillMaxWidth()
++                )
++                OutlinedTextField(
++                    value = valuesText,
++                    onValueChange = { valuesText = it; error = "" },
++                    label = { Text("Values (comma separated)") },
++                    singleLine = true,
++                    modifier = Modifier.fillMaxWidth()
++                )
++                if (error.isNotEmpty()) {
++                    Text(error, color = MaterialTheme.colorScheme.error)
++                }
++                Text(
++                    "Example: name = 'Exercise', values = 'High,Low,Rest'",
++                    style = MaterialTheme.typography.bodySmall,
++                    color = MaterialTheme.colorScheme.onSurfaceVariant
++                )
++            }
++        },
++        confirmButton = {
++            Button(onClick = {
++                val name = stateName.trim()
++                val values = valuesText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
++                when {
++                    name.isEmpty() -> error = "State name required"
++                    values.isEmpty() -> error = "At least one value required"
++                    else -> onConfirm(name, values)
++                }
++            }) { Text("Add") }
++        },
++        dismissButton = {
++            TextButton(onClick = onDismiss) { Text("Cancel") }
++        }
++    )
++}
++
++@Composable
++fun EditStateDialog(
++    stateName: String,
++    currentValues: List<String>,
++    onDismiss: () -> Unit,
++    onConfirm: (List<String>) -> Unit,
++    onDelete: () -> Unit
++) {
++    var values by remember { mutableStateOf(currentValues.toMutableList()) }
++    var newValue by remember { mutableStateOf("") }
++    var error by remember { mutableStateOf("") }
++    var showDeleteConfirm by remember { mutableStateOf(false) }
++
++    if (showDeleteConfirm) {
++        AlertDialog(
++            onDismissRequest = { showDeleteConfirm = false },
++            title = { Text("Delete State") },
++            text = { Text("Delete '$stateName' and all its values?") },
++            confirmButton = {
++                Button(
++                    onClick = onDelete,
++                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
++                ) { Text("Delete") }
++            },
++            dismissButton = {
++                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
++            }
++        )
++        return
++    }
++
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text("Edit: $stateName") },
++        text = {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                if (values.isEmpty()) {
++                    Text(
++                        "No values - add one below",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant
++                    )
++                } else {
++                    values.toList().forEach { value ->
++                        Row(
++                            modifier = Modifier.fillMaxWidth(),
++                            verticalAlignment = Alignment.CenterVertically,
++                            horizontalArrangement = Arrangement.SpaceBetween
++                        ) {
++                            Text(
++                                text = value,
++                                style = MaterialTheme.typography.bodyMedium,
++                                modifier = Modifier.weight(1f)
++                            )
++                            IconButton(
++                                onClick = {
++                                    values = values.toMutableList().also { it.remove(value) }
++                                    error = ""
++                                }
++                            ) {
++                                Icon(
++                                    Icons.Filled.Delete,
++                                    contentDescription = "Remove",
++                                    tint = MaterialTheme.colorScheme.error
++                                )
++                            }
++                        }
++                        HorizontalDivider()
++                    }
++                }
++                Spacer(modifier = Modifier.height(4.dp))
++                Row(
++                    modifier = Modifier.fillMaxWidth(),
++                    verticalAlignment = Alignment.CenterVertically,
++                    horizontalArrangement = Arrangement.spacedBy(8.dp)
++                ) {
++                    OutlinedTextField(
++                        value = newValue,
++                        onValueChange = { newValue = it; error = "" },
++                        label = { Text("New value") },
++                        singleLine = true,
++                        modifier = Modifier.weight(1f)
++                    )
++                    Button(
++                        onClick = {
++                            val v = newValue.trim()
++                            when {
++                                v.isEmpty() -> error = "Enter a value"
++                                values.contains(v) -> error = "Already exists"
++                                else -> {
++                                    values = values.toMutableList().also { it.add(v) }
++                                    newValue = ""
++                                }
++                            }
++                        }
++                    ) { Text("Add") }
++                }
++                if (error.isNotEmpty()) {
++                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
++                }
++                TextButton(onClick = { showDeleteConfirm = true }) {
++                    Text("Delete this state", color = MaterialTheme.colorScheme.error)
++                }
++            }
++        },
++        confirmButton = {
++            Button(onClick = {
++                if (values.isEmpty()) error = "At least one value required"
++                else onConfirm(values.toList())
++            }) { Text("Save") }
++        },
++        dismissButton = {
++            TextButton(onClick = onDismiss) { Text("Cancel") }
++        }
++    )
++}
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
+new file mode 100644
+index 0000000000..bb707b1195
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
+@@ -0,0 +1,67 @@
++package app.aaps.plugins.automationstate.compose
++
++import androidx.lifecycle.ViewModel
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.keys.BooleanKey
++import app.aaps.core.keys.interfaces.Preferences
++import dagger.hilt.android.lifecycle.HiltViewModel
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.StateFlow
++import javax.inject.Inject
++
++@HiltViewModel
++class AutomationStateViewModel @Inject constructor(
++    private val automationState: AutomationStateInterface,
++    private val preferences: Preferences
++) : ViewModel() {
++
++    private val _refreshTick = MutableStateFlow(0)
++    val refreshTick: StateFlow<Int> = _refreshTick
++
++    private val _states = MutableStateFlow<List<Pair<String, String>>>(emptyList())
++    val states: StateFlow<List<Pair<String, String>>> = _states
++
++    val isEnabled: Boolean
++        get() = preferences.get(BooleanKey.AutomationStatesEnabled)
++
++    fun setEnabled(enabled: Boolean) {
++        preferences.put(BooleanKey.AutomationStatesEnabled, enabled)
++    }
++
++    fun refresh() {
++        // Force new list reference for Compose recomposition
++        _states.value = emptyList(); _states.value = automationState.getAllStates().toList()
++        _refreshTick.value += 1
++    }
++
++    fun setState(stateName: String, value: String) {
++        try {
++            automationState.setState(stateName, value)
++            refresh()
++        } catch (e: Exception) { }
++    }
++
++    fun addState(name: String, values: List<String>) {
++        automationState.setStateValues(name, values)
++        try { automationState.setState(name, values.first()) } catch (e: Exception) { }
++        refresh()
++    }
++
++    fun updateStateValues(name: String, values: List<String>) {
++        automationState.setStateValues(name, values)
++        val current = automationState.getState(name)
++        if (current.isEmpty() || !values.contains(current)) {
++            try { automationState.setState(name, values.first()) } catch (e: Exception) { }
++        }
++        refresh()
++    }
++
++    fun deleteState(name: String) {
++        automationState.deleteState(name)
++        refresh()
++    }
++
++    fun getValues(stateName: String): List<String> = automationState.getStateValues(stateName)
++
++    init { refresh() }
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+new file mode 100644
+index 0000000000..cfdc60689c
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/di/AutomationStateModule.kt
+@@ -0,0 +1,18 @@
++package app.aaps.plugins.automationstate.di
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.plugins.automationstate.services.AutomationStateService
++import dagger.Binds
++import dagger.Module
++import dagger.hilt.InstallIn
++import dagger.hilt.components.SingletonComponent
++import javax.inject.Singleton
++
++@Module
++@InstallIn(SingletonComponent::class)
++abstract class AutomationStateModule {
++
++    @Binds
++    @Singleton
++    abstract fun bindAutomationStateService(service: AutomationStateService): AutomationStateInterface
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+new file mode 100644
+index 0000000000..47804b03c4
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/keys/AutomationStateStringKey.kt
+@@ -0,0 +1,13 @@
++package app.aaps.plugins.automationstate.keys
++
++import app.aaps.core.keys.interfaces.StringNonPreferenceKey
++
++enum class AutomationStateStringKey(
++    override val key: String,
++    override val defaultValue: String,
++    override val exportable: Boolean = true
++) : StringNonPreferenceKey {
++
++    AutomationCurrentStates("automation_state_service", "{}"),
++    AutomationStateValues("automation_state_values", "{}"),
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+new file mode 100644
+index 0000000000..ea4a66c204
+--- /dev/null
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+@@ -0,0 +1,80 @@
++package app.aaps.plugins.automationstate.services
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.interfaces.rx.bus.RxBus
++import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
++import app.aaps.core.keys.interfaces.Preferences
++import app.aaps.plugins.automationstate.keys.AutomationStateStringKey
++import kotlinx.serialization.json.Json
++import javax.inject.Inject
++import javax.inject.Singleton
++
++@Singleton
++class AutomationStateService @Inject constructor(
++    private val preferences: Preferences,
++    private val rxBus: RxBus
++) : AutomationStateInterface {
++
++    private var automationStates: HashMap<String, String> = HashMap()
++    var stateValues: HashMap<String, List<String>> = HashMap()
++        private set
++
++    init {
++        val string = preferences.get(AutomationStateStringKey.AutomationCurrentStates)
++        try { automationStates = Json.decodeFromString(string) } catch (e: Exception) { automationStates = HashMap() }
++
++        val valuesString = preferences.get(AutomationStateStringKey.AutomationStateValues)
++        try { stateValues = Json.decodeFromString(valuesString) } catch (e: Exception) { stateValues = HashMap() }
++    }
++
++    override fun inState(stateName: String, state: String): Boolean {
++        if (automationStates.containsKey(stateName.trim())) return automationStates[stateName.trim()] == state.trim()
++        return false
++    }
++
++    override fun setState(stateName: String, state: String) {
++        val trimmedName = stateName.trim()
++        val trimmedState = state.trim()
++        require(stateValues.containsKey(trimmedName)) { "Invalid state name: $trimmedName" }
++        require(stateValues[trimmedName]!!.contains(trimmedState)) { "Invalid state value: $trimmedState" }
++        automationStates[trimmedName] = trimmedState
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++        rxBus.send(EventAutomationDataChanged())
++    }
++
++    override fun getState(stateName: String): String {
++        return try { automationStates[stateName.trim()]!! } catch (e: Exception) { "" }
++    }
++
++    override fun getAllStates(): List<Pair<String, String>> =
++        stateValues.keys.map { stateName -> Pair(stateName, automationStates[stateName] ?: "") }
++
++    fun clearStates() {
++        automationStates.clear()
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, "{}")
++    }
++
++    override fun getStateValues(stateName: String): List<String> = stateValues[stateName.trim()] ?: emptyList()
++
++    override fun setStateValues(stateName: String, values: List<String>) {
++        val trimmedName = stateName.trim()
++        val trimmedValues = values.map { it.trim() }
++        val currentState = automationStates[trimmedName]
++        if (currentState != null && !trimmedValues.contains(currentState)) {
++            automationStates.remove(trimmedName)
++            preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++        }
++        stateValues[trimmedName] = trimmedValues
++        preferences.put(AutomationStateStringKey.AutomationStateValues, Json.encodeToString(stateValues))
++    }
++
++    override fun hasStateValues(stateName: String): Boolean = stateValues.containsKey(stateName.trim())
++
++    override fun deleteState(stateName: String) {
++        val trimmedName = stateName.trim()
++        automationStates.remove(trimmedName)
++        stateValues.remove(trimmedName)
++        preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
++        preferences.put(AutomationStateStringKey.AutomationStateValues, Json.encodeToString(stateValues))
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml b/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+new file mode 100644
+index 0000000000..0d30e3f721
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/drawable/automation_state_active_background.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/automation_state_active_background" />
++    <corners android:radius="4dp" />
++</shape>
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/drawable/automation_state_background.xml b/plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+new file mode 100644
+index 0000000000..0c309f89f7
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/drawable/automation_state_background.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android"
++    android:shape="rectangle">
++    <solid android:color="@color/automation_state_background" />
++    <corners android:radius="4dp" />
++</shape>
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/values/colors.xml b/plugins/automation-state/src/main/res/values/colors.xml
+new file mode 100644
+index 0000000000..01bda9531c
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/values/colors.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <color name="automation_state_background">#1AFFFFFF</color>
++    <color name="automation_state_active_background">#4000BCD4</color>
++</resources>
+\ No newline at end of file
+diff --git a/plugins/automation-state/src/main/res/values/strings.xml b/plugins/automation-state/src/main/res/values/strings.xml
+new file mode 100644
+index 0000000000..f20c3f0297
+--- /dev/null
++++ b/plugins/automation-state/src/main/res/values/strings.xml
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <!-- Automation States Plugin -->
++    <string name="automation_states">Automation States</string>
++    <string name="automation_states_short">States</string>
++    <string name="description_automation_states">View and monitor automation state variables</string>
++    <string name="automation_state_values">Automation State Values</string>
++    <string name="enter_state_value">Enter state value</string>
++    <string name="automation_state_missing_name_value">Please enter a state name </string>
++    <string name="ok">OK</string>
++    <string name="cancel">Cancel</string>
++    <string name="add_automation_state">Add Automation State</string>
++    <string name="select_state_name">Select state name</string>
++    <string name="select_state_value">Select state value</string>
++    <string name="state_name_label">State name</string>
++    <string name="state_value_label">State value</string>
++    <string name="automation_state_last_value_cannot_be_deleted">Cannot delete the last state value</string>
++    <string name="delete_state">Delete State</string>
++    <string name="delete_state_confirmation">Are you sure you want to delete this state?</string>
++    <string name="automation_states_enabled">Enable Automation States</string>
++    <string name="automation_states_enabled_summary">Allow automations to use State triggers and actions. Off by default â€” enable after reviewing imported states.</string>
++    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
++    <string name="no_automation_states">No automation states defined</string>
++    <string name="set_state_state_name">State name</string>
++</resources>
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+new file mode 100644
+index 0000000000..625201c0b2
+--- /dev/null
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -0,0 +1,49 @@
++package app.aaps.plugins.automation.actions
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.interfaces.pump.PumpEnactResult
++import app.aaps.plugins.automation.R
++import dagger.android.HasAndroidInjector
++import org.json.JSONObject
++import javax.inject.Inject
++
++class ActionSetAutomationState(injector: HasAndroidInjector) : Action(injector) {
++
++    @Inject lateinit var automationState: AutomationStateInterface
++
++    var stateName: String = ""
++    var stateValue: String = ""
++
++    override fun friendlyName(): Int = R.string.set_state
++
++    override fun shortDescription(): String =
++        rh.gs(R.string.set_state_description, stateName, stateValue)
++
++    override fun hasDialog(): Boolean = true
++
++    override fun isValid(): Boolean = stateName.isNotEmpty() && stateValue.isNotEmpty()
++
++    override suspend fun doAction(): PumpEnactResult {
++        return try {
++            automationState.setState(stateName, stateValue)
++            pumpEnactResultProvider.get().success(true)
++        } catch (e: Exception) {
++            pumpEnactResultProvider.get().success(false).comment(e.message ?: "Error")
++        }
++    }
++
++    override fun toJSON(): String = JSONObject()
++        .put("type", this::class.java.simpleName)
++        .put("data", JSONObject()
++            .put("stateName", stateName)
++            .put("stateValue", stateValue))
++        .toString()
++
++    override fun fromJSON(data: String): Action {
++        val d = JSONObject(data)
++        stateName = d.optString("stateName", "")
++        stateValue = d.optString("stateValue", "")
++        return this
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/elements/InputDropdownStateMenu.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/elements/InputDropdownStateMenu.kt
+new file mode 100644
+index 0000000000..43488c36a3
+--- /dev/null
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/elements/InputDropdownStateMenu.kt
+@@ -0,0 +1,50 @@
++package app.aaps.plugins.automation.elements
++
++import android.view.Gravity
++import android.view.View
++import android.widget.AdapterView
++import android.widget.ArrayAdapter
++import android.widget.LinearLayout
++import android.widget.Spinner
++import app.aaps.core.interfaces.resources.ResourceHelper
++
++class InputDropdownStateMenu(
++    private val rh: ResourceHelper,
++    val onValueSelected: ((String) -> Unit)? = null
++) {
++    var value: String = ""
++    var values: List<String> = listOf()
++    private var spinner: Spinner? = null
++
++    fun addToLayout(root: LinearLayout) {
++        spinner = Spinner(root.context).apply {
++            layoutParams = LinearLayout.LayoutParams(
++                LinearLayout.LayoutParams.MATCH_PARENT,
++                LinearLayout.LayoutParams.WRAP_CONTENT
++            ).also { it.setMargins(0, rh.dpToPx(4), 0, rh.dpToPx(4)) }
++
++            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
++                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
++                    if (position >= 0 && position < values.size) {
++                        val selectedValue = values[position]
++                        if (value != selectedValue) { value = selectedValue; onValueSelected?.invoke(value) }
++                    }
++                }
++                override fun onNothingSelected(parent: AdapterView<*>?) {}
++            }
++            gravity = Gravity.CENTER_HORIZONTAL
++        }
++        updateAdapter()
++        root.addView(spinner)
++    }
++
++    fun updateAdapter() {
++        if (values.isEmpty() || spinner?.context == null) return
++        val adapter = ArrayAdapter(spinner?.context ?: return, android.R.layout.simple_spinner_item, values)
++        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
++        spinner?.adapter = adapter
++        val position = values.indexOf(value)
++        if (position >= 0) spinner?.setSelection(position)
++        else if (values.isNotEmpty()) { value = values[0]; spinner?.setSelection(0); onValueSelected?.invoke(value) }
++    }
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+new file mode 100644
+index 0000000000..9e7f949182
+--- /dev/null
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+@@ -0,0 +1,47 @@
++package app.aaps.plugins.automation.triggers
++
++import app.aaps.core.interfaces.automation.AutomationStateInterface
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.keys.BooleanKey
++import app.aaps.plugins.automation.R
++import dagger.android.HasAndroidInjector
++import org.json.JSONObject
++import javax.inject.Inject
++
++class TriggerAutomationState(injector: HasAndroidInjector) : Trigger(injector) {
++
++    @Inject lateinit var automationStateService: AutomationStateInterface
++
++    var stateName: String = ""
++    var stateValue: String = ""
++
++    private constructor(injector: HasAndroidInjector, stateName: String, stateValue: String) : this(injector) {
++        this.stateName = stateName
++        this.stateValue = stateValue
++    }
++
++    override suspend fun shouldRun(): Boolean {
++        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
++        val result = automationStateService.inState(stateName, stateValue)
++        aapsLogger.debug(LTag.AUTOMATION, "TriggerAutomationState: $stateName==$stateValue -> $result")
++        return result
++    }
++
++    override fun dataJSON(): JSONObject = JSONObject()
++        .put("stateName", stateName)
++        .put("stateValue", stateValue)
++
++    override fun fromJSON(data: String): Trigger {
++        val d = JSONObject(data)
++        stateName = d.optString("stateName", "")
++        stateValue = d.optString("stateValue", "")
++        return this
++    }
++
++    override fun friendlyName(): Int = R.string.check_state_name
++
++    override fun friendlyDescription(): String =
++        rh.gs(R.string.check_state_description, stateName, stateValue)
++
++    override fun duplicate(): Trigger = TriggerAutomationState(injector, stateName, stateValue)
++}
+\ No newline at end of file
+diff --git a/plugins/automation/src/main/res/values/strings.xml b/plugins/automation/src/main/res/values/strings.xml
+index ff9c21639e..ee09678f50 100644
+--- a/plugins/automation/src/main/res/values/strings.xml
++++ b/plugins/automation/src/main/res/values/strings.xml
+@@ -172,4 +172,4 @@
+     <string name="automation_states_disabled">Automation States are disabled. Enable in Automation States settings.</string>
+     <string name="check_state_name">Check Automation State</string>
+     <string name="check_state_description">State %1$s is %2$s</string>
+-</resources>
+\ No newline at end of file
++</resources>
+diff --git a/plugins/configuration/src/main/res/values/strings.xml b/plugins/configuration/src/main/res/values/strings.xml
+index 213e7aaf0a..c161bcad77 100644
+--- a/plugins/configuration/src/main/res/values/strings.xml
++++ b/plugins/configuration/src/main/res/values/strings.xml
+@@ -78,4 +78,4 @@
+     <string name="automation_states">Automation States</string>
+     <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
+     <string name="automation_states_enable_now">Enable Automation States now</string>
+-</resources>
+\ No newline at end of file
++</resources>
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
+index 9c6842e60d..fdd18febb8 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportSettingsScreen.kt
+@@ -683,4 +683,4 @@ private fun FileDetailsCard(
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
+index 46aca6f635..bcba3289c6 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/maintenance/ImportViewModel.kt
+@@ -310,4 +310,4 @@ class ImportViewModel @Inject constructor(
+     fun cancelImport() {
+         _importStep.value = ImportStep.Idle
+     }
+-}
+\ No newline at end of file
++}
+-- 
+2.43.0.windows.1
+
+
+From cd84314cbdab481c9e21599b1462851424960732 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 22:45:18 +0930
+Subject: [PATCH 03/10] 138-rc
+
+---
+ .../maintenance/ImportExportPrefs.kt          |  2 +-
+ .../maintenance/ImportExportPrefsImpl.kt      |  2 +-
+ .../compose/AutomationStateScreen.kt          | 68 +++++++++----------
+ .../plugins/automation/AutomationPlugin.kt    |  2 +-
+ .../aaps/plugins/automation/actions/Action.kt |  2 +-
+ .../compose/actions/ActionEditors.kt          |  2 +-
+ .../compose/triggers/TriggerEditors.kt        |  2 +-
+ .../plugins/automation/di/AutomationModule.kt |  2 +-
+ .../plugins/automation/triggers/Trigger.kt    |  2 +-
+ 9 files changed, 40 insertions(+), 44 deletions(-)
+
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
+index 932d4073bf..393b6e0c7b 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/maintenance/ImportExportPrefs.kt
+@@ -113,4 +113,4 @@ sealed interface ImportDecryptResult {
+ 
+     data object WrongPassword : ImportDecryptResult
+     data class Error(val message: String) : ImportDecryptResult
+-}
+\ No newline at end of file
++}
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
+index 6d2ca42e46..1ef6581610 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/maintenance/ImportExportPrefsImpl.kt
+@@ -1182,4 +1182,4 @@ class ImportExportPrefsImpl @Inject constructor(
+ object ApsExportInbox : Inbox<ImportExportPrefsImpl.ApsResultExportWorker.ApsResultData>(
+     "aps-export",
+     ImportExportPrefsImpl.ApsResultExportWorker::class.java
+-)
+\ No newline at end of file
++)
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+index efc4554099..491b61947d 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+@@ -1,6 +1,5 @@
+ package app.aaps.plugins.automationstate.compose
+ 
+-import androidx.compose.foundation.background
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+@@ -12,7 +11,6 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+-import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.unit.dp
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ import app.aaps.core.ui.compose.ToolbarConfig
+@@ -27,23 +25,23 @@ fun AutomationStateScreen(
+     var editingState by remember { mutableStateOf<String?>(null) }
+     var enabled by remember { mutableStateOf(viewModel.isEnabled) }
+ 
+-    setToolbarConfig(ToolbarConfig(
+-        title = "Automation States",
+-        navigationIcon = @Composable {
+-            IconButton(onClick = onNavigateBack) {
+-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+-            }
+-        },
+-        actions = @Composable {
+-            IconButton(onClick = { showAddStateDialog = true }) {
+-                Icon(Icons.Filled.Add, contentDescription = "Add State")
++    LaunchedEffect(Unit) {
++        setToolbarConfig(ToolbarConfig(
++            title = "Automation States",
++            navigationIcon = {
++                IconButton(onClick = onNavigateBack) {
++                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
++                }
++            },
++            actions = {
++                IconButton(onClick = { showAddStateDialog = true }) {
++                    Icon(Icons.Filled.Add, contentDescription = "Add State")
++                }
+             }
+-        }
+-    ))
++        ))
++    }
+ 
+     val states by viewModel.states.collectAsStateWithLifecycle()
+-    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
+-    if (refreshTick >= 0) Unit // force recomposition
+ 
+     if (showAddStateDialog) {
+         AddStateDialog(
+@@ -72,8 +70,12 @@ fun AutomationStateScreen(
+     }
+ 
+     Column(modifier = Modifier.fillMaxSize()) {
++
++        // Enable/disable toggle always visible at top
+         Card(
+-            modifier = Modifier.fillMaxWidth().padding(8.dp),
++            modifier = Modifier
++                .fillMaxWidth()
++                .padding(8.dp),
+             colors = CardDefaults.cardColors(
+                 containerColor = if (enabled)
+                     MaterialTheme.colorScheme.primaryContainer
+@@ -82,7 +84,9 @@ fun AutomationStateScreen(
+             )
+         ) {
+             Row(
+-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                 horizontalArrangement = Arrangement.SpaceBetween,
+                 verticalAlignment = Alignment.CenterVertically
+             ) {
+@@ -93,7 +97,7 @@ fun AutomationStateScreen(
+                     )
+                     if (!enabled) {
+                         Text(
+-                            text = "States are inactive ΓÇö automations will not trigger",
++                            text = "States are inactive Î“Ã‡Ã¶ automations will not trigger",
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onErrorContainer
+                         )
+@@ -120,12 +124,12 @@ fun AutomationStateScreen(
+                 }
+             }
+         } else {
+-            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp).background(Color(0xFFF5F5F5))) {
+-                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
++            LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
++                items(states) { (name, current) ->
+                     Card(
+                         modifier = Modifier.fillMaxWidth().padding(4.dp),
+                         onClick = { editingState = name },
+-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD0D0D0))
++                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFD0D0D0))
+                     ) {
+                         Column(modifier = Modifier.padding(12.dp)) {
+                             Row(
+@@ -133,17 +137,9 @@ fun AutomationStateScreen(
+                                 horizontalArrangement = Arrangement.SpaceBetween,
+                                 verticalAlignment = Alignment.CenterVertically
+                             ) {
+-                                Text(
+-                                    text = name,
+-                                    style = MaterialTheme.typography.titleMedium,
+-                                    color = Color(0xFF212121)
+-                                )
++                                Text(text = name, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFF212121))
+                                 IconButton(onClick = { viewModel.deleteState(name) }) {
+-                                    Icon(
+-                                        Icons.Filled.Delete,
+-                                        contentDescription = "Delete",
+-                                        tint = MaterialTheme.colorScheme.error
+-                                    )
++                                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
+                                 }
+                             }
+                             Spacer(modifier = Modifier.height(8.dp))
+@@ -157,10 +153,10 @@ fun AutomationStateScreen(
+                                         onClick = { viewModel.setState(name, value) },
+                                         label = { Text(value) },
+                                         colors = FilterChipDefaults.filterChipColors(
+-                                            selectedContainerColor = Color(0xFF2E7D32),
+-                                            containerColor = Color(0xFFBDBDBD),
+-                                            labelColor = Color(0xFF212121),
+-                                            selectedLabelColor = Color.White
++                                            selectedContainerColor = androidx.compose.ui.graphics.Color(0xFF2E7D32),
++                                            containerColor = androidx.compose.ui.graphics.Color(0xFFBDBDBD),
++                                            labelColor = androidx.compose.ui.graphics.Color(0xFF212121),
++                                            selectedLabelColor = androidx.compose.ui.graphics.Color.White
+                                         )
+                                     )
+                                 }
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+index 215f1439ea..04be628124 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/AutomationPlugin.kt
+@@ -615,4 +615,4 @@ class AutomationPlugin @Inject constructor(
+         icon = pluginDescription.icon
+     )
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+index d0e4e3b6d1..f9a17f982a 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/actions/Action.kt
+@@ -86,4 +86,4 @@ abstract class Action(val injector: HasAndroidInjector) {
+         }
+         return null
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+index 3d45c10114..98ad0cf9fb 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+@@ -375,4 +375,4 @@ fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () ->
+             label = "Value"
+         )
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+index 71f847485d..8c52a6fc37 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+@@ -621,4 +621,4 @@ fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit
+             label = "Value"
+         )
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+index a9809a993a..cb4b0228bb 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/di/AutomationModule.kt
+@@ -126,4 +126,4 @@ abstract class AutomationModule {
+ 
+         @Binds fun bindAutomation(automationPlugin: AutomationPlugin): Automation
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+index 7d8ae14011..846ade6179 100644
+--- a/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
++++ b/plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/Trigger.kt
+@@ -109,4 +109,4 @@ abstract class Trigger(val injector: HasAndroidInjector) {
+         return TriggerConnector(injector)
+     }
+ 
+-}
+\ No newline at end of file
++}
+-- 
+2.43.0.windows.1
+
+
+From 93c8a8de78ad6e4e4250685f54e7fbd64030f140 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 22:50:08 +0930
+Subject: [PATCH 04/10] 139-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 79aede51f7..2eb2f5f4b9 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-137-rc"
++    const val appVersion = "4.0.0-139-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+-- 
+2.43.0.windows.1
+
+
+From fe2b7c1f898f69f3912db0a9364579c1e349b391 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 22:55:37 +0930
+Subject: [PATCH 05/10] 140-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 2eb2f5f4b9..f1fbe3ae57 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-139-rc"
++    const val appVersion = "4.0.0-140-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+-- 
+2.43.0.windows.1
+
+
+From 86ae209f17a269e715031c3fa67b43ac22cdecb4 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Thu, 18 Jun 2026 23:12:23 +0930
+Subject: [PATCH 06/10] 141-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt                          | 2 +-
+ .../plugins/automationstate/compose/AutomationStateScreen.kt  | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index f1fbe3ae57..cba73728cb 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-140-rc"
++    const val appVersion = "4.0.0-141-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+index 491b61947d..6c07ca9d8e 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+@@ -42,6 +42,8 @@ fun AutomationStateScreen(
+     }
+ 
+     val states by viewModel.states.collectAsStateWithLifecycle()
++    val refreshTick by viewModel.refreshTick.collectAsStateWithLifecycle()
++    if (refreshTick >= 0) Unit // force recomposition
+ 
+     if (showAddStateDialog) {
+         AddStateDialog(
+@@ -125,7 +127,7 @@ fun AutomationStateScreen(
+             }
+         } else {
+             LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+-                items(states) { (name, current) ->
++                items(states, key = { (name, _) -> "$name-$refreshTick" }) { (name, current) ->
+                     Card(
+                         modifier = Modifier.fillMaxWidth().padding(4.dp),
+                         onClick = { editingState = name },
+-- 
+2.43.0.windows.1
+
+
+From b3e9cf02b058c16c513e814de002695da88450a8 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Fri, 19 Jun 2026 11:48:06 +0930
+Subject: [PATCH 07/10] 146f2-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index cba73728cb..060c4622b7 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-141-rc"
++    const val appVersion = "4.0.0-146f2-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+-- 
+2.43.0.windows.1
+
+
+From 7349fbccdc9d40b292a57c8dccbb68341f12ddf8 Mon Sep 17 00:00:00 2001
+From: RJC-RSC <142671675+RJC-RSC@users.noreply.github.com>
+Date: Fri, 19 Jun 2026 13:34:32 +0930
+Subject: [PATCH 08/10] 147f2-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 060c4622b7..77807c459e 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-146f2-rc"
++    const val appVersion = "4.0.0-147f2-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+-- 
+2.43.0.windows.1
+
+
+From d5443a10090bd1388a1fe2eb5f21fca64ca8cf04 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Fri, 19 Jun 2026 14:43:50 +0930
+Subject: [PATCH 09/10] 149f2-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt                            | 2 +-
+ .../plugins/automationstate/compose/AutomationStateViewModel.kt | 1 +
+ .../plugins/automationstate/services/AutomationStateService.kt  | 1 +
+ 3 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 77807c459e..64e3ff90d0 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-147f2-rc"
++    const val appVersion = "4.0.0-149f2-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
+index bb707b1195..fddf9e8ee7 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateViewModel.kt
+@@ -48,6 +48,7 @@ class AutomationStateViewModel @Inject constructor(
+     }
+ 
+     fun updateStateValues(name: String, values: List<String>) {
++        if (values.isEmpty()) return // safety guard
+         automationState.setStateValues(name, values)
+         val current = automationState.getState(name)
+         if (current.isEmpty() || !values.contains(current)) {
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+index ea4a66c204..1ffc0d6438 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/services/AutomationStateService.kt
+@@ -57,6 +57,7 @@ class AutomationStateService @Inject constructor(
+     override fun getStateValues(stateName: String): List<String> = stateValues[stateName.trim()] ?: emptyList()
+ 
+     override fun setStateValues(stateName: String, values: List<String>) {
++        if (values.isEmpty()) return // safety guard - never set empty values list
+         val trimmedName = stateName.trim()
+         val trimmedValues = values.map { it.trim() }
+         val currentState = automationStates[trimmedName]
+-- 
+2.43.0.windows.1
+
+
+From 281f6c7dbbec822d73220d6f1ced6c8594d0e9b7 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Fri, 19 Jun 2026 21:41:09 +0930
+Subject: [PATCH 10/10] 152f2-rc
+
+---
+ buildSrc/src/main/kotlin/Versions.kt          |  2 +-
+ .../compose/AutomationStateScreen.kt          | 25 +++++++++++++++++--
+ 2 files changed, 24 insertions(+), 3 deletions(-)
+
+diff --git a/buildSrc/src/main/kotlin/Versions.kt b/buildSrc/src/main/kotlin/Versions.kt
+index 64e3ff90d0..057ab01ef3 100644
+--- a/buildSrc/src/main/kotlin/Versions.kt
++++ b/buildSrc/src/main/kotlin/Versions.kt
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+ object Versions {
+ 
+     // On change edit aaps-ci.yml
+-    const val appVersion = "4.0.0-149f2-rc"
++    const val appVersion = "4.0.0-152f2-rc"
+     const val versionCode = 1500
+ 
+     const val compileSdk = 36
+diff --git a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+index 6c07ca9d8e..3e58407c9a 100644
+--- a/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
++++ b/plugins/automation-state/src/main/kotlin/app/aaps/plugins/automationstate/compose/AutomationStateScreen.kt
+@@ -24,6 +24,7 @@ fun AutomationStateScreen(
+     var showAddStateDialog by remember { mutableStateOf(false) }
+     var editingState by remember { mutableStateOf<String?>(null) }
+     var enabled by remember { mutableStateOf(viewModel.isEnabled) }
++    var stateToDelete by remember { mutableStateOf<String?>(null) }
+ 
+     LaunchedEffect(Unit) {
+         setToolbarConfig(ToolbarConfig(
+@@ -71,6 +72,26 @@ fun AutomationStateScreen(
+         )
+     }
+ 
++    stateToDelete?.let { name ->
++        AlertDialog(
++            onDismissRequest = { stateToDelete = null },
++            title = { Text("Delete State") },
++            text = { Text("Delete '$name' and all its values?") },
++            confirmButton = {
++                Button(
++                    onClick = {
++                        viewModel.deleteState(name)
++                        stateToDelete = null
++                    },
++                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
++                ) { Text("Delete") }
++            },
++            dismissButton = {
++                TextButton(onClick = { stateToDelete = null }) { Text("Cancel") }
++            }
++        )
++    }
++
+     Column(modifier = Modifier.fillMaxSize()) {
+ 
+         // Enable/disable toggle always visible at top
+@@ -140,8 +161,8 @@ fun AutomationStateScreen(
+                                 verticalAlignment = Alignment.CenterVertically
+                             ) {
+                                 Text(text = name, style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color(0xFF212121))
+-                                IconButton(onClick = { viewModel.deleteState(name) }) {
+-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete")
++                                IconButton(onClick = { stateToDelete = name }) {
++                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = androidx.compose.ui.graphics.Color.Black)
+                                 }
+                             }
+                             Spacer(modifier = Modifier.height(8.dp))
+-- 
+2.43.0.windows.1
+
