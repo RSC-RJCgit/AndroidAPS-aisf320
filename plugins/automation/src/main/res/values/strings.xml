@@ -8,6 +8,9 @@
     <string name="automation">Automation</string>
     <string name="automation_description">User defined automation tasks</string>
     <string name="automation_enabled">Enabled</string>
+    <string name="automation_minimum_repeat_time">Minimum repeat time</string>
+    <string name="automation_minimum_repeat_time_summary">Wait at least this long before running this automation again. Use 0 for no delay.</string>
+    <string name="automation_minutes">minutes</string>
     <string name="automation_read_only">Read-only</string>
     <string name="automation_new_rule">New rule</string>
     <string name="automation_edit_rule">Edit rule</string>

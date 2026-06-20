@@ -425,6 +425,7 @@ class AutomationComposeContent(
             onTitleChange = holder::editTitleChanged,
             onUserActionChange = holder::editUserActionChanged,
             onEnabledChange = holder::editEnabledChanged,
+            onMinimumRepeatMinutesChange = holder::editMinimumRepeatMinutesChanged,
             onEditTrigger = { holder.openTriggerEditor() },
             onAddAction = { showActionSheet = true },
             onRemoveAction = { index ->

@@ -2,6 +2,7 @@ package app.aaps.plugins.automation.compose
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import app.aaps.plugins.automation.AutomationEventObject
 
 enum class AutomationSelectionMode { None, Remove, Sort }
 
@@ -28,6 +29,7 @@ data class AutomationEditUiState(
     val title: String = "",
     val userAction: Boolean = false,
     val enabled: Boolean = true,
+    val minimumRepeatMinutes: String = AutomationEventObject.DEFAULT_MINIMUM_REPEAT_MINUTES.toString(),
     val readOnly: Boolean = false,
     val triggerDescription: String = "",
     val hasTrigger: Boolean = false,
@@ -37,7 +39,8 @@ data class AutomationEditUiState(
 ) {
 
     val canSave: Boolean
-        get() = !readOnly && title.isNotBlank() && (hasTrigger || userAction) && actions.isNotEmpty()
+        get() = !readOnly && title.isNotBlank() && minimumRepeatMinutes.toIntOrNull() != null &&
+            (hasTrigger || userAction) && actions.isNotEmpty()
 }
 
 data class AutomationEventUi(
