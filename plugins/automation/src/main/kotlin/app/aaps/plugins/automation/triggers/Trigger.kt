@@ -75,6 +75,7 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerBg::class.java.simpleName                 -> TriggerBg(injector).fromJSON(data.toString())
                 TriggerBolusAgo::class.java.simpleName           -> TriggerBolusAgo(injector).fromJSON(data.toString())
                 TriggerBTDevice::class.java.simpleName           -> TriggerBTDevice(injector).fromJSON(data.toString())
+                TriggerPhoneBattery::class.java.simpleName       -> TriggerPhoneBattery(injector).fromJSON(data.toString())
                 TriggerSensorAge::class.java.simpleName          -> TriggerSensorAge(injector).fromJSON(data.toString())
                 TriggerCannulaAge::class.java.simpleName         -> TriggerCannulaAge(injector).fromJSON(data.toString())
                 TriggerPodChange::class.java.simpleName          -> TriggerPodChange(injector).fromJSON(data.toString())
@@ -90,6 +91,8 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerHeartRate::class.java.simpleName          -> TriggerHeartRate(injector).fromJSON(data.toString())
                 TriggerLocation::class.java.simpleName           -> TriggerLocation(injector).fromJSON(data.toString())
                 TriggerProfilePercent::class.java.simpleName     -> TriggerProfilePercent(injector).fromJSON(data.toString())
+                TriggerProfile::class.java.simpleName             -> TriggerProfile(injector).fromJSON(data.toString())
+                TriggerAutomationState::class.java.simpleName    -> TriggerAutomationState(injector).fromJSON(data.toString())
                 TriggerPumpLastConnection::class.java.simpleName -> TriggerPumpLastConnection(injector).fromJSON(data.toString())
                 TriggerRecurringTime::class.java.simpleName      -> TriggerRecurringTime(injector).fromJSON(data.toString())
                 TriggerSceneActive::class.java.simpleName        -> TriggerSceneActive(injector).fromJSON(data.toString())
@@ -99,6 +102,7 @@ abstract class Trigger(val injector: HasAndroidInjector) {
                 TriggerTimeRange::class.java.simpleName          -> TriggerTimeRange(injector).fromJSON(data.toString())
                 TriggerWifiSsid::class.java.simpleName           -> TriggerWifiSsid(injector).fromJSON(data.toString())
                 TriggerStepsCount::class.java.simpleName         -> TriggerStepsCount(injector).fromJSON(data.toString())
+                TriggerAutomationState::class.java.simpleName   -> TriggerAutomationState(injector).fromJSON(data.toString())
 
                 else                                             -> TriggerConnector(injector)
             }

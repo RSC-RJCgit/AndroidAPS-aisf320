@@ -59,6 +59,10 @@ import app.aaps.core.ui.compose.bottomBarSafeArea
 import app.aaps.core.ui.compose.clearFocusOnTap
 import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.R as CoreUiR
+import androidx.compose.material3.Checkbox
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 @Composable
 fun ImportSettingsScreen(
@@ -109,14 +113,17 @@ fun ImportSettingsScreen(
         }
 
         is ImportStep.Review         -> {
+            var statesAcknowledged by remember { mutableStateOf(false) }
             ImportReviewContent(
                 state = currentStep,
                 rxBus = rxBus,
                 onMasterPasswordChanged = { viewModel.onMasterPasswordChanged(it) },
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
-                onImport = { viewModel.confirmImport() },
-                onBack = { viewModel.goBackToFilePicker() }
+                onImport = { viewModel.confirmImport(keepStatesEnabled = viewModel.statesAcknowledged) },
+                onBack = { viewModel.goBackToFilePicker() },
+                statesAcknowledged = statesAcknowledged,
+                onStatesAcknowledgedChange = { statesAcknowledged = it; viewModel.statesAcknowledged = it }
             )
         }
 
@@ -402,12 +409,13 @@ private fun ImportReviewContent(
     onDecryptionPasswordChanged: (String) -> Unit,
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    statesAcknowledged: Boolean,
+    onStatesAcknowledgedChange: (Boolean) -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val successResult = state.decryptResult as? ImportDecryptResult.Success
     val canImport = successResult != null && successResult.importPossible
-
     Scaffold(
         topBar = {
             AapsTopAppBar(
@@ -428,17 +436,38 @@ private fun ImportReviewContent(
                         .padding(16.dp)
                 ) {
                     val importOk = successResult.importOk
-                    Button(
-                        onClick = onImport,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !state.isProcessing,
-                        colors = if (importOk) ButtonDefaults.buttonColors()
-                        else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text(
-                            if (importOk) stringResource(CoreUiR.string.import_btn)
-                            else stringResource(CoreUiR.string.import_anyway_btn)
-                        )
+                    Column {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = statesAcknowledged,
+                                    onCheckedChange = onStatesAcknowledgedChange
+                                )
+                                Text(
+                                    "Tick to keep Automation States ENABLED after import (else will be disabled - re-enable in States tab)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = onImport,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !state.isProcessing,
+                            colors = if (importOk) ButtonDefaults.buttonColors()
+                            else ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text(
+                                if (importOk) stringResource(CoreUiR.string.import_btn)
+                                else stringResource(CoreUiR.string.import_anyway_btn)
+                            )
+                        }
                     }
                 }
             }
@@ -456,8 +485,8 @@ private fun ImportReviewContent(
             // File details card
             FileDetailsCard(file = state.file, source = state.fileSource, rxBus = rxBus)
 
-            // Master password (shown only if user has a local master password — we try it first
-            // as a shortcut for "importing your own backup". No local master pw → skip straight
+            // Master password (shown only if user has a local master password ΓÇö we try it first
+            // as a shortcut for "importing your own backup". No local master pw ΓåÆ skip straight
             // to the decryption password field below.)
             if (!state.needsDecryptionPassword) {
                 OutlinedTextField(

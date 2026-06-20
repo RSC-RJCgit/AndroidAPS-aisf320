@@ -34,6 +34,7 @@ import app.aaps.plugins.sync.nsclient.extensions.extendedBolusFromJson
 import app.aaps.plugins.sync.nsclient.extensions.fromJson
 import app.aaps.plugins.sync.nsclient.extensions.isEffectiveProfileSwitch
 import app.aaps.plugins.sync.nsclient.extensions.temporaryBasalFromJson
+import app.aaps.plugins.sync.nsShared.secondaryTreatmentsConfigured
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
@@ -79,12 +80,16 @@ class NSClientAddUpdateWorker @AssistedInject constructor(
             if (mills != 0L && mills < dateUtil.now() && mills > latestDateInReceivedData)
                 latestDateInReceivedData = mills
 
-            if (insulin > 0 && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
+            val secondaryTreatmentsConfigured = preferences.secondaryTreatmentsConfigured()
+            if (insulin > 0 && !secondaryTreatmentsConfigured && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
                 BS.fromJson(json, activeInsulin)?.let { bolus ->
-                    storeDataForDb.addToBoluses(bolus)
+                    if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT)
+                        aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus excluded by download setting: $json")
+                    else
+                        storeDataForDb.addToBoluses(bolus)
                 } ?: aapsLogger.error("Error parsing bolus json $json")
             }
-            if (carbs != 0.0 && (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) {
+            if (carbs != 0.0 && !secondaryTreatmentsConfigured && (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) {
                 CA.fromJson(json)?.let { carb ->
                     storeDataForDb.addToCarbs(carb)
                 } ?: aapsLogger.error("Error parsing bolus json $json")

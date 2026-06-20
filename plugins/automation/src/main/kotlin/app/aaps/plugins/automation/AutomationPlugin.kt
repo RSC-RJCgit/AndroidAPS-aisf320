@@ -36,6 +36,7 @@ import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.utils.DeferredForegroundStart
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionEnableScene
@@ -46,6 +47,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.actions.ActionStopProcessing
@@ -71,6 +73,8 @@ import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -79,6 +83,7 @@ import app.aaps.plugins.automation.triggers.TriggerRecurringTime
 import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
@@ -436,6 +441,8 @@ class AutomationPlugin @Inject constructor(
             ActionStopTempTarget(injector),
             ActionNotification(injector),
             ActionAlarm(injector),
+            ActionBolusWizardPercentage(injector),
+            ActionSetAutomationState(injector),
             ActionSettingsExport(injector),
             ActionCarePortalEvent(injector),
             ActionProfileSwitchPercent(injector),
@@ -454,6 +461,7 @@ class AutomationPlugin @Inject constructor(
 
     fun getTriggerDummyObjects(): List<Trigger> {
         val triggers = mutableListOf(
+            TriggerAutomationState(injector),
             TriggerConnector(injector),
             TriggerTime(injector),
             TriggerRecurringTime(injector),
@@ -463,6 +471,9 @@ class AutomationPlugin @Inject constructor(
             TriggerIob(injector),
             TriggerCOB(injector),
             TriggerProfilePercent(injector),
+            TriggerProfile(injector),
+            TriggerPhoneBattery(injector),
+            TriggerAutomationState(injector),
             TriggerTempTarget(injector),
             TriggerTempTargetValue(injector),
             TriggerWifiSsid(injector),

@@ -95,7 +95,7 @@ enum class IntKey(
     OverviewResCritical(key = "statuslights_res_critical", defaultValue = 10, min = 0, max = 300, titleResId = R.string.pref_title_res_critical, defaultedBySM = true, unitType = UnitType.INSULIN_INT),
     OverviewBattWarning(key = "statuslights_bat_warning", defaultValue = 51, min = 0, max = 100, titleResId = R.string.pref_title_batt_warning, defaultedBySM = true, unitType = UnitType.PERCENT),
     OverviewBattCritical(key = "statuslights_bat_critical", defaultValue = 26, min = 0, max = 100, titleResId = R.string.pref_title_batt_critical, defaultedBySM = true, unitType = UnitType.PERCENT),
-    OverviewBolusPercentage(key = "boluswizard_percentage", defaultValue = 100, min = 10, max = 100, titleResId = R.string.pref_title_bolus_percentage, summaryResId = R.string.deliverpartofboluswizard, unitType = UnitType.PERCENT),
+    OverviewBolusPercentage(key = "boluswizard_percentage", defaultValue = 100, min = 10, max = 200, titleResId = R.string.pref_title_bolus_percentage, summaryResId = R.string.deliverpartofboluswizard, unitType = UnitType.PERCENT),
     OverviewResetBolusPercentageTime(
         key = "key_reset_boluswizard_percentage_time",
         defaultValue = 16,

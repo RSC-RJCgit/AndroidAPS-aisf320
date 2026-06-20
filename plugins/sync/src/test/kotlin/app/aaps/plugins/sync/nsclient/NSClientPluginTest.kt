@@ -4,7 +4,11 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.NSSettingsStatus
+import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -38,6 +42,19 @@ class NSClientPluginTest : TestBaseWithProfile() {
     @Test
     fun specialShowInListConditionTest() {
         assertThat(nsClientPlugin.specialShowInListCondition()).isTrue()
+    }
+
+    @Test
+    fun `V1 settings expose secondary treatment source`() {
+        assertThat(nsClientPlugin).isInstanceOf(PluginBaseWithPreferences::class.java)
+        val screen = nsClientPlugin.getPreferenceScreenContent() as PreferenceSubScreenDef
+        val syncScreen = screen.items.filterIsInstance<PreferenceSubScreenDef>().first { it.key == "ns_client_synchronization" }
+
+        assertThat(syncScreen.items).containsAtLeast(
+            BooleanKey.NsClientUseSecondaryTreatments,
+            StringKey.NsClientSecondaryUrl,
+            StringKey.NsClientSecondaryAccessToken
+        )
     }
 
 }

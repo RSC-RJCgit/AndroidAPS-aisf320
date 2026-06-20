@@ -90,6 +90,7 @@ private fun filenameTimestamp(): String =
 
 @Reusable
 class ImportExportPrefsImpl @Inject constructor(
+
     private var aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -111,7 +112,9 @@ class ImportExportPrefsImpl @Inject constructor(
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val storage: Storage
 ) : ImportExportPrefs {
-
+    override fun setAutomationStatesEnabled(enabled: Boolean) {
+        sp.putBoolean("automation_states_enabled", enabled)
+    }
     private var pendingExportFile: DocumentFile? = null
 
     // Compose export support — discrete steps
@@ -903,12 +906,15 @@ class ImportExportPrefsImpl @Inject constructor(
         activePlugin.beforeImport()
         sp.clear()
         for ((key, value) in prefs.values) {
+            if (key == "automation_states_enabled") continue // handled explicitly after import
             if (value == "true" || value == "false") {
                 sp.putBoolean(key, value.toBoolean())
             } else {
                 sp.putString(key, value)
             }
         }
+        // Safety: disable automation states after import - user must explicitly re-enable
+        sp.putBoolean("automation_states_enabled", false)
         activePlugin.afterImport()
     }
 

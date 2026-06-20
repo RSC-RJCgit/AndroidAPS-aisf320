@@ -44,6 +44,8 @@ import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
+import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -60,6 +62,7 @@ import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.ui.compose.aboutDialog.AboutDialogData
+import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
 import app.aaps.ui.compose.quickLaunch.QuickLaunchResolver
 import app.aaps.ui.compose.quickLaunch.QuickLaunchSerializer
 import app.aaps.ui.compose.quickLaunch.ResolvedQuickLaunchItem
@@ -561,9 +564,17 @@ class MainViewModel @Inject constructor(
 
     // ── Toolbar ──
 
+    private var validatedQuickLaunchActions: List<QuickLaunchAction> = emptyList()
+
     private fun observeQuickLaunch() {
         preferences.observe(StringNonKey.QuickLaunchActions)
             .onEach { refreshQuickLaunch(it) }
+            .launchIn(viewModelScope)
+        rxBus.toFlow(EventAutomationDataChanged::class.java)
+            .onEach { applyAutomationCriteria() }
+            .launchIn(viewModelScope)
+        rxBus.toFlow(EventRefreshOverview::class.java)
+            .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
     }
 
@@ -574,7 +585,7 @@ class MainViewModel @Inject constructor(
     fun refreshQuickLaunch(json: String = preferences.get(StringNonKey.QuickLaunchActions)) {
         val actions = QuickLaunchSerializer.fromJson(json)
 
-        // Validate dynamic actions and collect valid ones
+        // Validate dynamic actions and collect valid ones (structural check: event exists, enabled)
         val validated = actions.filter { action -> quickLaunchResolver.isValid(action) }
 
         // If validation removed items, persist the cleaned list
@@ -582,8 +593,24 @@ class MainViewModel @Inject constructor(
             preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(validated))
         }
 
-        // Resolve display properties
-        _quickLaunchItems.update { validated.map { quickLaunchResolver.resolveItem(it) } }
+        validatedQuickLaunchActions = validated
+        applyAutomationCriteria()
+    }
+
+    /**
+     * Filter user-action automations by their trigger criteria and update the visible toolbar items.
+     * Automation items whose triggers are not currently met are hidden until conditions change.
+     */
+    private fun applyAutomationCriteria() {
+        val snapshot = validatedQuickLaunchActions
+        viewModelScope.launch {
+            val visible = snapshot.filter { action ->
+                if (action !is QuickLaunchAction.AutomationAction) return@filter true
+                val event = automation.findEventById(action.automationId) ?: return@filter false
+                event.canRun()
+            }
+            _quickLaunchItems.update { visible.map { quickLaunchResolver.resolveItem(it) } }
+        }
     }
 
     fun requestAutomationConfirmation(automationId: String) {

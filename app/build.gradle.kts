@@ -1,4 +1,4 @@
-import java.text.SimpleDateFormat
+﻿import java.text.SimpleDateFormat
 import java.util.Date
 
 plugins {
@@ -179,6 +179,7 @@ dependencies {
     implementation(project(":ui"))
     implementation(project(":plugins:aps"))
     implementation(project(":plugins:automation"))
+    implementation(project(":plugins:automation-state"))
     implementation(project(":plugins:calibration"))
     implementation(project(":plugins:configuration"))
     implementation(project(":plugins:constraints"))

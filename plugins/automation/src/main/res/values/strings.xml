@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="key_google_apis_android" translatable="false">AIzaSyDcZpDRMaGjdhihXp531cVYM6LkEL8KbgM</string>
+    <string name="trigger_phone_battery_label">Phone battery level</string>
+    <string name="profilecheck">Profile check</string>
+
     <string name="automation_short">Auto</string>
     <string name="automation">Automation</string>
     <string name="automation_description">User defined automation tasks</string>
     <string name="automation_enabled">Enabled</string>
+    <string name="set_bolus_wizard_percentage">Set bolus wizard percentage</string>
+    <string name="set_bolus_wizard_percentage_to">Set bolus wizard percentage to %1$d%%</string>
+    <string name="automation_minimum_repeat_time">Minimum repeat time</string>
+    <string name="automation_minimum_repeat_time_summary">Wait at least this long before running this automation again. Use 0 for no delay.</string>
+    <string name="automation_minutes">minutes</string>
     <string name="automation_read_only">Read-only</string>
+    <string name="automation_notes">Notes</string>
     <string name="automation_new_rule">New rule</string>
     <string name="automation_edit_rule">Edit rule</string>
     <string name="automation_discard_title">Discard changes?</string>
@@ -166,4 +176,10 @@
     <string name="permission_location_description">Needed for location-based automation triggers and WiFi network identification</string>
     <string name="permission_background_location_description">Needed for automation triggers to work when the app is in the background</string>
 
+
+    <string name="set_state">Set Automation State</string>
+    <string name="set_state_description">Set state %1$s to %2$s</string>
+    <string name="automation_states_disabled">Automation States are disabled. Enable in Automation States settings.</string>
+    <string name="check_state_name">Check Automation State</string>
+    <string name="check_state_description">State %1$s is %2$s</string>
 </resources>

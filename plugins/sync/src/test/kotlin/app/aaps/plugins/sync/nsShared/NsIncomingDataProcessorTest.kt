@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.nssdk.localmodel.entry.Direction
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.entry.NsUnits
@@ -213,6 +214,139 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         verify(storeDataForDb).addToBoluses(argThat {
             amount == 2.5 && timestamp == bolusTime
         })
+    }
+
+    @Test
+    fun `primary bolus and carbs are skipped when secondary treatment source is configured`() {
+        whenever(preferences.get(BooleanKey.NsClientUseSecondaryTreatments)).thenReturn(true)
+        whenever(preferences.get(StringKey.NsClientSecondaryUrl)).thenReturn("https://secondary.example")
+        whenever(preferences.get(StringKey.NsClientSecondaryAccessToken)).thenReturn("token-secondary-123456")
+        val treatments = listOf<NSTreatment>(
+            testBolus(NSBolus.BolusType.NORMAL),
+            testCarbs()
+        )
+
+        processor.processTreatments(treatments, doFullSync = false)
+
+        verify(storeDataForDb, never()).addToBoluses(any())
+        verify(storeDataForDb, never()).addToCarbs(any())
+    }
+
+    @Test
+    fun `secondary treatment source accepts bolus and carbs`() {
+        whenever(preferences.get(BooleanKey.NsClientUseSecondaryTreatments)).thenReturn(true)
+        whenever(preferences.get(StringKey.NsClientSecondaryUrl)).thenReturn("https://secondary.example")
+        whenever(preferences.get(StringKey.NsClientSecondaryAccessToken)).thenReturn("token-secondary-123456")
+        val treatments = listOf<NSTreatment>(
+            testBolus(NSBolus.BolusType.NORMAL),
+            testCarbs()
+        )
+
+        processor.processTreatments(
+            treatments,
+            doFullSync = false,
+            source = NsIncomingDataProcessor.TreatmentSource.SECONDARY
+        )
+
+        verify(storeDataForDb).addToBoluses(any())
+        verify(storeDataForDb).addToCarbs(any())
+    }
+
+    @Test
+    fun `primary treatment source remains active until secondary credentials are complete`() {
+        whenever(preferences.get(BooleanKey.NsClientUseSecondaryTreatments)).thenReturn(true)
+        whenever(preferences.get(StringKey.NsClientSecondaryUrl)).thenReturn("https://secondary.example")
+        whenever(preferences.get(StringKey.NsClientSecondaryAccessToken)).thenReturn("")
+        val treatments = listOf<NSTreatment>(
+            testBolus(NSBolus.BolusType.NORMAL),
+            testCarbs()
+        )
+
+        processor.processTreatments(treatments, doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(any())
+        verify(storeDataForDb).addToCarbs(any())
+    }
+
+    @Test
+    fun `processTreatments excludes SMB when download filter is enabled`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb)).thenReturn(true)
+        val treatments = listOf<NSTreatment>(
+            NSBolus(
+                identifier = "smb_id",
+                date = now - T.mins(5).msecs(),
+                insulin = 0.1,
+                utcOffset = null,
+                isValid = true,
+                eventType = EventType.CORRECTION_BOLUS,
+                notes = null,
+                pumpId = null,
+                endId = null,
+                pumpType = null,
+                pumpSerial = null,
+                type = NSBolus.BolusType.SMB,
+                isBasalInsulin = false,
+                iCfg = nsiCfg
+            )
+        )
+
+        processor.processTreatments(treatments, doFullSync = false)
+
+        verify(storeDataForDb, never()).addToBoluses(any())
+    }
+
+    @Test
+    fun `processTreatments accepts manual bolus when SMB download filter is enabled`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb)).thenReturn(true)
+        val treatments = listOf<NSTreatment>(
+            NSBolus(
+                identifier = "manual_bolus_id",
+                date = now - T.mins(5).msecs(),
+                insulin = 1.0,
+                utcOffset = null,
+                isValid = true,
+                eventType = EventType.CORRECTION_BOLUS,
+                notes = null,
+                pumpId = null,
+                endId = null,
+                pumpType = null,
+                pumpSerial = null,
+                type = NSBolus.BolusType.NORMAL,
+                isBasalInsulin = false,
+                iCfg = nsiCfg
+            )
+        )
+
+        processor.processTreatments(treatments, doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(argThat { type == app.aaps.core.data.model.BS.Type.NORMAL })
+    }
+
+    @Test
+    fun `processTreatments accepts SMB during full sync despite download filter`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb)).thenReturn(true)
+        val treatments = listOf<NSTreatment>(
+            NSBolus(
+                identifier = "smb_id",
+                date = now - T.mins(5).msecs(),
+                insulin = 0.1,
+                utcOffset = null,
+                isValid = true,
+                eventType = EventType.CORRECTION_BOLUS,
+                notes = null,
+                pumpId = null,
+                endId = null,
+                pumpType = null,
+                pumpSerial = null,
+                type = NSBolus.BolusType.SMB,
+                isBasalInsulin = false,
+                iCfg = nsiCfg
+            )
+        )
+
+        processor.processTreatments(treatments, doFullSync = true)
+
+        verify(storeDataForDb).addToBoluses(argThat { type == app.aaps.core.data.model.BS.Type.SMB })
     }
 
     @Test
@@ -829,4 +963,38 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
 
         verify(storeDataForDb, times(2)).addToFoods(argThat { isEmpty() })
     }
+
+    private fun testBolus(type: NSBolus.BolusType) =
+        NSBolus(
+            identifier = "bolus_id",
+            date = now - T.mins(5).msecs(),
+            insulin = 1.0,
+            utcOffset = null,
+            isValid = true,
+            eventType = EventType.CORRECTION_BOLUS,
+            notes = null,
+            pumpId = null,
+            endId = null,
+            pumpType = null,
+            pumpSerial = null,
+            type = type,
+            isBasalInsulin = false,
+            iCfg = nsiCfg
+        )
+
+    private fun testCarbs() =
+        NSCarbs(
+            identifier = "carb_id",
+            date = now - T.mins(5).msecs(),
+            carbs = 15.0,
+            duration = 0,
+            utcOffset = null,
+            isValid = true,
+            eventType = EventType.CARBS_CORRECTION,
+            notes = null,
+            pumpId = null,
+            endId = null,
+            pumpType = null,
+            pumpSerial = null
+        )
 }

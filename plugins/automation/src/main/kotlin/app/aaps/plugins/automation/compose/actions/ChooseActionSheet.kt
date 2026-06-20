@@ -27,6 +27,7 @@ import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionEnableScene
@@ -60,6 +61,7 @@ private fun actionCategoryOf(cls: Class<*>): ActionCategory = when (cls) {
     ActionProfileSwitchPercent::class.java -> ActionCategory.Profile
 
     ActionSMBChange::class.java,
+    ActionBolusWizardPercentage::class.java,
     ActionStopProcessing::class.java,
     ActionRunAutotune::class.java -> ActionCategory.Loop
 

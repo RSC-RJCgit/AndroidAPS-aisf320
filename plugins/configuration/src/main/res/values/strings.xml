@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="units">Units</string>
     <string name="setupwizard_units_prompt">Select units you want to display values in</string>
@@ -74,4 +74,8 @@
     <!-- Provider-agnostic cloud storage strings -->
 
     <!-- Authorization status strings -->
+
+    <string name="automation_states">Automation States</string>
+    <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
+    <string name="automation_states_enable_now">Enable Automation States now</string>
 </resources>
