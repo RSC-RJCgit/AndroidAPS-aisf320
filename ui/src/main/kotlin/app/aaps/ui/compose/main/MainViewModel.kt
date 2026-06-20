@@ -45,7 +45,6 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
-import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -573,9 +572,6 @@ class MainViewModel @Inject constructor(
         rxBus.toFlow(EventAutomationDataChanged::class.java)
             .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
-        rxBus.toFlow(EventRefreshOverview::class.java)
-            .onEach { applyAutomationCriteria() }
-            .launchIn(viewModelScope)
     }
 
     /**
@@ -597,20 +593,9 @@ class MainViewModel @Inject constructor(
         applyAutomationCriteria()
     }
 
-    /**
-     * Filter user-action automations by their trigger criteria and update the visible toolbar items.
-     * Automation items whose triggers are not currently met are hidden until conditions change.
-     */
     private fun applyAutomationCriteria() {
         val snapshot = validatedQuickLaunchActions
-        viewModelScope.launch {
-            val visible = snapshot.filter { action ->
-                if (action !is QuickLaunchAction.AutomationAction) return@filter true
-                val event = automation.findEventById(action.automationId) ?: return@filter false
-                event.canRun()
-            }
-            _quickLaunchItems.update { visible.map { quickLaunchResolver.resolveItem(it) } }
-        }
+        _quickLaunchItems.update { snapshot.map { quickLaunchResolver.resolveItem(it) } }
     }
 
     fun requestAutomationConfirmation(automationId: String) {
