@@ -4,8 +4,14 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -13,7 +19,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.NSSettingsStatus
-import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -27,6 +33,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.toJson
@@ -34,14 +41,17 @@ import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsShared.compose.NSClientComposeContent
+import app.aaps.plugins.sync.nsShared.secondaryTreatmentsConfigured
 import app.aaps.plugins.sync.nsclient.data.AlarmAck
 import app.aaps.plugins.sync.nsclient.extensions.toJson
 import app.aaps.plugins.sync.nsclient.services.NSClientService
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
@@ -53,7 +63,7 @@ class NSClientPlugin @Inject constructor(
     private val rxBus: RxBus,
     rh: ResourceHelper,
     private val context: Context,
-    private val preferences: Preferences,
+    preferences: Preferences,
     private val receiverDelegate: ReceiverDelegate,
     private val dataSyncSelectorV1: DataSyncSelectorV1,
     private val dateUtil: DateUtil,
@@ -63,7 +73,7 @@ class NSClientPlugin @Inject constructor(
     private val nsClientRepository: NSClientRepository,
     private val persistenceLayer: PersistenceLayer,
     private val uel: UserEntryLogger
-) : NsClient, Sync, PluginBase(
+) : NsClient, Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
         .icon(IcPluginNsClient)
@@ -81,10 +91,14 @@ class NSClientPlugin @Inject constructor(
                 title = rh.gs(R.string.ns_client_title)
             )
         },
-    aapsLogger, rh
+    aapsLogger = aapsLogger,
+    rh = rh,
+    preferences = preferences
 ) {
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var secondaryHandler: Handler? = null
+    private lateinit var secondaryRunLoop: Runnable
     override val dataSyncSelector: DataSyncSelector get() = dataSyncSelectorV1
     override var status = ""
     var nsClientService: NSClientService? = null
@@ -98,14 +112,35 @@ class NSClientPlugin @Inject constructor(
         super.onStart()
         receiverDelegate.grabReceiversState()
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        secondaryHandler = Handler(HandlerThread(this::class.simpleName + "SecondaryHandler").also { it.start() }.looper)
+        secondaryRunLoop = Runnable {
+            enqueueSecondaryTreatments()
+            secondaryHandler?.postDelayed(secondaryRunLoop, T.mins(5).msecs())
+        }
+        secondaryHandler?.post(secondaryRunLoop)
+        val restartSecondaryOnChange: suspend (Any) -> Unit = {
+            cancelSecondaryTreatments()
+            preferences.put(LongNonKey.NsClientSecondaryTreatmentsLastModified, 0L)
+            enqueueSecondaryTreatments(replace = true)
+        }
+        preferences.observe(BooleanKey.NsClientUseSecondaryTreatments).drop(1).onEach(restartSecondaryOnChange).launchIn(scope)
+        preferences.observe(StringKey.NsClientSecondaryUrl).drop(1).onEach(restartSecondaryOnChange).launchIn(scope)
+        preferences.observe(StringKey.NsClientSecondaryAccessToken).drop(1).onEach(restartSecondaryOnChange).launchIn(scope)
         rxBus.toFlow(EventAppExit::class.java)
-            .onEach { if (nsClientService != null) context.unbindService(mConnection) }
+            .onEach {
+                cancelSecondaryTreatments()
+                if (nsClientService != null) context.unbindService(mConnection)
+            }
             .launchIn(scope)
     }
 
     override suspend fun onStop() {
         nsClientService?.destroy()
         if (nsClientService != null) context.unbindService(mConnection)
+        secondaryHandler?.removeCallbacksAndMessages(null)
+        secondaryHandler?.looper?.quit()
+        secondaryHandler = null
+        cancelSecondaryTreatments()
         scope.cancel()
         super.onStop()
     }
@@ -133,8 +168,22 @@ class NSClientPlugin @Inject constructor(
     }
 
     override fun pause(newState: Boolean) {
+        if (newState) cancelSecondaryTreatments()
         preferences.put(NsclientBooleanKey.NsPaused, newState)
+        if (!newState) enqueueSecondaryTreatments()
     }
+
+    private fun enqueueSecondaryTreatments(replace: Boolean = false) {
+        if (!preferences.secondaryTreatmentsConfigured() || preferences.get(NsclientBooleanKey.NsPaused) || !isAllowed) return
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            LoadSecondaryTreatmentsWorker.JOB_NAME,
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java).build()
+        )
+    }
+
+    private fun cancelSecondaryTreatments() =
+        WorkManager.getInstance(context).cancelUniqueWork(LoadSecondaryTreatmentsWorker.JOB_NAME)
 
     override val address: String get() = nsClientService?.nsURL ?: ""
 
@@ -242,6 +291,9 @@ class NSClientPlugin @Inject constructor(
                     BooleanKey.NsClientAcceptInsulin,
                     BooleanKey.NsClientAcceptInsulinExcludeSmb,
                     BooleanKey.NsClientAcceptCarbs,
+                    BooleanKey.NsClientUseSecondaryTreatments,
+                    StringKey.NsClientSecondaryUrl,
+                    StringKey.NsClientSecondaryAccessToken,
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,
                     BooleanKey.NsClientAcceptTbrEb

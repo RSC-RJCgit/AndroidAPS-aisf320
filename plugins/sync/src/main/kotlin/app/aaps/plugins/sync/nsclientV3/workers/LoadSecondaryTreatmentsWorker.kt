@@ -32,6 +32,7 @@ class LoadSecondaryTreatmentsWorker @AssistedInject constructor(
 ) : LoggingWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
     override suspend fun doWorkAndLog(): Result {
+        nsClientV3Plugin.ensureSecondaryClient()
         val client = nsClientV3Plugin.secondaryNsAndroidClient ?: return Result.success()
         var lastModified = nsClientV3Plugin.secondaryTreatmentsLastModified
         val firstLoad = lastModified <= 0L
@@ -89,5 +90,9 @@ class LoadSecondaryTreatmentsWorker @AssistedInject constructor(
             nsClientRepository.addLog("◄ NS2 ERROR", error.localizedMessage)
         }
         return Result.success()
+    }
+
+    companion object {
+        const val JOB_NAME = "NSClientSecondaryTreatments"
     }
 }

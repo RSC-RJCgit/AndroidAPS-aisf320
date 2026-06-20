@@ -143,7 +143,7 @@ class NSClientV3Plugin @Inject constructor(
     companion object {
 
         const val RECORDS_TO_LOAD = 500
-        private const val SECONDARY_JOB_NAME = "NSClientV3SecondaryTreatments"
+        private const val SECONDARY_JOB_NAME = LoadSecondaryTreatmentsWorker.JOB_NAME
     }
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -168,6 +168,7 @@ class NSClientV3Plugin @Inject constructor(
 
     internal var nsAndroidClient: NSAndroidClient? = null
     internal var secondaryNsAndroidClient: NSAndroidClient? = null
+    private var secondaryClientConfiguration: Pair<String, String>? = null
     internal var nsClientV3Service: NSClientV3Service? = null
 
     internal val isAllowed get() = receiverDelegate.allowed
@@ -256,10 +257,11 @@ class NSClientV3Plugin @Inject constructor(
         preferences.observe(StringKey.NsClientAccessToken).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(StringKey.NsClientUrl).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         val restartSecondaryOnChange: suspend (Any) -> Unit = {
+            WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
             secondaryNsAndroidClient = null
             preferences.put(LongNonKey.NsClientSecondaryTreatmentsLastModified, 0L)
-            setSecondaryClient()
-            executeSecondaryTreatments()
+            ensureSecondaryClient()
+            executeSecondaryTreatments(replace = true)
         }
         preferences.observe(BooleanKey.NsClientUseSecondaryTreatments).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartSecondaryOnChange)
         preferences.observe(StringKey.NsClientSecondaryUrl).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartSecondaryOnChange)
@@ -338,7 +340,7 @@ class NSClientV3Plugin @Inject constructor(
                 logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
                 logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
             )
-        setSecondaryClient()
+        ensureSecondaryClient()
         if (preferences.get(BooleanKey.NsClient3UseWs)) {
             if (nsClientV3Service == null) startService()
             else nsClientV3Service?.initializeWebSockets("setClient")
@@ -346,18 +348,25 @@ class NSClientV3Plugin @Inject constructor(
         rxBus.send(EventSWSyncStatus(status))
     }
 
-    private fun setSecondaryClient() {
+    internal fun ensureSecondaryClient() {
         if (!preferences.get(BooleanKey.NsClientUseSecondaryTreatments)) {
             secondaryNsAndroidClient = null
+            secondaryClientConfiguration = null
             return
         }
         val secondaryUrl = preferences.get(StringKey.NsClientSecondaryUrl)
         val secondaryToken = preferences.get(StringKey.NsClientSecondaryAccessToken)
         if (secondaryUrl.isBlank() || secondaryToken.isBlank()) {
             secondaryNsAndroidClient = null
+            secondaryClientConfiguration = null
             return
         }
-        if (secondaryNsAndroidClient == null)
+        val configuration = secondaryUrl to secondaryToken
+        if (secondaryNsAndroidClient != null && secondaryClientConfiguration == null) {
+            secondaryClientConfiguration = configuration
+            return
+        }
+        if (secondaryNsAndroidClient == null || secondaryClientConfiguration != configuration) {
             secondaryNsAndroidClient = NSAndroidClientImpl(
                 baseUrl = secondaryUrl.lowercase().replace("https://", "").replace(Regex("/$"), ""),
                 accessToken = secondaryToken,
@@ -365,6 +374,8 @@ class NSClientV3Plugin @Inject constructor(
                 logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
                 logger = { msg -> aapsLogger.debug(LTag.HTTP, "Secondary NS: $msg") }
             )
+            secondaryClientConfiguration = configuration
+        }
     }
 
     internal var secondaryTreatmentsLastModified: Long
@@ -814,11 +825,12 @@ class NSClientV3Plugin @Inject constructor(
             )
     }
 
-    private fun executeSecondaryTreatments() {
-        if (preferences.get(NsclientBooleanKey.NsPaused) || !isAllowed || secondaryNsAndroidClient == null || workIsRunning(SECONDARY_JOB_NAME)) return
+    private fun executeSecondaryTreatments(replace: Boolean = false) {
+        if (preferences.get(NsclientBooleanKey.NsPaused) || !isAllowed || secondaryNsAndroidClient == null) return
+        if (!replace && workIsRunning(SECONDARY_JOB_NAME)) return
         WorkManager.getInstance(context).enqueueUniqueWork(
             SECONDARY_JOB_NAME,
-            ExistingWorkPolicy.KEEP,
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java).build()
         )
     }

@@ -111,6 +111,9 @@ internal class LoadTreatmentsWorkerTest : TestBaseWithProfile() {
             duration = 0,
             ids = IDs(nightscoutId = "secondary-carb")
         ).toNSCarbs()
+        whenever(preferences.get(app.aaps.core.keys.BooleanKey.NsClientUseSecondaryTreatments)).thenReturn(true)
+        whenever(preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl)).thenReturn("https://secondary.example")
+        whenever(preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryAccessToken)).thenReturn("token-secondary-123456")
         nsClientV3Plugin.secondaryNsAndroidClient = nsAndroidClient
         nsClientV3Plugin.secondaryTreatmentsLastModified = 0L
         whenever(nsAndroidClient.getTreatmentsNewerThan(anyString(), anyInt()))
