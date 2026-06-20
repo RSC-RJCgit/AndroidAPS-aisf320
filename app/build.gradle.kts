@@ -85,10 +85,6 @@ android {
 
     namespace = "app.aaps"
 
-    lint {
-        disable += "GradleCompatible"
-    }
-
     defaultConfig {
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
