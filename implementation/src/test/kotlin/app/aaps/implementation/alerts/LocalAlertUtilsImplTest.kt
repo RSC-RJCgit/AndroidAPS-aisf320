@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.EffectiveProfile
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.PumpEnactResult
 import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -337,7 +338,7 @@ class LocalAlertUtilsImplTest : TestBase() {
         whenever(profile.getBasal(overnight)).thenReturn(1.0)
         whenever(processedTbrEbData.getTempBasalIncludingConvertedExtended(overnight))
             .thenReturn(tempBasal(overnight, rate = 1.2))
-        whenever(commandQueue.cancelTempBasal(enforceNew = true)).thenReturn(pumpEnactResultProvider.get().success(true))
+        whenever(commandQueue.cancelTempBasal(enforceNew = true)).thenReturn(mock<PumpEnactResult>())
 
         localAlertUtils.checkStaleBGAlert()
 
