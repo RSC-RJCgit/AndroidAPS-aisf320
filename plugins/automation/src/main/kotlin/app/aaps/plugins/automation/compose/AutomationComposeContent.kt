@@ -271,12 +271,14 @@ class AutomationComposeContent(
         }
 
         key(resetTick) {
+            val profileNames = localProfileNames()
             AutomationEditTriggerScreen(
                 root = holder.workingEvent().trigger,
                 availableTriggers = plugin.getTriggerDummyObjects(),
                 createTrigger = { cn -> instantiateTrigger(cn) },
                 newConnector = { TriggerConnector(injector) },
                 onChange = { holder.onTriggerChanged() },
+                profileNames = profileNames,
                 onPickLocationFromMap = { triggerLoc -> holder.openMapPicker(triggerLoc) }
             )
         }

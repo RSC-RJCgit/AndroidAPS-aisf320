@@ -46,6 +46,8 @@ import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
 import app.aaps.plugins.automation.triggers.TriggerPumpLastConnection
@@ -67,6 +69,7 @@ fun TriggerEditor(
     onChange: () -> Unit,
     tick: Int = 0,
     bondedDevices: List<String> = emptyList(),
+    profileNames: List<String> = emptyList(),
     showCurrentLocation: Boolean = false,
     onUseCurrentLocation: () -> Unit = {},
     onPickLocationFromMap: (TriggerLocation) -> Unit = {},
@@ -93,6 +96,8 @@ fun TriggerEditor(
             is TriggerSensorAge          -> TriggerSensorAgeEditor(trigger, onChange, tick)
             is TriggerPodChange          -> TriggerPodChangeEditor()
             is TriggerPumpLastConnection -> TriggerPumpLastConnectionEditor(trigger, onChange, tick)
+            is TriggerProfile            -> TriggerProfileEditor(trigger, profileNames, onChange)
+            is TriggerPhoneBattery       -> TriggerPhoneBatteryEditor(trigger, onChange, tick)
             is TriggerProfilePercent     -> TriggerProfilePercentEditor(trigger, onChange, tick)
             is TriggerTempTarget         -> TriggerTempTargetEditor(trigger, onChange)
             is TriggerTempTargetValue    -> TriggerTempTargetValueEditor(trigger, onChange, tick)
@@ -414,6 +419,37 @@ fun TriggerPumpLastConnectionEditor(t: TriggerPumpLastConnection, onChange: () -
             valueRange = 5.0..(24 * 60.0),
             step = 10.0,
             unitLabelResId = KeysR.string.units_min,
+            compact = true
+        )
+    }
+}
+
+@Composable
+fun TriggerProfileEditor(t: TriggerProfile, profileNames: List<String>, onChange: () -> Unit) {
+    AutomationDropdown(
+        value = if (t.profileName.value in profileNames) t.profileName.value else profileNames.firstOrNull() ?: "",
+        options = profileNames,
+        onValueChange = { t.profileName.value = it; onChange() },
+        label = stringResource(R.string.profilecheck)
+    )
+}
+
+@Composable
+fun TriggerPhoneBatteryEditor(t: TriggerPhoneBattery, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelResId = 0,
+            value = t.batteryLevel.value,
+            onValueChange = { t.batteryLevel.value = it; onChange() },
+            valueRange = 1.0..100.0,
+            step = 1.0,
+            decimalPlaces = 0,
+            unitLabelResId = KeysR.string.units_percent,
             compact = true
         )
     }

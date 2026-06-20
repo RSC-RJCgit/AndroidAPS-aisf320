@@ -67,6 +67,7 @@ fun AutomationEditTriggerScreen(
     onChange: () -> Unit,
     modifier: Modifier = Modifier,
     bondedDevices: List<String> = emptyList(),
+    profileNames: List<String> = emptyList(),
     onPickLocationFromMap: (TriggerLocation) -> Unit = {}
 ) {
     var tick by remember { mutableIntStateOf(0) }
@@ -93,6 +94,7 @@ fun AutomationEditTriggerScreen(
                 createTrigger = createTrigger,
                 newConnector = newConnector,
                 bondedDevices = bondedDevices,
+                profileNames = profileNames,
                 onPickLocationFromMap = onPickLocationFromMap,
                 onChange = ::bump,
                 isRoot = true,
@@ -112,6 +114,7 @@ private fun ConnectorCard(
     createTrigger: (String) -> Trigger?,
     newConnector: () -> TriggerConnector,
     bondedDevices: List<String>,
+    profileNames: List<String>,
     onPickLocationFromMap: (TriggerLocation) -> Unit,
     onChange: () -> Unit,
     isRoot: Boolean,
@@ -186,6 +189,7 @@ private fun ConnectorCard(
                             createTrigger = createTrigger,
                             newConnector = newConnector,
                             bondedDevices = bondedDevices,
+                            profileNames = profileNames,
                             onPickLocationFromMap = onPickLocationFromMap,
                             onChange = onChange,
                             isRoot = false,
@@ -200,6 +204,7 @@ private fun ConnectorCard(
                             trigger = child,
                             tick = tick,
                             bondedDevices = bondedDevices,
+                            profileNames = profileNames,
                             onPickLocationFromMap = onPickLocationFromMap,
                             onRemove = {
                                 val i = connector.list.indexOf(child)
@@ -251,6 +256,7 @@ private fun LeafCard(
     trigger: Trigger,
     tick: Int,
     bondedDevices: List<String>,
+    profileNames: List<String>,
     onPickLocationFromMap: (TriggerLocation) -> Unit,
     onRemove: () -> Unit,
     onChange: () -> Unit
@@ -291,6 +297,7 @@ private fun LeafCard(
                 onChange = onChange,
                 tick = tick,
                 bondedDevices = bondedDevices,
+                profileNames = profileNames,
                 onPickLocationFromMap = onPickLocationFromMap
             )
         }
