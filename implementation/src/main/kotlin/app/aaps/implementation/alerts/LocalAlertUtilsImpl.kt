@@ -147,6 +147,8 @@ class LocalAlertUtilsImpl @Inject constructor(
                     )
                 }
             }
+            if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
         } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
             notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
         }

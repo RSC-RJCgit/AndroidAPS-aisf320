@@ -117,6 +117,7 @@ enum class BooleanKey(
 
     SmsAllowRemoteCommands("smscommunicator_remotecommandsallowed", false, R.string.pref_title_sms_allow_remote_commands),
     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true, R.string.pref_title_sms_report_pump_unreachable, R.string.pref_summary_sms_report_pump_unreachable),
+    SmsReportMissedBgReadings("smscommunicator_report_missed_bg_readings", true, R.string.smscommunicator_missed_bg_readings, R.string.smscommunicator_report_missed_bg_readings_summary),
 
     AutomationStatesEnabled("automation_states_enabled", true, R.string.pref_title_automation_states_enabled),
 
