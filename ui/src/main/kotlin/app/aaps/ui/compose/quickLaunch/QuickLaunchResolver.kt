@@ -75,7 +75,7 @@ class QuickLaunchResolver @Inject constructor(
     /** True if the referenced entity still exists — ignores enabled/disabled state.
      *  Used for permanent pruning in refreshQuickLaunch so disabled items are not lost. */
     fun structurallyExists(action: QuickLaunchAction): Boolean = when (action) {
-        is QuickLaunchAction.AutomationAction  -> automation.findEventById(action.automationId) != null
+        is QuickLaunchAction.AutomationAction  -> automation.isEventEnabledById(action.automationId) != null
         is QuickLaunchAction.SceneAction       -> sceneRepository.getScene(action.sceneId) != null
         else                                   -> isValid(action)
     }
@@ -84,8 +84,7 @@ class QuickLaunchResolver @Inject constructor(
         is QuickLaunchAction.QuickWizardAction -> quickWizard.get(action.guid) != null
 
         is QuickLaunchAction.AutomationAction  -> {
-            val event = automation.findEventById(action.automationId)
-            event != null && event.isEnabled
+            automation.isEventEnabledById(action.automationId) == true
         }
 
         is QuickLaunchAction.TempTargetPreset  -> {

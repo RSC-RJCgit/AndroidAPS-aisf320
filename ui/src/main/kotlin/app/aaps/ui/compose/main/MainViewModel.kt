@@ -44,7 +44,6 @@ import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -570,17 +569,16 @@ class MainViewModel @Inject constructor(
         preferences.observe(StringNonKey.QuickLaunchActions)
             .onEach { refreshQuickLaunch(it) }
             .launchIn(viewModelScope)
-        rxBus.toFlow(EventAutomationDataChanged::class.java)
-            .onEach { applyAutomationCriteria() }
-            .launchIn(viewModelScope)
         // Scene enabled/disabled toggling updates SceneDefinitions preference directly without
         // sending EventAutomationDataChanged, so we must also react to scenesFlow.
         sceneRepository.scenesFlow
             .drop(1)
             .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
-        // Automation enabled/disabled writes to AutomationEvents preference via storeToSP();
-        // observe that flow so quick launch reacts even if the RxBus event races.
+        // Automation enabled/disabled is written to AutomationEvents preference via storeToSP().
+        // isValid() for automations reads from automationEventsFlow.value (the saved JSON), so we
+        // must wait for the preference to be written before filtering — observe the flow, not the
+        // RxBus event (which fires before storeToSP() runs).
         automation.automationEventsFlow
             .drop(1)
             .onEach { applyAutomationCriteria() }
@@ -607,8 +605,6 @@ class MainViewModel @Inject constructor(
         updateQuickLaunchDisplay()
     }
 
-    // Called on EventAutomationDataChanged to re-evaluate isValid() without re-reading preferences.
-    // Reads fresh from preferences to avoid stale cache issues.
     private fun applyAutomationCriteria() {
         val actions = QuickLaunchSerializer.fromJson(preferences.get(StringNonKey.QuickLaunchActions))
         _quickLaunchItems.update {

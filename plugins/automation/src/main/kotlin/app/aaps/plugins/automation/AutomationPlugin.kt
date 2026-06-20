@@ -160,6 +160,21 @@ class AutomationPlugin @Inject constructor(
     override val automationEventsFlow: StateFlow<String> =
         preferences.observe(AutomationStringKey.AutomationEvents)
 
+    override fun isEventEnabledById(id: String): Boolean? {
+        return try {
+            val array = JSONArray(automationEventsFlow.value)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.optString("id") == id) {
+                    return obj.optBoolean("enabled", true)
+                }
+            }
+            null
+        } catch (e: JSONException) {
+            null
+        }
+    }
+
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var scope: CoroutineScope? = null
     private val deferredStart = DeferredForegroundStart()
