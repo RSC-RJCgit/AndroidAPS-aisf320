@@ -27,6 +27,7 @@ data class AutomationActionUi(
 
 data class AutomationEditUiState(
     val title: String = "",
+    val notes: String = "",
     val userAction: Boolean = false,
     val enabled: Boolean = true,
     val minimumRepeatMinutes: String = AutomationEventObject.DEFAULT_MINIMUM_REPEAT_MINUTES.toString(),

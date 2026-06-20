@@ -53,6 +53,7 @@ fun AutomationEditScreen(
     sceneOptions: List<Scene>,
     tick: Int,
     onTitleChange: (String) -> Unit,
+    onNotesChange: (String) -> Unit,
     onUserActionChange: (Boolean) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onMinimumRepeatMinutesChange: (String) -> Unit,
@@ -75,7 +76,7 @@ fun AutomationEditScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             if (state.readOnly) ReadOnlyChip()
-            BasicsSection(state, onTitleChange, onUserActionChange, onEnabledChange, onMinimumRepeatMinutesChange)
+            BasicsSection(state, onTitleChange, onNotesChange, onUserActionChange, onEnabledChange, onMinimumRepeatMinutesChange)
             ConditionSection(state, onEditTrigger)
             ActionsSection(
                 liveActions = liveActions,
@@ -111,6 +112,7 @@ private fun ReadOnlyChip() {
 private fun BasicsSection(
     state: AutomationEditUiState,
     onTitleChange: (String) -> Unit,
+    onNotesChange: (String) -> Unit,
     onUserActionChange: (Boolean) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onMinimumRepeatMinutesChange: (String) -> Unit
@@ -126,6 +128,15 @@ private fun BasicsSection(
             supportingText = if (state.titleError) {
                 { Text(stringResource(R.string.automation_missing_task_name)) }
             } else null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = state.notes,
+            onValueChange = onNotesChange,
+            label = { Text(stringResource(R.string.automation_notes)) },
+            enabled = !state.readOnly,
+            minLines = 2,
+            maxLines = 5,
             modifier = Modifier.fillMaxWidth()
         )
         OutlinedTextField(
@@ -378,6 +389,7 @@ private fun PreviewAutomationEditScreenNew() {
         AutomationEditScreen(
             state = AutomationEditUiState(),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
             onMinimumRepeatMinutesChange = {},
@@ -400,6 +412,7 @@ private fun PreviewAutomationEditScreenEdit() {
         AutomationEditScreen(
             state = sampleEditState(),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
             onMinimumRepeatMinutesChange = {},
@@ -422,6 +435,7 @@ private fun PreviewAutomationEditScreenReadOnly() {
         AutomationEditScreen(
             state = sampleEditState(readOnly = true, actions = 1),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
             onMinimumRepeatMinutesChange = {},
@@ -444,6 +458,7 @@ private fun PreviewAutomationEditScreenUserAction() {
         AutomationEditScreen(
             state = sampleEditState(hasTrigger = false, userAction = true, actions = 1),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
             onMinimumRepeatMinutesChange = {},

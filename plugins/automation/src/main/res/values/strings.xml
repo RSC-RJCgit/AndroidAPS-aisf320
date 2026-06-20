@@ -14,6 +14,7 @@
     <string name="automation_minimum_repeat_time_summary">Wait at least this long before running this automation again. Use 0 for no delay.</string>
     <string name="automation_minutes">minutes</string>
     <string name="automation_read_only">Read-only</string>
+    <string name="automation_notes">Notes</string>
     <string name="automation_new_rule">New rule</string>
     <string name="automation_edit_rule">Edit rule</string>
     <string name="automation_discard_title">Discard changes?</string>

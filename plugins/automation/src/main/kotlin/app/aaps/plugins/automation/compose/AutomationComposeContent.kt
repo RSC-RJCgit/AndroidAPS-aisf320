@@ -423,6 +423,7 @@ class AutomationComposeContent(
             sceneOptions = sceneOptions,
             tick = actionTick,
             onTitleChange = holder::editTitleChanged,
+            onNotesChange = holder::editNotesChanged,
             onUserActionChange = holder::editUserActionChanged,
             onEnabledChange = holder::editEnabledChanged,
             onMinimumRepeatMinutesChange = holder::editMinimumRepeatMinutesChanged,

@@ -29,6 +29,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
     var readOnly: Boolean = false // removing, editing disabled
     var autoRemove: Boolean = false // auto-remove once used
     var userAction: Boolean = false // shows button on Overview
+    var notes: String = ""
 
     var trigger: TriggerConnector = TriggerConnector(injector)
     val actions: MutableList<Action> = ArrayList()
@@ -105,6 +106,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
             .put("autoRemove", autoRemove)
             .put("userAction", userAction)
             .put("minimumRepeatMinutes", minimumRepeatMinutes)
+            .put("notes", notes)
             .put("trigger", trigger.toJSON())
             .put("actions", array)
             .toString()
@@ -120,6 +122,7 @@ class AutomationEventObject(private val injector: HasAndroidInjector) : Automati
         autoRemove = d.optBoolean("autoRemove", false)
         userAction = d.optBoolean("userAction", false)
         minimumRepeatMinutes = d.optInt("minimumRepeatMinutes", DEFAULT_MINIMUM_REPEAT_MINUTES).coerceAtLeast(0)
+        notes = d.optString("notes", "")
         trigger = TriggerDummy(injector).instantiate(JSONObject(d.getString("trigger"))) as TriggerConnector
         val array = d.getJSONArray("actions")
         actions.clear()

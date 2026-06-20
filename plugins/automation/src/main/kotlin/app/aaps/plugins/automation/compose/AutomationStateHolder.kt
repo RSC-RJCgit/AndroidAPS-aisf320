@@ -232,6 +232,12 @@ class AutomationStateHolder(
         refreshEditState()
     }
 
+    fun editNotesChanged(value: String) {
+        workingEvent.notes = value
+        recomputeEventDirty()
+        refreshEditState()
+    }
+
     fun editMinimumRepeatMinutesChanged(value: String) {
         if (value.any { !it.isDigit() }) return
         minimumRepeatMinutesInput = value
@@ -274,6 +280,7 @@ class AutomationStateHolder(
         val preconditions = e.getPreconditions()
         _editState.value = AutomationEditUiState(
             title = e.title,
+            notes = e.notes,
             userAction = e.userAction,
             enabled = e.isEnabled,
             minimumRepeatMinutes = minimumRepeatMinutesInput,
