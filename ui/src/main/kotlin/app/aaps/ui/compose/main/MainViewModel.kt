@@ -594,8 +594,11 @@ class MainViewModel @Inject constructor(
     }
 
     private fun applyAutomationCriteria() {
-        val snapshot = validatedQuickLaunchActions
-        _quickLaunchItems.update { snapshot.map { quickLaunchResolver.resolveItem(it) } }
+        _quickLaunchItems.update {
+            validatedQuickLaunchActions
+                .filter { quickLaunchResolver.isValid(it) }
+                .map { quickLaunchResolver.resolveItem(it) }
+        }
     }
 
     fun requestAutomationConfirmation(automationId: String) {
