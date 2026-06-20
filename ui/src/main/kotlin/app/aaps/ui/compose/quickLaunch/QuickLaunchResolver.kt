@@ -72,6 +72,14 @@ class QuickLaunchResolver @Inject constructor(
         else                                   -> action.elementType?.icon() ?: Icons.Default.Extension
     }
 
+    /** True if the referenced entity still exists — ignores enabled/disabled state.
+     *  Used for permanent pruning in refreshQuickLaunch so disabled items are not lost. */
+    fun structurallyExists(action: QuickLaunchAction): Boolean = when (action) {
+        is QuickLaunchAction.AutomationAction  -> automation.findEventById(action.automationId) != null
+        is QuickLaunchAction.SceneAction       -> sceneRepository.getScene(action.sceneId) != null
+        else                                   -> isValid(action)
+    }
+
     fun isValid(action: QuickLaunchAction): Boolean = when (action) {
         is QuickLaunchAction.QuickWizardAction -> quickWizard.get(action.guid) != null
 

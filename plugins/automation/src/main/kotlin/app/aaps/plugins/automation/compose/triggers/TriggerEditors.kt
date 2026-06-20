@@ -96,7 +96,7 @@ fun TriggerEditor(
             is TriggerSensorAge          -> TriggerSensorAgeEditor(trigger, onChange, tick)
             is TriggerPodChange          -> TriggerPodChangeEditor()
             is TriggerPumpLastConnection -> TriggerPumpLastConnectionEditor(trigger, onChange, tick)
-            is TriggerProfile            -> TriggerProfileEditor(trigger, profileNames, onChange)
+            is TriggerProfile            -> TriggerProfileEditor(trigger, profileNames, onChange, tick)
             is TriggerPhoneBattery       -> TriggerPhoneBatteryEditor(trigger, onChange, tick)
             is TriggerProfilePercent     -> TriggerProfilePercentEditor(trigger, onChange, tick)
             is TriggerTempTarget         -> TriggerTempTargetEditor(trigger, onChange)
@@ -425,7 +425,8 @@ fun TriggerPumpLastConnectionEditor(t: TriggerPumpLastConnection, onChange: () -
 }
 
 @Composable
-fun TriggerProfileEditor(t: TriggerProfile, profileNames: List<String>, onChange: () -> Unit) {
+fun TriggerProfileEditor(t: TriggerProfile, profileNames: List<String>, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
     AutomationDropdown(
         value = if (t.profileName.value in profileNames) t.profileName.value else profileNames.firstOrNull() ?: "",
         options = profileNames,

@@ -581,15 +581,16 @@ class MainViewModel @Inject constructor(
     fun refreshQuickLaunch(json: String = preferences.get(StringNonKey.QuickLaunchActions)) {
         val actions = QuickLaunchSerializer.fromJson(json)
 
-        // Validate dynamic actions and collect valid ones (structural check: event exists, enabled)
-        val validated = actions.filter { action -> quickLaunchResolver.isValid(action) }
+        // Structurally prune items whose referenced entity no longer exists (deleted automation,
+        // removed profile, etc.). Deliberately ignores isEnabled — disabled items stay in the list
+        // and are hidden dynamically by applyAutomationCriteria via isValid().
+        val structural = actions.filter { action -> quickLaunchResolver.structurallyExists(action) }
 
-        // If validation removed items, persist the cleaned list
-        if (validated.size != actions.size) {
-            preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(validated))
+        if (structural.size != actions.size) {
+            preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(structural))
         }
 
-        validatedQuickLaunchActions = validated
+        validatedQuickLaunchActions = structural
         applyAutomationCriteria()
     }
 
