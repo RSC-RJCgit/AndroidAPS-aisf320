@@ -77,6 +77,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -570,6 +571,12 @@ class MainViewModel @Inject constructor(
             .onEach { refreshQuickLaunch(it) }
             .launchIn(viewModelScope)
         rxBus.toFlow(EventAutomationDataChanged::class.java)
+            .onEach { applyAutomationCriteria() }
+            .launchIn(viewModelScope)
+        // Scene enabled/disabled toggling updates SceneDefinitions preference directly without
+        // sending EventAutomationDataChanged, so we must also react to scenesFlow.
+        sceneRepository.scenesFlow
+            .drop(1)
             .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
     }
