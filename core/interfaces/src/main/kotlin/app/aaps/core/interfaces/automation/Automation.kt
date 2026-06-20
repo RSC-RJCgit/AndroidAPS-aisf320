@@ -1,6 +1,11 @@
 package app.aaps.core.interfaces.automation
 
+import kotlinx.coroutines.flow.StateFlow
+
 interface Automation {
+
+    /** Emits whenever automation events are saved to preferences — use to observe enabled-state changes. */
+    val automationEventsFlow: StateFlow<String>
 
     fun userEvents(): List<AutomationEvent>
     fun findEventById(id: String): AutomationEvent?

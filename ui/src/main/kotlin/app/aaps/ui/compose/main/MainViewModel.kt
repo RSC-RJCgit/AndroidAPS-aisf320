@@ -579,6 +579,12 @@ class MainViewModel @Inject constructor(
             .drop(1)
             .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
+        // Automation enabled/disabled writes to AutomationEvents preference via storeToSP();
+        // observe that flow so quick launch reacts even if the RxBus event races.
+        automation.automationEventsFlow
+            .drop(1)
+            .onEach { applyAutomationCriteria() }
+            .launchIn(viewModelScope)
     }
 
     /**

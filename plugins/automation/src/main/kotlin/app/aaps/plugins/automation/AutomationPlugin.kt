@@ -97,6 +97,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
@@ -155,6 +156,9 @@ class AutomationPlugin @Inject constructor(
     ownPreferences = listOf(AutomationStringKey::class.java),
     aapsLogger, rh, preferences
 ), Automation {
+
+    override val automationEventsFlow: StateFlow<String> =
+        preferences.observe(AutomationStringKey.AutomationEvents)
 
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var scope: CoroutineScope? = null
