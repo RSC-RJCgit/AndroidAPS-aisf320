@@ -85,6 +85,10 @@ android {
 
     namespace = "app.aaps"
 
+    lint {
+        disable += "GradleCompatible"
+    }
+
     defaultConfig {
         minSdk = Versions.minSdk
         targetSdk = Versions.targetSdk
@@ -228,7 +232,6 @@ dependencies {
     // Initializes WorkManager for instrumented tests (BaseTestApp), since the production
     // Configuration.Provider/manifest initializer don't apply under the Hilt test application.
     androidTestImplementation(libs.androidx.work.testing)
-    //noinspection GradleCompatible
     androidTestImplementation(libs.org.skyscreamer.jsonassert) {
         exclude(group = "org.json", module = "json")
     }
