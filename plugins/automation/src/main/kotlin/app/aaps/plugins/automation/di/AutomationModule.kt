@@ -5,6 +5,7 @@ import app.aaps.plugins.automation.AutomationEventObject
 import app.aaps.plugins.automation.AutomationPlugin
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionDummy
@@ -108,6 +109,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionStopProcessingInjector(): ActionStopProcessing
     @ContributesAndroidInjector abstract fun actionNotificationInjector(): ActionNotification
     @ContributesAndroidInjector abstract fun actionAlarmInjector(): ActionAlarm
+    @ContributesAndroidInjector abstract fun actionBolusWizardPercentageInjector(): ActionBolusWizardPercentage
     @ContributesAndroidInjector abstract fun actionSettingsExportInjector(): ActionSettingsExport
     @ContributesAndroidInjector abstract fun actionCarePortalEventInjector(): ActionCarePortalEvent
     @ContributesAndroidInjector abstract fun actionProfileSwitchInjector(): ActionProfileSwitch

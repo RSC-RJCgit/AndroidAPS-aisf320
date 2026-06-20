@@ -63,6 +63,8 @@ abstract class Action(val injector: HasAndroidInjector) {
             if (dotIndex > 0) type = type.substring(dotIndex + 1)
             return when (type) {
                 ActionAlarm::class.java.simpleName                -> ActionAlarm(injector).fromJSON(data.toString())
+                ActionBolusWizardPercentage::class.java.simpleName ->
+                    ActionBolusWizardPercentage(injector).fromJSON(data.toString())
                 ActionSettingsExport::class.java.simpleName       -> ActionSettingsExport(injector).fromJSON(data.toString())
                 ActionCarePortalEvent::class.java.simpleName      -> ActionCarePortalEvent(injector).fromJSON(data.toString())
                 ActionDisableScene::class.java.simpleName         -> ActionDisableScene(injector).fromJSON(data.toString())

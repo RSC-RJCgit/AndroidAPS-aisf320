@@ -36,6 +36,7 @@ import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.utils.DeferredForegroundStart
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionEnableScene
@@ -440,6 +441,7 @@ class AutomationPlugin @Inject constructor(
             ActionStopTempTarget(injector),
             ActionNotification(injector),
             ActionAlarm(injector),
+            ActionBolusWizardPercentage(injector),
             ActionSetAutomationState(injector),
             ActionSettingsExport(injector),
             ActionCarePortalEvent(injector),

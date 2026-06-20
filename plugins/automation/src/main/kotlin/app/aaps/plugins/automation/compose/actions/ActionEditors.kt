@@ -16,10 +16,12 @@ import androidx.compose.ui.unit.dp
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.Scene
+import app.aaps.core.keys.IntKey
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionEnableScene
@@ -67,6 +69,8 @@ fun ActionEditor(
     ) {
         when (action) {
             is ActionAlarm                -> ActionAlarmEditor(action, onChange)
+            is ActionBolusWizardPercentage ->
+                ActionBolusWizardPercentageEditor(action, onChange)
             is ActionNotification         -> ActionNotificationEditor(action, onChange)
             is ActionSendSMS              -> ActionSendSMSEditor(action, onChange)
             is ActionSettingsExport       -> ActionSettingsExportEditor(action, onChange)
@@ -375,4 +379,16 @@ fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> 
             label = "Value"
         )
     }
+}
+
+@Composable
+fun ActionBolusWizardPercentageEditor(a: ActionBolusWizardPercentage, onChange: () -> Unit) {
+    NumberInputRow(
+        labelResId = R.string.set_bolus_wizard_percentage,
+        value = a.percentage.toDouble(),
+        onValueChange = { a.percentage = it.toInt(); onChange() },
+        valueRange = IntKey.OverviewBolusPercentage.min.toDouble()..IntKey.OverviewBolusPercentage.max.toDouble(),
+        step = 5.0,
+        unitLabelResId = KeysR.string.units_percent
+    )
 }

@@ -8,6 +8,8 @@
     <string name="automation">Automation</string>
     <string name="automation_description">User defined automation tasks</string>
     <string name="automation_enabled">Enabled</string>
+    <string name="set_bolus_wizard_percentage">Set bolus wizard percentage</string>
+    <string name="set_bolus_wizard_percentage_to">Set bolus wizard percentage to %1$d%%</string>
     <string name="automation_minimum_repeat_time">Minimum repeat time</string>
     <string name="automation_minimum_repeat_time_summary">Wait at least this long before running this automation again. Use 0 for no delay.</string>
     <string name="automation_minutes">minutes</string>
