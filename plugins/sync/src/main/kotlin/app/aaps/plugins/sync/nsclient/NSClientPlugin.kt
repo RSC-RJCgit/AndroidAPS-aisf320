@@ -240,6 +240,7 @@ class NSClientPlugin @Inject constructor(
                     BooleanKey.NsClientAcceptTempTarget,
                     BooleanKey.NsClientAcceptProfileSwitch,
                     BooleanKey.NsClientAcceptInsulin,
+                    BooleanKey.NsClientAcceptInsulinExcludeSmb,
                     BooleanKey.NsClientAcceptCarbs,
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,

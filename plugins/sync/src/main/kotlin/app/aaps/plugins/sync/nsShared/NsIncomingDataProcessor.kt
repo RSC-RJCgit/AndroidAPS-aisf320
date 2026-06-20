@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsShared
 
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.FD
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.IDs
@@ -25,6 +26,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.food.NSFood
@@ -141,18 +143,26 @@ class NsIncomingDataProcessor @Inject constructor(
      *
      * @return true if there was an accepted treatment
      */
-    fun processTreatments(treatments: List<NSTreatment>, doFullSync: Boolean): Boolean {
+    fun processTreatments(treatments: List<NSTreatment>, doFullSync: Boolean, source: TreatmentSource = TreatmentSource.PRIMARY): Boolean {
         try {
             var latestDateInReceivedData: Long = 0
             for (treatment in treatments) {
+                val isBolusOrCarbs = treatment is NSBolus || treatment is NSCarbs
+                if (source == TreatmentSource.SECONDARY && !isBolusOrCarbs) continue
+                if (source == TreatmentSource.PRIMARY && secondaryTreatmentsConfigured && isBolusOrCarbs) continue
                 aapsLogger.debug(LTag.NSCLIENT, "Received NS treatment: $treatment")
                 val date = treatment.date ?: continue
                 if (date > latestDateInReceivedData) latestDateInReceivedData = date
 
                 when (treatment) {
                     is NSBolus                  ->
-                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync)
-                            storeDataForDb.addToBoluses(treatment.toBolus(insulin))
+                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync) {
+                            val bolus = treatment.toBolus(insulin)
+                            if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT && !doFullSync)
+                                aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus excluded by download setting: $treatment")
+                            else
+                                storeDataForDb.addToBoluses(bolus)
+                        }
 
                     is NSCarbs                  ->
                         if (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT || doFullSync)
@@ -237,6 +247,17 @@ class NsIncomingDataProcessor @Inject constructor(
         }
         return false
     }
+
+    enum class TreatmentSource {
+        PRIMARY,
+        SECONDARY
+    }
+
+    private val secondaryTreatmentsConfigured: Boolean
+        get() =
+            preferences.get(BooleanKey.NsClientUseSecondaryTreatments) &&
+                preferences.get(StringKey.NsClientSecondaryUrl).isNotBlank() &&
+                preferences.get(StringKey.NsClientSecondaryAccessToken).isNotBlank()
 
     fun processFood(data: Any) {
         aapsLogger.debug(LTag.NSCLIENT, "Received Food Data: $data")

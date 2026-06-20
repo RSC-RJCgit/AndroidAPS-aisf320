@@ -81,7 +81,10 @@ class NSClientAddUpdateWorker @AssistedInject constructor(
 
             if (insulin > 0 && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
                 BS.fromJson(json, activeInsulin)?.let { bolus ->
-                    storeDataForDb.addToBoluses(bolus)
+                    if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT)
+                        aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus excluded by download setting: $json")
+                    else
+                        storeDataForDb.addToBoluses(bolus)
                 } ?: aapsLogger.error("Error parsing bolus json $json")
             }
             if (carbs != 0.0 && (preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) {

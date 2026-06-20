@@ -69,6 +69,14 @@ internal class LoadTreatmentsWorkerTest : TestBaseWithProfile() {
             })
             .build()
 
+    private fun buildSecondarySut(): LoadSecondaryTreatmentsWorker =
+        TestListenableWorkerBuilder<LoadSecondaryTreatmentsWorker>(context)
+            .setWorkerFactory(object : WorkerFactory() {
+                override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
+                    LoadSecondaryTreatmentsWorker(appContext, workerParameters, aapsLogger, fabricPrivacy, nsClientV3Plugin, dateUtil, storeDataForDb, nsIncomingDataProcessor, nsClientRepository)
+            })
+            .build()
+
     @BeforeEach
     fun setUp() {
         whenever(persistenceLayer.observeChanges(anyOrNull<Class<*>>())).thenReturn(emptyFlow())
@@ -92,6 +100,40 @@ internal class LoadTreatmentsWorkerTest : TestBaseWithProfile() {
 
         assertIs<ListenableWorker.Result.Failure>(result)
         assertThat(result.outputData.getString("Error")).isEqualTo("AndroidClient is null")
+    }
+
+    @Test
+    fun `secondary worker accepts only treatment source records`() = runTest(timeout = 30.seconds) {
+        val carbs = CA(
+            timestamp = now - 1000,
+            isValid = true,
+            amount = 20.0,
+            duration = 0,
+            ids = IDs(nightscoutId = "secondary-carb")
+        ).toNSCarbs()
+        nsClientV3Plugin.secondaryNsAndroidClient = nsAndroidClient
+        nsClientV3Plugin.secondaryTreatmentsLastModified = 0L
+        whenever(nsAndroidClient.getTreatmentsNewerThan(anyString(), anyInt()))
+            .thenReturn(NSAndroidClient.ReadResponse(200, now, listOf(carbs)))
+
+        val result = buildSecondarySut().doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        org.mockito.kotlin.verify(nsIncomingDataProcessor).processTreatments(
+            listOf(carbs),
+            doFullSync = false,
+            source = NsIncomingDataProcessor.TreatmentSource.SECONDARY
+        )
+        org.mockito.kotlin.verify(storeDataForDb).storeTreatmentsToDb(fullSync = false)
+        org.mockito.kotlin.verify(preferences).put(app.aaps.core.keys.LongNonKey.NsClientSecondaryTreatmentsLastModified, now)
+    }
+
+    @Test
+    fun `secondary worker is a no-op when secondary site is not configured`() = runTest(timeout = 30.seconds) {
+        val result = buildSecondarySut().doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        org.mockito.kotlin.verifyNoInteractions(nsIncomingDataProcessor)
     }
 
     @Test
