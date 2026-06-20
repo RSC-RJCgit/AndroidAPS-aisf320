@@ -591,10 +591,21 @@ class MainViewModel @Inject constructor(
         }
 
         validatedQuickLaunchActions = structural
-        applyAutomationCriteria()
+        updateQuickLaunchDisplay()
     }
 
+    // Called on EventAutomationDataChanged to re-evaluate isValid() without re-reading preferences.
+    // Reads fresh from preferences to avoid stale cache issues.
     private fun applyAutomationCriteria() {
+        val actions = QuickLaunchSerializer.fromJson(preferences.get(StringNonKey.QuickLaunchActions))
+        _quickLaunchItems.update {
+            actions
+                .filter { quickLaunchResolver.isValid(it) }
+                .map { quickLaunchResolver.resolveItem(it) }
+        }
+    }
+
+    private fun updateQuickLaunchDisplay() {
         _quickLaunchItems.update {
             validatedQuickLaunchActions
                 .filter { quickLaunchResolver.isValid(it) }
