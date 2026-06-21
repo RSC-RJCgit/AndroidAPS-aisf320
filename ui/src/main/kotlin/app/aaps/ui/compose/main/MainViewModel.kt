@@ -47,6 +47,7 @@ import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
 import app.aaps.core.interfaces.scenes.SceneActions
 import app.aaps.core.interfaces.scenes.SceneChainResolver
+import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.utils.DateUtil
@@ -86,6 +87,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -119,6 +121,7 @@ class MainViewModel @Inject constructor(
     private val uel: UserEntryLogger,
     private val loop: Loop,
     private val protectionCheck: ProtectionCheck,
+    private val sceneRepository: SceneStore,
     private val sceneActions: SceneActions,
     private val sceneChainTargetResolver: SceneChainResolver,
     private val activeSceneManager: ActiveSceneSync,
