@@ -44,6 +44,7 @@ import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAutomationDataChanged
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -575,10 +576,12 @@ class MainViewModel @Inject constructor(
             .drop(1)
             .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
-        // Automation enabled/disabled is written to AutomationEvents preference via storeToSP().
-        // isValid() for automations reads from automationEventsFlow.value (the saved JSON), so we
-        // must wait for the preference to be written before filtering — observe the flow, not the
-        // RxBus event (which fires before storeToSP() runs).
+        // storeToSP() now runs synchronously in toggleEnabled() before EventAutomationDataChanged
+        // fires, so the preference is already updated when this event is received.
+        rxBus.toFlow(EventAutomationDataChanged::class.java)
+            .onEach { applyAutomationCriteria() }
+            .launchIn(viewModelScope)
+        // Also observe the flow for any storeToSP() calls from other paths (processActions, etc.)
         automation.automationEventsFlow
             .drop(1)
             .onEach { applyAutomationCriteria() }
