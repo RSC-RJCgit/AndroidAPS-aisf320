@@ -162,7 +162,7 @@ class AutomationPlugin @Inject constructor(
 
     override fun isEventEnabledById(id: String): Boolean? {
         return try {
-            val array = JSONArray(preferences.get(AutomationStringKey.AutomationEvents))
+            val array = JSONArray(automationEventsFlow.value)
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 if (obj.optString("id") == id) {
@@ -264,7 +264,7 @@ class AutomationPlugin @Inject constructor(
         super.onStop()
     }
 
-    internal fun storeToSP() {
+    private fun storeToSP() {
         val array = JSONArray()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         try {
