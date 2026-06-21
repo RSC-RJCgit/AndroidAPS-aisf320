@@ -162,7 +162,7 @@ class AutomationPlugin @Inject constructor(
 
     override fun isEventEnabledById(id: String): Boolean? {
         return try {
-            val array = JSONArray(automationEventsFlow.value)
+            val array = JSONArray(preferences.get(AutomationStringKey.AutomationEvents))
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 if (obj.optString("id") == id) {
