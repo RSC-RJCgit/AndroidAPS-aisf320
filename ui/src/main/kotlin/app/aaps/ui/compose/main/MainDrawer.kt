@@ -76,6 +76,7 @@ fun MainDrawer(
             DrawerMenuItem(ElementType.MAINTENANCE) { onNavigate(NavigationRequest.Element(ElementType.MAINTENANCE)) }
             DrawerMenuItem(ElementType.SETUP_WIZARD) { onNavigate(NavigationRequest.Element(ElementType.SETUP_WIZARD)) }
             DrawerMenuItem(ElementType.CONFIGURATION) { onNavigate(NavigationRequest.Element(ElementType.CONFIGURATION)) }
+            DrawerMenuItem(ElementType.AUTOMATION_MANAGEMENT) { onNavigate(NavigationRequest.Element(ElementType.AUTOMATION_MANAGEMENT)) }
         }
 
         // Bottom section with About and Exit
