@@ -165,6 +165,8 @@ class NSClientV3Plugin @Inject constructor(
     var lastOperationError: String? = null
 
     internal var nsAndroidClient: NSAndroidClient? = null
+    internal var secondaryNsAndroidClient: NSAndroidClient? = null
+    private var secondaryClientConfiguration: Pair<String, String>? = null
     internal var nsClientV3Service: NSClientV3Service? = null
 
     internal val isAllowed get() = receiverDelegate.allowed
@@ -221,6 +223,7 @@ class NSClientV3Plugin @Inject constructor(
             .collectResilient(scope, aapsLogger, LTag.NSCLIENT) {
                 stopService()
                 WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+                WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
             }
         receiverDelegate.connectivityStatusFlow
             .drop(1) // skip initial value
@@ -308,6 +311,7 @@ class NSClientV3Plugin @Inject constructor(
         scope.cancel()
         stopService()
         WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
         super.onStop()
     }
 
@@ -323,12 +327,47 @@ class NSClientV3Plugin @Inject constructor(
                 logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
                 logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
             )
+        ensureSecondaryClient()
         if (preferences.get(BooleanKey.NsClient3UseWs)) {
             if (nsClientV3Service == null) startService()
             else nsClientV3Service?.initializeWebSockets("setClient")
         }
         rxBus.send(EventSWSyncStatus(status))
     }
+
+    internal fun ensureSecondaryClient() {
+        if (!preferences.get(BooleanKey.NsClientUseSecondaryTreatments)) {
+            secondaryNsAndroidClient = null
+            secondaryClientConfiguration = null
+            return
+        }
+        val secondaryUrl = preferences.get(StringKey.NsClientSecondaryUrl)
+        val secondaryToken = preferences.get(StringKey.NsClientSecondaryAccessToken)
+        if (secondaryUrl.isBlank() || secondaryToken.isBlank()) {
+            secondaryNsAndroidClient = null
+            secondaryClientConfiguration = null
+            return
+        }
+        val configuration = secondaryUrl to secondaryToken
+        if (secondaryNsAndroidClient != null && secondaryClientConfiguration == null) {
+            secondaryClientConfiguration = configuration
+            return
+        }
+        if (secondaryNsAndroidClient == null || secondaryClientConfiguration != configuration) {
+            secondaryNsAndroidClient = NSAndroidClientImpl(
+                baseUrl = secondaryUrl.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+                accessToken = secondaryToken,
+                context = context,
+                logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
+                logger = { msg -> aapsLogger.debug(LTag.HTTP, "Secondary NS: $msg") }
+            )
+            secondaryClientConfiguration = configuration
+        }
+    }
+
+    internal var secondaryTreatmentsLastModified: Long
+        get() = preferences.get(LongNonKey.NsClientSecondaryTreatmentsLastModified)
+        set(value) = preferences.put(LongNonKey.NsClientSecondaryTreatmentsLastModified, value)
 
     private fun startService() {
         if (preferences.get(BooleanKey.NsClient3UseWs)) {
@@ -361,7 +400,10 @@ class NSClientV3Plugin @Inject constructor(
         // Cancel any in-flight WorkManager job so a stuck worker can't keep
         // workIsRunning() == true after unpause and silently block all uploads
         // (every DB_CHANGED would otherwise just log "Already running").
-        if (newState) WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+        if (newState) {
+            WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
+        }
         preferences.put(NsclientBooleanKey.NsPaused, newState)
     }
 
@@ -795,7 +837,11 @@ class NSClientV3Plugin @Inject constructor(
                     BooleanKey.NsClientAcceptTempTarget,
                     BooleanKey.NsClientAcceptProfileSwitch,
                     BooleanKey.NsClientAcceptInsulin,
+                    BooleanKey.NsClientAcceptInsulinExcludeSmb,
                     BooleanKey.NsClientAcceptCarbs,
+                    BooleanKey.NsClientUseSecondaryTreatments,
+                    StringKey.NsClientSecondaryUrl,
+                    StringKey.NsClientSecondaryAccessToken,
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,
                     BooleanKey.NsClientAcceptTbrEb

@@ -1,6 +1,7 @@
 package app.aaps.implementation.alerts
 
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TB
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -8,6 +9,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.di.ApplicationScope
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -15,17 +17,22 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.asAnnouncement
+import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.ui.R
 import app.aaps.implementation.alerts.keys.LocalAlertLongKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.min
@@ -43,6 +50,8 @@ class LocalAlertUtilsImpl @Inject constructor(
     private val smsCommunicator: SmsCommunicator,
     private val config: Config,
     private val persistenceLayer: PersistenceLayer,
+    private val processedTbrEbData: ProcessedTbrEbData,
+    private val commandQueue: CommandQueue,
     private val dateUtil: DateUtil,
     private val notificationManager: NotificationManager,
     @ApplicationScope private val appScope: CoroutineScope
@@ -129,11 +138,12 @@ class LocalAlertUtilsImpl @Inject constructor(
 
     override suspend fun checkStaleBGAlert() {
         val bgReading = persistenceLayer.getLastGlucoseValue() ?: return
+        val now = dateUtil.now()
         if (preferences.get(BooleanKey.AlertMissedBgReading)
-            && bgReading.timestamp + missedReadingsThreshold() < dateUtil.now()
-            && preferences.get(LocalAlertLongKey.NextMissedReadingsAlarm) < dateUtil.now()
+            && bgReading.timestamp + missedReadingsThreshold() < now
+            && preferences.get(LocalAlertLongKey.NextMissedReadingsAlarm) < now
         ) {
-            preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, dateUtil.now() + missedReadingsThreshold())
+            preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, now + missedReadingsThreshold())
             notificationManager.post(NotificationId.BG_READINGS_MISSED, R.string.missed_bg_readings, soundRes = R.raw.alarm)
             if (preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
                 appScope.launch {
@@ -147,8 +157,30 @@ class LocalAlertUtilsImpl @Inject constructor(
                     )
                 }
             }
+            if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
+            cancelHighTempBasalOvernight(now)
         } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
             notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
+        }
+    }
+
+    private suspend fun cancelHighTempBasalOvernight(now: Long) {
+        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        if (hour !in 2 until 6) return
+
+        val profile = profileFunction.getProfile() ?: return
+        val tempBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(now) ?: return
+        if (tempBasal.type == TB.Type.FAKE_EXTENDED) return
+
+        val profileBasal = profile.getBasal(now)
+        val tempBasalAbsolute = tempBasal.convertedToAbsolute(now, profile)
+        if (tempBasalAbsolute > profileBasal && !Round.isSame(tempBasalAbsolute, profileBasal)) {
+            aapsLogger.warn(
+                LTag.CORE,
+                "Missing BG overnight: cancelling high temp basal $tempBasalAbsolute U/h above profile basal $profileBasal U/h"
+            )
+            commandQueue.cancelTempBasal(enforceNew = true)
         }
     }
 }

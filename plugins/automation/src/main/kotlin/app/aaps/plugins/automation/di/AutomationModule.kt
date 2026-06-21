@@ -5,6 +5,7 @@ import app.aaps.plugins.automation.AutomationEventObject
 import app.aaps.plugins.automation.AutomationPlugin
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionBolusWizardPercentage
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionDummy
@@ -16,6 +17,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.actions.ActionStopProcessing
@@ -24,6 +26,8 @@ import app.aaps.plugins.automation.services.LocationService
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
+import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
@@ -45,6 +49,7 @@ import app.aaps.plugins.automation.triggers.TriggerReservoirLevel
 import app.aaps.plugins.automation.triggers.TriggerSceneActive
 import app.aaps.plugins.automation.triggers.TriggerSensorAge
 import app.aaps.plugins.automation.triggers.TriggerStepsCount
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
@@ -88,6 +93,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerProfilePercentInjector(): TriggerProfilePercent
     @ContributesAndroidInjector abstract fun triggerPumpLastConnectionInjector(): TriggerPumpLastConnection
     @ContributesAndroidInjector abstract fun triggerBTDeviceInjector(): TriggerBTDevice
+    @ContributesAndroidInjector abstract fun triggerPhoneBatteryInjector(): TriggerPhoneBattery
+    @ContributesAndroidInjector abstract fun triggerProfileInjector(): TriggerProfile
     @ContributesAndroidInjector abstract fun triggerRecurringTimeInjector(): TriggerRecurringTime
     @ContributesAndroidInjector abstract fun triggerSceneActiveInjector(): TriggerSceneActive
     @ContributesAndroidInjector abstract fun triggerTempTargetInjector(): TriggerTempTarget
@@ -102,6 +109,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionStopProcessingInjector(): ActionStopProcessing
     @ContributesAndroidInjector abstract fun actionNotificationInjector(): ActionNotification
     @ContributesAndroidInjector abstract fun actionAlarmInjector(): ActionAlarm
+    @ContributesAndroidInjector abstract fun actionBolusWizardPercentageInjector(): ActionBolusWizardPercentage
     @ContributesAndroidInjector abstract fun actionSettingsExportInjector(): ActionSettingsExport
     @ContributesAndroidInjector abstract fun actionCarePortalEventInjector(): ActionCarePortalEvent
     @ContributesAndroidInjector abstract fun actionProfileSwitchInjector(): ActionProfileSwitch
@@ -114,6 +122,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionEnableSceneInjector(): ActionEnableScene
     @ContributesAndroidInjector abstract fun actionDisableSceneInjector(): ActionDisableScene
     @ContributesAndroidInjector abstract fun actionDummyInjector(): ActionDummy
+    @ContributesAndroidInjector abstract fun actionSetAutomationStateInjector(): ActionSetAutomationState
+    @ContributesAndroidInjector abstract fun triggerAutomationStateInjector(): TriggerAutomationState
     @ContributesAndroidInjector abstract fun contributesLocationService(): LocationService
 
     @Module

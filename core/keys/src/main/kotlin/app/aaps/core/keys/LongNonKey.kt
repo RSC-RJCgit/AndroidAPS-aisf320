@@ -13,5 +13,6 @@ enum class LongNonKey(
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),
     LastCleanupRun("last_cleanup_run", 0L),
     LastVacuumRun("last_vacuum_run", 0L),
+    NsClientSecondaryTreatmentsLastModified("ns_secondary_treatments_last_modified", 0L),
 }
 

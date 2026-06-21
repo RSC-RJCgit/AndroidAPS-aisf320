@@ -561,9 +561,21 @@ class MainViewModel @Inject constructor(
 
     // ── Toolbar ──
 
+    private var validatedQuickLaunchActions: List<QuickLaunchAction> = emptyList()
+
     private fun observeQuickLaunch() {
         preferences.observe(StringNonKey.QuickLaunchActions)
             .onEach { refreshQuickLaunch(it) }
+            .launchIn(viewModelScope)
+        // Scene enabled/disabled toggling updates SceneDefinitions preference directly without
+        // sending EventAutomationDataChanged, so we must also react to scenesFlow.
+        sceneRepository.scenesFlow
+            .drop(1)
+            .onEach { applyAutomationCriteria() }
+            .launchIn(viewModelScope)
+        automation.events
+            .drop(1)
+            .onEach { applyAutomationCriteria() }
             .launchIn(viewModelScope)
     }
 
@@ -574,16 +586,34 @@ class MainViewModel @Inject constructor(
     fun refreshQuickLaunch(json: String = preferences.get(StringNonKey.QuickLaunchActions)) {
         val actions = QuickLaunchSerializer.fromJson(json)
 
-        // Validate dynamic actions and collect valid ones
-        val validated = actions.filter { action -> quickLaunchResolver.isValid(action) }
+        // Structurally prune items whose referenced entity no longer exists (deleted automation,
+        // removed profile, etc.). Deliberately ignores isEnabled — disabled items stay in the list
+        // and are hidden dynamically by applyAutomationCriteria via isValid().
+        val structural = actions.filter { action -> quickLaunchResolver.structurallyExists(action) }
 
-        // If validation removed items, persist the cleaned list
-        if (validated.size != actions.size) {
-            preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(validated))
+        if (structural.size != actions.size) {
+            preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(structural))
         }
 
-        // Resolve display properties
-        _quickLaunchItems.update { validated.map { quickLaunchResolver.resolveItem(it) } }
+        validatedQuickLaunchActions = structural
+        updateQuickLaunchDisplay()
+    }
+
+    private fun applyAutomationCriteria() {
+        val actions = QuickLaunchSerializer.fromJson(preferences.get(StringNonKey.QuickLaunchActions))
+        _quickLaunchItems.update {
+            actions
+                .filter { quickLaunchResolver.isValid(it) }
+                .map { quickLaunchResolver.resolveItem(it) }
+        }
+    }
+
+    private fun updateQuickLaunchDisplay() {
+        _quickLaunchItems.update {
+            validatedQuickLaunchActions
+                .filter { quickLaunchResolver.isValid(it) }
+                .map { quickLaunchResolver.resolveItem(it) }
+        }
     }
 
     fun requestAutomationConfirmation(automationId: String) {

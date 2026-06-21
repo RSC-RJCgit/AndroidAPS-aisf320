@@ -97,6 +97,8 @@
     <string name="pref_title_sms_allow_remote_commands">Allow remote commands via SMS</string>
     <string name="pref_title_sms_report_pump_unreachable">Report pump unreachable via SMS</string>
     <string name="pref_summary_sms_report_pump_unreachable">Send SMS notification when pump becomes unreachable.</string>
+    <string name="smscommunicator_missed_bg_readings">Report missed BG readings</string>
+    <string name="smscommunicator_report_missed_bg_readings_summary">Send SMS to all numbers if missed BG readings alarm is triggered</string>
 
     <!-- Virtual pump preferences -->
     <string name="pref_title_virtual_pump_status_upload">Upload pump status to NS</string>
@@ -114,8 +116,16 @@
     <string name="pref_summary_ns_receive_profile_switch">Accept profile switch events from Nightscout.</string>
     <string name="pref_title_ns_receive_insulin">Receive insulin from NS</string>
     <string name="pref_summary_ns_receive_insulin">Accept insulin treatments from Nightscout.</string>
+    <string name="pref_title_ns_receive_insulin_exclude_smb">Exclude SMB from download</string>
+    <string name="pref_summary_ns_receive_insulin_exclude_smb">Skip automated micro-boluses (SMB) when downloading insulin; manual boluses are still accepted.</string>
     <string name="pref_title_ns_receive_carbs">Receive carbs from NS</string>
     <string name="pref_summary_ns_receive_carbs">Accept carb entries from Nightscout.</string>
+    <string name="pref_title_ns_secondary_treatments">Download bolus and carb entries from secondary Nightscout</string>
+    <string name="pref_summary_ns_secondary_treatments">When enabled and configured, bolus and carb downloads come from the secondary website instead of the primary website. All other synchronization continues to use the primary website.</string>
+    <string name="ns_secondary_url_title">Secondary Nightscout URL</string>
+    <string name="ns_secondary_url_summary">Website used only to download bolus and carb entries. It may be the same as the primary Nightscout URL.</string>
+    <string name="ns_secondary_token_title">Secondary Nightscout access token</string>
+    <string name="ns_secondary_token_summary">Read access token for downloading treatments from the secondary website.</string>
     <string name="pref_title_ns_receive_therapy_event">Receive therapy events from NS</string>
     <string name="pref_summary_ns_receive_therapy_event">Accept therapy events from Nightscout.</string>
     <string name="pref_title_ns_receive_running_mode">Receive running mode from NS</string>
@@ -337,6 +347,7 @@
 
     <!-- StringKey: Directory preferences -->
     <string name="pref_title_aaps_directory">AAPS directory</string>
+    <string name="pref_title_automation_states_enabled">Automation States</string>
 
     <!-- StringKey: Protection preferences -->
     <string name="pref_title_master_password">Master password</string>

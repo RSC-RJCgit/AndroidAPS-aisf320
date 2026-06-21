@@ -1142,7 +1142,8 @@ class SmsCommunicatorPlugin @Inject constructor(
                     )
                 }
             ),
-            BooleanKey.SmsReportPumpUnreachable
+            BooleanKey.SmsReportPumpUnreachable,
+            BooleanKey.SmsReportMissedBgReadings
 
         ),
         icon = pluginDescription.icon

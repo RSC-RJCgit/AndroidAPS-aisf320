@@ -429,6 +429,10 @@ class AutomationPlugin @Inject constructor(
         return synchronized(this) { automationEvents.find { it.id == id } }
     }
 
+    override fun isEventEnabledById(id: String): Boolean? {
+        return synchronized(this) { automationEvents.find { it.id == id }?.isEnabled }
+    }
+
     fun getActionDummyObjects(): List<Action> {
         val actions = mutableListOf(
             ActionStopProcessing(injector),

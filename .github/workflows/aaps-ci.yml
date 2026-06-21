@@ -17,6 +17,11 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
+  push:
+    branches:
+      - '*RJC*'
+    paths-ignore:
+      - '.github/workflows/**'
 
   push:
     branches:

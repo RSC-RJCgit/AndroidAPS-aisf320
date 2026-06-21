@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.aaps.core.data.model.Scene
@@ -51,8 +53,10 @@ fun AutomationEditScreen(
     sceneOptions: List<Scene>,
     tick: Int,
     onTitleChange: (String) -> Unit,
+    onNotesChange: (String) -> Unit,
     onUserActionChange: (Boolean) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
+    onMinimumRepeatMinutesChange: (String) -> Unit,
     onEditTrigger: () -> Unit,
     onAddAction: () -> Unit,
     onRemoveAction: (index: Int) -> Unit,
@@ -72,7 +76,7 @@ fun AutomationEditScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             if (state.readOnly) ReadOnlyChip()
-            BasicsSection(state, onTitleChange, onUserActionChange, onEnabledChange)
+            BasicsSection(state, onTitleChange, onNotesChange, onUserActionChange, onEnabledChange, onMinimumRepeatMinutesChange)
             ConditionSection(state, onEditTrigger)
             ActionsSection(
                 liveActions = liveActions,
@@ -108,8 +112,10 @@ private fun ReadOnlyChip() {
 private fun BasicsSection(
     state: AutomationEditUiState,
     onTitleChange: (String) -> Unit,
+    onNotesChange: (String) -> Unit,
     onUserActionChange: (Boolean) -> Unit,
-    onEnabledChange: (Boolean) -> Unit
+    onEnabledChange: (Boolean) -> Unit,
+    onMinimumRepeatMinutesChange: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
@@ -122,6 +128,27 @@ private fun BasicsSection(
             supportingText = if (state.titleError) {
                 { Text(stringResource(R.string.automation_missing_task_name)) }
             } else null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = state.notes,
+            onValueChange = onNotesChange,
+            label = { Text(stringResource(R.string.automation_notes)) },
+            enabled = !state.readOnly,
+            minLines = 2,
+            maxLines = 5,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = state.minimumRepeatMinutes,
+            onValueChange = onMinimumRepeatMinutesChange,
+            label = { Text(stringResource(R.string.automation_minimum_repeat_time)) },
+            suffix = { Text(stringResource(R.string.automation_minutes)) },
+            singleLine = true,
+            isError = state.minimumRepeatMinutes.toIntOrNull() == null,
+            enabled = !state.readOnly,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = { Text(stringResource(R.string.automation_minimum_repeat_time_summary)) },
             modifier = Modifier.fillMaxWidth()
         )
         Card(
@@ -362,8 +389,10 @@ private fun PreviewAutomationEditScreenNew() {
         AutomationEditScreen(
             state = AutomationEditUiState(),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
+            onMinimumRepeatMinutesChange = {},
             onEditTrigger = {},
             onAddAction = {},
             onRemoveAction = {},
@@ -383,8 +412,10 @@ private fun PreviewAutomationEditScreenEdit() {
         AutomationEditScreen(
             state = sampleEditState(),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
+            onMinimumRepeatMinutesChange = {},
             onEditTrigger = {},
             onAddAction = {},
             onRemoveAction = {},
@@ -404,8 +435,10 @@ private fun PreviewAutomationEditScreenReadOnly() {
         AutomationEditScreen(
             state = sampleEditState(readOnly = true, actions = 1),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
+            onMinimumRepeatMinutesChange = {},
             onEditTrigger = {},
             onAddAction = {},
             onRemoveAction = {},
@@ -425,8 +458,10 @@ private fun PreviewAutomationEditScreenUserAction() {
         AutomationEditScreen(
             state = sampleEditState(hasTrigger = false, userAction = true, actions = 1),
             onTitleChange = {},
+            onNotesChange = {},
             onUserActionChange = {},
             onEnabledChange = {},
+            onMinimumRepeatMinutesChange = {},
             onEditTrigger = {},
             onAddAction = {},
             onRemoveAction = {},

@@ -117,6 +117,9 @@ enum class BooleanKey(
 
     SmsAllowRemoteCommands("smscommunicator_remotecommandsallowed", false, R.string.pref_title_sms_allow_remote_commands),
     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true, R.string.pref_title_sms_report_pump_unreachable, R.string.pref_summary_sms_report_pump_unreachable),
+    SmsReportMissedBgReadings("smscommunicator_report_missed_bg_readings", true, R.string.smscommunicator_missed_bg_readings, R.string.smscommunicator_report_missed_bg_readings_summary),
+
+    AutomationStatesEnabled("automation_states_enabled", true, R.string.pref_title_automation_states_enabled),
 
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, R.string.pref_title_virtual_pump_status_upload, showInNsClientMode = false),
     NsClientUploadData("ns_upload", true, R.string.pref_title_ns_upload_data, R.string.pref_summary_ns_upload_data, showInNsClientMode = false, hideParentScreenIfHidden = true),
@@ -125,7 +128,9 @@ enum class BooleanKey(
     NsClientAcceptTempTarget("ns_receive_temp_target", false, R.string.pref_title_ns_receive_temp_target, R.string.pref_summary_ns_receive_temp_target, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptProfileSwitch("ns_receive_profile_switch", false, R.string.pref_title_ns_receive_profile_switch, R.string.pref_summary_ns_receive_profile_switch, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptInsulin("ns_receive_insulin", false, R.string.pref_title_ns_receive_insulin, R.string.pref_summary_ns_receive_insulin, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    NsClientAcceptInsulinExcludeSmb("ns_receive_insulin_exclude_smb", false, R.string.pref_title_ns_receive_insulin_exclude_smb, R.string.pref_summary_ns_receive_insulin_exclude_smb, showInNsClientMode = false, dependency = NsClientAcceptInsulin),
     NsClientAcceptCarbs("ns_receive_carbs", false, R.string.pref_title_ns_receive_carbs, R.string.pref_summary_ns_receive_carbs, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    NsClientUseSecondaryTreatments("ns_secondary_treatments_enabled", false, R.string.pref_title_ns_secondary_treatments, R.string.pref_summary_ns_secondary_treatments, showInNsClientMode = false),
     NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, R.string.pref_title_ns_receive_therapy_event, R.string.pref_summary_ns_receive_therapy_event, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptRunningMode("ns_receive_running_mode", false, R.string.pref_title_ns_receive_running_mode, R.string.pref_summary_ns_receive_running_mode, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptTbrEb("ns_receive_tbr_eb", false, R.string.pref_title_ns_receive_tbr_eb, R.string.pref_summary_ns_receive_tbr_eb, showInNsClientMode = false, engineeringModeOnly = true),

@@ -271,12 +271,14 @@ class AutomationComposeContent(
         }
 
         key(resetTick) {
+            val profileNames = localProfileNames()
             AutomationEditTriggerScreen(
                 root = holder.workingEvent().trigger,
                 availableTriggers = plugin.getTriggerDummyObjects(),
                 createTrigger = { cn -> instantiateTrigger(cn) },
                 newConnector = { TriggerConnector(injector) },
                 onChange = { holder.onTriggerChanged() },
+                profileNames = profileNames,
                 onPickLocationFromMap = { triggerLoc -> holder.openMapPicker(triggerLoc) }
             )
         }
@@ -423,8 +425,10 @@ class AutomationComposeContent(
             sceneOptions = sceneOptions,
             tick = actionTick,
             onTitleChange = holder::editTitleChanged,
+            onNotesChange = holder::editNotesChanged,
             onUserActionChange = holder::editUserActionChanged,
             onEnabledChange = holder::editEnabledChanged,
+            onMinimumRepeatMinutesChange = holder::editMinimumRepeatMinutesChanged,
             onEditTrigger = { holder.openTriggerEditor() },
             onAddAction = { showActionSheet = true },
             onRemoveAction = { index ->
