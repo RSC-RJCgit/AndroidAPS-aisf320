@@ -104,6 +104,7 @@ class AutomationStateHolder(
     }
 
     private var eventSnapshotJson: String? = null
+    private var minimumRepeatMinutesInput = AutomationEventObject.DEFAULT_MINIMUM_REPEAT_MINUTES.toString()
     private val _eventDirty = MutableStateFlow(false)
     val eventDirty: StateFlow<Boolean> = _eventDirty.asStateFlow()
 
@@ -122,6 +123,7 @@ class AutomationStateHolder(
     // ---- Navigation / Edit ----
     fun openNew() {
         workingEvent = AutomationEventObject(injector)
+        minimumRepeatMinutesInput = workingEvent.minimumRepeatMinutes.toString()
         workingPosition = -1
         snapshotEvent()
         _route.value = AutomationRoute.Edit(-1)
@@ -131,6 +133,8 @@ class AutomationStateHolder(
     fun openEdit(position: Int) {
         val source = plugin.at(position)
         workingEvent = AutomationEventObject(injector).fromJSON(source.toJSON())
+        workingEvent.lastRun = source.lastRun
+        minimumRepeatMinutesInput = workingEvent.minimumRepeatMinutes.toString()
         workingPosition = position
         snapshotEvent()
         _route.value = AutomationRoute.Edit(position)
@@ -217,6 +221,20 @@ class AutomationStateHolder(
         refreshEditState()
     }
 
+    fun editNotesChanged(value: String) {
+        workingEvent.notes = value
+        recomputeEventDirty()
+        refreshEditState()
+    }
+
+    fun editMinimumRepeatMinutesChanged(value: String) {
+        if (value.any { !it.isDigit() }) return
+        minimumRepeatMinutesInput = value
+        value.toIntOrNull()?.let { workingEvent.minimumRepeatMinutes = it }
+        recomputeEventDirty()
+        refreshEditState()
+    }
+
     fun addAction(action: Action) {
         workingEvent.addAction(action)
         recomputeEventDirty()
@@ -235,6 +253,7 @@ class AutomationStateHolder(
 
     fun save(): Boolean {
         val e = workingEvent
+        e.minimumRepeatMinutes = minimumRepeatMinutesInput.toIntOrNull() ?: return false
         if (e.title.isBlank()) return false
         if (e.trigger.size() == 0 && !e.userAction) return false
         if (e.actions.isEmpty()) return false
@@ -249,8 +268,10 @@ class AutomationStateHolder(
         val preconditions = e.getPreconditions()
         _editState.value = AutomationEditUiState(
             title = e.title,
+            notes = e.notes,
             userAction = e.userAction,
             enabled = e.isEnabled,
+            minimumRepeatMinutes = minimumRepeatMinutesInput,
             readOnly = e.readOnly,
             triggerDescription = e.trigger.friendlyDescription(),
             hasTrigger = e.trigger.size() > 0,

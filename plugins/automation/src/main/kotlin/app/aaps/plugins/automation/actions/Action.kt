@@ -1,4 +1,4 @@
-package app.aaps.plugins.automation.actions
+﻿package app.aaps.plugins.automation.actions
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -63,6 +63,8 @@ abstract class Action(val injector: HasAndroidInjector) {
             if (dotIndex > 0) type = type.substring(dotIndex + 1)
             return when (type) {
                 ActionAlarm::class.java.simpleName                -> ActionAlarm(injector).fromJSON(data.toString())
+                ActionBolusWizardPercentage::class.java.simpleName ->
+                    ActionBolusWizardPercentage(injector).fromJSON(data.toString())
                 ActionSettingsExport::class.java.simpleName       -> ActionSettingsExport(injector).fromJSON(data.toString())
                 ActionCarePortalEvent::class.java.simpleName      -> ActionCarePortalEvent(injector).fromJSON(data.toString())
                 ActionDisableScene::class.java.simpleName         -> ActionDisableScene(injector).fromJSON(data.toString())
@@ -78,6 +80,7 @@ abstract class Action(val injector: HasAndroidInjector) {
                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
                 ActionStopProcessing::class.java.simpleName       -> ActionStopProcessing(injector).fromJSON(data.toString())
                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
+                ActionSetAutomationState::class.java.simpleName  -> ActionSetAutomationState(injector).fromJSON(data.toString())
                 else                                              -> throw ClassNotFoundException(type)
             }
         } catch (e: Exception) {

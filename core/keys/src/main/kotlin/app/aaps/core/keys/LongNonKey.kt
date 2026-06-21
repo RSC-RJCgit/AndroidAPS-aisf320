@@ -22,5 +22,6 @@ enum class LongNonKey(
     // hasn't republished the roster yet). Not exported — re-pair regenerates this.
     NsClientControlPairedAt("nsclient_control_paired_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
+    NsClientSecondaryTreatmentsLastModified("ns_secondary_treatments_last_modified", 0L),
 }
 

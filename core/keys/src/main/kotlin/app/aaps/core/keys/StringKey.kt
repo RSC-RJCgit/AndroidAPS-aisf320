@@ -199,5 +199,22 @@ enum class StringKey(
         isPassword = true,
         validator = StringValidator.minLength(17)
     ),
+    NsClientSecondaryUrl(
+        key = "ns_secondary_url",
+        defaultValue = "",
+        titleResId = R.string.ns_secondary_url_title,
+        summaryResId = R.string.ns_secondary_url_summary,
+        dependency = BooleanKey.NsClientUseSecondaryTreatments,
+        validator = StringValidator.httpsUrl()
+    ),
+    NsClientSecondaryAccessToken(
+        key = "ns_secondary_access_token",
+        defaultValue = "",
+        titleResId = R.string.ns_secondary_token_title,
+        summaryResId = R.string.ns_secondary_token_summary,
+        dependency = BooleanKey.NsClientUseSecondaryTreatments,
+        isPassword = true,
+        validator = StringValidator.minLength(17)
+    ),
 
 }

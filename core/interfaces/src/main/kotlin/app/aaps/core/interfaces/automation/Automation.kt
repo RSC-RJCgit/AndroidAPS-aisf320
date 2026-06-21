@@ -18,6 +18,12 @@ interface Automation {
     val executionEnabled: Boolean
 
     fun findEventById(id: String): AutomationEvent?
+
+    /**
+     * Returns the enabled state of the automation event with the given id.
+     * Returns null if no event with that id is found.
+     */
+    fun isEventEnabledById(id: String): Boolean?
     suspend fun processEvent(someEvent: AutomationEvent)
 
     /**

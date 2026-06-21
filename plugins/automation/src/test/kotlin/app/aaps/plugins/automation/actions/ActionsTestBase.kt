@@ -60,6 +60,9 @@ ActionsTestBase : TestBaseWithProfile() {
                 it.dateUtil = dateUtil
                 it.preferences = preferences
             }
+            if (it is ActionBolusWizardPercentage) {
+                it.preferences = preferences
+            }
             if (it is ActionCarePortalEvent) {
                 it.persistenceLayer = persistenceLayer
                 it.dateUtil = dateUtil

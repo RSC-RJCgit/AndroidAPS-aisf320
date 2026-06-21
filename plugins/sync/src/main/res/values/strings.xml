@@ -286,5 +286,7 @@
     <string name="a11y_otp_qr_code">QR Code for setup one time password</string>
     <string name="permission_sms_title">SMS</string>
     <string name="permission_sms_description">Application needs SMS permission for remote control via text messages</string>
+    <string name="smscommunicator_missed_bg_readings">Report missed BG readings</string>
+    <string name="smscommunicator_report_missed_bg_readings_summary">Send SMS to all numbers if missed BG readings alarm is triggered</string>
 
 </resources>

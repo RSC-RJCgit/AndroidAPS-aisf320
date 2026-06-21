@@ -17,6 +17,7 @@ import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.whenever
 import org.skyscreamer.jsonassert.JSONAssert
 
 class AutomationEventTest : TestBase() {
@@ -30,6 +31,7 @@ class AutomationEventTest : TestBase() {
         AndroidInjector {
             if (it is AutomationEventObject) {
                 it.aapsLogger = aapsLogger
+                it.dateUtil = dateUtil
             }
             if (it is Action) {
                 it.aapsLogger = aapsLogger
@@ -48,6 +50,7 @@ class AutomationEventTest : TestBase() {
         event.title = "Test"
         event.trigger = TriggerDummy(injector).instantiate(JSONObject(TriggerConnectorTest().oneItem)) as TriggerConnector
         event.addAction(ActionSMBChange(injector))
+        event.minimumRepeatMinutes = 12
 
         // export to json
         val eventJson = event.toJSON()
@@ -60,6 +63,7 @@ class AutomationEventTest : TestBase() {
         assertThat(parsed.getBoolean("enabled")).isTrue()
         assertThat(parsed.getBoolean("userAction")).isFalse()
         assertThat(parsed.getBoolean("systemAction")).isFalse()
+        assertThat(parsed.getInt("minimumRepeatMinutes")).isEqualTo(12)
 
         // clone
         val clone = AutomationEventObject(injector).fromJSON(eventJson)
@@ -69,6 +73,7 @@ class AutomationEventTest : TestBase() {
 
         // check title
         assertThat(clone.title).isEqualTo(event.title)
+        assertThat(clone.minimumRepeatMinutes).isEqualTo(12)
 
         // check trigger
         assertThat(clone.trigger).isNotNull()
@@ -98,6 +103,20 @@ class AutomationEventTest : TestBase() {
         val event = AutomationEventObject(injector).fromJSON(legacyJson)
         assertThat(event.id).isNotEmpty()
         assertThat(event.title).isEqualTo("Legacy")
+        assertThat(event.minimumRepeatMinutes).isEqualTo(AutomationEventObject.DEFAULT_MINIMUM_REPEAT_MINUTES)
+    }
+
+    @Test fun minimumRepeatTimeControlsWhenEventCanRunAgain() {
+        val now = 1_000_000L
+        whenever(dateUtil.now()).thenReturn(now)
+        val event = AutomationEventObject(injector)
+        event.minimumRepeatMinutes = 10
+
+        event.lastRun = now - 9 * 60 * 1000L
+        assertThat(event.shouldRun()).isFalse()
+
+        event.lastRun = now - 10 * 60 * 1000L
+        assertThat(event.shouldRun()).isTrue()
     }
 
     @Test fun hasStopProcessing() {

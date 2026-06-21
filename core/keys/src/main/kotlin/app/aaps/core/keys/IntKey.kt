@@ -216,7 +216,7 @@ enum class IntKey(
         key = "boluswizard_percentage",
         defaultValue = 100,
         min = 10,
-        max = 100,
+        max = 200,
         titleResId = R.string.pref_title_bolus_percentage,
         summaryResId = R.string.deliverpartofboluswizard,
         unitType = UnitType.PERCENT,

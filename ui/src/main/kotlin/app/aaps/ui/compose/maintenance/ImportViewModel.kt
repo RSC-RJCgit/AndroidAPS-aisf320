@@ -263,7 +263,13 @@ class ImportViewModel @Inject constructor(
         }
     }
 
-    fun confirmImport() {
+    private val _statesAcknowledged = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val statesAcknowledgedFlow = _statesAcknowledged
+    var statesAcknowledged: Boolean
+        get() = _statesAcknowledged.value
+        set(value) { _statesAcknowledged.value = value }
+
+    fun confirmImport(keepStatesEnabled: Boolean = false) {
         val current = importStep.value
         if (current !is ImportStep.Review) return
         val result = current.decryptResult
@@ -273,7 +279,11 @@ class ImportViewModel @Inject constructor(
 
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
+                android.util.Log.e("STATES_DEBUG", "confirmImport keepStatesEnabled=$keepStatesEnabled statesAcknowledged=$statesAcknowledged")
                 importExportPrefs.executeImport(result.prefs)
+                if (keepStatesEnabled) {
+                    importExportPrefs.setAutomationStatesEnabled(true)
+                }
                 importExportPrefs.prepareImportRestart()
             }
             _importStep.value = ImportStep.RestartConfirm

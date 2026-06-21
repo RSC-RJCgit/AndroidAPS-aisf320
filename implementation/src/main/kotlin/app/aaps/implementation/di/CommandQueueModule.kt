@@ -23,7 +23,7 @@ open class CommandQueueModule {
     interface Bindings {
 
         @Binds fun bindCommandQueueInjector(commandQueueImplementation: CommandQueueImplementation): CommandQueue
-        // QueueWorker migrated to @HiltWorker (constructed by HiltWorkerFactory).
+        // QueueWorker and ProfileSwitchExpiryWorker use @HiltWorker (constructed by HiltWorkerFactory).
     }
 
     @Provides

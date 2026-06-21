@@ -1,4 +1,4 @@
-import java.text.SimpleDateFormat
+﻿import java.text.SimpleDateFormat
 import java.util.Date
 
 plugins {
@@ -179,6 +179,7 @@ dependencies {
     implementation(project(":ui"))
     implementation(project(":plugins:aps"))
     implementation(project(":plugins:automation"))
+    implementation(project(":plugins:automation-state"))
     implementation(project(":plugins:calibration"))
     implementation(project(":plugins:configuration"))
     implementation(project(":plugins:constraints"))
@@ -227,7 +228,9 @@ dependencies {
     // Initializes WorkManager for instrumented tests (BaseTestApp), since the production
     // Configuration.Provider/manifest initializer don't apply under the Hilt test application.
     androidTestImplementation(libs.androidx.work.testing)
-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
+    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
+        exclude(group = "org.json", module = "json")
+    }
     androidTestImplementation(libs.kotlinx.coroutines.test)
     // Rhino is needed by the openAPS adapter test fixtures under app/src/androidTest
     // (these files reference org.mozilla.javascript.* classes directly).
