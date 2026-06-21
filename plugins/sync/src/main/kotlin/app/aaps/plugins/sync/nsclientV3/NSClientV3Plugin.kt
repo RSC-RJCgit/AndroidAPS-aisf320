@@ -81,6 +81,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -142,6 +143,12 @@ class NSClientV3Plugin @Inject constructor(
     companion object {
 
         const val RECORDS_TO_LOAD = 500
+        private const val SECONDARY_JOB_NAME = LoadSecondaryTreatmentsWorker.JOB_NAME
+        private val CLIENT_CONTROL_POLL_MS = T.mins(5).msecs()
+
+        // Rate-limit for requestMasterProbe so screen recompositions / banner flaps / reconnect bursts
+        // don't spam pings + settings re-fetches at the master.
+        private val PROBE_MIN_INTERVAL_MS = T.secs(5).msecs()
     }
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
