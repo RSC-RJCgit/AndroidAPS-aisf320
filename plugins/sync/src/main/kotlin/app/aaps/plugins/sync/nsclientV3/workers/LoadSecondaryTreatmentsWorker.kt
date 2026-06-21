@@ -12,7 +12,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.objects.workflow.LoggingWorker
-import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
+import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -50,11 +50,7 @@ class LoadSecondaryTreatmentsWorker @AssistedInject constructor(
                 val bolusesAndCarbs = response.values.filter { it is NSBolus || it is NSCarbs }
                 if (bolusesAndCarbs.isNotEmpty()) {
                     nsClientRepository.addLog("◄ RCV-2", "${bolusesAndCarbs.size} bolus/carb treatments from secondary NS")
-                    nsIncomingDataProcessor.processTreatments(
-                        bolusesAndCarbs,
-                        doFullSync = false,
-                        source = NsIncomingDataProcessor.TreatmentSource.SECONDARY
-                    )
+                    nsIncomingDataProcessor.processTreatments(bolusesAndCarbs, doFullSync = false)
                 }
 
                 if (response.code == 304 || response.values.isEmpty()) {
