@@ -70,6 +70,7 @@ class AutomationStateHolder(
     // ---- List ----
     fun toggleEnabled(position: Int, checked: Boolean) {
         plugin.at(position).isEnabled = checked
+        plugin.storeToSP()
         rxBus.send(EventAutomationDataChanged())
     }
 

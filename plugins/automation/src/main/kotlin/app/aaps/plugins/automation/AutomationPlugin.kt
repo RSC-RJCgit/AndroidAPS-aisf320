@@ -264,7 +264,7 @@ class AutomationPlugin @Inject constructor(
         super.onStop()
     }
 
-    private fun storeToSP() {
+    internal fun storeToSP() {
         val array = JSONArray()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         try {
