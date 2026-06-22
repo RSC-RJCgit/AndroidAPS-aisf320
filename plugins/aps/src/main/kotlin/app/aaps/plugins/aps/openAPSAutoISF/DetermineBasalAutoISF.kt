@@ -426,9 +426,8 @@ class DetermineBasalAutoISF @Inject constructor(
 
         val enableUAM = profile.enableUAM
 
-        var ci: Double
-        val cid: Double
-        ci = round((minDelta - bgi), 1)
+        var ci: Double = round((minDelta - bgi), 1)
+        var cid: Double = 0.0
         val uci = round((minDelta - bgi), 1)
 
         val csf = sens / profile.carb_ratio
