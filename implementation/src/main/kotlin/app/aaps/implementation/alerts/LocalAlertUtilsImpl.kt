@@ -22,6 +22,7 @@ import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
@@ -159,10 +160,42 @@ class LocalAlertUtilsImpl @Inject constructor(
             }
             if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
                 smsCommunicator.sendNotificationToAllNumbers(rh.gs(R.string.missed_bg_readings))
+            setReducedTempBasalIfLastBgLow(now, bgReading.value)
             cancelHighTempBasalOvernight(now)
         } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
             rxBus.send(EventDismissNotification(Notification.BG_READINGS_MISSED))
         }
+    }
+
+    // 6.5 mmol/L expressed in mg/dL (the internal storage unit)
+    private val LOW_BG_THRESHOLD_MGDL = 6.5 * 18.0182
+
+    private fun setReducedTempBasalIfLastBgLow(now: Long, lastBgMgdl: Double) {
+        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        if (hour !in 2 until 6) return
+        if (lastBgMgdl >= LOW_BG_THRESHOLD_MGDL) return
+
+        val profile = profileFunction.getProfile() ?: return
+        val tempBasal = processedTbrEbData.getTempBasalIncludingConvertedExtended(now) ?: return
+        if (tempBasal.type == TB.Type.FAKE_EXTENDED) return
+        val profileBasal = profile.getBasal(now)
+        val tempBasalAbsolute = tempBasal.convertedToAbsolute(now, profile)
+        if (tempBasalAbsolute <= profileBasal || Round.isSame(tempBasalAbsolute, profileBasal)) return
+        val reducedRate = profileBasal * 0.5
+
+        aapsLogger.warn(
+            LTag.CORE,
+            "Missing BG: last reading ${String.format("%.1f", lastBgMgdl / 18.0182)} mmol/L (<6.5), " +
+                "setting temp basal to 50% of profile ($reducedRate U/h) for 30 min"
+        )
+        commandQueue.tempBasalAbsolute(
+            absoluteRate = reducedRate,
+            durationInMinutes = 30,
+            enforceNew = true,
+            profile = profile,
+            tbrType = PumpSync.TemporaryBasalType.NORMAL,
+            callback = null
+        )
     }
 
     private fun cancelHighTempBasalOvernight(now: Long) {
