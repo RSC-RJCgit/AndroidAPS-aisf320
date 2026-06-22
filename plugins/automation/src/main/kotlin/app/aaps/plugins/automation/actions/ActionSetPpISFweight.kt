@@ -6,6 +6,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.InputWeight
@@ -18,6 +19,7 @@ import javax.inject.Inject
 class ActionSetPpISFweight(injector: HasAndroidInjector) : Action(injector) {
 
     @Inject lateinit var uel: UserEntryLogger
+    @Inject lateinit var preferences: Preferences
 
     override fun friendlyName(): Int = R.string.autoisf_pp_isf_weight
     override fun shortDescription(): String = rh.gs(R.string.automate_set_pp_isf_weight, new_weight.value)
