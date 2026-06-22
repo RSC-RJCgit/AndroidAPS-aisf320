@@ -37,6 +37,7 @@
     <string name="isequal">is equal to</string>
     <string name="isequalorgreater">is equal or greater than</string>
     <string name="isgreater">is greater than</string>
+    <string name="isnotequal">is not equal to</string>
     <string name="isnotavailable">is not available</string>
     <string name="glucoseisnotavailable">Glucose is not available</string>
     <string name="glucosecomparedmgdl">Glucose %1$s %2$.0f %3$s</string>
