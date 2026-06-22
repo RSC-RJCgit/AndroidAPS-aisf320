@@ -17,6 +17,7 @@ import java.text.DecimalFormat
 import java.util.Optional
 import javax.inject.Inject
 
+
 class TriggerTddRatio(injector: HasAndroidInjector) : Trigger(injector) {
 
     @Inject lateinit var tddCalculator: TddCalculator
@@ -98,7 +99,7 @@ class TriggerTddRatio(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyDescription(): String =
         rh.gs(R.string.triggerTddRatioDescription, rh.gs(comparator.value.stringRes), ratio.value)
 
-    override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_bolus_insulin)
+    override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_as)
 
     override fun duplicate(): Trigger = TriggerTddRatio(injector, this)
 
