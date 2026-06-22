@@ -10,7 +10,8 @@ on:
         type: choice
         options:
           - fullRelease
-          - fullDebug
+          - aapsclientRelease
+          - aapsclient2Release
 
   push:
     branches:
