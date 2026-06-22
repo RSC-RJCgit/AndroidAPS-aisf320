@@ -115,6 +115,7 @@ class TranslatorImpl @Inject internal constructor(
         Action.AUTOISF_DISABLED                -> rh.gs(R.string.uel_autoisf_disabled)
         Action.IOB_TH_SET                      -> rh.gs(R.string.uel_iobth_set)
         Action.ACCE_WEIGHT_SET                 -> rh.gs(R.string.uel_acce_weight_set)
+        Action.PP_ISF_WEIGHT_SET               -> rh.gs(R.string.uel_pp_isf_weight_set)
         Action.UNKNOWN                         -> rh.gs(R.string.unknown)
     }
 
