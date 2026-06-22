@@ -51,6 +51,8 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.JsonHelper
+import android.os.Handler
+import android.os.Looper
 import java.util.Calendar
 import java.util.LinkedList
 import javax.inject.Inject
@@ -550,8 +552,13 @@ class BolusWizard @Inject constructor(
                             override fun run() {
                                 if (!result.success) {
                                     uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                } else if (useAlarm && carbs > 0 && carbTime > 0) {
-                                    automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                } else {
+                                    if (useAlarm && carbs > 0 && carbTime > 0) {
+                                        automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                    }
+                                    if (insulinAfterConstraints > 0) {
+                                        scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
+                                    }
                                 }
                             }
                         })
@@ -573,6 +580,55 @@ class BolusWizard @Inject constructor(
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
         })
+    }
+
+    // Thresholds for delayed split bolus criteria (mg/dL units matching GlucoseStatus)
+    private val SPLIT_BGL_THRESHOLD_MGDL = 4.5 * 18.0182       // 4.5 mmol/L
+    private val SPLIT_DELTA_THRESHOLD_MGDL = 0.1 * 18.0182     // delta over 5 min
+    private val SPLIT_SD_THRESHOLD_MGDL = 0.2 * 18.0182        // short avg delta
+    private val SPLIT_LD_THRESHOLD_MGDL = 0.05 * 18.0182       // long avg delta
+
+    private fun splitCriteriaMet(gs: GlucoseStatus): Boolean =
+        gs.glucose > SPLIT_BGL_THRESHOLD_MGDL &&
+        gs.delta > SPLIT_DELTA_THRESHOLD_MGDL &&
+        gs.shortAvgDelta > SPLIT_SD_THRESHOLD_MGDL &&
+        gs.longAvgDelta > SPLIT_LD_THRESHOLD_MGDL
+
+    private fun scheduleSplitBolusChecks(dose: Double, attemptNumber: Int) {
+        if (attemptNumber > 3) return
+        val delayMs = T.mins(10L * attemptNumber).msecs()
+        Handler(Looper.getMainLooper()).postDelayed({
+            val gs = glucoseStatusProvider.glucoseStatusData
+            if (gs != null && splitCriteriaMet(gs)) {
+                aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: criteria met (BGL=${String.format("%.1f", gs.glucose / 18.0182)} " +
+                    "delta=${String.format("%.2f", gs.delta / 18.0182)} SD=${String.format("%.2f", gs.shortAvgDelta / 18.0182)} " +
+                    "LD=${String.format("%.2f", gs.longAvgDelta / 18.0182)}) — delivering split dose ${dose}U")
+                DetailedBolusInfo().apply {
+                    eventType = TE.Type.CORRECTION_BOLUS
+                    insulin = dose
+                    notes = "Split bolus (attempt $attemptNumber, wizard dose repeat)"
+                    uel.log(
+                        action = Action.BOLUS,
+                        source = Sources.WizardDialog,
+                        note = notes,
+                        listValues = listOf(ValueWithUnit.Insulin(dose))
+                    )
+                    commandQueue.bolus(this, object : Callback() {
+                        override fun run() {
+                            if (!result.success)
+                                uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                        }
+                    })
+                }
+            } else if (attemptNumber < 3) {
+                val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
+                aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: criteria NOT met (BGL=$bglStr) — scheduling attempt ${attemptNumber + 1} in 10 min")
+                scheduleSplitBolusChecks(dose, attemptNumber + 1)
+            } else {
+                val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
+                aapsLogger.info(LTag.CORE, "Split bolus: criteria not met at 30 min (BGL=$bglStr) — no split dose delivered")
+            }
+        }, delayMs)
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {
