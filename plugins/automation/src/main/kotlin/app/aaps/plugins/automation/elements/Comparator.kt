@@ -18,6 +18,7 @@ class Comparator(private val rh: ResourceHelper) : Element {
         IS_EQUAL,
         IS_EQUAL_OR_GREATER,
         IS_GREATER,
+        IS_NOT_EQUAL,
         IS_NOT_AVAILABLE;
 
         @get:StringRes val stringRes: Int
@@ -27,6 +28,7 @@ class Comparator(private val rh: ResourceHelper) : Element {
                 IS_EQUAL            -> R.string.isequal
                 IS_EQUAL_OR_GREATER -> R.string.isequalorgreater
                 IS_GREATER          -> R.string.isgreater
+                IS_NOT_EQUAL        -> R.string.isnotequal
                 IS_NOT_AVAILABLE    -> R.string.isnotavailable
             }
 
@@ -38,6 +40,7 @@ class Comparator(private val rh: ResourceHelper) : Element {
                 IS_EQUAL            -> comparison == 0
                 IS_EQUAL_OR_GREATER -> comparison >= 0
                 IS_GREATER          -> comparison > 0
+                IS_NOT_EQUAL        -> comparison != 0
                 else                -> false
             }
         }
