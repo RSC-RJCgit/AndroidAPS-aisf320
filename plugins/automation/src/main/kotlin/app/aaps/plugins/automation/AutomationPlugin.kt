@@ -92,6 +92,7 @@ import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
 import app.aaps.plugins.automation.triggers.TriggerTimeRange
+import app.aaps.plugins.automation.triggers.TriggerTddRatio
 import app.aaps.plugins.automation.triggers.TriggerWifiSsid
 import app.aaps.plugins.automation.ui.TimerUtil
 import dagger.android.HasAndroidInjector
@@ -459,6 +460,7 @@ class AutomationPlugin @Inject constructor(
             TriggerWifiSsid(injector),
             TriggerLocation(injector),
             TriggerAutosensValue(injector),
+            TriggerTddRatio(injector),
             TriggerBolusAgo(injector),
             TriggerPumpLastConnection(injector),
             TriggerBTDevice(injector),

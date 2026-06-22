@@ -76,6 +76,8 @@
     <string name="wifissidcompared">WiFi SSID %1$s %2$s</string>
     <string name="autosenscompared">Autosens %1$s %2$s %%</string>
     <string name="autosenslabel">Autosens %</string>
+    <string name="triggerTddRatioLabel">TDD Ratio %</string>
+    <string name="triggerTddRatioDescription">TDD Ratio %1$s %2$.0f%%</string>
     <string name="deltacompared">%3$s %1$s %2$s</string>
     <string name="deltalabel">BG difference</string>
     <string name="deltalabel_u">BG difference [%1$s]</string>
