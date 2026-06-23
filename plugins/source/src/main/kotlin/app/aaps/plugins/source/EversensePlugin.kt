@@ -525,7 +525,7 @@ class EversensePlugin @Inject constructor(
                             preferences = prefs,
                             readings = uploadableReadings,
                             transmitterSerialNumber = state.transmitterSerialNumber,
-                            calibrations = state.calibrationHistory
+                            calibrations = state.calibrationHistory.filter { it.datetime == state.lastCalibrationDate }
                         )
                         aapsLogger.info(LTag.BGSOURCE, "Eversense device events: ${if (eventsOk) "✅ ok" else "❌ failed"}")
                     }
@@ -547,7 +547,7 @@ class EversensePlugin @Inject constructor(
                         preferences = prefs,
                         readings = readings,
                         transmitterSerialNumber = state.transmitterSerialNumber,
-                        calibrations = state.calibrationHistory
+                        calibrations = state.calibrationHistory.filter { it.datetime == state.lastCalibrationDate }
                     )
                     val msgE3 = if (eventsOk)
                         "E3 cloud upload: ✅ ${readings.size} reading(s) sent"
