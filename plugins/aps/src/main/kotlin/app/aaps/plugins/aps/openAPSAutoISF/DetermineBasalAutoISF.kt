@@ -319,7 +319,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD078")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD080")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -689,7 +689,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD078 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD080 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -736,7 +736,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("Delta: " + convert_bg2(Delta) + " ; ")
         consoleError.add("SDelta: " + convert_bg2(SDelta) + " ; ")
         consoleError.add("LDelta: " + convert_bg2(LDelta) + " ; ")
-        consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
         consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
@@ -752,8 +752,8 @@ class DetermineBasalAutoISF @Inject constructor(
         rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
         rT.reason.append("dura_ISF_weight is ${round(profile.dura_ISF_weight, 2)} ;;")
         rT.reason.append("higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight, 2)} ;;")
-        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
-        rT.reason.append("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
+        rT.reason.append("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
         consoleError.add("Steps60M: " + Steps60M + " ; ")
         consoleError.add("Steps30M: " + Steps30M + " ; ")
         consoleError.add("TwilightTimeDec: " + TwilightTimeDec + " ; ")
@@ -1534,5 +1534,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD078
+DetermineBasalAutoISF.kt320TDD080
 */

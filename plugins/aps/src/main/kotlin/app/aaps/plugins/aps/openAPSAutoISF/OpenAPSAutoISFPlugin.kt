@@ -952,7 +952,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight, 4)} ;;")
-        consoleError.add("pp_ISF_weight is ${pp_ISF_weight} ;;")//
+        consoleError.add("pp_ISF_weight is ${round(pp_ISF_weight, 4)} ;;")
         consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
         consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
@@ -1474,5 +1474,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 /*
 
-OpenAPSAutoISFPlugin.ktSt 320TDD078
+OpenAPSAutoISFPlugin.ktSt 320TDD080
  */
