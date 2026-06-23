@@ -2,6 +2,8 @@ package app.aaps.core.objects.wizard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.text.Spanned
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
@@ -550,8 +552,20 @@ class BolusWizard @Inject constructor(
                             override fun run() {
                                 if (!result.success) {
                                     uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                } else if (useAlarm && carbs > 0 && carbTime > 0) {
-                                    automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                } else {
+                                    if (useAlarm && carbs > 0 && carbTime > 0) {
+                                        automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                    }
+                                    // Schedule split bolus only when enabled, profile is 50% AND SMBs are disabled
+                                    val splitProfile = profileFunction.getProfile()
+                                    if (insulinAfterConstraints > 0 &&
+                                        preferences.get(BooleanKey.WizardSplitBolusEnabled) &&
+                                        splitProfile?.percentage == 50 &&
+                                        !preferences.get(BooleanKey.ApsUseSmb)
+                                    ) {
+                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U")
+                                        scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
+                                    }
                                 }
                             }
                         })
@@ -573,6 +587,67 @@ class BolusWizard @Inject constructor(
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
         })
+    }
+
+    // Thresholds in mg/dL (GlucoseStatus native units)
+    private val SPLIT_BGL_MGDL   = 4.5  * 18.0182   // > 4.5  mmol/L
+    private val SPLIT_DELTA_MGDL = 0.1  * 18.0182   // > 0.1  mmol/L delta
+    private val SPLIT_SD_MGDL    = 0.2  * 18.0182   // > 0.2  mmol/L short avg delta
+    private val SPLIT_LD_MGDL    = 0.05 * 18.0182   // > 0.05 mmol/L long avg delta
+    private val SPLIT_BGL_AGE_MS = T.mins(5).msecs() // BGL must be ≤ 5 min old at delivery
+
+    private fun splitGlucoseCriteriaMet(gs: GlucoseStatus): Boolean =
+        gs.glucose > SPLIT_BGL_MGDL &&
+        gs.delta > SPLIT_DELTA_MGDL &&
+        gs.shortAvgDelta > SPLIT_SD_MGDL &&
+        gs.longAvgDelta > SPLIT_LD_MGDL
+
+    private fun scheduleSplitBolusChecks(originalDose: Double, attemptNumber: Int) {
+        if (attemptNumber > 3) return
+        val delayMs = T.mins(10L * attemptNumber).msecs()
+        Handler(Looper.getMainLooper()).postDelayed({
+            val gs = glucoseStatusProvider.glucoseStatusData
+            val now = dateUtil.now()
+            val bglFresh = gs != null && (now - gs.date) <= SPLIT_BGL_AGE_MS
+            val criteriaOk = gs != null && splitGlucoseCriteriaMet(gs)
+            val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
+
+            if (criteriaOk && bglFresh) {
+                val splitDose = Round.roundTo(originalDose * 0.75, activePlugin.activePump.pumpDescription.bolusStep)
+                aapsLogger.info(LTag.CORE,
+                    "Split bolus attempt $attemptNumber: criteria met BGL=$bglStr — delivering 75% split=${splitDose}U (original=${originalDose}U)")
+                DetailedBolusInfo().apply {
+                    eventType = TE.Type.CORRECTION_BOLUS
+                    insulin = splitDose
+                    notes = "Split bolus attempt $attemptNumber (75% of wizard ${originalDose}U)"
+                    uel.log(
+                        action = Action.BOLUS,
+                        source = Sources.WizardDialog,
+                        note = notes,
+                        listValues = listOf(ValueWithUnit.Insulin(splitDose))
+                    )
+                    commandQueue.bolus(this, object : Callback() {
+                        override fun run() {
+                            if (!result.success)
+                                uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                        }
+                    })
+                }
+            } else {
+                val reason = when {
+                    gs == null  -> "no BGL data"
+                    !bglFresh   -> "BGL stale (${(now - gs.date) / 60000} min old)"
+                    !criteriaOk -> "glucose criteria not met (BGL=$bglStr)"
+                    else        -> "unknown"
+                }
+                if (attemptNumber < 3) {
+                    aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: $reason — scheduling attempt ${attemptNumber + 1} in 10 min")
+                    scheduleSplitBolusChecks(originalDose, attemptNumber + 1)
+                } else {
+                    aapsLogger.info(LTag.CORE, "Split bolus: $reason at 30 min — no split dose delivered")
+                }
+            }
+        }, delayMs)
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {
