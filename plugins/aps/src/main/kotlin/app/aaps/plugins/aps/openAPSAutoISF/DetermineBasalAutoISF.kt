@@ -736,7 +736,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("Delta: " + convert_bg2(Delta) + " ; ")
         consoleError.add("SDelta: " + convert_bg2(SDelta) + " ; ")
         consoleError.add("LDelta: " + convert_bg2(LDelta) + " ; ")
-        consoleError.add("pp_ISF_weight is ${profile.pp_ISF_weight} ;;")
+        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
         consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
