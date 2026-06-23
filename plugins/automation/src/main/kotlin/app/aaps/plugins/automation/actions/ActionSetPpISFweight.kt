@@ -9,11 +9,12 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
-import app.aaps.plugins.automation.elements.InputWeight
+import app.aaps.plugins.automation.elements.InputDouble
 import app.aaps.plugins.automation.elements.LabelWithElement
 import app.aaps.plugins.automation.elements.LayoutBuilder
 import dagger.android.HasAndroidInjector
 import org.json.JSONObject
+import java.text.DecimalFormat
 import javax.inject.Inject
 
 class ActionSetPpISFweight(injector: HasAndroidInjector) : Action(injector) {
@@ -25,7 +26,7 @@ class ActionSetPpISFweight(injector: HasAndroidInjector) : Action(injector) {
     override fun shortDescription(): String = rh.gs(R.string.automate_set_pp_isf_weight, new_weight.value)
     @DrawableRes override fun icon(): Int = R.drawable.ic_acce_weight
 
-    var new_weight = InputWeight()
+    var new_weight = InputDouble(0.0, 0.0, 0.15, 0.01, DecimalFormat("0.00"))
 
     override fun doAction(callback: Callback) {
         preferences.put(DoubleKey.ApsAutoIsfPpWeight, new_weight.value)
@@ -54,7 +55,7 @@ class ActionSetPpISFweight(injector: HasAndroidInjector) : Action(injector) {
     }
 
     override fun fromJSON(data: String): Action {
-        new_weight.value = JsonHelper.safeGetDouble(JSONObject(data), "weight")
+        new_weight.setValue(JsonHelper.safeGetDouble(JSONObject(data), "weight"))
         return this
     }
 
