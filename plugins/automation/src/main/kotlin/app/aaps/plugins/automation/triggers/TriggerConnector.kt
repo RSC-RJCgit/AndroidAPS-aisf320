@@ -24,19 +24,19 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
     private var connectorType: Type = Type.AND
 
     enum class Type {
-        AND, OR, XOR;
+        AND, OR, NOT;
 
         fun apply(a: Boolean, b: Boolean): Boolean =
             when (this) {
                 AND -> a && b
                 OR  -> a || b
-                XOR -> a xor b
+                NOT -> a && b  // unused for NOT — shouldRun() handles it directly
             }
 
         @get:StringRes val stringRes: Int
             get() = when (this) {
-                OR -> R.string.or
-                XOR -> R.string.xor
+                OR  -> R.string.or
+                NOT -> R.string.not
                 AND -> app.aaps.core.ui.R.string.and
             }
 
@@ -64,11 +64,14 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
 
     @Synchronized override fun shouldRun(): Boolean {
         var result = true
-        // check first trigger
-        if (list.isNotEmpty()) result = list[0].shouldRun()
-        // check all others
-        for (i in 1 until list.size) {
-            result = connectorType.apply(result, list[i].shouldRun())
+        if (connectorType == Type.NOT) {
+            // Evaluate children with AND, then negate the whole group
+            if (list.isNotEmpty()) result = list[0].shouldRun()
+            for (i in 1 until list.size) result = result && list[i].shouldRun()
+            result = !result
+        } else {
+            if (list.isNotEmpty()) result = list[0].shouldRun()
+            for (i in 1 until list.size) result = connectorType.apply(result, list[i].shouldRun())
         }
         if (result) aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription().replace("\n", " "))
         return result
