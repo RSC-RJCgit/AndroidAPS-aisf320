@@ -46,7 +46,7 @@ class TriggerIobTH(injector: HasAndroidInjector) : Trigger(injector) {
 
     override fun shouldRun(): Boolean {
         val actualPercent = sp.getInt(R.string.iob_threshold_percent,100)
-        if (comparator.value.check(actualPercent.toDouble(), IobTHpercent.value.toDouble(), IobTHpercent.step / 2.0)) {
+        if (comparator.value.check(actualPercent, IobTHpercent.value.toDouble(), IobTHpercent.step / 2)) {
             aapsLogger.debug(LTag.AUTOMATION, "set iob_threshold_percent ready for execution: " + friendlyDescription())
             return true
         }
