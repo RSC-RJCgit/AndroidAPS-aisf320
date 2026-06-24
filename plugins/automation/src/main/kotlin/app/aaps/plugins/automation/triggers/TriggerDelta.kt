@@ -76,7 +76,7 @@ class TriggerDelta(injector: HasAndroidInjector) : Trigger(injector) {
             DeltaType.LONG_AVERAGE  -> glucoseStatus.longAvgDelta
             else                    -> glucoseStatus.delta
         }
-        if (comparator.value.check(calculatedDelta, profileUtil.convertToMgdl(delta.value, units), profileUtil.convertToMgdl(delta.step, units) / 2)) {
+        if (comparator.value.check(calculatedDelta, profileUtil.convertToMgdl(delta.value, units))) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: delta is " + calculatedDelta + " " + friendlyDescription())
             return true
         }

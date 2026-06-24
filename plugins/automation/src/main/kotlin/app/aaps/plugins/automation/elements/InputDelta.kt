@@ -39,7 +39,7 @@ class InputDelta(private val rh: ResourceHelper) : Element {
     var value = 0.0
     private var minValue = 0.0
     private var maxValue = 0.0
-    var step = 0.0
+    private var step = 0.0
     private var decimalFormat: DecimalFormat? = null
     var deltaType: DeltaType = DeltaType.DELTA
 

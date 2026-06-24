@@ -54,7 +54,7 @@ class TriggerPumpBatteryAge(injector: HasAndroidInjector) : Trigger(injector) {
             aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
             return false
         }
-        if (comparator.value.check(currentAgeHours, pumpBatteryAgeHours.value, pumpBatteryAgeHours.step / 2)) {
+        if (comparator.value.check(currentAgeHours, pumpBatteryAgeHours.value)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

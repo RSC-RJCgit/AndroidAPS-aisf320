@@ -40,7 +40,7 @@ class TriggerAutosensValue(injector: HasAndroidInjector) : Trigger(injector) {
                 aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
                 false
             }
-        if (comparator.value.check(autosensData.autosensResult.ratio, autosens.value / 100.0, step / 100.0 / 2)) {
+        if (comparator.value.check(autosensData.autosensResult.ratio, autosens.value / 100.0)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

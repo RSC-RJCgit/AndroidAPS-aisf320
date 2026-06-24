@@ -53,7 +53,7 @@ class TriggerTddRatio(injector: HasAndroidInjector) : Trigger(injector) {
             }
         }
         // ratio input is in percent (e.g. 110), compare against actual ratio (e.g. 1.10)
-        if (comparator.value.check(tddRatio, ratio.value / 100.0, ratio.step / 100.0 / 2)) {
+        if (comparator.value.check(tddRatio, ratio.value / 100.0)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

@@ -8,7 +8,6 @@ import java.text.DecimalFormat
 class InputInsulin() : Element {
 
     var value = 0.0
-    val step = 0.1
 
     constructor(another: InputInsulin) : this() {
         value = another.value
