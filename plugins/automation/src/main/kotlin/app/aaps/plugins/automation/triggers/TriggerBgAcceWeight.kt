@@ -46,7 +46,7 @@ class TriggerBgAcceWeight(injector: HasAndroidInjector) : Trigger(injector) {
     override fun shouldRun(): Boolean {
         val actualWeight = sp.getDouble(R.string.bgAccel_ISF_weight
             ,0.0)
-        if (comparator.value.check(actualWeight, acceWeight.value, acceWeight.step / 2)) {
+        if (comparator.value.check(actualWeight, acceWeight.value)) {
             aapsLogger.debug(LTag.AUTOMATION, "set bgAccel_ISF_weight ready for execution: " + friendlyDescription())
             return true
         }
