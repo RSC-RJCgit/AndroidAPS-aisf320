@@ -34,7 +34,7 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
     override fun shouldRun(): Boolean {
         val level = getPhoneBatteryLevel()
         if (level < 0) return false
-        val doRun = comparator.value.check(level, batteryLevel.value)
+        val doRun = comparator.value.check(level, batteryLevel.value, batteryLevel.step / 2)
         if (doRun) aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
         return doRun
     }

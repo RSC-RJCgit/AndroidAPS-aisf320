@@ -9,6 +9,7 @@ class InputIobTH() : Element {
 
     // @Inject lateinit var sp: SP
     var value = 100 // not working on app start: sp.getDouble(R.string.key_iob...., 100.0)
+    val step = 5.0
 
     constructor(another: Int) : this() {
         value = another

@@ -45,6 +45,17 @@ class Comparator(private val rh: ResourceHelper) : Element {
             }
         }
 
+        // Double overload with tolerance (half the input step) to absorb unit-conversion drift
+        fun check(obj1: Double, obj2: Double, tolerance: Double): Boolean = when (this) {
+            IS_LESSER           -> obj1 < obj2 - tolerance
+            IS_EQUAL_OR_LESSER  -> obj1 <= obj2 + tolerance
+            IS_EQUAL            -> kotlin.math.abs(obj1 - obj2) <= tolerance
+            IS_EQUAL_OR_GREATER -> obj1 >= obj2 - tolerance
+            IS_GREATER          -> obj1 > obj2 + tolerance
+            IS_NOT_EQUAL        -> kotlin.math.abs(obj1 - obj2) > tolerance
+            else                -> false
+        }
+
         companion object {
 
             fun labels(rh: ResourceHelper): List<String> {
