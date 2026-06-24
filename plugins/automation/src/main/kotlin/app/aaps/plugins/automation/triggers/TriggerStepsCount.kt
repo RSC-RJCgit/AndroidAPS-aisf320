@@ -55,7 +55,7 @@ class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
             return false
         }
 
-        return comparator.value.check(lastStepsCount.toDouble(), stepsCount.value).also {
+        return comparator.value.check(lastStepsCount.toDouble(), stepsCount.value, stepsCount.step / 2).also {
             aapsLogger.info(LTag.AUTOMATION, "Steps count ${if (it) "" else "not "}from ${lastSC.device} ready for $lastStepsCount in ${measurementDuration.value} minutes for ${friendlyDescription()}")
         }
     }
