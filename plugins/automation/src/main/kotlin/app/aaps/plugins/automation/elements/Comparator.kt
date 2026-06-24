@@ -45,7 +45,23 @@ class Comparator(private val rh: ResourceHelper) : Element {
             }
         }
 
+        // Double overload with tolerance (half the input step) to absorb unit-conversion drift.
+        // Only active when fuzzyEquals is enabled in settings.
+        fun check(obj1: Double, obj2: Double, tolerance: Double): Boolean {
+            val tol = if (fuzzyEquals) tolerance else 0.0
+            return when (this) {
+                IS_LESSER           -> obj1 < obj2 - tol
+                IS_EQUAL_OR_LESSER  -> obj1 <= obj2 + tol
+                IS_EQUAL            -> kotlin.math.abs(obj1 - obj2) <= tol
+                IS_EQUAL_OR_GREATER -> obj1 >= obj2 - tol
+                IS_GREATER          -> obj1 > obj2 + tol
+                IS_NOT_EQUAL        -> kotlin.math.abs(obj1 - obj2) > tol
+                else                -> false
+            }
+        }
+
         companion object {
+            var fuzzyEquals = false
 
             fun labels(rh: ResourceHelper): List<String> {
                 val list: MutableList<String> = ArrayList()

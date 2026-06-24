@@ -32,9 +32,11 @@ import app.aaps.core.interfaces.rx.events.EventNetworkChange
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.validators.preferences.AdaptiveListPreference
+import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
 import app.aaps.plugins.automation.actions.ActionAutoisfDisable
@@ -170,6 +172,7 @@ class AutomationPlugin @Inject constructor(
         locationServiceHelper.startService(context)
 
         super.onStart()
+        Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
         loadFromSP()
         handler?.postDelayed(refreshLoop, T.mins(1).msecs())
 
@@ -181,6 +184,8 @@ class AutomationPlugin @Inject constructor(
                                locationServiceHelper.stopService(context)
                                locationServiceHelper.startService(context)
                            }
+                           if (e.isChanged(BooleanKey.AutomationFuzzyEquals.key))
+                               Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventAutomationDataChanged::class.java)
@@ -620,6 +625,7 @@ class AutomationPlugin @Inject constructor(
             title = rh.gs(app.aaps.core.ui.R.string.automation)
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveListPreference(ctx = context, stringKey = StringKey.AutomationLocation, title = R.string.locationservice, entries = entries, entryValues = entryValues))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutomationFuzzyEquals, summary = R.string.automation_fuzzy_equals_summary, title = R.string.automation_fuzzy_equals_title))
         }
     }
 }
