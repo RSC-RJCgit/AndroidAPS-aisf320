@@ -13,7 +13,7 @@ class InputBg(profileFunction: ProfileFunction) : Element {
     var value = 0.0
     var minValue = 0.0
     private var maxValue = 0.0
-    var step = 0.0
+    private var step = 0.0
     private var decimalFormat: DecimalFormat? = null
 
     constructor(profileFunction: ProfileFunction, value: Double, units: GlucoseUnit) : this(profileFunction) {

@@ -55,7 +55,7 @@ class TriggerBg(injector: HasAndroidInjector) : Trigger(injector) {
             aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
             return false
         }
-        if (comparator.value.check(glucoseStatus.glucose, profileUtil.convertToMgdl(bg.value, bg.units), profileUtil.convertToMgdl(bg.step, bg.units) / 2)) {
+        if (comparator.value.check(glucoseStatus.glucose.roundToInt(), profileUtil.convertToMgdl(bg.value, bg.units).roundToInt())) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }
