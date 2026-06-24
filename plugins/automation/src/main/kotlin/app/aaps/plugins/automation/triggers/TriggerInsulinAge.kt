@@ -54,7 +54,7 @@ class TriggerInsulinAge(injector: HasAndroidInjector) : Trigger(injector) {
             aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
             return false
         }
-        if (comparator.value.check(currentAgeHours, insulinAgeHours.value)) {
+        if (comparator.value.check(currentAgeHours, insulinAgeHours.value, insulinAgeHours.step / 2)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

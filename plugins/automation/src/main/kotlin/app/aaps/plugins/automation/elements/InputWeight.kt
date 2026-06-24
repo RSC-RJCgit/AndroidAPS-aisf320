@@ -9,6 +9,7 @@ class InputWeight() : Element {
 
     // @Inject lateinit var sp: SP
     var value = 0.0 // not working on app start: sp.getDouble(R.string.key_bgAccel_ISF_weight, 0.0)
+    val step = 0.05
 
     constructor(another: Double) : this() {
         value = another

@@ -49,7 +49,7 @@ class TriggerCOB(injector: HasAndroidInjector) : Trigger(injector) {
                 false
             }
         }
-        if (comparator.value.check(cobInfo.displayCob!!, cob.value)) {
+        if (comparator.value.check(cobInfo.displayCob!!, cob.value, cob.step / 2)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }
