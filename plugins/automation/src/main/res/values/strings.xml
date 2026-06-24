@@ -132,6 +132,8 @@
     <string name="run_automations">Run automations</string>
     <string name="add_automation">Add rule</string>
     <string name="stop_processing">Stop processing</string>
+    <string name="automation_fuzzy_equals_title">Fuzzy equals for triggers</string>
+    <string name="automation_fuzzy_equals_summary">Apply half-step tolerance to equals/not-equals comparisons to absorb unit-conversion drift</string>
 
     <!--    Reminders-->
     <string name="time_to_eat">Time to eat!\nRun Bolus wizard and do calculation again.</string>
