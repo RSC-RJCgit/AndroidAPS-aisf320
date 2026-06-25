@@ -6,7 +6,6 @@ import dagger.android.HasAndroidInjector
 import app.aaps.plugins.automation.R
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.DoubleKey
-import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.elements.InputDouble
 import app.aaps.plugins.automation.elements.LabelWithElement
@@ -18,8 +17,6 @@ import java.text.DecimalFormat
 import javax.inject.Inject
 
 class TriggerBgDuraWeight(injector: HasAndroidInjector) : Trigger(injector) {
-
-    @Inject lateinit var preferences: Preferences
 
     var duraWeight = InputDouble(0.0, 0.0, 3.0, 0.05, DecimalFormat("0.00"))
     var comparator = Comparator(rh)
