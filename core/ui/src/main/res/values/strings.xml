@@ -499,6 +499,7 @@
     <string name="uel_iobth_set">IOBTH SET</string>
     <string name="uel_acce_weight_set">ACCE WeIGHT SET</string>
     <string name="uel_pp_isf_weight_set">PP ISF WEIGHT SET</string>
+    <string name="uel_dura_isf_weight_set">DURA ISF WEIGHT SET</string>
 
     <!-- Alerts -->
     <string name="raise_notifications_as_android_notifications">Use system notifications for alerts and notifications</string>
