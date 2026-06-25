@@ -18,6 +18,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetDuraISFweight
 import app.aaps.plugins.automation.actions.ActionSetPpISFweight
 import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionSetAutomationState
@@ -38,6 +39,7 @@ import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
+import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -122,6 +124,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerStepsCountInjector(): TriggerStepsCount
     @ContributesAndroidInjector abstract fun triggerTddRatioInjector(): TriggerTddRatio
     @ContributesAndroidInjector abstract fun triggerBgAcceWeightInjector(): TriggerBgAcceWeight
+    @ContributesAndroidInjector abstract fun triggerBgDuraWeightInjector(): TriggerBgDuraWeight
     @ContributesAndroidInjector abstract fun triggerIonTHWeightInjector(): TriggerIobTH
 
     @ContributesAndroidInjector abstract fun actionInjector(): Action
@@ -139,6 +142,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionAutoisfDisableInjector(): ActionAutoisfDisable
     @ContributesAndroidInjector abstract fun actionSetAcceWeightInjector(): ActionSetAcceWeight
     @ContributesAndroidInjector abstract fun actionSetPpISFweightInjector(): ActionSetPpISFweight
+    @ContributesAndroidInjector abstract fun actionSetDuraISFweightInjector(): ActionSetDuraISFweight
     @ContributesAndroidInjector abstract fun actionSetIobTHInjector(): ActionSetIobTH
     @ContributesAndroidInjector abstract fun actionSendSMSInjector(): ActionSendSMS
     @ContributesAndroidInjector abstract fun actionStartTempTargetInjector(): ActionStartTempTarget
