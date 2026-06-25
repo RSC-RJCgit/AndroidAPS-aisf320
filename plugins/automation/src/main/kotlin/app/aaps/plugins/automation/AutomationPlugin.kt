@@ -51,6 +51,7 @@ import app.aaps.plugins.automation.actions.ActionPartialBolusWizard
 import app.aaps.plugins.automation.actions.ActionSendSMS
 import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetDuraISFweight
 import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionSetPpISFweight
 import app.aaps.plugins.automation.actions.ActionSettingsExport
@@ -70,6 +71,7 @@ import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
+import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -444,6 +446,7 @@ class AutomationPlugin @Inject constructor(
             actions.add(ActionAutoisfDisable(injector))
             actions.add(ActionSetAcceWeight(injector))
             actions.add(ActionSetPpISFweight(injector))
+            actions.add(ActionSetDuraISFweight(injector))
             actions.add(ActionSetIobTH(injector))
         }
         return actions.toList()
@@ -479,6 +482,7 @@ class AutomationPlugin @Inject constructor(
         )
         if (config.isEngineeringMode() && config.isDev()) {
             triggers.add(TriggerBgAcceWeight(injector))
+            triggers.add(TriggerBgDuraWeight(injector))
             triggers.add(TriggerIobTH(injector))
         }
 

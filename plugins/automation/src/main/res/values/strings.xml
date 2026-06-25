@@ -165,6 +165,9 @@
     <string name="automate_set_pp_isf_weight">Set pp_ISF_weight to %1$.2f</string>
     <string name="autoisf_pp_isf_weight">pp_ISF weight</string>
     <string name="acceweightcompared">acce weight %1$s %2$s</string>
+    <string name="automate_set_dura_isf_weight">Set dura_ISF_weight to %1$.2f</string>
+    <string name="autoisf_dura_isf_weight">dura_ISF weight</string>
+    <string name="duraweightcompared">dura weight %1$s %2$s</string>
     <string name="iobTHpercentcompared">iobTH percent %1$s %2$s</string>
     <string name="disableautoisf">Disable glucose ISF weights(autoISF)</string>
     <string name="enableautoisf">Enable glucose ISF weights(autoISF)</string>
