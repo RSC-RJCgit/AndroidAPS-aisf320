@@ -2,16 +2,6 @@ name: AAPS CI
 
 on:
   workflow_dispatch:
-    inputs:
-      buildVariant:
-        description: 'Select Build Variant'
-        required: true
-        default: 'fullRelease'
-        type: choice
-        options:
-          - fullRelease
-          - aapsclientRelease
-          - aapsclient2Release
 
   push:
     branches:
@@ -154,20 +144,6 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set BUILD_VARIANT
-        run: |
-          BUILD_VARIANT="${{ github.event.inputs.buildVariant || 'fullRelease' }}"
-          echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
-          VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
-          VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
-          echo "VARIANT_FLAVOR=$VARIANT_FLAVOR" >> $GITHUB_ENV
-          echo "VARIANT_TYPE=$VARIANT_TYPE" >> $GITHUB_ENV
-          VERSION_SUFFIX=""
-          if [[ "$VARIANT_FLAVOR" != "full" ]]; then VERSION_SUFFIX="$VARIANT_FLAVOR"; fi
-          if [[ "$VARIANT_TYPE" == "debug" ]]; then VERSION_SUFFIX="$VERSION_SUFFIX-debug"; fi
-          if [[ -n "$VERSION_SUFFIX" && "$VERSION_SUFFIX" != -* ]]; then VERSION_SUFFIX="-$VERSION_SUFFIX"; fi
-          echo "VERSION_SUFFIX=$VERSION_SUFFIX" >> $GITHUB_ENV
-
       - name: Extract VERSION
         run: |
           BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
@@ -209,9 +185,41 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Rename APK with version
+      - name: Build aapsclientRelease APK
         run: |
-          mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          ./gradlew :app:assembleAapsclientRelease \
+          -Dorg.gradle.jvmargs="-Xmx8g" \
+          -Dkotlin.daemon.jvm.options="-Xmx3g" \
+          -Dkotlin.compiler.execution.strategy="in-process" \
+          -Dorg.gradle.daemon=true \
+          -Dorg.gradle.parallel=false \
+          -Dorg.gradle.workers.max=2 \
+          -Dorg.gradle.caching=true \
+          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Build aapsclient2Release APK
+        run: |
+          ./gradlew :app:assembleAapsclient2Release \
+          -Dorg.gradle.jvmargs="-Xmx8g" \
+          -Dkotlin.daemon.jvm.options="-Xmx3g" \
+          -Dkotlin.compiler.execution.strategy="in-process" \
+          -Dorg.gradle.daemon=true \
+          -Dorg.gradle.parallel=false \
+          -Dorg.gradle.workers.max=2 \
+          -Dorg.gradle.caching=true \
+          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Rename APKs with version
+        run: |
+          mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk
+          mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk
+          mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk
 
       - name: Upload APK to Google Drive
         run: |
@@ -293,12 +301,17 @@ jobs:
             echo "✅ Uploaded: $NAME"
           }
 
-          upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
-          echo "🎉 APK successfully uploaded to Google Drive!"
+          upload_to_gdrive "aaps-${{ env.VERSION }}.apk" "aaps-${{ env.VERSION }}.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
+          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
+          echo "🎉 All APKs successfully uploaded to Google Drive!"
 
-      - name: Upload APK as GitHub artifact
+      - name: Upload APKs as GitHub artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}
-          path: aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          name: aaps-${{ env.VERSION }}-all
+          path: |
+            aaps-${{ env.VERSION }}.apk
+            aaps-${{ env.VERSION }}-aapsclient.apk
+            aaps-${{ env.VERSION }}-aapsclient2.apk
           retention-days: 30
