@@ -100,6 +100,7 @@ fun UserEntry.Action.fromDb(): Action =
         UserEntry.Action.IOB_TH_SET                      -> Action.IOB_TH_SET
         UserEntry.Action.ACCE_WEIGHT_SET                 -> Action.ACCE_WEIGHT_SET
         UserEntry.Action.PP_ISF_WEIGHT_SET               -> Action.PP_ISF_WEIGHT_SET
+        UserEntry.Action.DURA_ISF_WEIGHT_SET             -> Action.DURA_ISF_WEIGHT_SET
         UserEntry.Action.UNKNOWN                         -> Action.UNKNOWN
         UserEntry.Action.RUNNING_MODE                    -> Action.RUNNING_MODE
         UserEntry.Action.RUNNING_MODE_REMOVED            -> Action.RUNNING_MODE_REMOVED
@@ -203,6 +204,7 @@ fun Action.toDb(): UserEntry.Action =
         Action.IOB_TH_SET                      -> UserEntry.Action.IOB_TH_SET
         Action.ACCE_WEIGHT_SET                 -> UserEntry.Action.ACCE_WEIGHT_SET
         Action.PP_ISF_WEIGHT_SET               -> UserEntry.Action.PP_ISF_WEIGHT_SET
+        Action.DURA_ISF_WEIGHT_SET             -> UserEntry.Action.DURA_ISF_WEIGHT_SET
         Action.UNKNOWN                         -> UserEntry.Action.UNKNOWN
         Action.RUNNING_MODE         -> UserEntry.Action.RUNNING_MODE
         Action.RUNNING_MODE_REMOVED -> UserEntry.Action.RUNNING_MODE_REMOVED

@@ -124,6 +124,7 @@ data class UserEntry(
         IOB_TH_SET,
         ACCE_WEIGHT_SET,
         PP_ISF_WEIGHT_SET,
+        DURA_ISF_WEIGHT_SET,
         UNKNOWN
         ;
     }
