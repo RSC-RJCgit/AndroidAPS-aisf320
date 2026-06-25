@@ -51,7 +51,7 @@ class TriggerTempTargetValue(injector: HasAndroidInjector) : Trigger(injector) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }
-        if (tt != null && comparator.value.check(tt.lowTarget, profileUtil.convertToMgdl(ttValue.value, ttValue.units), profileUtil.convertToMgdl(ttValue.step, ttValue.units) / 2)) {
+        if (tt != null && comparator.value.check(tt.lowTarget, profileUtil.convertToMgdl(ttValue.value, ttValue.units), 0.001)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

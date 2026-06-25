@@ -37,7 +37,7 @@ class TriggerReservoirLevel(injector: HasAndroidInjector) : Trigger(injector) {
 
     override fun shouldRun(): Boolean {
         val actualReservoirLevel = activePlugin.activePump.reservoirLevel
-        if (comparator.value.check(actualReservoirLevel, reservoirLevel.value, reservoirLevel.step / 2)) {
+        if (comparator.value.check(actualReservoirLevel, reservoirLevel.value, 0.001)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

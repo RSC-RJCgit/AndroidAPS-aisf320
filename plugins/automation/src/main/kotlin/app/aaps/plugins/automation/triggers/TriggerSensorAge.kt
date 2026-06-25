@@ -49,7 +49,7 @@ class TriggerSensorAge(injector: HasAndroidInjector) : Trigger(injector) {
             aapsLogger.debug(LTag.AUTOMATION, "NOT ready for execution: " + friendlyDescription())
             return false
         }
-        if (comparator.value.check(currentAgeHours, sensorAgeHours.value, sensorAgeHours.step / 2)) {
+        if (comparator.value.check(currentAgeHours, sensorAgeHours.value, 0.001)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true
         }

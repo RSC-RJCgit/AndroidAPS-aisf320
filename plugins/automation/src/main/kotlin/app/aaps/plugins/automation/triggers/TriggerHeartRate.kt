@@ -38,7 +38,7 @@ class TriggerHeartRate(injector: HasAndroidInjector) : Trigger(injector) {
             return false
         }
         val hr = hrs.sumOf { hr -> hr.beatsPerMinute * hr.duration } / duration.toDouble()
-        return comparator.value.check(hr, heartRate.value, heartRate.step / 2).also {
+        return comparator.value.check(hr, heartRate.value, 0.001).also {
             aapsLogger.info(LTag.AUTOMATION, "HR ${if (it) "" else "not "}ready for $hr for ${friendlyDescription()}")
         }
     }
