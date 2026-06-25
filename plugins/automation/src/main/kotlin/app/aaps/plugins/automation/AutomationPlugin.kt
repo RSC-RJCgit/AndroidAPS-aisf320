@@ -72,6 +72,7 @@ import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
+import app.aaps.plugins.automation.triggers.TriggerBgPpISFweight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -483,6 +484,7 @@ class AutomationPlugin @Inject constructor(
         if (config.isEngineeringMode() && config.isDev()) {
             triggers.add(TriggerBgAcceWeight(injector))
             triggers.add(TriggerBgDuraWeight(injector))
+            triggers.add(TriggerBgPpISFweight(injector))
             triggers.add(TriggerIobTH(injector))
         }
 

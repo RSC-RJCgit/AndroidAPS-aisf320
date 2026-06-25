@@ -40,6 +40,7 @@ import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
+import app.aaps.plugins.automation.triggers.TriggerBgPpISFweight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -125,6 +126,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerTddRatioInjector(): TriggerTddRatio
     @ContributesAndroidInjector abstract fun triggerBgAcceWeightInjector(): TriggerBgAcceWeight
     @ContributesAndroidInjector abstract fun triggerBgDuraWeightInjector(): TriggerBgDuraWeight
+    @ContributesAndroidInjector abstract fun triggerBgPpISFweightInjector(): TriggerBgPpISFweight
     @ContributesAndroidInjector abstract fun triggerIonTHWeightInjector(): TriggerIobTH
 
     @ContributesAndroidInjector abstract fun actionInjector(): Action
