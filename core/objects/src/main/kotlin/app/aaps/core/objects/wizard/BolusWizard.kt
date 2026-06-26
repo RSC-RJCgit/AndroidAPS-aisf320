@@ -42,6 +42,8 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.formatColor
@@ -57,6 +59,7 @@ import java.util.Calendar
 import java.util.LinkedList
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -566,6 +569,21 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U")
                                         scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
                                     }
+                                    // Equal-parts split bolus: profile% = 100, total > maxBolus, feature enabled
+                                    if (preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) &&
+                                        splitProfile?.percentage == 100 &&
+                                        calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
+                                    ) {
+                                        val maxPart = constraintChecker.getMaxBolusAllowed().value()
+                                        val intervalMins = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+                                        val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
+                                        if (numParts > 1) {
+                                            val blockMs = T.mins((numParts - 1).toLong() * intervalMins).msecs()
+                                            preferences.put(LongKey.SplitBolusBlockSmbUntil, dateUtil.now() + blockMs)
+                                            aapsLogger.info(LTag.CORE, "EqualSplitBolus: ${numParts}×${maxPart}U every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
+                                            scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts)
+                                        }
+                                    }
                                 }
                             }
                         })
@@ -648,6 +666,36 @@ class BolusWizard @Inject constructor(
                 }
             }
         }, delayMs)
+    }
+
+    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int) {
+        if (partNumber > totalParts) return
+        val partDose = Round.roundTo(
+            min(maxPart, totalDose - (partNumber - 1) * maxPart),
+            activePlugin.activePump.pumpDescription.bolusStep
+        )
+        if (partDose <= 0) return
+        Handler(Looper.getMainLooper()).postDelayed({
+            DetailedBolusInfo().apply {
+                eventType = TE.Type.CORRECTION_BOLUS
+                insulin = partDose
+                notes = "Split bolus part $partNumber/$totalParts"
+                uel.log(
+                    action = Action.BOLUS,
+                    source = Sources.WizardDialog,
+                    note = notes,
+                    listValues = listOf(ValueWithUnit.Insulin(partDose))
+                )
+                commandQueue.bolus(this, object : Callback() {
+                    override fun run() {
+                        if (!result.success)
+                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                        else
+                            scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber + 1, totalParts)
+                    }
+                })
+            }
+        }, T.mins(intervalMins.toLong()).msecs())
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {

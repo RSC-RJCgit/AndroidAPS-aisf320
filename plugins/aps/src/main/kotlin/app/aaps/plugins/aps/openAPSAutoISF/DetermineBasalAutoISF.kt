@@ -1187,16 +1187,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 rT.reason.append(". ")
 
                 val lastBolusAge = (systemTime - iob_data.lastBolusTime) / 1000.0
-                val baseSMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
-                // Split bolus: when no profile% active and microBolus hits maxBolus, allow second part sooner
-                val splitBolusActive = profile.splitBolusEnabled && profile_percentage == 100 && microBolus >= maxBolus
-                val SMBInterval = if (splitBolusActive) {
-                    val splitSecs = min(max(1, profile.splitBolusInterval) * 60.0, baseSMBInterval)
-                    rT.reason.append("SplitBolus: no profile%, at maxBolus ${maxBolus}U, ${profile.splitBolusInterval}m split interval. ")
-                    splitSecs
-                } else {
-                    baseSMBInterval
-                }
+                val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true

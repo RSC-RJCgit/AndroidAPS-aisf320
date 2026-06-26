@@ -60,6 +60,7 @@ import java.text.DecimalFormat
 import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.abs
+import kotlin.math.ceil
 
 class WizardDialog : DaggerDialogFragment() {
 
@@ -543,6 +544,20 @@ class WizardDialog : DaggerDialogFragment() {
             binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, wizard.percentageCorrection)
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
+
+            // Show equal-parts split bolus info when conditions are met
+            val splitEnabled = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled)
+            val splitInterval = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+            val maxBolus = constraintChecker.getMaxBolusAllowed().value()
+            val profilePct = (specificProfile as? app.aaps.core.objects.profile.ProfileSealed)?.percentage ?: 0
+            if (splitEnabled && profilePct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0) {
+                val numParts = ceil(wizard.calculatedTotalInsulin / maxBolus).toInt()
+                val partSize = Round.roundTo(maxBolus, bolusStep)
+                binding.splitBolusInfo.text = "Split bolus: ${numParts}× ${decimalFormatter.to2Decimal(partSize)}U every ${splitInterval}min — SMBs blocked ${(numParts - 1) * splitInterval}min"
+                binding.splitBolusInfo.visibility = android.view.View.VISIBLE
+            } else {
+                binding.splitBolusInfo.visibility = android.view.View.GONE
+            }
         }
 
     }

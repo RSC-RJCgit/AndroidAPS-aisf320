@@ -381,7 +381,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
         val iobData = iobArray[0]
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
-        val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
+        val splitBolusBlockUntil = preferences.get(LongKey.SplitBolusBlockSmbUntil)
+        val splitBolusBlocking = splitBolusBlockUntil > dateUtil.now()
+        val microBolusAllowed = if (splitBolusBlocking) {
+            inputConstraints.copyReasons(ConstraintObject(false, aapsLogger).also { it.set(false, "Split bolus active — SMBs blocked until ${dateUtil.timeString(splitBolusBlockUntil)}", this) })
+            false
+        } else {
+            constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
+        }
 
         aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
         consoleError.clear()
@@ -476,9 +483,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smb_max_range_extension = smbMaxRangeExtension,
             enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
             iob_threshold_percent = iobThresholdPercent,
-            profile_percentage = profile_percentage,
-            splitBolusEnabled = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled),
-            splitBolusInterval = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+            profile_percentage = profile_percentage
         )
         var sensitivityRatio = 1.0
         // TODO eliminate
