@@ -46,6 +46,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.objects.extensions.highValueToUnitsToString
 import app.aaps.core.objects.extensions.lowValueToUnitsToString
@@ -673,10 +674,13 @@ class BolusWizard @Inject constructor(
     }
 
     // Returns the active profile switch percentage, or 100 if none is active.
-    // Uses persistence layer (non-cached) for issue 2: profileFunction.getProfile() can return
-    // stale data; the DB query is authoritative.
-    private fun activeProfileSwitchPct(): Int =
-        persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())?.originalPercentage ?: 100
+    // Uses same pattern as OpenAPSAutoISFPlugin.invoke() line 383.
+    private fun activeProfileSwitchPct(): Int {
+        val profile = profileFunction.getProfile()
+        val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
+        aapsLogger.debug(LTag.CORE, "EqualSplitBolus: activeProfileSwitchPct=$pct (profile=${profile?.javaClass?.simpleName})")
+        return pct
+    }
 
     private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
         if (partNumber > totalParts) return
