@@ -672,18 +672,26 @@ class BolusWizard @Inject constructor(
         }, delayMs)
     }
 
-    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int) {
+    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
         if (partNumber > totalParts) return
         val partDose = Round.roundTo(
             min(maxPart, totalDose - (partNumber - 1) * maxPart),
             activePlugin.activePump.pumpDescription.bolusStep
         )
         if (partDose <= 0) return
+        // Poll every 2 min so profile% changes are caught within 2 min, not just at delivery time
+        val pollMs = T.mins(2).msecs()
+        val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         Handler(Looper.getMainLooper()).postDelayed({
             val currentProfilePct = profileFunction.getProfile()?.percentage ?: 0
             if (currentProfilePct != 100) {
                 preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
                 aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile% changed to $currentProfilePct — cancelling part $partNumber/$totalParts, SMBs unblocked")
+                return@postDelayed
+            }
+            if (dateUtil.now() < deliverAt) {
+                // Not yet time to deliver — reschedule poll
+                scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber, totalParts, deliverAt)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
@@ -705,7 +713,7 @@ class BolusWizard @Inject constructor(
                     }
                 })
             }
-        }, T.mins(intervalMins.toLong()).msecs())
+        }, delayMs)
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {

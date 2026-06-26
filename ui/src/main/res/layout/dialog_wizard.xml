@@ -97,7 +97,7 @@
 
             <app.aaps.core.ui.elements.NumberPicker
                 android:id="@+id/split_bolus_interval_input"
-                android:layout_width="80dp"
+                android:layout_width="130dp"
                 android:layout_height="40dp"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="4dp" />
