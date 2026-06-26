@@ -573,9 +573,9 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U")
                                         scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
                                     }
-                                    // Equal-parts split bolus: profile% = 100, total > maxBolus, enabled per-bolus
+                                    // Equal-parts split bolus: no profile switch active, total > maxBolus, enabled per-bolus
                                     if (manualSplitBolusEnabled &&
-                                        splitProfile?.percentage == 100 &&
+                                        activeProfileSwitchPct() == 100 &&
                                         calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
                                     ) {
                                         val maxPart = constraintChecker.getMaxBolusAllowed().value()
@@ -672,6 +672,12 @@ class BolusWizard @Inject constructor(
         }, delayMs)
     }
 
+    // Returns the active profile switch percentage, or 100 if none is active.
+    // Uses persistence layer (non-cached) for issue 2: profileFunction.getProfile() can return
+    // stale data; the DB query is authoritative.
+    private fun activeProfileSwitchPct(): Int =
+        persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())?.originalPercentage ?: 100
+
     private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
         if (partNumber > totalParts) return
         val partDose = Round.roundTo(
@@ -679,18 +685,20 @@ class BolusWizard @Inject constructor(
             activePlugin.activePump.pumpDescription.bolusStep
         )
         if (partDose <= 0) return
-        // Poll every 2 min so profile% changes are caught within 2 min, not just at delivery time
+        // Poll every 2 min so profile% changes are caught quickly, not just at delivery time
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
+        aapsLogger.debug(LTag.CORE, "EqualSplitBolus: scheduling part $partNumber/$totalParts in ${delayMs/1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
-            val currentProfilePct = profileFunction.getProfile()?.percentage ?: 0
-            if (currentProfilePct != 100) {
+            val pct = activeProfileSwitchPct()
+            aapsLogger.info(LTag.CORE, "EqualSplitBolus: poll for part $partNumber/$totalParts — profileSwitch%=$pct, deliverAt=${dateUtil.timeString(deliverAt)}, now=${dateUtil.timeString(dateUtil.now())}")
+            if (pct != 100) {
                 preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
-                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile% changed to $currentProfilePct — cancelling part $partNumber/$totalParts, SMBs unblocked")
+                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile switch at $pct% — cancelling part $partNumber/$totalParts, SMBs unblocked")
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
-                // Not yet time to deliver — reschedule poll
+                // Interval not elapsed yet — poll again
                 scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber, totalParts, deliverAt)
                 return@postDelayed
             }
