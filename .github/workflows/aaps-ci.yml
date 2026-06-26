@@ -185,21 +185,6 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Build aapsclientRelease APK
-        run: |
-          ./gradlew :app:assembleAapsclientRelease \
-          -Dorg.gradle.jvmargs="-Xmx8g" \
-          -Dkotlin.daemon.jvm.options="-Xmx3g" \
-          -Dkotlin.compiler.execution.strategy="in-process" \
-          -Dorg.gradle.daemon=true \
-          -Dorg.gradle.parallel=false \
-          -Dorg.gradle.workers.max=2 \
-          -Dorg.gradle.caching=true \
-          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
-          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-
       - name: Build aapsclient2Release APK
         run: |
           ./gradlew :app:assembleAapsclient2Release \
@@ -218,7 +203,6 @@ jobs:
       - name: Rename APKs with version
         run: |
           mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk
-          mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk
           mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk
 
       - name: Upload APK to Google Drive
@@ -302,7 +286,6 @@ jobs:
           }
 
           upload_to_gdrive "aaps-${{ env.VERSION }}.apk" "aaps-${{ env.VERSION }}.apk"
-          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
           upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
           echo "🎉 All APKs successfully uploaded to Google Drive!"
 
@@ -312,6 +295,5 @@ jobs:
           name: aaps-${{ env.VERSION }}-all
           path: |
             aaps-${{ env.VERSION }}.apk
-            aaps-${{ env.VERSION }}-aapsclient.apk
             aaps-${{ env.VERSION }}-aapsclient2.apk
           retention-days: 30
