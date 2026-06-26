@@ -119,6 +119,10 @@ class BolusWizard @Inject constructor(
 
     private var accepted = false
 
+    // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
+    var manualSplitBolusEnabled: Boolean = false
+    var manualSplitBolusIntervalMins: Int = 3
+
     // Result
     var calculatedTotalInsulin: Double = 0.0
         private set
@@ -569,13 +573,13 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U")
                                         scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
                                     }
-                                    // Equal-parts split bolus: profile% = 100, total > maxBolus, feature enabled
-                                    if (preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) &&
+                                    // Equal-parts split bolus: profile% = 100, total > maxBolus, enabled per-bolus
+                                    if (manualSplitBolusEnabled &&
                                         splitProfile?.percentage == 100 &&
                                         calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
                                     ) {
                                         val maxPart = constraintChecker.getMaxBolusAllowed().value()
-                                        val intervalMins = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+                                        val intervalMins = manualSplitBolusIntervalMins
                                         val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
                                         if (numParts > 1) {
                                             val blockMs = T.mins((numParts - 1).toLong() * intervalMins).msecs()
@@ -676,6 +680,12 @@ class BolusWizard @Inject constructor(
         )
         if (partDose <= 0) return
         Handler(Looper.getMainLooper()).postDelayed({
+            val currentProfilePct = profileFunction.getProfile()?.percentage ?: 0
+            if (currentProfilePct != 100) {
+                preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
+                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile% changed to $currentProfilePct — cancelling part $partNumber/$totalParts, SMBs unblocked")
+                return@postDelayed
+            }
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = partDose

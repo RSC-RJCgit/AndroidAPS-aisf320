@@ -75,6 +75,42 @@
 
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/split_bolus_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp"
+            android:visibility="gone">
+
+            <CheckBox
+                android:id="@+id/split_bolus_checkbox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Split bolus every"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                tools:ignore="HardcodedText" />
+
+            <app.aaps.core.ui.elements.NumberPicker
+                android:id="@+id/split_bolus_interval_input"
+                android:layout_width="80dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="min"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                tools:ignore="HardcodedText" />
+
+        </LinearLayout>
+
         <TextView
             android:id="@+id/split_bolus_info"
             android:layout_width="match_parent"
@@ -82,7 +118,6 @@
             android:gravity="center_horizontal"
             android:paddingStart="10dp"
             android:paddingEnd="10dp"
-            android:paddingTop="4dp"
             android:paddingBottom="2dp"
             android:textAppearance="?android:attr/textAppearanceSmall"
             android:textColor="?attr/warningColor"

@@ -86,6 +86,8 @@ class WizardDialog : DaggerDialogFragment() {
     private var queryingProtection = false
     private var wizard: BolusWizard? = null
     private var calculatedPercentage = 100
+    private var splitBolusIntervalLocal = 3
+    private var splitBolusInitialized = false
     private var calculatedCorrection = 0.0
     private var usePercentage = false
     private var carbsPassedIntoWizard = 0.0
@@ -222,6 +224,8 @@ class WizardDialog : DaggerDialogFragment() {
             } else {
                 okClicked = true
                 calculateInsulin()
+                wizard?.manualSplitBolusEnabled = binding.splitBolusCheckbox.isChecked
+                wizard?.manualSplitBolusIntervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
                 context?.let { context ->
                     wizard?.confirmAndExecute(context)
                 }
@@ -545,18 +549,42 @@ class WizardDialog : DaggerDialogFragment() {
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
 
-            // Show equal-parts split bolus info when conditions are met
-            val splitEnabled = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled)
-            val splitInterval = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+            // Split bolus controls: show when profile% = 100 (feature may apply)
             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
             val profilePct = (specificProfile as? app.aaps.core.objects.profile.ProfileSealed)?.percentage ?: 0
-            if (splitEnabled && profilePct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0) {
-                val numParts = ceil(wizard.calculatedTotalInsulin / maxBolus).toInt()
-                val partSize = Round.roundTo(maxBolus, bolusStep)
-                binding.splitBolusInfo.text = "Split bolus: ${numParts}× ${decimalFormatter.to2Decimal(partSize)}U every ${splitInterval}min — SMBs blocked ${(numParts - 1) * splitInterval}min"
-                binding.splitBolusInfo.visibility = android.view.View.VISIBLE
+            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && profilePct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0
+            if (splitFeatureAvailable) {
+                if (!splitBolusInitialized) {
+                    splitBolusInitialized = true
+                    splitBolusIntervalLocal = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+                    binding.splitBolusCheckbox.isChecked = true
+                    binding.splitBolusIntervalInput.setParams(
+                        splitBolusIntervalLocal.toDouble(), 1.0, 60.0, 1.0, java.text.DecimalFormat("0"), false, binding.okcancel.ok, null
+                    )
+                    binding.splitBolusIntervalInput.value = splitBolusIntervalLocal.toDouble()
+                    binding.splitBolusCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
+                    binding.splitBolusIntervalInput.setOnValueChangedListener { calculateInsulin() }
+                }
+                binding.splitBolusRow.visibility = android.view.View.VISIBLE
+                if (binding.splitBolusCheckbox.isChecked) {
+                    val intervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
+                    val numParts = ceil(wizard.calculatedTotalInsulin / maxBolus).toInt()
+                    val fullParts = numParts - 1
+                    val lastPartDose = Round.roundTo(wizard.calculatedTotalInsulin - fullParts * maxBolus, bolusStep)
+                    val partSize = Round.roundTo(maxBolus, bolusStep)
+                    val infoText = if (lastPartDose < partSize)
+                        "Split: ${fullParts}× ${decimalFormatter.to2Decimal(partSize)}U + ${decimalFormatter.to2Decimal(lastPartDose)}U every ${intervalMins}min — SMBs blocked ${(numParts - 1) * intervalMins}min"
+                    else
+                        "Split: ${numParts}× ${decimalFormatter.to2Decimal(partSize)}U every ${intervalMins}min — SMBs blocked ${(numParts - 1) * intervalMins}min"
+                    binding.splitBolusInfo.text = infoText
+                    binding.splitBolusInfo.visibility = android.view.View.VISIBLE
+                } else {
+                    binding.splitBolusInfo.visibility = android.view.View.GONE
+                }
             } else {
+                binding.splitBolusRow.visibility = android.view.View.GONE
                 binding.splitBolusInfo.visibility = android.view.View.GONE
+                splitBolusInitialized = false
             }
         }
 
