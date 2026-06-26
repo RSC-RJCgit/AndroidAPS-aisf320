@@ -46,6 +46,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.objects.extensions.highValueToUnitsToString
 import app.aaps.core.objects.extensions.lowValueToUnitsToString
@@ -587,7 +588,12 @@ class BolusWizard @Inject constructor(
                                         if (numParts > 1) {
                                             val blockMs = T.mins((numParts - 1).toLong() * intervalMins).msecs()
                                             preferences.put(LongKey.SplitBolusBlockSmbUntil, dateUtil.now() + blockMs)
-                                            aapsLogger.info(LTag.CORE, "EqualSplitBolus: scheduled ${numParts}×${maxPart}U every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
+                                            val lastPart = Round.roundTo(calculatedTotalInsulin - (numParts - 1) * maxPart, activePlugin.activePump.pumpDescription.bolusStep)
+                                            val splitDesc = if (lastPart < maxPart)
+                                                "${numParts - 1}×${maxPart}U + ${lastPart}U"
+                                            else
+                                                "${numParts}×${maxPart}U"
+                                            aapsLogger.info(LTag.CORE, "EqualSplitBolus: scheduled $splitDesc every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
                                             scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts)
                                         }
                                     }
@@ -675,10 +681,12 @@ class BolusWizard @Inject constructor(
         }, delayMs)
     }
 
-    // Returns the active profile percentage (100 = normal, anything else = override active).
+    // Returns the active profile switch percentage. EPS bakes percentage into rates (pct=100),
+    // so we must read originalPercentage from the raw EPS value — same approach as OpenAPSAutoISFPlugin.
     private fun activeProfileSwitchPct(): Int {
-        val pct = profileFunction.getProfile()?.percentage ?: 100
-        aapsLogger.info(LTag.CORE, "EqualSplitBolus: profilePct=$pct")
+        val profile = profileFunction.getProfile()
+        val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile?.percentage ?: 100
+        aapsLogger.info(LTag.CORE, "EqualSplitBolus: profilePct=$pct (type=${profile?.javaClass?.simpleName})")
         return pct
     }
 
