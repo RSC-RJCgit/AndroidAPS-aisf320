@@ -1,7 +1,9 @@
 package app.aaps.core.interfaces.aps
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.InternalSerializationApi
 
+@OptIn(InternalSerializationApi::class)
 @Serializable
 data class OapsProfileAutoIsf(
     var dia: Double, // AMA only
