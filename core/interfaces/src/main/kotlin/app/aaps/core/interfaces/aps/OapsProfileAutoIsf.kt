@@ -74,5 +74,7 @@ data class OapsProfileAutoIsf(
     var smb_max_range_extension: Double,
     var enableSMB_EvenOn_OddOff_always: Boolean,
     var iob_threshold_percent: Int,
-    var profile_percentage: Int
+    var profile_percentage: Int,
+    var splitBolusEnabled: Boolean = false,
+    var splitBolusInterval: Int = 3
 )

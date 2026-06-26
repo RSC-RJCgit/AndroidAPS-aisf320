@@ -54,6 +54,7 @@ enum class IntKey(
     ApsCarbsRequestThreshold("carbsReqThreshold", 1, 1, 100, defaultedBySM = true),
     ApsAutoIsfHalfBasalExerciseTarget("half_basal_exercise_target", 160, 120, 200, defaultedBySM = true),
     ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),
+    ApsAutoIsfSplitBolusInterval("split_bolus_interval", 3, 1, 10, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSplitBolusEnabled),
     FslMinFitMinutes("fslMinMinutes", 20, 3, 20, defaultedBySM = true),
     FslMaxSmoothGap("Exp1SmoothGap", 20, 10, 60, defaultedBySM = true),
     FslCalibrationDuration("Calibration_Duration", 20, 20, 20, defaultedBySM = true),   // effectively frozen

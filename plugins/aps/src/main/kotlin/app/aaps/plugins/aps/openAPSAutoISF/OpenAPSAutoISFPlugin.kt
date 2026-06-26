@@ -476,7 +476,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smb_max_range_extension = smbMaxRangeExtension,
             enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
             iob_threshold_percent = iobThresholdPercent,
-            profile_percentage = profile_percentage
+            profile_percentage = profile_percentage,
+            splitBolusEnabled = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled),
+            splitBolusInterval = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
         )
         var sensitivityRatio = 1.0
         // TODO eliminate
@@ -1465,6 +1467,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     )
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSplitBolusEnabled, summary = R.string.split_bolus_enabled_summary, title = R.string.split_bolus_enabled_title))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfSplitBolusInterval, dialogMessage = R.string.split_bolus_interval_summary, title = R.string.split_bolus_interval_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddSensitivity, summary = R.string.autoisf_tdd_sensitivity_summary, title = R.string.autoisf_tdd_sensitivity))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddFactor, summary = R.string.autoisf_tdd_factor_summary, title = R.string.autoisf_tdd_factor))
                 })
