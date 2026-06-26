@@ -551,7 +551,7 @@ class WizardDialog : DaggerDialogFragment() {
 
             // Split bolus controls: show when profile% = 100 (feature may apply)
             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
-            val activeProfileSwitchPct = if (specificProfile is ProfileSealed.EPS) specificProfile.value.originalPercentage else 100
+            val activeProfileSwitchPct = profileFunction.getProfile()?.percentage ?: 100
             val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0
             if (splitFeatureAvailable) {
                 if (!splitBolusInitialized) {

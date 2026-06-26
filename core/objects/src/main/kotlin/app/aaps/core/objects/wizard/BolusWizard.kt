@@ -46,7 +46,6 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
-import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.objects.extensions.highValueToUnitsToString
 import app.aaps.core.objects.extensions.lowValueToUnitsToString
@@ -123,6 +122,7 @@ class BolusWizard @Inject constructor(
     // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
     var manualSplitBolusEnabled: Boolean = false
     var manualSplitBolusIntervalMins: Int = 3
+    private var splitBolusScheduled = false  // guard against double-callback
 
     // Result
     var calculatedTotalInsulin: Double = 0.0
@@ -574,18 +574,20 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U")
                                         scheduleSplitBolusChecks(insulinAfterConstraints, attemptNumber = 1)
                                     }
-                                    // Equal-parts split bolus: no profile switch active, total > maxBolus, enabled per-bolus
-                                    if (manualSplitBolusEnabled &&
+                                    // Equal-parts split bolus: no profile % active, total > maxBolus, enabled per-bolus
+                                    if (!splitBolusScheduled &&
+                                        manualSplitBolusEnabled &&
                                         activeProfileSwitchPct() == 100 &&
                                         calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
                                     ) {
+                                        splitBolusScheduled = true
                                         val maxPart = constraintChecker.getMaxBolusAllowed().value()
                                         val intervalMins = manualSplitBolusIntervalMins
                                         val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
                                         if (numParts > 1) {
                                             val blockMs = T.mins((numParts - 1).toLong() * intervalMins).msecs()
                                             preferences.put(LongKey.SplitBolusBlockSmbUntil, dateUtil.now() + blockMs)
-                                            aapsLogger.info(LTag.CORE, "EqualSplitBolus: ${numParts}×${maxPart}U every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
+                                            aapsLogger.info(LTag.CORE, "EqualSplitBolus: scheduled ${numParts}×${maxPart}U every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
                                             scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts)
                                         }
                                     }
@@ -673,12 +675,10 @@ class BolusWizard @Inject constructor(
         }, delayMs)
     }
 
-    // Returns the active profile switch percentage, or 100 if none is active.
-    // Uses same pattern as OpenAPSAutoISFPlugin.invoke() line 383.
+    // Returns the active profile percentage (100 = normal, anything else = override active).
     private fun activeProfileSwitchPct(): Int {
-        val profile = profileFunction.getProfile()
-        val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
-        aapsLogger.debug(LTag.CORE, "EqualSplitBolus: activeProfileSwitchPct=$pct (profile=${profile?.javaClass?.simpleName})")
+        val pct = profileFunction.getProfile()?.percentage ?: 100
+        aapsLogger.info(LTag.CORE, "EqualSplitBolus: profilePct=$pct")
         return pct
     }
 
