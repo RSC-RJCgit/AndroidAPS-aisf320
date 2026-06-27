@@ -103,15 +103,17 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyDescription(): String = buildDescription(0)
 
     private fun buildDescription(depth: Int): String {
-        val indent = "  ".repeat(depth)
-        val childIndent = "  ".repeat(depth + 1)
+        val indent = "    ".repeat(depth)
+        val childIndent = "    ".repeat(depth + 1)
+        val marker = "===="
         val result = StringBuilder()
-        result.append(indent).append(rh.gs(connectorType.stringRes))
+        result.append(indent).append(rh.gs(connectorType.stringRes)).append(" ").append(marker)
         for (t in list) {
             result.append("\n")
             if (t is TriggerConnector) result.append(t.buildDescription(depth + 1))
             else result.append(childIndent).append(t.friendlyDescription())
         }
+        result.append("\n").append(indent).append(marker)
         return result.toString()
     }
 
