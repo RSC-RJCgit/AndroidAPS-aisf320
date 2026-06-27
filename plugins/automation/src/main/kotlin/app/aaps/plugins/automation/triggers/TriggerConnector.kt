@@ -100,20 +100,17 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
 
     override fun friendlyName(): Int = connectorType.stringRes
 
-    override fun friendlyDescription(): String {
+    override fun friendlyDescription(): String = buildDescription(0)
+
+    private fun buildDescription(depth: Int): String {
+        val indent = "  ".repeat(depth)
+        val childIndent = "  ".repeat(depth + 1)
         val result = StringBuilder()
-        if (list.size <= 1 || connectorType == Type.NOT) {
-            // Always show the connector type when there is only one child (or none), or when the
-            // connector is NOT — in those cases the between-separator logic never fires, so the
-            // label would otherwise be invisible in the summary screen.
-            result.append(rh.gs(connectorType.stringRes))
-            for (t in list) result.append("\n").append(t.friendlyDescription())
-        } else {
-            for ((counter, t) in list.withIndex()) {
-                if (counter > 0)
-                    result.append("\n").append(rh.gs(friendlyName())).append("\n")
-                result.append(t.friendlyDescription())
-            }
+        result.append(indent).append(rh.gs(connectorType.stringRes))
+        for (t in list) {
+            result.append("\n")
+            if (t is TriggerConnector) result.append(t.buildDescription(depth + 1))
+            else result.append(childIndent).append(t.friendlyDescription())
         }
         return result.toString()
     }
