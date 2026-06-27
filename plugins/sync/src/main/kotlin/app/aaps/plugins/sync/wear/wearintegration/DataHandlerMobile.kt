@@ -1233,29 +1233,6 @@ class DataHandlerMobile @Inject constructor(
         )
         aapsLogger.info(LTag.WEAR, "Afrezza cartridge ${units}U logged via Wear as ${effectiveAmount}U with ICfg: ${afrezzaIcfg.insulinLabel}")
     }
-        val now = dateUtil.now()
-        val bolus = BS(
-            timestamp = now,
-            amount = units.toDouble(),
-            type = BS.Type.NORMAL,
-            notes = "Afrezza inhaled",
-            iCfg = afrezzaIcfg,
-            ids = IDs(pumpId = now)
-        )
-        persistenceLayer.insertOrUpdateBolus(
-            bolus = bolus,
-            action = Action.BOLUS,
-            source = Sources.Wear,
-            note = "Afrezza inhaled"
-        )
-        uel.log(
-            action = Action.BOLUS, source = Sources.Wear,
-            "Afrezza inhaled",
-            ValueWithUnit.Insulin(units.toDouble())
-        )
-        aapsLogger.info(LTag.WEAR, "Afrezza ${units}U logged via Wear with ICfg: ${afrezzaIcfg.insulinLabel}")
-    }
-
     private fun handleECarbsPreCheck(command: EventData.ActionECarbsPreCheck) {
         val startTimeStamp = System.currentTimeMillis() + T.mins(command.carbsTimeShift.toLong()).msecs()
         val cob = iobCobCalculator.ads.getLastAutosensData("carbsDialog", aapsLogger, dateUtil)?.cob ?: 0.0
