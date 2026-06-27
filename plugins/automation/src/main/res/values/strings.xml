@@ -195,8 +195,8 @@
     <string name="set_state_description">Set automation state %1$s=%2$s</string>
     <string name="set_state_state_name">"State name: "</string>
     <string name="set_state_state_val">"State value: "</string>
-    <string name="check_state_name">CheckState</string>
-    <string name="check_state_description">Check automation state %1$s=%2$s</string>
+    <string name="check_state_name">State</string>
+    <string name="check_state_description">State %1$s=%2$s</string>
     <string name="no_automation_states">No automation states defined yet. Use the \"Set automation state\" action in your automation rules to create states.</string>
 
     <!-- Automation States Plugin -->
