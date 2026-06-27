@@ -1207,6 +1207,33 @@ class DataHandlerMobile @Inject constructor(
             return
         }
         val now = dateUtil.now()
+        // Mirror the phone path (AfrezzaDialogViewModel.confirmAndLog): Afrezza inhaled cartridges
+        // are stored as U100-equivalent IU. cartridge units / 2.0  ->  4U->2.0, 8U->4.0, 12U->6.0.
+        // Keep BOTH paths in sync: if you change the divisor here, change confirmAndLog too.
+        val effectiveAmount = units.toDouble() / 2.0
+        val logNote = "Afrezza inhaled (${units}U)"
+        val bolus = BS(
+            timestamp = now,
+            amount = effectiveAmount,
+            type = BS.Type.NORMAL,
+            notes = logNote,
+            iCfg = afrezzaIcfg,
+            ids = IDs(pumpId = now)
+        )
+        persistenceLayer.insertOrUpdateBolus(
+            bolus = bolus,
+            action = Action.BOLUS,
+            source = Sources.Wear,
+            note = logNote
+        )
+        uel.log(
+            action = Action.BOLUS, source = Sources.Wear,
+            logNote,
+            ValueWithUnit.Insulin(effectiveAmount)
+        )
+        aapsLogger.info(LTag.WEAR, "Afrezza cartridge ${units}U logged via Wear as ${effectiveAmount}U with ICfg: ${afrezzaIcfg.insulinLabel}")
+    }
+        val now = dateUtil.now()
         val bolus = BS(
             timestamp = now,
             amount = units.toDouble(),
