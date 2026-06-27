@@ -105,7 +105,11 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
     private fun buildDescription(depth: Int): String {
         val indent = "    ".repeat(depth)
         val childIndent = "    ".repeat(depth + 1)
-        val marker = "===="
+        val marker = when (depth) {
+            0    -> "=========="
+            1    -> "----------"
+            else -> "**********"
+        }
         val result = StringBuilder()
         result.append(indent).append(rh.gs(connectorType.stringRes)).append(" ").append(marker)
         for (t in list) {
