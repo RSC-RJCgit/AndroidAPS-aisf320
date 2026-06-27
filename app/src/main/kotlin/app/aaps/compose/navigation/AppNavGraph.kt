@@ -317,6 +317,7 @@ fun NavGraphBuilder.appNavGraph(
                 navController.safePopBackStack()
                 navController.navigate(AppRoute.WizardDialog.route)
             },
+
             onShowMessage = { message ->
                 // Toast or Snackbar handled by caller
             }
