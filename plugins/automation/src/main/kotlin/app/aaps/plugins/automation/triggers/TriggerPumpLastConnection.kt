@@ -71,7 +71,7 @@ class TriggerPumpLastConnection(injector: HasAndroidInjector) : Trigger(injector
     override fun friendlyName(): Int = R.string.automation_trigger_pump_last_connection_label
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.automation_trigger_pump_last_connection_compared, rh.gs(comparator.value.stringRes), minutesAgo.value)
+        rh.gs(R.string.automation_trigger_pump_last_connection_compared, comparator.value.shortSymbol, minutesAgo.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_remove)
 

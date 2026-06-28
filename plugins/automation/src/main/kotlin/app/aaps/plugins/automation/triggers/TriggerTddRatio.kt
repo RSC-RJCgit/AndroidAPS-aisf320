@@ -97,7 +97,7 @@ class TriggerTddRatio(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerTddRatioLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerTddRatioDescription, rh.gs(comparator.value.stringRes), ratio.value)
+        rh.gs(R.string.triggerTddRatioDescription, comparator.value.shortSymbol, ratio.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_as)
 

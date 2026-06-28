@@ -108,7 +108,8 @@ class TriggerConnector(injector: HasAndroidInjector) : Trigger(injector) {
         val marker = when (depth) {
             0    -> "=========="
             1    -> "----------"
-            else -> "**********"
+            2    -> "**********"
+            else -> "~~~~~~~~~~"
         }
         val result = StringBuilder()
         result.append(indent).append(rh.gs(connectorType.stringRes)).append(" ").append(marker)

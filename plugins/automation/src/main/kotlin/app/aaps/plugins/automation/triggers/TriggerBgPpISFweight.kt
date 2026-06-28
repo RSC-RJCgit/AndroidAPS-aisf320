@@ -65,7 +65,7 @@ class TriggerBgPpISFweight(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.autoisf_pp_isf_weight
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.ppweightcompared, rh.gs(comparator.value.stringRes), ppWeight.value)
+        rh.gs(R.string.ppweightcompared, comparator.value.shortSymbol, ppWeight.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_acce_weight)
 

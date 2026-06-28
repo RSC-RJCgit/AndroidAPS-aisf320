@@ -85,7 +85,7 @@ class TriggerProfilePercent(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.profilepercentage
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.percentagecompared, rh.gs(comparator.value.stringRes), pct.value.toInt())
+        rh.gs(R.string.percentagecompared, comparator.value.shortSymbol, pct.value.toInt())
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.ui.R.drawable.ic_actions_profileswitch)
 

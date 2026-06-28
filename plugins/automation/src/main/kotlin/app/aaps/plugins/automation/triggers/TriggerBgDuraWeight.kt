@@ -66,7 +66,7 @@ class TriggerBgDuraWeight(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.autoisf_dura_isf_weight
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.duraweightcompared, rh.gs(comparator.value.stringRes), duraWeight.value)
+        rh.gs(R.string.duraweightcompared, comparator.value.shortSymbol, duraWeight.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_acce_weight)
 

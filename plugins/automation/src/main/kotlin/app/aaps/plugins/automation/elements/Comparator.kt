@@ -32,6 +32,17 @@ class Comparator(private val rh: ResourceHelper) : Element {
                 IS_NOT_AVAILABLE    -> R.string.isnotavailable
             }
 
+        val shortSymbol: String
+            get() = when (this) {
+                IS_LESSER           -> "<"
+                IS_EQUAL_OR_LESSER  -> "<="
+                IS_EQUAL            -> "="
+                IS_EQUAL_OR_GREATER -> ">="
+                IS_GREATER          -> ">"
+                IS_NOT_EQUAL        -> "!="
+                IS_NOT_AVAILABLE    -> "n/a"
+            }
+
         fun <T : Comparable<T>> check(obj1: T, obj2: T): Boolean {
             val comparison = obj1.compareTo(obj2)
             return when (this) {

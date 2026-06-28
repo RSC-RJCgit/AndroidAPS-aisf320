@@ -72,7 +72,7 @@ class TriggerWifiSsid(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = app.aaps.core.ui.R.string.ns_wifi_ssids
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.wifissidcompared, rh.gs(comparator.value.stringRes), ssid.value)
+        rh.gs(R.string.wifissidcompared, comparator.value.shortSymbol, ssid.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_network_wifi)
 

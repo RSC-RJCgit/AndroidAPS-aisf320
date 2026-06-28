@@ -58,7 +58,7 @@ class TriggerHeartRate(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerHeartRate
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerHeartRateDesc, rh.gs(comparator.value.stringRes), heartRate.value)
+        rh.gs(R.string.triggerHeartRateDesc, comparator.value.shortSymbol, heartRate.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_heart_rate)
 

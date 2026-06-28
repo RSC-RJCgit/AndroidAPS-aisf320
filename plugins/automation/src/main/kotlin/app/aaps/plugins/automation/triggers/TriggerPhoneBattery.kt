@@ -63,7 +63,7 @@ class TriggerPhoneBattery(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.trigger_phone_battery_label
 
     override fun friendlyDescription(): String =
-        "Phone battery ${rh.gs(comparator.value.stringRes)} ${batteryLevel.value.toInt()}%"
+        "Phone battery ${comparator.value.shortSymbol} ${batteryLevel.value.toInt()}%"
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_age_battery)
 

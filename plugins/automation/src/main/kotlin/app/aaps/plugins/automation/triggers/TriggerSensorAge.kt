@@ -72,7 +72,7 @@ class TriggerSensorAge(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerSensorAgeLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerSensorAgeDesc, rh.gs(comparator.value.stringRes), sensorAgeHours.value)
+        rh.gs(R.string.triggerSensorAgeDesc, comparator.value.shortSymbol, sensorAgeHours.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_age_sensor)
 

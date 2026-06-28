@@ -61,7 +61,7 @@ class TriggerReservoirLevel(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerReservoirLevelLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerReservoirLevelDesc, rh.gs(comparator.value.stringRes), reservoirLevel.value)
+        rh.gs(R.string.triggerReservoirLevelDesc, comparator.value.shortSymbol, reservoirLevel.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_age_insulin)
 

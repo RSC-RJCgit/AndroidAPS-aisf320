@@ -58,7 +58,7 @@ class TriggerBTDevice(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.btdevice
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.btdevicecompared, btDevice.value, rh.gs(comparator.value.stringRes))
+        rh.gs(R.string.btdevicecompared, btDevice.value, comparator.value.shortSymbol)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.ui.R.drawable.ic_bluetooth_white_48dp)
 

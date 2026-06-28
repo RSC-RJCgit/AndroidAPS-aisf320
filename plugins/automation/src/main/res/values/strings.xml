@@ -32,13 +32,13 @@
     <string name="sendsmsactiondescription">Send SMS to all numbers</string>
     <string name="sendsmsactiontext">Send SMS with text</string>
     <string name="starttemptarget">Start temp target</string>
-    <string name="islesser">&lt;</string>
-    <string name="isequalorlesser">&lt;=</string>
-    <string name="isequal">=</string>
-    <string name="isequalorgreater">&gt;=</string>
-    <string name="isgreater">&gt;</string>
-    <string name="isnotequal">!=</string>
-    <string name="isnotavailable">n/a</string>
+    <string name="islesser">is lesser than</string>
+    <string name="isequalorlesser">is equal or lesser than</string>
+    <string name="isequal">is equal to</string>
+    <string name="isequalorgreater">is equal or greater than</string>
+    <string name="isgreater">is greater than</string>
+    <string name="isnotequal">is not equal to</string>
+    <string name="isnotavailable">is not available</string>
     <string name="glucoseisnotavailable">Glucose is not available</string>
     <string name="glucosecomparedmgdl">Glucose %1$s %2$.0f %3$s</string>
     <string name="glucosecomparedmmol">Glucose %1$s %2$.1f %3$s</string>

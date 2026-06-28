@@ -55,7 +55,7 @@ class TriggerTempTarget(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = app.aaps.core.ui.R.string.temporary_target
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.temptargetcompared, rh.gs(comparator.value.stringRes))
+        rh.gs(R.string.temptargetcompared, comparator.value.shortSymbol)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_keyboard_tab)
 

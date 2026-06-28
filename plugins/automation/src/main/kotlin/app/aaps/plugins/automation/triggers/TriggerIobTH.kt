@@ -69,7 +69,7 @@ class TriggerIobTH(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.autoisf_iobTH_percent
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.iobTHpercentcompared, rh.gs(comparator.value.stringRes), IobTHpercent.value.toInt())
+        rh.gs(R.string.iobTHpercentcompared, comparator.value.shortSymbol, IobTHpercent.value.toInt())
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_iobth)
 

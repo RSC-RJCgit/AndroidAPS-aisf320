@@ -59,7 +59,7 @@ class TriggerIob(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = app.aaps.core.ui.R.string.iob
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.iobcompared, rh.gs(comparator.value.stringRes), insulin.value)
+        rh.gs(R.string.iobcompared, comparator.value.shortSymbol, insulin.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_keyboard_capslock)
 

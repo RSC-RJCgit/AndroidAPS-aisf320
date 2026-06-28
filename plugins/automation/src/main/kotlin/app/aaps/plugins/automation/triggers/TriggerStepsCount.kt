@@ -77,7 +77,7 @@ class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerStepsCountLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerStepsCountDesc, measurementDuration.value, rh.gs(comparator.value.stringRes), stepsCount.value)
+        rh.gs(R.string.triggerStepsCountDesc, measurementDuration.value, comparator.value.shortSymbol, stepsCount.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_exercise)
 

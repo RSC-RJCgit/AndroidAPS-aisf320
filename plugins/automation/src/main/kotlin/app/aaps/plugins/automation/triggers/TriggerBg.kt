@@ -83,7 +83,7 @@ class TriggerBg(injector: HasAndroidInjector) : Trigger(injector) {
         return if (comparator.value == Comparator.Compare.IS_NOT_AVAILABLE)
             rh.gs(R.string.glucoseisnotavailable)
         else
-            rh.gs(if (bg.units == GlucoseUnit.MGDL) R.string.glucosecomparedmgdl else R.string.glucosecomparedmmol, rh.gs(comparator.value.stringRes), bg.value, bg.units)
+            rh.gs(if (bg.units == GlucoseUnit.MGDL) R.string.glucosecomparedmgdl else R.string.glucosecomparedmmol, comparator.value.shortSymbol, bg.value, bg.units)
     }
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_bgcheck)

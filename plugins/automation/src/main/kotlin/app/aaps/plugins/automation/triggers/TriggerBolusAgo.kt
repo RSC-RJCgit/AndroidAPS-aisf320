@@ -72,7 +72,7 @@ class TriggerBolusAgo(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.lastboluslabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.lastboluscompared, rh.gs(comparator.value.stringRes), minutesAgo.getMinutes())
+        rh.gs(R.string.lastboluscompared, comparator.value.shortSymbol, minutesAgo.getMinutes())
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_bolus)
 

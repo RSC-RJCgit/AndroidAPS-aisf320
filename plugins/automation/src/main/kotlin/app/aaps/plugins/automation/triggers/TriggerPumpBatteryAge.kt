@@ -77,7 +77,7 @@ class TriggerPumpBatteryAge(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerPumpBatteryAgeLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerPumpBatteryAgeDesc, rh.gs(comparator.value.stringRes), pumpBatteryAgeHours.value)
+        rh.gs(R.string.triggerPumpBatteryAgeDesc, comparator.value.shortSymbol, pumpBatteryAgeHours.value)
 
     override fun icon(): Optional<Int> = Optional.of(app.aaps.core.objects.R.drawable.ic_cp_age_battery)
 

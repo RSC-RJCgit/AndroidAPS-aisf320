@@ -72,7 +72,7 @@ class TriggerCannulaAge(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.triggerCannulaAgeLabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.triggerCannulaAgeDesc, rh.gs(comparator.value.stringRes), cannulaAgeHours.value)
+        rh.gs(R.string.triggerCannulaAgeDesc, comparator.value.shortSymbol, cannulaAgeHours.value)
 
     override fun icon(): Optional<Int> {
         val isPatchPump = activePlugin.activePump.pumpDescription.isPatchPump

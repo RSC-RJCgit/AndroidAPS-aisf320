@@ -69,7 +69,7 @@ class TriggerBgAcceWeight(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.autoisf_acce_weight
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.acceweightcompared, rh.gs(comparator.value.stringRes), acceWeight.value)
+        rh.gs(R.string.acceweightcompared, comparator.value.shortSymbol, acceWeight.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_acce_weight)
 

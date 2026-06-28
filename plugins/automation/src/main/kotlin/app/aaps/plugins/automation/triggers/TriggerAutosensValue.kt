@@ -63,7 +63,7 @@ class TriggerAutosensValue(injector: HasAndroidInjector) : Trigger(injector) {
     override fun friendlyName(): Int = R.string.autosenslabel
 
     override fun friendlyDescription(): String =
-        rh.gs(R.string.autosenscompared, rh.gs(comparator.value.stringRes), autosens.value)
+        rh.gs(R.string.autosenscompared, comparator.value.shortSymbol, autosens.value)
 
     override fun icon(): Optional<Int> = Optional.of(R.drawable.ic_as)
 
