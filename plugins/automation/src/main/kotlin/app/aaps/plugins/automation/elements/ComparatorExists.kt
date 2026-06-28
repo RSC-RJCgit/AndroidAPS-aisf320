@@ -16,8 +16,14 @@ class ComparatorExists(private val rh: ResourceHelper, var value: Compare = Comp
 
         @get:StringRes val stringRes: Int
             get() = when (this) {
-                EXISTS -> app.aaps.core.ui.R.string.exists
+                EXISTS     -> app.aaps.core.ui.R.string.exists
                 NOT_EXISTS -> app.aaps.core.ui.R.string.notexists
+            }
+
+        val shortSymbol: String
+            get() = when (this) {
+                EXISTS     -> "exists"
+                NOT_EXISTS -> "not exists"
             }
 
         companion object {

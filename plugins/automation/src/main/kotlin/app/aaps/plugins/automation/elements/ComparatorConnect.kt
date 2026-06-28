@@ -17,8 +17,14 @@ class ComparatorConnect(private val rh: ResourceHelper) : Element {
 
         @get:StringRes val stringRes: Int
             get() = when (this) {
-                ON_CONNECT -> R.string.onconnect
+                ON_CONNECT    -> R.string.onconnect
                 ON_DISCONNECT -> R.string.ondisconnect
+            }
+
+        val shortSymbol: String
+            get() = when (this) {
+                ON_CONNECT    -> "connect"
+                ON_DISCONNECT -> "disconnect"
             }
 
         companion object {
