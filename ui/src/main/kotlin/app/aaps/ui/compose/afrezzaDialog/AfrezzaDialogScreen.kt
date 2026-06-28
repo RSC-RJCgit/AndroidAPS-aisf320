@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -85,6 +86,7 @@ fun AfrezzaDialogScreen(
     if (uiState.showDurationSelector) {
         DurationSelectorDialog(
             rate = uiState.maxBasalRate,
+            isApplyingBasal = uiState.isApplyingBasal,
             onDurationSelected = { minutes -> viewModel.applyMaxBasal(minutes) },
             onDismiss = { viewModel.dismissDurationSelector() }
         )
@@ -255,6 +257,7 @@ private fun AfrezzaNotConfiguredContent() {
 @Composable
 private fun DurationSelectorDialog(
     rate: Double,
+    isApplyingBasal: Boolean,
     onDurationSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -284,21 +287,27 @@ private fun DurationSelectorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(60, 120, 180).forEach { minutes ->
-                        Button(
-                            onClick = { onDurationSelected(minutes) },
-                            modifier = Modifier.weight(1f).height(56.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                text = "${minutes}\nmin",
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Bold
-                            )
+                if (isApplyingBasal) {
+                    // Temp-basal command is in flight; show progress and keep buttons gone so no second tap is possible.
+                    CircularProgressIndicator()
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(60, 120, 180).forEach { minutes ->
+                            Button(
+                                onClick = { onDurationSelected(minutes) },
+                                enabled = !isApplyingBasal,
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = "${minutes}\nmin",
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

@@ -175,6 +175,9 @@ class AfrezzaDialogViewModel @Inject constructor(
 
     fun applyMaxBasal(durationMinutes: Int) {
         val maxBasalRate = preferences.get(DoubleKey.AfrezzaMaxBasalRate)
+        // Lock the duration buttons immediately (synchronously, before the suspend below)
+        // so a second tap during the pump round-trip cannot enqueue a second temp basal.
+        _uiState.update { it.copy(isApplyingBasal = true) }
         viewModelScope.launch {
             try {
                 val profile = profileFunction.getProfile()
@@ -202,7 +205,7 @@ class AfrezzaDialogViewModel @Inject constructor(
                 aapsLogger.error(LTag.UI, "Exception setting max basal", e)
                 _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_max_basal_failed)))
             } finally {
-                _uiState.update { it.copy(showDurationSelector = false, showCarbPrompt = true) }
+                _uiState.update { it.copy(showDurationSelector = false, showCarbPrompt = true, isApplyingBasal = false) }
             }
         }
     }
