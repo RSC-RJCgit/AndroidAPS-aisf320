@@ -34,3 +34,5 @@ wear/pumpcontrol/*
 .claude/settings.local.json
 .claude/CLAUDE_COMMANDS.md
 tmpclaude-*
+
+*.bak
