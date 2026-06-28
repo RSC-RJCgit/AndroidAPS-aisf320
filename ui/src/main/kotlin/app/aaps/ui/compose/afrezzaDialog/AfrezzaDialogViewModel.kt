@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.afrezzaDialog
 
+import app.aaps.core.data.afrezza.AfrezzaMaxBasalState
+
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

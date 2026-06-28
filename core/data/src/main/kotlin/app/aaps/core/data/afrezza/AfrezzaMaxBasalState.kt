@@ -1,4 +1,4 @@
-package app.aaps.ui.compose.afrezzaDialog
+package app.aaps.core.data.afrezza
 
 object AfrezzaMaxBasalState {
     @Volatile var endTime: Long = 0L

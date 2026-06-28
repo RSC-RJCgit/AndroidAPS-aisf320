@@ -63,8 +63,8 @@ enum class DoubleKey(
     AfrezzaMaxBasalRate(
         key = "afrezza_max_basal_rate",
         defaultValue = 2.0,
-        min = 0.5,
-        max = 10.0,
+        min = 0.1,
+        max = 3.0,
         titleResId = R.string.pref_title_afrezza_max_basal_rate,
         summaryResId = R.string.pref_summary_afrezza_max_basal_rate,
         unitType = UnitType.INSULIN_RATE
