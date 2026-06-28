@@ -55,7 +55,7 @@ class OpenAPSSMBPluginTest : TestBaseWithProfile() {
     }
 
 
-    // ---------- Afrezza max-basal constraint tests (relocated from EversensePlugin) ----------
+    // ---------- Afrezza max-basal constraint tests ----------
     //
     // applyBasalConstraints now lives in OpenAPSSMBPlugin. The Afrezza block runs AFTER the
     // standard APS caps and raises basal (setIfGreater) up to minOf(AfrezzaMaxBasalState.rate,
@@ -175,7 +175,7 @@ class OpenAPSSMBPluginTest : TestBaseWithProfile() {
         assertThat(result.value()).isWithin(1e-9).of(1.0)   // capped to 1.0, not 2.0
     }
 
-    // Now ENABLED (was @Disabled under the old Eversense code): null BG must pause, not raise.
+    // null BG must pause, not raise basal.
     @Test
     fun `Afrezza null BG does NOT raise basal`() {
         stubApsMaxBasal(apsMaxHigh)

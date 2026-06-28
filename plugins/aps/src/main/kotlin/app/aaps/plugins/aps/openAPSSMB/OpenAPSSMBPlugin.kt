@@ -549,7 +549,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
             val maxFromDaily = floor(profile.getMaxDailyBasal() * maxBasalFromDaily * 100) / 100
             absoluteRate.setIfSmaller(maxFromDaily, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromDaily, rh.gs(R.string.max_daily_basal_multiplier)), this)
         }
-        // --- Afrezza post-dose max basal (relocated from EversensePlugin) ---
+        // --- Afrezza post-dose max basal ---
         // Runs AFTER the standard APS caps. Self-capped: raises only up to
         // minOf(AfrezzaMaxBasalState.rate, ApsMaxBasal) --- the user's OpenAPS Max Basal
         // is the hard ceiling. Only ever raises (setIfGreater), never lowers the loop's rate.
