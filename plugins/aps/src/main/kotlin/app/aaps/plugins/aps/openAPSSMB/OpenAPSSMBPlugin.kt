@@ -452,7 +452,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val effectiveDynIsfMode = dynIsfMode && dynIsfResult.tddPartsCalculated()
 
-        // Refuse to run the algorithm with degenerate ISF inputs - division by these would produce NaN/Infinity in the result.
+        // Refuse to run the algorithm with degenerate ISF inputs — division by these would produce NaN/Infinity in the result.
         val invalidInputs = !oapsProfile.sens.isFinite() || oapsProfile.sens <= 0.0 ||
             (effectiveDynIsfMode && (
                 !oapsProfile.variable_sens.isFinite() || oapsProfile.variable_sens <= 0.0 ||
