@@ -26,7 +26,9 @@ import androidx.core.graphics.withRotation
 open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSeries<E>, SeriesData {
 
     // Default spSize
-    private var spSize = 14
+    private var spSize = 18
+
+    fun setSpSize(size: Int) { spSize = size }
 
     /**
      * internal paint object

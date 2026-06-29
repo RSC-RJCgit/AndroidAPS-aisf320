@@ -292,6 +292,11 @@ class GraphData @Inject constructor(
 
     private fun addSeries(s: Series<*>) = series.add(s)
 
+    fun applyFontScale(scale: Float) {
+        val scaled = (18 * scale).toInt()
+        series.filterIsInstance<PointsWithLabelGraphSeries<*>>().forEach { it.setSpSize(scaled) }
+    }
+
     fun performUpdate() {
         // clear old data - use removeAllSeries() to properly detach GraphView from series
         graph.removeAllSeries()

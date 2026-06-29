@@ -12,6 +12,7 @@ class SkinLargeDisplay @Inject constructor(private val config: Config) : SkinInt
     override val description: Int get() = R.string.largedisplay_description
     override val mainGraphHeight: Int get() = 400
     override val secondaryGraphHeight: Int get() = 150
+    override val graphFontScale: Float get() = 1.25f
 
     override fun preProcessLandscapeOverviewLayout(binding: OverviewFragmentBinding, isLandscape: Boolean, isTablet: Boolean, isSmallHeight: Boolean) {
         super.preProcessLandscapeOverviewLayout(binding, isLandscape, isTablet, isSmallHeight)

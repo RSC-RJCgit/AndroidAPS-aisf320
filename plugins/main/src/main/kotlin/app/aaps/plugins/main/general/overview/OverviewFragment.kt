@@ -1139,6 +1139,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
         graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+        graphData.applyFontScale(skinProvider.activeSkin().graphFontScale)
 
         graphData.performUpdate()
 
@@ -1297,6 +1298,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     //menuChartSettings[g + 1][OverviewMenus.CharType.PP_ISF.ordinal] && masterAutoIsf ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.DUR_ISF.ordinal] && masterAutoIsf
                 ).toVisibility()
+            secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()
         }
     }
