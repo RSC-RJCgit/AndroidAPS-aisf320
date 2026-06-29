@@ -15,6 +15,7 @@ data class AIV(
     var duraIsf: Double,
     var finalIsf: Double,
     var iobThEffective: Double,
+    var glucose: Double = 0.0,
     var delta: Double = 0.0,
     var shortAvgDelta: Double = 0.0,
     var bgAcceleration: Double = 0.0,
@@ -39,6 +40,7 @@ data class AIV(
                 iobThEffective == other.iobThEffective &&
                 delta == other.delta &&
                 shortAvgDelta == other.shortAvgDelta &&
+                glucose == other.glucose &&
                 bgAcceleration == other.bgAcceleration &&
                 isValid == other.isValid)
     }

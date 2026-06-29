@@ -520,6 +520,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val iobTHvirtual = iobThresholdPercent * iobTHtolerance / 10000.0 * oapsProfile.max_iob * iobTH_reduction_ratio
         val loopWantedSmb = loop_smb(microBolusAllowed, oapsProfile, iobData.iob, use_iobTH, iobTHvirtual / iobTHtolerance * 100.0)
         (glucoseStatus as? GlucoseStatusAutoIsf)?.let {
+            autoIsfValues.glucose = it.glucose
             autoIsfValues.delta = it.delta
             autoIsfValues.shortAvgDelta = it.shortAvgDelta
             autoIsfValues.bgAcceleration = it.bgAcceleration
@@ -1488,5 +1489,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt 320TDDF118
+OpenAPSAutoISFPlugin.ktSt 320TDDF119
  */
