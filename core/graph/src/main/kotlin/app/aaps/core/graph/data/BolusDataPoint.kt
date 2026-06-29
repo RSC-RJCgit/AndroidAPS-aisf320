@@ -18,7 +18,10 @@ class BolusDataPoint(
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = yValue
     override val label
-        get() = decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep)
+        get() = if (data.type == BS.Type.SMB)
+            decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep).trimStart('0')
+        else
+            decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep)
     override val duration = 0L
     override val size = 2f
     override val paintStyle: Paint.Style = Paint.Style.FILL // not used

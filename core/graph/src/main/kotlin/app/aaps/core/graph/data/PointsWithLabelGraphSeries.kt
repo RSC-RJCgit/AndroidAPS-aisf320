@@ -95,6 +95,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphLeft = graphView.graphContentLeft.toFloat()
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
+        val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -183,16 +184,27 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
                 } else if (value.shape == Shape.SMB) {
-                    mPaint.strokeWidth = 2f
+                    val bucket = (value.x / 300_000L).toLong()
+                    val stackIndex = smbStack.getOrDefault(bucket, 0)
+                    smbStack[bucket] = stackIndex + 1
                     val size = value.size * scaledPxSize
+                    val lift = size * 1.5f + stackIndex * size * 2.5f  // above BG line, stacked upward
+                    val smbY = endY - lift
+                    mPaint.strokeWidth = 2f
+                    // inverted triangle (apex pointing down toward BG line)
                     val points = arrayOf(
-                        Point(endX.toInt(), (endY - size).toInt()),
-                        Point((endX + size).toInt(), (endY + size * 0.67).toInt()),
-                        Point((endX - size).toInt(), (endY + size * 0.67).toInt())
+                        Point(endX.toInt(), (smbY + size).toInt()),
+                        Point((endX + size).toInt(), (smbY - size * 0.67).toInt()),
+                        Point((endX - size).toInt(), (smbY - size * 0.67).toInt())
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                    if (value.label.isNotEmpty()) {
+                        val savedColor = mPaint.color
+                        mPaint.color = Color.WHITE
+                        drawLabel45Right(endX, smbY, value, canvas, scaledPxSize, scaledTextSize)
+                        mPaint.color = savedColor
+                    }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
