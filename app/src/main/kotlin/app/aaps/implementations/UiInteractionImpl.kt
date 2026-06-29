@@ -80,14 +80,18 @@ class UiInteractionImpl @Inject constructor(
         Widget.updateWidget(context, from)
     }
 
+    private var lastWizardDialogOpenedAt = 0L
+
     override fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int?, name: String?) {
+        val now = System.currentTimeMillis()
+        if (now - lastWizardDialogOpenedAt < 2 * 60 * 1000L) return
+        lastWizardDialogOpenedAt = now
         WizardDialog().also { dialog ->
             dialog.arguments = Bundle().also { bundle ->
                 carbs?.let { bundle.putDouble("carbs_input", carbs.toDouble()) }
                 name?.let { bundle.putString("notes_input", " $name - ${carbs}g") }
             }
         }.show(fragmentManager, "Food Item")
-
     }
 
     override fun runLoopDialog(fragmentManager: FragmentManager, showOkCancel: Int) {
