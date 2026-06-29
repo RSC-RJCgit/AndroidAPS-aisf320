@@ -519,6 +519,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val iobTHtolerance = 130.0
         val iobTHvirtual = iobThresholdPercent * iobTHtolerance / 10000.0 * oapsProfile.max_iob * iobTH_reduction_ratio
         val loopWantedSmb = loop_smb(microBolusAllowed, oapsProfile, iobData.iob, use_iobTH, iobTHvirtual / iobTHtolerance * 100.0)
+        (glucoseStatus as? GlucoseStatusAutoIsf)?.let {
+            autoIsfValues.delta = it.delta
+            autoIsfValues.shortAvgDelta = it.shortAvgDelta
+            autoIsfValues.bgAcceleration = it.bgAcceleration
+        }
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
 
@@ -1267,11 +1272,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleLog.add("User setting iobTH=100% disables iobTH method")
         }
         autoIsfValues.iobThEffective = if (useIobTh) iobThEffective else profile.max_iob
-        glucose_status?.let {
-            autoIsfValues.delta = it.delta
-            autoIsfValues.shortAvgDelta = it.shortAvgDelta
-            autoIsfValues.bgAcceleration = it.bgAcceleration
-        }
 
         if (!microBolusAllowed) {
             return "AAPS"                                                 // see message in enable_smb
