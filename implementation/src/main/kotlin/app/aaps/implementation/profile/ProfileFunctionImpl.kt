@@ -177,9 +177,20 @@ class ProfileFunctionImpl @Inject constructor(
         durationInMinutes: Int, percentage: Int, timeShiftInHours: Int,
         action: Action, source: Sources, note: String?, listValues: List<ValueWithUnit>
     ): Boolean {
-        val profile = persistenceLayer.getPermanentProfileSwitchActiveAt(dateUtil.now()) ?: return false
+        val now = dateUtil.now()
+        val profile = persistenceLayer.getProfileSwitchActiveAt(now)
+            ?: persistenceLayer.getPermanentProfileSwitchActiveAt(now)
+            ?: return false
         val profileStore = activePlugin.activeProfileSource.profile ?: return false
-        val ps = buildProfileSwitch(profileStore, profile.profileName, durationInMinutes, percentage, timeShiftInHours, dateUtil.now()) ?: return false
+        // Cap duration to remaining time of current profile switch if it has a finite duration
+        val effectiveDuration = if (profile.duration > 0L) {
+            val remainingMs = (profile.timestamp + profile.duration) - now
+            val remainingMinutes = (remainingMs / 60_000L).toInt().coerceAtLeast(1)
+            if (durationInMinutes > 0) minOf(durationInMinutes, remainingMinutes) else remainingMinutes
+        } else {
+            durationInMinutes
+        }
+        val ps = buildProfileSwitch(profileStore, profile.profileName, effectiveDuration, percentage, timeShiftInHours, now) ?: return false
         val validity = ProfileSealed.PS(ps, activePlugin).isValid(
             rh.gs(app.aaps.core.ui.R.string.careportal_profileswitch),
             activePlugin.activePump,
