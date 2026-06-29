@@ -15,6 +15,9 @@ data class AIV(
     var duraIsf: Double,
     var finalIsf: Double,
     var iobThEffective: Double,
+    var delta: Double = 0.0,
+    var shortAvgDelta: Double = 0.0,
+    var bgAcceleration: Double = 0.0,
     var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,
@@ -34,6 +37,9 @@ data class AIV(
                 duraIsf == other.duraIsf &&
                 finalIsf == other.finalIsf &&
                 iobThEffective == other.iobThEffective &&
+                delta == other.delta &&
+                shortAvgDelta == other.shortAvgDelta &&
+                bgAcceleration == other.bgAcceleration &&
                 isValid == other.isValid)
     }
 }

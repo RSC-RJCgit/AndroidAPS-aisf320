@@ -39,11 +39,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
 
+    private val df1 = DecimalFormat("0.0")
     private val df2 = DecimalFormat("0.00")
 
     // Colors matching Trio TAI history screen
     private val colorFinalRatio = Color.parseColor("#FF6060")  // red
     private val colorAdjustments = Color.parseColor("#FFA040")  // orange
+    private val colorGlucose    = Color.parseColor("#60C060")  // green
     private val colorTime       = Color.WHITE
     private val colorHeader     = Color.LTGRAY
 
@@ -75,12 +77,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             return
         }
 
-        // Section header row: "Final Ratio" | "Adjustments"
+        // Section header row
         addRow(
             table, cells = listOf(
-                Cell("", colorTime),                            // Time
-                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),  // Final
-                Cell("Adjustments", colorAdjustments, span = 5, bold = true), // acce bg pp dura drift
+                Cell("", colorTime),                                                 // Time
+                Cell("BG", colorGlucose, span = 3, bold = true),                    // delta sdelta acce
+                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),        // Final
+                Cell("Adjustments", colorAdjustments, span = 5, bold = true),       // acce bg pp dura drift
                 Cell("iobTH", colorHeader, bold = true)
             )
         )
@@ -88,14 +91,17 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // Column header row
         addRow(
             table, cells = listOf(
-                Cell("Time", colorHeader, bold = true),
-                Cell("Final", colorFinalRatio, bold = true),
-                Cell("acce",  colorAdjustments, bold = true),
-                Cell("bg",    colorAdjustments, bold = true),
-                Cell("pp",    colorAdjustments, bold = true),
-                Cell("dura",  colorAdjustments, bold = true),
-                Cell("drift", colorAdjustments, bold = true),
-                Cell("iobTH", colorHeader, bold = true)
+                Cell("Time",   colorHeader, bold = true),
+                Cell("Δ",      colorGlucose, bold = true),
+                Cell("SΔ",     colorGlucose, bold = true),
+                Cell("acce",   colorGlucose, bold = true),
+                Cell("Final",  colorFinalRatio, bold = true),
+                Cell("acce",   colorAdjustments, bold = true),
+                Cell("bg",     colorAdjustments, bold = true),
+                Cell("pp",     colorAdjustments, bold = true),
+                Cell("dura",   colorAdjustments, bold = true),
+                Cell("drift",  colorAdjustments, bold = true),
+                Cell("iobTH",  colorHeader, bold = true)
             )
         )
 
@@ -103,13 +109,16 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             addRow(
                 table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp), colorTime),
-                    Cell(df2.format(r.finalIsf),  colorFinalRatio),
-                    Cell(adjStr(r.acceIsf),        colorAdjustments),
-                    Cell(adjStr(r.bgIsf),          colorAdjustments),
-                    Cell(adjStr(r.ppIsf),          colorAdjustments),
-                    Cell(adjStr(r.duraIsf),        colorAdjustments),
-                    Cell(adjStr(r.driftIsf),       colorAdjustments),
-                    Cell(df2.format(r.iobThEffective), colorHeader)
+                    Cell(df1.format(r.delta),          colorGlucose),
+                    Cell(df1.format(r.shortAvgDelta),  colorGlucose),
+                    Cell(df2.format(r.bgAcceleration), colorGlucose),
+                    Cell(df2.format(r.finalIsf),       colorFinalRatio),
+                    Cell(adjStr(r.acceIsf),             colorAdjustments),
+                    Cell(adjStr(r.bgIsf),               colorAdjustments),
+                    Cell(adjStr(r.ppIsf),               colorAdjustments),
+                    Cell(adjStr(r.duraIsf),             colorAdjustments),
+                    Cell(adjStr(r.driftIsf),            colorAdjustments),
+                    Cell(df2.format(r.iobThEffective),  colorHeader)
                 )
             )
         }
@@ -147,14 +156,15 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
                 val file = File(dir, fileName)
                 file.bufferedWriter().use { writer ->
-                    writer.write("Time,Timestamp,Final,acce,bg,pp,dura,drift,iobTH\n")
+                    writer.write("Time,Timestamp,Delta,SDelta,acceBG,Final,acce,bg,pp,dura,drift,iobTH\n")
                     for (r in records) {
                         writer.write(
                             "${dateUtil.timeString(r.timestamp)},${r.timestamp}," +
-                                "${df2.format(r.finalIsf)},${df2.format(r.acceIsf)}," +
-                                "${df2.format(r.bgIsf)},${df2.format(r.ppIsf)}," +
-                                "${df2.format(r.duraIsf)},${df2.format(r.driftIsf)}," +
-                                "${df2.format(r.iobThEffective)}\n"
+                                "${df1.format(r.delta)},${df1.format(r.shortAvgDelta)}," +
+                                "${df2.format(r.bgAcceleration)},${df2.format(r.finalIsf)}," +
+                                "${df2.format(r.acceIsf)},${df2.format(r.bgIsf)}," +
+                                "${df2.format(r.ppIsf)},${df2.format(r.duraIsf)}," +
+                                "${df2.format(r.driftIsf)},${df2.format(r.iobThEffective)}\n"
                         )
                     }
                 }

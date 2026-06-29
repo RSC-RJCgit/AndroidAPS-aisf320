@@ -1267,6 +1267,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleLog.add("User setting iobTH=100% disables iobTH method")
         }
         autoIsfValues.iobThEffective = if (useIobTh) iobThEffective else profile.max_iob
+        glucose_status?.let {
+            autoIsfValues.delta = it.delta
+            autoIsfValues.shortAvgDelta = it.shortAvgDelta
+            autoIsfValues.bgAcceleration = it.bgAcceleration
+        }
 
         if (!microBolusAllowed) {
             return "AAPS"                                                 // see message in enable_smb
@@ -1483,5 +1488,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt 320TDDF116
+OpenAPSAutoISFPlugin.ktSt 320TDDF117
  */
