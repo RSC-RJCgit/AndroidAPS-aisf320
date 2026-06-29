@@ -4,15 +4,17 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="8dp">
+    android:padding="12dp"
+    android:background="#1E1E1E">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:paddingBottom="8dp"
-        android:text="AutoISF History (2h)"
-        android:textSize="16sp"
+        android:paddingBottom="10dp"
+        android:text="History"
+        android:textColor="@android:color/white"
+        android:textSize="20sp"
         android:textStyle="bold"
         tools:ignore="HardcodedText" />
 
@@ -34,10 +36,12 @@
 
     <Button
         android:id="@+id/close_button"
+        style="@style/Widget.AppCompat.Button.Borderless"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="8dp"
-        android:text="@android:string/ok" />
+        android:text="@android:string/ok"
+        android:textColor="@android:color/white" />
 
 </LinearLayout>

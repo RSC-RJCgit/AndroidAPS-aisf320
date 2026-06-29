@@ -20,11 +20,11 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.ui.databinding.DialogAutoisfHistoryBinding
 import dagger.android.support.DaggerDialogFragment
 import java.io.File
-import java.util.concurrent.Executors
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -41,8 +41,15 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     private val df2 = DecimalFormat("0.00")
 
+    // Colors matching Trio TAI history screen
+    private val colorFinalRatio = Color.parseColor("#FF6060")  // red
+    private val colorAdjustments = Color.parseColor("#FFA040")  // orange
+    private val colorTime       = Color.WHITE
+    private val colorHeader     = Color.LTGRAY
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         dialog?.window?.requestFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
         _binding = DialogAutoisfHistoryBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -61,26 +68,75 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     }
 
     private fun populateTable(records: List<AIV>) {
+        val table = binding.historyTable
+
         if (records.isEmpty()) {
-            addRow(binding.historyTable, isHeader = false, cells = listOf("No AutoISF data in last 2 hours"))
+            addRow(table, cells = listOf(Cell("No AutoISF data in last 2 hours", colorTime)))
             return
         }
-        addRow(binding.historyTable, isHeader = true, cells = listOf("Time", "Final", "acce", "bg", "pp", "dura", "drift", "iobTH"))
-        for (record in records) {
+
+        // Section header row: "Final Ratio" | "Adjustments"
+        addRow(
+            table, cells = listOf(
+                Cell("", colorTime),                            // Time
+                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),  // Final
+                Cell("Adjustments", colorAdjustments, span = 5, bold = true), // acce bg pp dura drift
+                Cell("iobTH", colorHeader, bold = true)
+            )
+        )
+
+        // Column header row
+        addRow(
+            table, cells = listOf(
+                Cell("Time", colorHeader, bold = true),
+                Cell("Final", colorFinalRatio, bold = true),
+                Cell("acce",  colorAdjustments, bold = true),
+                Cell("bg",    colorAdjustments, bold = true),
+                Cell("pp",    colorAdjustments, bold = true),
+                Cell("dura",  colorAdjustments, bold = true),
+                Cell("drift", colorAdjustments, bold = true),
+                Cell("iobTH", colorHeader, bold = true)
+            )
+        )
+
+        for (r in records) {
             addRow(
-                binding.historyTable, isHeader = false,
-                cells = listOf(
-                    dateUtil.timeString(record.timestamp),
-                    df2.format(record.finalIsf),
-                    df2.format(record.acceIsf),
-                    df2.format(record.bgIsf),
-                    df2.format(record.ppIsf),
-                    df2.format(record.duraIsf),
-                    df2.format(record.driftIsf),
-                    df2.format(record.iobThEffective)
+                table, cells = listOf(
+                    Cell(dateUtil.timeString(r.timestamp), colorTime),
+                    Cell(df2.format(r.finalIsf),  colorFinalRatio),
+                    Cell(adjStr(r.acceIsf),        colorAdjustments),
+                    Cell(adjStr(r.bgIsf),          colorAdjustments),
+                    Cell(adjStr(r.ppIsf),          colorAdjustments),
+                    Cell(adjStr(r.duraIsf),        colorAdjustments),
+                    Cell(adjStr(r.driftIsf),       colorAdjustments),
+                    Cell(df2.format(r.iobThEffective), colorHeader)
                 )
             )
         }
+    }
+
+    /** Show "--" for neutral (1.0) adjustment values, matching Trio display. */
+    private fun adjStr(v: Double): String = if (v == 1.0) "--" else df2.format(v)
+
+    private data class Cell(val text: String, val color: Int, val span: Int = 1, val bold: Boolean = false)
+
+    private fun addRow(table: android.widget.TableLayout, cells: List<Cell>) {
+        val row = TableRow(requireContext())
+        row.layoutParams = TableRow.LayoutParams(TableRow.LayoutParams.MATCH_PARENT, TableRow.LayoutParams.WRAP_CONTENT)
+        for (cell in cells) {
+            val tv = TextView(requireContext())
+            tv.text = cell.text
+            tv.setPadding(14, 6, 14, 6)
+            tv.gravity = Gravity.CENTER
+            tv.setTextColor(cell.color)
+            tv.textSize = 12f
+            if (cell.bold) tv.setTypeface(null, Typeface.BOLD)
+            val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
+            lp.span = cell.span
+            tv.layoutParams = lp
+            row.addView(tv)
+        }
+        table.addView(row)
     }
 
     private fun exportToCsv(records: List<AIV>, now: Long) {
@@ -110,24 +166,6 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
             }
         }
-    }
-
-    private fun addRow(table: android.widget.TableLayout, isHeader: Boolean, cells: List<String>) {
-        val row = TableRow(requireContext())
-        row.layoutParams = TableRow.LayoutParams(TableRow.LayoutParams.MATCH_PARENT, TableRow.LayoutParams.WRAP_CONTENT)
-        for (text in cells) {
-            val tv = TextView(requireContext())
-            tv.text = text
-            tv.setPadding(12, 6, 12, 6)
-            tv.gravity = Gravity.CENTER
-            if (isHeader) {
-                tv.setTypeface(null, Typeface.BOLD)
-                tv.setTextColor(Color.WHITE)
-            }
-            tv.textSize = 12f
-            row.addView(tv)
-        }
-        table.addView(row)
     }
 
     override fun onDestroyView() {
