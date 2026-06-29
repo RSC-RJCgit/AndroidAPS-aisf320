@@ -144,7 +144,6 @@ open class Notification {
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
         const val PERMISSION_STEPS = 95
-        const val CANCELLED_BOLUS_CARBS_REMINDER = 96
 
         const val USER_MESSAGE = 1000
 

@@ -362,7 +362,7 @@ class CommandQueueImplementation @Inject constructor(
         if (detailedBolusInfo.bolusType == BS.Type.SMB) {
             add(CommandSMBBolus(injector, detailedBolusInfo, callback))
         } else {
-            add(CommandBolus(injector, detailedBolusInfo, callback, type, carbsRunnable, originalCarbs))
+            add(CommandBolus(injector, detailedBolusInfo, callback, type, carbsRunnable))
             if (type == CommandType.BOLUS) { // Bring up bolus progress dialog (start here, so the dialog is shown when the bolus is requested,
                 // not when the Bolus command is starting. The command closes the dialog upon completion).
                 showBolusProgressDialog(detailedBolusInfo)

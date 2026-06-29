@@ -19,7 +19,6 @@ object BolusProgressData {
         delivered = 0.0
         bolusEnded = false
         stopPressed = false
-        cancelledCarbs = 0.0
         status = ""
         wearStatus = ""
         percent = 0
@@ -59,10 +58,4 @@ object BolusProgressData {
      * set to true if user press STOP button
      */
     var stopPressed = false
-
-    /**
-     * Carbs (grams) from a cancelled bolus that need user confirmation before storing.
-     * Set by CommandBolus when stopPressed && r.success. Consumed by BolusProgressDialog.
-     */
-    var cancelledCarbs: Double = 0.0
 }
