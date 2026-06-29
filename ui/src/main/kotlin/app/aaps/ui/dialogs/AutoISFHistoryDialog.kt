@@ -149,10 +149,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     }
 
     private fun exportToCsv(records: List<AIV>, now: Long) {
+        val ctx = context ?: return
+        val act = activity
         Executors.newSingleThreadExecutor().execute {
             try {
+                fileListProvider.ensureAapsLogsDirExists()
                 val dir = fileListProvider.aapsLogsPath
-                if (!dir.exists()) dir.mkdirs()
                 val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
                 val file = File(dir, fileName)
                 file.bufferedWriter().use { writer ->
@@ -169,8 +171,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     }
                 }
                 aapsLogger.debug(LTag.UI, "AutoISF history exported to ${file.absolutePath}")
-                activity?.runOnUiThread {
-                    Toast.makeText(requireContext(), "Exported: $fileName", Toast.LENGTH_LONG).show()
+                act?.runOnUiThread {
+                    Toast.makeText(ctx, "Exported: $fileName", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)

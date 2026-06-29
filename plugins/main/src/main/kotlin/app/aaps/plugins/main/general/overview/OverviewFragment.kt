@@ -1389,12 +1389,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             binding.infoLayout.asLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.sensitivity), okDialogText.joinToString("\n")) } }
-            if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
-                binding.infoLayout.asLayout.setOnLongClickListener {
-                    childFragmentManager.let { uiInteraction.runAutoISFHistoryDialog(it) }
-                    true
-                }
-            }
 
         } else {
             binding.infoLayout.sensitivity.text =
@@ -1403,6 +1397,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 } ?: ""
             binding.infoLayout.variableSensitivity.visibility = View.GONE
             binding.infoLayout.sensitivity.visibility = View.VISIBLE
+        }
+        if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
+            binding.infoLayout.asLayout.setOnLongClickListener {
+                uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
+                true
+            }
         }
     }
 
