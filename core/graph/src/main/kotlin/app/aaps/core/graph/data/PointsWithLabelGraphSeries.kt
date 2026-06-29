@@ -192,6 +192,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
