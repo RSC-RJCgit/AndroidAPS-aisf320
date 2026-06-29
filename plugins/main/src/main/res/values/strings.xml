@@ -347,6 +347,8 @@
     <string name="old_data">OLD DATA</string>
     <string name="overview_show_steps">Steps</string>
     <string name="steps_shortname">STEPS</string>
+    <string name="overview_show_raw_bg">Raw BG (unsmoothed)</string>
+    <string name="raw_bg_shortname">RAW</string>
     <string name="simple_mode_enabled">Simple mode enabled</string>
 
 </resources>

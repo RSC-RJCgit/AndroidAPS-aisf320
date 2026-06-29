@@ -15,6 +15,7 @@ class SkinProvider @Inject constructor(
 
     fun activeSkin(): SkinInterface =
         list.firstOrNull { it.javaClass.name == preferences.get(StringKey.GeneralSkin) }
+            ?: list.firstOrNull { it is SkinExtraLargeDisplay }
             ?: list.first()
 
     val list: List<SkinInterface>

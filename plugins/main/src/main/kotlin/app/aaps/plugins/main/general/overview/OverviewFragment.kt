@@ -1130,6 +1130,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addActivity(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
+            graphData.addRawBg(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
         graphData.addTargetLine()
@@ -1166,6 +1168,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             var useBG_ISFForScale = false
             var usePP_ISFForScale = false
             var useDURA_ISFForScale = false
+            var useRAWBGForScale = false
             when {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal)        -> useABSForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)        -> useIobForScale = true
@@ -1183,6 +1186,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal)     -> useBG_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal)     -> usePP_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)    -> useDURA_ISFForScale = true
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)     -> useRAWBGForScale = true
             }
 
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
@@ -1239,6 +1243,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DEVSLOPE.ordinal)) secondGraphData.addDeviationSlope(useDSForScale,if (useDSForScale) 1.0 else 0.8, useRatioForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)
@@ -1280,7 +1285,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ACC_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)
                     //menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.COB.ordinal] ||
