@@ -32,6 +32,7 @@ import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
 import app.aaps.databinding.ActivityHistorybrowseBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
+import app.aaps.plugins.main.skins.SkinProvider
 import com.google.android.material.datepicker.MaterialDatePicker
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -57,6 +58,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var graphDataProvider: Provider<GraphData>
+    @Inject lateinit var skinProvider: SkinProvider
 
     private val disposable = CompositeDisposable()
 
@@ -327,8 +329,12 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
+            graphData.addBgParabola(false, 1.0)
         if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
+            graphData.addRawBg(false)
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
@@ -336,6 +342,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
         graphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
+        graphData.applyFontScale(skinProvider.activeSkin().graphFontScale)
 
         graphData.performUpdate()
 
@@ -363,6 +370,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             var useBG_ISFForScale = false
             var usePP_ISFForScale = false
             var useDURA_ISFForScale = false
+            var useRAWBGForScale = false
             when {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal)      -> useABSForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)      -> useIobForScale = true
@@ -380,6 +388,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal)   -> useBG_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal)   -> usePP_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)  -> useDURA_ISFForScale = true
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)   -> useRAWBGForScale = true
 
             }
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
@@ -440,6 +449,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DEVSLOPE.ordinal)) secondGraphData.addDeviationSlope(useDSForScale,if (useDSForScale) 1.0 else 0.8,useRatioForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
@@ -464,8 +474,10 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ACC_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)
                 ).toVisibility()
+            secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()
         }
     }
