@@ -184,7 +184,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
                 } else if (value.shape == Shape.SMB) {
-                    val bucket = (value.x / 300_000L).toLong()
+                    val bucket = (value.x / 600_000L).toLong()
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
                     smbStack[bucket] = stackIndex + 1
                     val size = value.size * scaledPxSize * 0.7f
@@ -202,7 +202,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val bgValY = value.labelY - minY
                         val bgRatY = bgValY / diffY
                         val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                        val labelY = bgEndY - size - stackIndex * scaledTextSize * 1.8f
+                        val labelY = bgEndY - size - stackIndex * scaledTextSize * 0.9f
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
                         drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
