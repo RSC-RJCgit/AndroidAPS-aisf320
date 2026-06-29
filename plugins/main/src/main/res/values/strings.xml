@@ -333,6 +333,7 @@
     <string name="lowres_description">Low Resolution skin</string>
     <string name="buttonson_description">Buttons are always displayed on bottom of screen</string>
     <string name="largedisplay_description">Large display</string>
+    <string name="extralargedisplay_description">Extra large display</string>
     <string name="skin">Skin</string>
 
     <string name="cannula_usage">usage:</string>

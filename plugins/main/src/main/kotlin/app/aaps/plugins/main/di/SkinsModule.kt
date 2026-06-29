@@ -2,6 +2,7 @@ package app.aaps.plugins.main.di
 
 import app.aaps.plugins.main.skins.SkinButtonsOn
 import app.aaps.plugins.main.skins.SkinClassic
+import app.aaps.plugins.main.skins.SkinExtraLargeDisplay
 import app.aaps.plugins.main.skins.SkinInterface
 import app.aaps.plugins.main.skins.SkinLargeDisplay
 import app.aaps.plugins.main.skins.SkinLowRes
@@ -31,6 +32,12 @@ open class SkinsModule {
     @IntoMap
     @IntKey(20)
     fun bindsSkinLargeDisplay(skinLargeDisplay: SkinLargeDisplay): SkinInterface = skinLargeDisplay
+
+    @Provides
+    @Skin
+    @IntoMap
+    @IntKey(25)
+    fun bindsSkinExtraLargeDisplay(skinExtraLargeDisplay: SkinExtraLargeDisplay): SkinInterface = skinExtraLargeDisplay
 
     @Provides
     @Skin
