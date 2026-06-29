@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.automation.R
+import app.aaps.plugins.automation.elements.InputDuration
 import app.aaps.plugins.automation.elements.InputProfileName
 import app.aaps.plugins.automation.elements.LabelWithElement
 import app.aaps.plugins.automation.elements.LayoutBuilder
@@ -25,9 +26,12 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
     @Inject lateinit var dateUtil: DateUtil
 
     var inputProfileName: InputProfileName = InputProfileName(rh, activePlugin, "")
+    var duration = InputDuration(0, InputDuration.TimeUnit.MINUTES, allowZero = true)
 
     override fun friendlyName(): Int = R.string.profilename
-    override fun shortDescription(): String = rh.gs(R.string.changengetoprofilename, inputProfileName.value)
+    override fun shortDescription(): String =
+        if (duration.value == 0) rh.gs(R.string.changengetoprofilename, inputProfileName.value)
+        else rh.gs(R.string.changengetoprofilenamefor, inputProfileName.value, duration.value)
     @DrawableRes override fun icon(): Int = app.aaps.core.ui.R.drawable.ic_actions_profileswitch_24dp
 
     override fun doAction(callback: Callback) {
@@ -57,7 +61,7 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
         val result = profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = inputProfileName.value,
-            durationInMinutes = 0,
+            durationInMinutes = duration.value,
             percentage = 100,
             timeShiftInHours = 0,
             timestamp = dateUtil.now(), action = app.aaps.core.data.ue.Action.PROFILE_SWITCH,
@@ -74,13 +78,16 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
     override fun generateDialog(root: LinearLayout) {
         LayoutBuilder()
             .add(LabelWithElement(rh, rh.gs(R.string.profilename), "", inputProfileName))
+            .add(LabelWithElement(rh, rh.gs(app.aaps.core.ui.R.string.duration_min_label), rh.gs(R.string.zero_is_indefinite), duration))
             .build(root)
     }
 
     override fun hasDialog(): Boolean = true
 
     override fun toJSON(): String {
-        val data = JSONObject().put("profileToSwitchTo", inputProfileName.value)
+        val data = JSONObject()
+            .put("profileToSwitchTo", inputProfileName.value)
+            .put("durationInMinutes", duration.value)
         return JSONObject()
             .put("type", this.javaClass.simpleName)
             .put("data", data)
@@ -90,6 +97,7 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
     override fun fromJSON(data: String): Action {
         val o = JSONObject(data)
         inputProfileName.value = JsonHelper.safeGetString(o, "profileToSwitchTo", "")
+        duration.value = JsonHelper.safeGetInt(o, "durationInMinutes", 0)
         return this
     }
 

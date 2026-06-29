@@ -9,6 +9,7 @@ import java.text.DecimalFormat
 class InputDuration(
     var value: Int = 0,
     var unit: TimeUnit = TimeUnit.MINUTES,
+    var allowZero: Boolean = false,
 ) : Element {
 
     enum class TimeUnit {
@@ -20,7 +21,8 @@ class InputDuration(
         when (unit) {
             TimeUnit.MINUTES -> {
                 numberPicker = MinutesNumberPicker(root.context, null)
-                numberPicker.setParams(value.toDouble(), 5.0, 24 * 60.0, 10.0, DecimalFormat("0"), false, root.findViewById(app.aaps.core.ui.R.id.ok))
+                val minVal = if (allowZero) 0.0 else 5.0
+                numberPicker.setParams(value.toDouble(), minVal, 24 * 60.0, 10.0, DecimalFormat("0"), false, root.findViewById(app.aaps.core.ui.R.id.ok))
             }
             TimeUnit.DAYS    -> {
                 numberPicker = MinutesNumberPicker(root.context, null)

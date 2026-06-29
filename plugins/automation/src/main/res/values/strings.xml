@@ -21,6 +21,8 @@
     <string name="notification_message">Notification: %1$s</string>
     <string name="profilename">Change profile to</string>
     <string name="changengetoprofilename">Change profile to %1$s</string>
+    <string name="changengetoprofilenamefor">Change profile to %1$s for %2$d min</string>
+    <string name="zero_is_indefinite">(0=indefinite)</string>
     <string name="automation_trigger_pump_last_connection_label">Last connection to pump</string>
     <string name="automation_trigger_pump_last_connection_description">Last connection to pump [minutes ago]</string>
     <string name="automation_trigger_pump_last_connection_compared">Last connection to pump %1$s %2$s min ago</string>
