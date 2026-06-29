@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
@@ -637,6 +638,10 @@ class BolusWizard @Inject constructor(
         if (attemptNumber > 3) return
         val delayMs = T.mins(10L * attemptNumber).msecs()
         Handler(Looper.getMainLooper()).postDelayed({
+            if (BolusProgressData.splitBolusCancelled) {
+                aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: bolus was stopped — cancelling")
+                return@postDelayed
+            }
             val gs = glucoseStatusProvider.glucoseStatusData
             val now = dateUtil.now()
             val bglFresh = gs != null && (now - gs.date) <= SPLIT_BGL_AGE_MS
@@ -702,6 +707,11 @@ class BolusWizard @Inject constructor(
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         aapsLogger.debug(LTag.CORE, "EqualSplitBolus: scheduling part $partNumber/$totalParts in ${delayMs/1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
+            if (BolusProgressData.splitBolusCancelled) {
+                preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
+                aapsLogger.info(LTag.CORE, "EqualSplitBolus: bolus was stopped — cancelling part $partNumber/$totalParts, SMBs unblocked")
+                return@postDelayed
+            }
             val pct = activeProfileSwitchPct()
             aapsLogger.info(LTag.CORE, "EqualSplitBolus: poll for part $partNumber/$totalParts — profileSwitch%=$pct, deliverAt=${dateUtil.timeString(deliverAt)}, now=${dateUtil.timeString(dateUtil.now())}")
             if (pct != 100) {

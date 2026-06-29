@@ -69,6 +69,7 @@ class BolusProgressDialog : DaggerDialogFragment() {
         binding.stop.setOnClickListener {
             aapsLogger.debug(LTag.UI, "Stop bolus delivery button pressed")
             BolusProgressData.stopPressed = true
+            BolusProgressData.splitBolusCancelled = true
             binding.stopPressed.visibility = View.VISIBLE
             binding.stop.visibility = View.INVISIBLE
             uel.log(Action.CANCEL_BOLUS, Sources.Overview, BolusProgressData.status)
