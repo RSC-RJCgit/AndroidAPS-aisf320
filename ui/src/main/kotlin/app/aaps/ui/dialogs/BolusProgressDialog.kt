@@ -2,13 +2,18 @@ package app.aaps.ui.dialogs
 
 import android.os.Bundle
 import android.os.SystemClock
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
+import app.aaps.core.data.model.CA
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -21,6 +26,9 @@ import app.aaps.core.interfaces.rx.events.EventDismissBolusProgressIfRunning
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusProgress
 import app.aaps.core.interfaces.rx.events.EventOverviewBolusStopDeliveryEnabled
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
+import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.ui.databinding.DialogBolusprogressBinding
 import dagger.android.support.DaggerDialogFragment
@@ -36,6 +44,9 @@ class BolusProgressDialog : DaggerDialogFragment() {
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var uel: UserEntryLogger
+    @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var dateUtil: DateUtil
+    @Inject lateinit var uiInteraction: UiInteraction
 
     private val disposable = CompositeDisposable()
 
@@ -129,6 +140,9 @@ class BolusProgressDialog : DaggerDialogFragment() {
 
     override fun dismiss() {
         aapsLogger.debug(LTag.UI, "dismiss")
+        val cancelledCarbs = BolusProgressData.cancelledCarbs
+        val deliveredInsulin = BolusProgressData.delivered
+        val requestedInsulin = BolusProgressData.insulin
         try {
             super.dismiss()
         } catch (e: IllegalStateException) {
@@ -137,9 +151,44 @@ class BolusProgressDialog : DaggerDialogFragment() {
             BolusProgressData.bolusEnded = true
             aapsLogger.error("Unhandled exception", e)
         }
-        // Reset stop button
         BolusProgressData.stopPressed = false
-        helpActivity?.finish()
+        BolusProgressData.cancelledCarbs = 0.0
+        if (cancelledCarbs > 0.0) showCancelledCarbsDialog(cancelledCarbs, deliveredInsulin, requestedInsulin)
+        else helpActivity?.finish()
+    }
+
+    private fun showCancelledCarbsDialog(originalCarbs: Double, deliveredInsulin: Double, requestedInsulin: Double) {
+        val ctx = context ?: run { helpActivity?.finish(); return }
+        val input = EditText(ctx).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText("0")
+            selectAll()
+        }
+        val message = "Bolus cancelled — %.2fU of %.2fU delivered. How many grams were actually eaten?".format(deliveredInsulin, requestedInsulin)
+        AlertDialog.Builder(ctx)
+            .setTitle(rh.gs(app.aaps.core.ui.R.string.boluswizard))
+            .setMessage(message)
+            .setView(input)
+            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                val grams = input.text.toString().toIntOrNull() ?: 0
+                if (grams > 0) {
+                    disposable += persistenceLayer.insertOrUpdateCarbs(
+                        carbs = CA(timestamp = dateUtil.now(), duration = 0L, amount = grams.toDouble()),
+                        action = Action.CARBS,
+                        source = Sources.WizardDialog
+                    ).subscribe()
+                } else {
+                    uiInteraction.addNotificationValidFor(
+                        id = Notification.CANCELLED_BOLUS_CARBS_REMINDER,
+                        text = rh.gs(app.aaps.core.ui.R.string.cancelled_bolus_carbs_reminder),
+                        level = Notification.NORMAL,
+                        validMinutes = 60
+                    )
+                }
+                helpActivity?.finish()
+            }
+            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> helpActivity?.finish() }
+            .show()
     }
 
     override fun onPause() {

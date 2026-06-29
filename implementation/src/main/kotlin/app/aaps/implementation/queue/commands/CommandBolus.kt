@@ -20,7 +20,8 @@ class CommandBolus(
     private val detailedBolusInfo: DetailedBolusInfo,
     override val callback: Callback?,
     type: Command.CommandType,
-    private val carbsRunnable: Runnable
+    private val carbsRunnable: Runnable,
+    private val originalCarbs: Double = 0.0
 ) : Command {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -38,7 +39,12 @@ class CommandBolus(
 
     override fun execute() {
         val r = activePlugin.activePump.deliverTreatment(detailedBolusInfo)
-        if (r.success) carbsRunnable.run()
+        if (r.success) {
+            if (BolusProgressData.stopPressed && originalCarbs > 0.0)
+                BolusProgressData.cancelledCarbs = originalCarbs
+            else
+                carbsRunnable.run()
+        }
         BolusProgressData.bolusEnded = true
         rxBus.send(EventDismissBolusProgressIfRunning(r.success, detailedBolusInfo.id))
         aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted}")
