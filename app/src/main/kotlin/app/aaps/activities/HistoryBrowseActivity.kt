@@ -137,7 +137,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             resources.displayMetrics.densityDpi <= 560 -> 70
             else                                       -> 80
         }
-        binding.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
+        binding.bgGraphLayout.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
         binding.bgGraph.gridLabelRenderer?.gridColor = rh.gac(this, app.aaps.core.ui.R.attr.graphGrid)
         binding.bgGraph.gridLabelRenderer?.reloadStyles()
         binding.bgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
