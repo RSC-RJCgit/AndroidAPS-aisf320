@@ -364,7 +364,7 @@ class OverviewMenusImpl @Inject constructor(
                     }
                 }
             }
-            if (m.primary)
+            if (primary)
                 _setting[0][m.ordinal] = checkBoxes[0].isChecked
             else {
                 checkBoxes.forEach { checkBox ->
