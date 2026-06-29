@@ -12,6 +12,7 @@ interface DataPointWithLabelInterface : DataPointInterface {
     fun setY(y: Double)
 
     val label: String
+    val labelY: Double get() = getY()  // override to place label at a different y than the data point
     val duration: Long
     val shape: Shape
     val size: Float
