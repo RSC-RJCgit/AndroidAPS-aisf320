@@ -5,18 +5,21 @@ import android.graphics.Paint
 import app.aaps.core.data.model.BS
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 
 class BolusDataPoint(
     val data: BS,
     private val rh: ResourceHelper,
     private val bolusStep: Double,
+    private val preferences: Preferences,
     private val decimalFormatter: DecimalFormatter
 ) : DataPointWithLabelInterface {
 
     private var yValue = 0.0
 
     override fun getX(): Double = data.timestamp.toDouble()
-    override fun getY(): Double = yValue
+    override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue
     override val label
         get() = if (data.type == BS.Type.SMB)
             decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep).trimStart('0')

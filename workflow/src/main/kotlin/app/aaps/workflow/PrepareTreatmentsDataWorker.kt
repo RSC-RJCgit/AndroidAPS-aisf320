@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var decimalFormatter: DecimalFormatter
+    @Inject lateinit var preferences: Preferences
 
     class PrepareTreatmentsData(
         val overviewData: OverviewData
@@ -65,7 +67,7 @@ class PrepareTreatmentsDataWorker(
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
-            .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, decimalFormatter) }
+            .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
             .forEach {
                 it.y = getNearestBg(data.overviewData, it.x.toLong())

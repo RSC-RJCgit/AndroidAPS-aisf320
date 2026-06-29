@@ -187,22 +187,22 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bucket = (value.x / 300_000L).toLong()
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
                     smbStack[bucket] = stackIndex + 1
-                    val size = value.size * scaledPxSize
-                    val lift = size * 1.5f + stackIndex * size * 2.5f  // above BG line, stacked upward
-                    val smbY = endY - lift
-                    mPaint.strokeWidth = 2f
-                    // inverted triangle (apex pointing down toward BG line)
+                    val size = value.size * scaledPxSize * 0.7f  // smaller triangle
+                    val stackOffset = stackIndex * scaledTextSize * 1.4f  // larger vertical step
+                    val smbY = endY - stackOffset
+                    mPaint.strokeWidth = 0f
+                    // upright triangle at baseline
                     val points = arrayOf(
-                        Point(endX.toInt(), (smbY + size).toInt()),
-                        Point((endX + size).toInt(), (smbY - size * 0.67).toInt()),
-                        Point((endX - size).toInt(), (smbY - size * 0.67).toInt())
+                        Point(endX.toInt(), (smbY - size).toInt()),
+                        Point((endX + size).toInt(), (smbY + size * 0.67).toInt()),
+                        Point((endX - size).toInt(), (smbY + size * 0.67).toInt())
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
-                        drawLabel45Right(endX, smbY, value, canvas, scaledPxSize, scaledTextSize)
+                        drawLabel45Right(endX, smbY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {

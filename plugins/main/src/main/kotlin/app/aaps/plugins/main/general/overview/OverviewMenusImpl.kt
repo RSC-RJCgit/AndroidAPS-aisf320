@@ -394,6 +394,7 @@ class OverviewMenusImpl @Inject constructor(
     }
 
     override fun scaleString(rangeToDisplay: Int): String = when (rangeToDisplay) {
+        3    -> rh.gs(R.string.graph_scale_3h)
         6    -> rh.gs(R.string.graph_scale_6h)
         12   -> rh.gs(R.string.graph_scale_12h)
         18   -> rh.gs(R.string.graph_scale_18h)
