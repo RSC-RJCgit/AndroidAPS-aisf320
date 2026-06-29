@@ -49,6 +49,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private val colorFinalRatio = Color.parseColor("#FF6060")  // red
     private val colorAdjustments = Color.parseColor("#FFA040")  // orange
     private val colorGlucose    = Color.parseColor("#60C060")  // green
+    private val colorInsulin    = Color.parseColor("#4A9EFF")  // blue
     private val colorTime       = Color.WHITE
     private val colorHeader     = Color.LTGRAY
 
@@ -83,10 +84,11 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // Section header row
         addRow(
             table, cells = listOf(
-                Cell("", colorTime),                                                 // Time
-                Cell("BG", colorGlucose, span = 4, bold = true),                    // bg delta sdelta acce
-                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),        // Final
-                Cell("Adjustments", colorAdjustments, span = 4, bold = true),       // acce bg pp dura
+                Cell("", colorTime),
+                Cell("BG", colorGlucose, span = 4, bold = true),
+                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),
+                Cell("Adjustments", colorAdjustments, span = 4, bold = true),
+                Cell("Insulin", colorInsulin, span = 3, bold = true),
                 Cell("iobTH", colorHeader, bold = true)
             )
         )
@@ -104,6 +106,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("bg",     colorAdjustments, bold = true),
                 Cell("pp",     colorAdjustments, bold = true),
                 Cell("dura",   colorAdjustments, bold = true),
+                Cell("Req",    colorInsulin, bold = true),
+                Cell("TBR",    colorInsulin, bold = true),
+                Cell("SMB",    colorInsulin, bold = true),
                 Cell("iobTH",  colorHeader, bold = true)
             )
         )
@@ -111,17 +116,20 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         for (r in records) {
             addRow(
                 table, cells = listOf(
-                    Cell(dateUtil.timeString(r.timestamp),    colorTime),
-                    Cell(df2.format(r.glucose / MGDL_TO_MMOL), colorGlucose),
-                    Cell(df2.format(r.delta / MGDL_TO_MMOL),   colorGlucose),
+                    Cell(dateUtil.timeString(r.timestamp),          colorTime),
+                    Cell(df2.format(r.glucose / MGDL_TO_MMOL),     colorGlucose),
+                    Cell(df2.format(r.delta / MGDL_TO_MMOL),       colorGlucose),
                     Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
-                    Cell(df2.format(r.bgAcceleration),        colorGlucose),
-                    Cell(df2.format(r.finalIsf),              colorFinalRatio),
-                    Cell(adjStr(r.acceIsf),                   colorAdjustments),
-                    Cell(adjStr(r.bgIsf),                     colorAdjustments),
-                    Cell(adjStr(r.ppIsf),                     colorAdjustments),
-                    Cell(adjStr(r.duraIsf),                   colorAdjustments),
-                    Cell(df2.format(r.iobThEffective),        colorHeader)
+                    Cell(df2.format(r.bgAcceleration),              colorGlucose),
+                    Cell(df2.format(r.finalIsf),                    colorFinalRatio),
+                    Cell(adjStr(r.acceIsf),                         colorAdjustments),
+                    Cell(adjStr(r.bgIsf),                           colorAdjustments),
+                    Cell(adjStr(r.ppIsf),                           colorAdjustments),
+                    Cell(adjStr(r.duraIsf),                         colorAdjustments),
+                    Cell(insulinStr(r.insulinReq),                  colorInsulin),
+                    Cell(insulinStr(r.tbrRate),                     colorInsulin),
+                    Cell(insulinStr(r.smbDelivered),                colorInsulin),
+                    Cell(df2.format(r.iobThEffective),              colorHeader)
                 )
             )
         }
@@ -129,6 +137,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     /** Show "--" for neutral (1.0) adjustment values, matching Trio display. */
     private fun adjStr(v: Double): String = if (v == 1.0) "--" else df2.format(v)
+
+    /** Show "--" for zero insulin values. */
+    private fun insulinStr(v: Double): String = if (v == 0.0) "--" else df2.format(v)
 
     private data class Cell(val text: String, val color: Int, val span: Int = 1, val bold: Boolean = false)
 
@@ -161,7 +172,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
                 val file = File(dir, fileName)
                 file.bufferedWriter().use { writer ->
-                    writer.write("Time,BGL,Delta,SDelta,acceBG,Final,acce,bg,pp,dura,iobTH\n")
+                    writer.write("Time,BGL,Delta,SDelta,acceBG,Final,acce,bg,pp,dura,Req,TBR,SMB,iobTH\n")
                     for (r in records) {
                         writer.write(
                             "${dateUtil.timeString(r.timestamp)}," +
@@ -170,6 +181,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                                 "${df2.format(r.bgAcceleration)},${df2.format(r.finalIsf)}," +
                                 "${df2.format(r.acceIsf)},${df2.format(r.bgIsf)}," +
                                 "${df2.format(r.ppIsf)},${df2.format(r.duraIsf)}," +
+                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)},${df2.format(r.smbDelivered)}," +
                                 "${df2.format(r.iobThEffective)}\n"
                         )
                     }

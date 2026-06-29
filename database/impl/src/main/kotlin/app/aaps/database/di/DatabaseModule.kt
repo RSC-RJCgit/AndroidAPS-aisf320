@@ -234,7 +234,16 @@ open class DatabaseModule {
         }
     }
 
+    internal val migration34to35 = object : Migration(34, 35) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `insulinReq` DOUBLE NOT NULL DEFAULT 0.0")
+            db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `tbrRate` DOUBLE NOT NULL DEFAULT 0.0")
+            db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `smbDelivered` DOUBLE NOT NULL DEFAULT 0.0")
+            dropCustomIndexes(db)
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34)
+    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35)
 }
