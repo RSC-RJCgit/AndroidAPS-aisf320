@@ -1483,5 +1483,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt 320TDDF111
+OpenAPSAutoISFPlugin.ktSt 320TDDF112
  */
