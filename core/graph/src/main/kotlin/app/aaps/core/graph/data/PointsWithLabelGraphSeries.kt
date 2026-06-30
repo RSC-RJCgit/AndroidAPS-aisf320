@@ -180,8 +180,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
-                        mPaint.color = android.graphics.Color.RED
-                        drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                        mPaint.color = android.graphics.Color.rgb(255, 100, 100)
+                        drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.CARBS) {
@@ -193,7 +193,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                    if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                 } else if (value.shape == Shape.SMB) {
                     val bucket = (value.x / 600_000L).toLong()
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
@@ -220,7 +220,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
                     // label stacked upward from BGL
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
-                    if (showSmbLabels && displayedHours <= 18.0 && value.label.isNotEmpty()) {
+                    if (showSmbLabels && displayedHours <= 12.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
