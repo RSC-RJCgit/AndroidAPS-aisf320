@@ -208,7 +208,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val bgValY = value.labelY - minY
                         val bgRatY = bgValY / diffY
                         val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                        val labelY = bgEndY - size - stackIndex * scaledTextSize * 0.65f
+                        val labelY = bgEndY - size - stackIndex * 28f
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
                         drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
