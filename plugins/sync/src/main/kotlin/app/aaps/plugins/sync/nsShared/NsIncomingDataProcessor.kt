@@ -133,7 +133,7 @@ class NsIncomingDataProcessor @Inject constructor(
                     aapsLogger.debug(LTag.NSCLIENT, "Ignoring record with wrong timestamp: $sgv")
             }
         }
-        if (glucoseValues.isNotEmpty()) {
+        if (glucoseValues.isNotEmpty() && !(config.AAPSCLIENT && preferences.get(BooleanKey.AapsClientXdripSource))) {
             // Apply FSL calibration + smoothing if enabled (e.g. Juggluco uploading raw data via NS)
             if (preferences.get(BooleanKey.FslApplySmoothing)) {
                 val slope = preferences.get(DoubleKey.FslCalSlope)

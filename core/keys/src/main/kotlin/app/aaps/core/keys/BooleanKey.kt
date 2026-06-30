@@ -67,6 +67,7 @@ enum class BooleanKey(
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),
+    AapsClientXdripSource("aapsclient_xdrip_source", false),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),

@@ -59,6 +59,8 @@ class NSClientSourcePlugin @Inject constructor(
             key = "libre_special_settings"
             title = rh.gs(R.string.libre_special_settings)
             initialExpandedChildrenCount = 0
+            if (config.AAPSCLIENT)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, title = R.string.fsl_cal_slope_title, dialogMessage = R.string.fsl_cal_slope_summary))
