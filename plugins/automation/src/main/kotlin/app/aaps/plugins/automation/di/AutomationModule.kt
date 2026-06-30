@@ -8,6 +8,8 @@ import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
 import app.aaps.plugins.automation.actions.ActionAutoisfDisable
 import app.aaps.plugins.automation.actions.ActionAutoisfEnable
+import app.aaps.plugins.automation.actions.ActionEnableConnectivityAlarms
+import app.aaps.plugins.automation.actions.ActionSuppressConnectivityAlarms
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDummy
 import app.aaps.plugins.automation.actions.ActionPartialBolusWizard
@@ -142,6 +144,8 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun actionRunAutotuneInjector(): ActionRunAutotune
     @ContributesAndroidInjector abstract fun actionAutoisfEnableInjector(): ActionAutoisfEnable
     @ContributesAndroidInjector abstract fun actionAutoisfDisableInjector(): ActionAutoisfDisable
+    @ContributesAndroidInjector abstract fun actionSuppressConnectivityAlarmsInjector(): ActionSuppressConnectivityAlarms
+    @ContributesAndroidInjector abstract fun actionEnableConnectivityAlarmsInjector(): ActionEnableConnectivityAlarms
     @ContributesAndroidInjector abstract fun actionSetAcceWeightInjector(): ActionSetAcceWeight
     @ContributesAndroidInjector abstract fun actionSetPpISFweightInjector(): ActionSetPpISFweight
     @ContributesAndroidInjector abstract fun actionSetDuraISFweightInjector(): ActionSetDuraISFweight

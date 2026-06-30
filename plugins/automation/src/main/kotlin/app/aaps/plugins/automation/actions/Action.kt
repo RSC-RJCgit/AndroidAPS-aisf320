@@ -77,8 +77,10 @@ abstract class Action(val injector: HasAndroidInjector) {
                 ActionStartTempTarget::class.java.simpleName      -> ActionStartTempTarget(injector).fromJSON(data.toString())
                 ActionStopTempTarget::class.java.simpleName       -> ActionStopTempTarget(injector).fromJSON(data.toString())
                 ActionSetAutomationState::class.java.simpleName   -> ActionSetAutomationState(injector).fromJSON(data.toString())
-                ActionPartialBolusWizard::class.java.simpleName   -> ActionPartialBolusWizard(injector).fromJSON(data.toString())
-                else                                              -> throw ClassNotFoundException(type)
+                ActionPartialBolusWizard::class.java.simpleName        -> ActionPartialBolusWizard(injector).fromJSON(data.toString())
+                ActionSuppressConnectivityAlarms::class.java.simpleName -> ActionSuppressConnectivityAlarms(injector).fromJSON(data.toString())
+                ActionEnableConnectivityAlarms::class.java.simpleName   -> ActionEnableConnectivityAlarms(injector).fromJSON(data.toString())
+                else                                                     -> throw ClassNotFoundException(type)
             }
         } catch (e: Exception) {
             aapsLogger.error("Unhandled exception", e)

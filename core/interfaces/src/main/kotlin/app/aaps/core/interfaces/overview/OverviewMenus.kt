@@ -36,4 +36,5 @@ interface OverviewMenus {
     fun isEnabledIn(type: CharType): Int
     fun scaleString(rangeToDisplay: Int): String
     fun isActiveCharTypeData(graph: Int, m: Int): Boolean
+    fun setPredictionsEnabled(enabled: Boolean)
 }

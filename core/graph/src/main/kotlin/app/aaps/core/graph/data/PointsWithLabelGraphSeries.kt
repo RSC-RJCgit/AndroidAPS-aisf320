@@ -180,7 +180,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
-                        mPaint.color = android.graphics.Color.rgb(255, 100, 100)
+                        mPaint.color = android.graphics.Color.RED
                         drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                         mPaint.color = savedColor
                     }

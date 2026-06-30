@@ -150,6 +150,12 @@
     <string name="autotune_run_with_error">Error during last Autotune run</string>
     <string name="autotune_run_cancelled">Another run of Autotune is detected, run cancelled</string>
 
+    <!-- connectivity alarm automation -->
+    <string name="suppress_connectivity_alarms">Suppress connectivity alarms</string>
+    <string name="enable_connectivity_alarms">Enable connectivity alarms</string>
+    <string name="connectivity_alarms_suppressed">Connectivity alarms suppressed</string>
+    <string name="connectivity_alarms_enabled">Connectivity alarms enabled</string>
+
     <!-- autoISF automation -->
     <string name="autoisf_alreadyenabled">AutoISF already enabled</string>
     <string name="autoisf_enabled">AutoISF has been enabled</string>

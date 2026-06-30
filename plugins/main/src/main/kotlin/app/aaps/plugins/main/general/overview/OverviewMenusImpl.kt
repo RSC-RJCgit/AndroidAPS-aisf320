@@ -387,6 +387,12 @@ class OverviewMenusImpl @Inject constructor(
         }
     }
 
+    @Synchronized
+    override fun setPredictionsEnabled(enabled: Boolean) {
+        _setting[0][OverviewMenus.CharType.PRE.ordinal] = enabled
+        storeGraphConfig()
+    }
+
     override fun isEnabledIn(type: OverviewMenus.CharType): Int {
         val settingsCopy = setting
         val numOfGraphs = settingsCopy.size // 1 main + x secondary
@@ -395,6 +401,7 @@ class OverviewMenusImpl @Inject constructor(
     }
 
     override fun scaleString(rangeToDisplay: Int): String = when (rangeToDisplay) {
+        1    -> rh.gs(R.string.graph_scale_1h)
         3    -> rh.gs(R.string.graph_scale_3h)
         6    -> rh.gs(R.string.graph_scale_6h)
         12   -> rh.gs(R.string.graph_scale_12h)

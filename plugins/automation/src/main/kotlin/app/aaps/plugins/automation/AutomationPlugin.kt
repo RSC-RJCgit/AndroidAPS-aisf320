@@ -41,6 +41,8 @@ import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
 import app.aaps.plugins.automation.actions.ActionAutoisfDisable
 import app.aaps.plugins.automation.actions.ActionAutoisfEnable
+import app.aaps.plugins.automation.actions.ActionEnableConnectivityAlarms
+import app.aaps.plugins.automation.actions.ActionSuppressConnectivityAlarms
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionNotification
 import app.aaps.plugins.automation.actions.ActionProfileSwitch
@@ -439,7 +441,9 @@ class AutomationPlugin @Inject constructor(
             ActionProfileSwitch(injector),
             ActionSendSMS(injector),
             ActionSMBChange(injector),
-            ActionPartialBolusWizard(injector)
+            ActionPartialBolusWizard(injector),
+            ActionSuppressConnectivityAlarms(injector),
+            ActionEnableConnectivityAlarms(injector)
         )
         if (config.isEngineeringMode() && config.isDev()) {
             actions.add(ActionRunAutotune(injector))
