@@ -13,7 +13,6 @@ import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
-import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.configuration.Config
@@ -55,8 +54,6 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.JsonHelper
-import android.os.Handler
-import android.os.Looper
 import java.util.Calendar
 import java.util.LinkedList
 import javax.inject.Inject
@@ -574,10 +571,10 @@ class BolusWizard @Inject constructor(
                                         !preferences.get(BooleanKey.ApsUseSmb)
                                     ) {
                                         // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
-                                        val normalIc = ic * 2.0
+                                        val normalIc = ic / 2.0
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
-                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%)")
-                                        scheduleSplitBolusChecks(insulinAfterConstraints, fullRequired, attemptNumber = 1)
+                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling WorkManager — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%)")
+                                        SplitBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                     }
                                     // Equal-parts split bolus: no profile % active, total > maxBolus, enabled per-bolus
                                     if (!splitBolusScheduled &&
@@ -622,74 +619,6 @@ class BolusWizard @Inject constructor(
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
         })
-    }
-
-    // Thresholds in mg/dL (GlucoseStatus native units)
-    private val SPLIT_BGL_MGDL   = 4.5  * 18.0182   // > 4.5  mmol/L
-    private val SPLIT_DELTA_MGDL = 0.1  * 18.0182   // > 0.1  mmol/L delta
-    private val SPLIT_SD_MGDL    = 0.2  * 18.0182   // > 0.2  mmol/L short avg delta
-    private val SPLIT_LD_MGDL    = 0.05 * 18.0182   // > 0.05 mmol/L long avg delta
-    private val SPLIT_BGL_AGE_MS = T.mins(5).msecs() // BGL must be ≤ 5 min old at delivery
-
-    private fun splitGlucoseCriteriaMet(gs: GlucoseStatus): Boolean =
-        gs.glucose > SPLIT_BGL_MGDL &&
-        gs.delta > SPLIT_DELTA_MGDL &&
-        gs.shortAvgDelta > SPLIT_SD_MGDL &&
-        gs.longAvgDelta > SPLIT_LD_MGDL
-
-    private fun scheduleSplitBolusChecks(originalDose: Double, carbsCoverage: Double, attemptNumber: Int) {
-        if (attemptNumber > 3) return
-        val delayMs = T.mins(10L * attemptNumber).msecs()
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (BolusProgressData.splitBolusCancelled) {
-                aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: bolus was stopped — cancelling")
-                return@postDelayed
-            }
-            val gs = glucoseStatusProvider.glucoseStatusData
-            val now = dateUtil.now()
-            val bglFresh = gs != null && (now - gs.date) <= SPLIT_BGL_AGE_MS
-            val criteriaOk = gs != null && splitGlucoseCriteriaMet(gs)
-            val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
-
-            if (criteriaOk && bglFresh) {
-                // Second dose = carb coverage at 50% profile IC minus what was given (recovering the negative BG correction),
-                // scaled to 85% to leave room for closed-loop coverage.
-                val rawDose = carbsCoverage - originalDose
-                val splitDose = Round.roundTo(maxOf(0.0, rawDose * 0.90), activePlugin.activePump.pumpDescription.bolusStep)
-                aapsLogger.info(LTag.CORE,
-                    "Split bolus attempt $attemptNumber: criteria met BGL=$bglStr — delivering split=${splitDose}U (fullRequired=${carbsCoverage}U given=${originalDose}U gap=${rawDose}U × 90%)")
-                DetailedBolusInfo().apply {
-                    eventType = TE.Type.CORRECTION_BOLUS
-                    insulin = splitDose
-                    notes = "Split bolus attempt $attemptNumber (full required ${carbsCoverage}U − given ${originalDose}U × 90%)"
-                    uel.log(
-                        action = Action.BOLUS,
-                        source = Sources.WizardDialog,
-                        note = notes,
-                        listValues = listOf(ValueWithUnit.Insulin(splitDose))
-                    )
-                    commandQueue.bolus(this, object : Callback() {
-                        override fun run() {
-                            if (!result.success)
-                                uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                        }
-                    })
-                }
-            } else {
-                val reason = when {
-                    gs == null  -> "no BGL data"
-                    !bglFresh   -> "BGL stale (${(now - gs.date) / 60000} min old)"
-                    !criteriaOk -> "glucose criteria not met (BGL=$bglStr)"
-                    else        -> "unknown"
-                }
-                if (attemptNumber < 3) {
-                    aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: $reason — scheduling attempt ${attemptNumber + 1} in 10 min")
-                    scheduleSplitBolusChecks(originalDose, carbsCoverage, attemptNumber + 1) // carbsCoverage = fullRequired, passed through unchanged
-                } else {
-                    aapsLogger.info(LTag.CORE, "Split bolus: $reason at 30 min — no split dose delivered")
-                }
-            }
-        }, delayMs)
     }
 
     // Returns the active profile switch percentage. EPS bakes percentage into rates (pct=100),
