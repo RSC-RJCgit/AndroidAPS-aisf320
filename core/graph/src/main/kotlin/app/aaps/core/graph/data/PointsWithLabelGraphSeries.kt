@@ -200,7 +200,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // narrow triangle just below the relevant BGL point
                     mPaint.strokeWidth = 0f
                     val triTop = bgEndY + size
-                    val triBase = triTop + size * 0.67f
+                    val triBase = triTop + size * 1.5f
                     val halfWidth = size * 0.4f
                     val points = arrayOf(
                         Point(endX.toInt(), triTop.toInt()),
@@ -218,7 +218,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val labelY = bgEndY - size - stackIndex * scaledTextSize
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
-                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.325f)
+                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
@@ -247,7 +247,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         (endY + drawable.intrinsicHeight / 2).toInt()
                     )
                     drawable.draw(canvas)
-                    mPaint.textSize = scaledTextSize * 0.8f
+                    mPaint.textSize = scaledTextSize * 0.48f
                     mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
                     mPaint.color = value.color(graphView.context)
                     val bounds = Rect()
@@ -264,7 +264,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
                 } else if (value.shape == Shape.EXERCISE) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
