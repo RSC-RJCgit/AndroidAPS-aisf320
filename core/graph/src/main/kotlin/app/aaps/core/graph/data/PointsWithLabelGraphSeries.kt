@@ -178,7 +178,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                    if (value.label.isNotEmpty()) {
+                        val savedColor = mPaint.color
+                        mPaint.color = android.graphics.Color.rgb(0, 0, 160)
+                        drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
+                        mPaint.color = savedColor
+                    }
                 } else if (value.shape == Shape.CARBS) {
                     mPaint.strokeWidth = 0f
                     val points = arrayOf(
@@ -209,15 +214,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // thick vertical tail below triangle, length = font height
+                    // thick vertical tail below triangle, half font height
                     mPaint.strokeWidth = 6f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize, mPaint)
-                    // label stacked upward from BGL, 1 font-height steps
+                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.5f, mPaint)
+                    // label stacked upward from BGL
                     if (showSmbLabels && value.label.isNotEmpty()) {
-                        val labelY = bgEndY - size - stackIndex * scaledTextSize
+                        val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
+                        mPaint.style = Paint.Style.FILL
                         drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
                         mPaint.color = savedColor
                     }
@@ -269,11 +275,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 1.2).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         val bounds = Rect()
                         mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
-                        mPaint.style = Paint.Style.STROKE
+                        mPaint.style = Paint.Style.FILL
                         val py = graphTop + 20
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.strokeWidth = 5f
@@ -288,11 +294,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 1.5).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         val bounds = Rect()
                         mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
-                        mPaint.style = Paint.Style.STROKE
+                        mPaint.style = Paint.Style.FILL
                         val py = graphTop + 80
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.strokeWidth = 5f
