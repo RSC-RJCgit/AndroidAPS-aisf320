@@ -135,13 +135,14 @@ class GraphData @Inject constructor(
         overviewData.actScale.multiplier = maxY * scale / overviewData.maxIAValue
     }
 
-    fun addRawBg(useForScale: Boolean) {
-        val series = overviewData.rawBgSeries as LineGraphSeries<*>
+    fun addRawBg(useForScale: Boolean, includeCalibratedLine: Boolean = false) {
         if (useForScale) {
             minY = 0.0
             maxY = overviewData.maxBgValue
         }
-        addSeries(series)
+        if (includeCalibratedLine)
+            addSeries(overviewData.rawBgSeries as LineGraphSeries<*>)
+        addSeries(overviewData.trueSrcBgSeries as LineGraphSeries<*>)
     }
 
     fun addBgParabola(addPredictions: Boolean, scale: Double) {

@@ -14,7 +14,7 @@ fun NSSgvV3.toGV(): GV {
     return GV(
         timestamp = date ?: throw InvalidParameterException(),
         value = sgv,
-        noise = noise,
+        noise = unfiltered,
         raw = filtered,
         trendArrow = TrendArrow.fromString(direction?.nsName),
         ids = IDs(nightscoutId = identifier),

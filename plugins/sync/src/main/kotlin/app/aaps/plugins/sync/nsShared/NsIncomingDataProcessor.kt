@@ -89,7 +89,7 @@ class NsIncomingDataProcessor @Inject constructor(
         return GV(
             timestamp = sgv.mills ?: return null,
             value = sgv.mgdl?.toDouble() ?: return null,
-            noise = null,
+            noise = sgv.unfiltered?.toDouble(),
             raw = sgv.filtered?.toDouble(),
             trendArrow = TrendArrow.fromString(sgv.direction),
             ids = IDs(nightscoutId = sgv.id),

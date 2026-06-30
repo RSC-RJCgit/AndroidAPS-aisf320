@@ -62,13 +62,22 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
-        // Raw BG series — prefer noise (true sensor raw) over raw (calibrated estimate)
+        // Calibrated-estimate line (orange) — post-AAPS slope, pre-smoothing
         val rawPoints = data.overviewData.bgReadingsArray
-            .filter { it.timestamp in fromTime..toTime && (it.noise != null || it.raw != null) }
+            .filter { it.timestamp in fromTime..toTime && it.raw != null }
             .sortedBy { it.timestamp }
-            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits((it.noise ?: it.raw)!!)) }
+            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.raw!!)) }
         data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
             it.color = rh.gac(null, app.aaps.core.ui.R.attr.rawBgColor)
+            it.thickness = 3
+        }
+        // True-source line (red) — pre-AAPS slope, uses noise field (extraRaw from companion app)
+        val srcPoints = data.overviewData.bgReadingsArray
+            .filter { it.timestamp in fromTime..toTime && it.noise != null }
+            .sortedBy { it.timestamp }
+            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
+        data.overviewData.trueSrcBgSeries = LineGraphSeries(srcPoints.toTypedArray()).also {
+            it.color = android.graphics.Color.RED
             it.thickness = 3
         }
 

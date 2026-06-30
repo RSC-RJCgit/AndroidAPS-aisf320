@@ -14,6 +14,8 @@ class NSSgv(val data: JSONObject) {
         get() = JsonHelper.safeGetIntAllowNull(data, "mgdl")
     val filtered: Int?
         get() = JsonHelper.safeGetIntAllowNull(data, "filtered")
+    val unfiltered: Int?
+        get() = JsonHelper.safeGetIntAllowNull(data, "unfiltered")
     val noise: Int?
         get() = JsonHelper.safeGetIntAllowNull(data, "noise")
     val mills: Long?
