@@ -6,7 +6,9 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
+import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
@@ -59,6 +61,16 @@ class PrepareBgDataWorker(
         if (preferences.get(UnitDoubleKey.OverviewHighMark) > data.overviewData.maxBgValue)
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
+
+        // Raw BG line (red) — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration when OFF
+        val rawPoints = data.overviewData.bgReadingsArray
+            .filter { it.timestamp in fromTime..toTime && it.noise != null && it.noise!! > 10.0 }
+            .sortedBy { it.timestamp }
+            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
+        data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
+            it.color = android.graphics.Color.RED
+            it.thickness = 3
+        }
 
         return Result.success()
     }

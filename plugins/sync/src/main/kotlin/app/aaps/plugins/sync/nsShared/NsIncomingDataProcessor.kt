@@ -149,7 +149,7 @@ class NsIncomingDataProcessor @Inject constructor(
                     val calibrated = max(40.0, gv.value * slope + offset * unitFactor)
                     val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
                     val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                    gv.noise = gv.value     // preserve original raw sensor value
+                    if (gv.noise == null || gv.noise!! <= 10.0) gv.noise = gv.value  // use NS unfiltered if available, else pre-calibration mgdl
                     gv.raw = calibrated     // calibrated but unsmoothed
                     gv.value = smooth       // final smoothed value
                     preferences.put(DoubleKey.FslLastSmooth, smooth)
