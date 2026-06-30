@@ -139,7 +139,7 @@ class XdripSourcePlugin @Inject constructor(
         override suspend fun doWorkAndLog(): Result {
             var ret = Result.success()
 
-            if (!xdripSourcePlugin.isEnabled()) return Result.success(workDataOf("Result" to "Plugin not enabled"))
+            if (!xdripSourcePlugin.isEnabled() && !preferences.get(BooleanKey.AapsClientXdripSource)) return Result.success(workDataOf("Result" to "Plugin not enabled"))
             val bundle = dataWorkerStorage.pickupBundle(inputData.getLong(DataWorkerStorage.STORE_KEY, -1))
                 ?: return Result.failure(workDataOf("Error" to "missing input data"))
 
