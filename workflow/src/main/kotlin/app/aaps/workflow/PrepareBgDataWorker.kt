@@ -62,11 +62,11 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
-        // Raw BG series (pre-smoothing values)
+        // Raw BG series — prefer noise (true sensor raw) over raw (calibrated estimate)
         val rawPoints = data.overviewData.bgReadingsArray
-            .filter { it.timestamp in fromTime..toTime && it.raw != null }
+            .filter { it.timestamp in fromTime..toTime && (it.noise != null || it.raw != null) }
             .sortedBy { it.timestamp }
-            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.raw!!)) }
+            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits((it.noise ?: it.raw)!!)) }
         data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
             it.color = rh.gac(null, app.aaps.core.ui.R.attr.rawBgColor)
             it.thickness = 3

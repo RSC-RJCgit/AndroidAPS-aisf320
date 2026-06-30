@@ -39,6 +39,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
 
+    private val df1 = DecimalFormat("0.0")
     private val df2 = DecimalFormat("0.00")
 
     companion object {
@@ -117,9 +118,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             addRow(
                 table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp),          colorTime),
-                    Cell(df2.format(r.glucose / MGDL_TO_MMOL),     colorGlucose),
-                    Cell(df2.format(r.delta / MGDL_TO_MMOL),       colorGlucose),
-                    Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
+                    Cell(df1.format(r.glucose / MGDL_TO_MMOL),     colorGlucose),
+                    Cell(df1.format(r.delta / MGDL_TO_MMOL),       colorGlucose),
+                    Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df2.format(r.finalIsf),                    colorFinalRatio),
                     Cell(adjStr(r.acceIsf),                         colorAdjustments),
@@ -176,8 +177,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     for (r in records) {
                         writer.write(
                             "${dateUtil.timeString(r.timestamp)}," +
-                                "${df2.format(r.glucose / MGDL_TO_MMOL)}," +
-                                "${df2.format(r.delta / MGDL_TO_MMOL)},${df2.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
+                                "${df1.format(r.glucose / MGDL_TO_MMOL)}," +
+                                "${df1.format(r.delta / MGDL_TO_MMOL)},${df1.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
                                 "${df2.format(r.bgAcceleration)},${df2.format(r.finalIsf)}," +
                                 "${df2.format(r.acceIsf)},${df2.format(r.bgIsf)}," +
                                 "${df2.format(r.ppIsf)},${df2.format(r.duraIsf)}," +

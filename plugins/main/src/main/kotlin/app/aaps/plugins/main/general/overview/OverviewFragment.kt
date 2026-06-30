@@ -30,6 +30,7 @@ import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.graph.data.GraphViewWithCleanup
+import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
@@ -1036,6 +1037,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             _binding ?: return@runOnUiThread
             binding.infoLayout.iob.text = iobText
             binding.infoLayout.iobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) } }
+            binding.infoLayout.iobLayout.setOnLongClickListener {
+                PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
+                rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
+                true
+            }
             // cob
             var cobText = displayText ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
 

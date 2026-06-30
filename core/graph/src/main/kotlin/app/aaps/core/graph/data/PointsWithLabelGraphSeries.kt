@@ -25,6 +25,10 @@ import androidx.core.graphics.withRotation
  */
 open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSeries<E>, SeriesData {
 
+    companion object {
+        var showSmbLabels: Boolean = true
+    }
+
     // Default spSize
     private var spSize = 18
 
@@ -200,7 +204,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
                     // label at BG line, stacked upward for same 5-min window
-                    if (value.label.isNotEmpty()) {
+                    if (showSmbLabels && value.label.isNotEmpty()) {
                         val bgValY = value.labelY - minY
                         val bgRatY = bgValY / diffY
                         val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
