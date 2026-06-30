@@ -180,7 +180,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
-                        mPaint.color = android.graphics.Color.rgb(0, 0, 160)
+                        mPaint.color = android.graphics.Color.RED
                         drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize)
                         mPaint.color = savedColor
                     }
@@ -214,13 +214,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // thick vertical tail below triangle, half font height
-                    mPaint.strokeWidth = 6f
+                    // thin short tail below triangle
+                    mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.5f, mPaint)
+                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
                     // label stacked upward from BGL
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
-                    if (showSmbLabels && displayedHours <= 6.0 && value.label.isNotEmpty()) {
+                    if (showSmbLabels && displayedHours <= 18.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE

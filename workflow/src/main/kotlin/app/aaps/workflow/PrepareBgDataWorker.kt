@@ -68,8 +68,8 @@ class PrepareBgDataWorker(
             .sortedBy { it.timestamp }
             .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
         data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
-            it.color = android.graphics.Color.rgb(0, 0, 160)
-            it.thickness = 8
+            it.color = android.graphics.Color.RED
+            it.thickness = 10
         }
 
         return Result.success()
