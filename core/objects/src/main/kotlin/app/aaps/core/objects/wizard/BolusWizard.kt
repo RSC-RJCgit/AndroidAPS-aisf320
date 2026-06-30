@@ -573,8 +573,11 @@ class BolusWizard @Inject constructor(
                                         splitProfile?.percentage == 50 &&
                                         !preferences.get(BooleanKey.ApsUseSmb)
                                     ) {
-                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U carbsCoverage=${insulinFromCarbs}U")
-                                        scheduleSplitBolusChecks(insulinAfterConstraints, insulinFromCarbs, attemptNumber = 1)
+                                        // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
+                                        val normalIc = ic * 2.0
+                                        val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling checks — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%)")
+                                        scheduleSplitBolusChecks(insulinAfterConstraints, fullRequired, attemptNumber = 1)
                                     }
                                     // Equal-parts split bolus: no profile % active, total > maxBolus, enabled per-bolus
                                     if (!splitBolusScheduled &&
@@ -652,13 +655,13 @@ class BolusWizard @Inject constructor(
                 // Second dose = carb coverage at 50% profile IC minus what was given (recovering the negative BG correction),
                 // scaled to 85% to leave room for closed-loop coverage.
                 val rawDose = carbsCoverage - originalDose
-                val splitDose = Round.roundTo(maxOf(0.0, rawDose * 0.85), activePlugin.activePump.pumpDescription.bolusStep)
+                val splitDose = Round.roundTo(maxOf(0.0, rawDose * 0.90), activePlugin.activePump.pumpDescription.bolusStep)
                 aapsLogger.info(LTag.CORE,
-                    "Split bolus attempt $attemptNumber: criteria met BGL=$bglStr — delivering split=${splitDose}U (carbsCoverage=${carbsCoverage}U original=${originalDose}U raw=${rawDose}U)")
+                    "Split bolus attempt $attemptNumber: criteria met BGL=$bglStr — delivering split=${splitDose}U (fullRequired=${carbsCoverage}U given=${originalDose}U gap=${rawDose}U × 90%)")
                 DetailedBolusInfo().apply {
                     eventType = TE.Type.CORRECTION_BOLUS
                     insulin = splitDose
-                    notes = "Split bolus attempt $attemptNumber (carbs coverage ${carbsCoverage}U − given ${originalDose}U × 85%)"
+                    notes = "Split bolus attempt $attemptNumber (full required ${carbsCoverage}U − given ${originalDose}U × 90%)"
                     uel.log(
                         action = Action.BOLUS,
                         source = Sources.WizardDialog,
@@ -681,7 +684,7 @@ class BolusWizard @Inject constructor(
                 }
                 if (attemptNumber < 3) {
                     aapsLogger.info(LTag.CORE, "Split bolus attempt $attemptNumber: $reason — scheduling attempt ${attemptNumber + 1} in 10 min")
-                    scheduleSplitBolusChecks(originalDose, carbsCoverage, attemptNumber + 1)
+                    scheduleSplitBolusChecks(originalDose, carbsCoverage, attemptNumber + 1) // carbsCoverage = fullRequired, passed through unchanged
                 } else {
                     aapsLogger.info(LTag.CORE, "Split bolus: $reason at 30 min — no split dose delivered")
                 }
