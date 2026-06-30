@@ -82,7 +82,6 @@ class OverviewMenusImpl @Inject constructor(
         BG_ISF(R.string.overview_show_bg_isf, app.aaps.core.ui.R.attr.bgIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.bg_isf_shortname),
         PP_ISF(R.string.overview_show_pp_isf, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_isf_shortname),
         DUR_ISF(R.string.overview_show_dura_isf, app.aaps.core.ui.R.attr.duraIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.dura_isf_shortname),
-        RAW_BG(R.string.overview_show_raw_bg, app.aaps.core.ui.R.attr.rawBgColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.raw_bg_shortname),
     }
 
     private val runningAutoIsf: Boolean

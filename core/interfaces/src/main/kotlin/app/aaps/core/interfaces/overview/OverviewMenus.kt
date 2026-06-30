@@ -26,7 +26,6 @@ interface OverviewMenus {
         BG_ISF,
         PP_ISF,
         DUR_ISF,
-        RAW_BG,
     }
 
     val setting: List<Array<Boolean>>

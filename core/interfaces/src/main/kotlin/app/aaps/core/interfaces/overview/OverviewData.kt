@@ -116,8 +116,6 @@ interface OverviewData {
     val dsMinScale: Scale
     var dsMaxSeries: SeriesData
     var dsMinSeries: SeriesData
-    var rawBgSeries: SeriesData
-    var trueSrcBgSeries: SeriesData
     var heartRateScale: Scale
     var heartRateGraphSeries: SeriesData
     var stepsForScale: Scale

@@ -6,9 +6,7 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
-import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
-import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
@@ -61,28 +59,6 @@ class PrepareBgDataWorker(
         if (preferences.get(UnitDoubleKey.OverviewHighMark) > data.overviewData.maxBgValue)
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
-
-        // Calibrated-estimate line (orange) — post-AAPS slope, pre-smoothing
-        val rawPoints = data.overviewData.bgReadingsArray
-            .filter { it.timestamp in fromTime..toTime && it.raw != null }
-            .sortedBy { it.timestamp }
-            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.raw!!)) }
-        data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
-            it.color = rh.gac(null, app.aaps.core.ui.R.attr.rawBgColor)
-            it.thickness = 3
-        }
-        // True-source line (red) — pre-AAPS slope; noise (unfiltered) preferred, falls back to raw (filtered)
-        val srcPoints = data.overviewData.bgReadingsArray
-            .filter { it.timestamp in fromTime..toTime }
-            .sortedBy { it.timestamp }
-            .mapNotNull { gv ->
-                val v = (gv.noise?.takeIf { it > 10.0 }) ?: (gv.raw?.takeIf { it > 10.0 }) ?: return@mapNotNull null
-                DataPoint(gv.timestamp.toDouble(), profileUtil.fromMgdlToUnits(v))
-            }
-        data.overviewData.trueSrcBgSeries = LineGraphSeries(srcPoints.toTypedArray()).also {
-            it.color = android.graphics.Color.RED
-            it.thickness = 3
-        }
 
         return Result.success()
     }
