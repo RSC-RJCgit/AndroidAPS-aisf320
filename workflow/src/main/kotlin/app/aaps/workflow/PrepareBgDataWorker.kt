@@ -71,11 +71,14 @@ class PrepareBgDataWorker(
             it.color = rh.gac(null, app.aaps.core.ui.R.attr.rawBgColor)
             it.thickness = 3
         }
-        // True-source line (red) — pre-AAPS slope, uses noise field (extraRaw from companion app)
+        // True-source line (red) — pre-AAPS slope; noise (unfiltered) preferred, falls back to raw (filtered)
         val srcPoints = data.overviewData.bgReadingsArray
-            .filter { it.timestamp in fromTime..toTime && it.noise != null }
+            .filter { it.timestamp in fromTime..toTime }
             .sortedBy { it.timestamp }
-            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
+            .mapNotNull { gv ->
+                val v = (gv.noise?.takeIf { it > 10.0 }) ?: (gv.raw?.takeIf { it > 10.0 }) ?: return@mapNotNull null
+                DataPoint(gv.timestamp.toDouble(), profileUtil.fromMgdlToUnits(v))
+            }
         data.overviewData.trueSrcBgSeries = LineGraphSeries(srcPoints.toTypedArray()).also {
             it.color = android.graphics.Color.RED
             it.thickness = 3
