@@ -53,6 +53,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
@@ -62,6 +63,7 @@ import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
+import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
@@ -841,8 +843,22 @@ class NSClientV3Plugin @Inject constructor(
                 )
             )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClient3UseWs, summary = R.string.ns_use_ws_summary, title = R.string.ns_use_ws_title))
-            if (config.AAPSCLIENT)
+            if (config.AAPSCLIENT) {
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
+                addPreference(PreferenceCategory(context).also { cat ->
+                    cat.key = "aapsclient_libre_settings"
+                    cat.title = rh.gs(R.string.aapsclient_libre_settings)
+                    cat.initialExpandedChildrenCount = 0
+                    addPreference(cat)
+                    cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
+                    cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))
+                    cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, title = R.string.fsl_cal_slope_title, dialogMessage = R.string.fsl_cal_slope_summary))
+                    cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, title = R.string.fsl_smooth_alpha_title, dialogMessage = R.string.fsl_smooth_alpha_summary))
+                    cat.addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.FslMaxSmoothGap, title = R.string.fsl_max_smooth_gap_title, summary = R.string.fsl_max_smooth_gap_summary))
+                    cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationTrigger, title = R.string.fsl_calibration_trigger_title, summary = R.string.fsl_calibration_trigger_summary))
+                    cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationEnd, title = R.string.fsl_calibration_end_title, summary = R.string.fsl_calibration_end_summary))
+                })
+            }
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)

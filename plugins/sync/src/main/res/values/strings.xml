@@ -32,6 +32,21 @@
     <string name="ns_client_url">URL:</string>
     <string name="aapsclient_xdrip_source_title">Use xDrip as BG source</string>
     <string name="aapsclient_xdrip_source_summary">When ON, NS BGL data is ignored — xDrip (e.g. GlucoDataHandler) provides BG readings and raw line. When OFF, NS is the BG source (default).</string>
+    <string name="aapsclient_libre_settings">Libre Special Settings (xDrip source)</string>
+    <string name="fsl_apply_smoothing_title">Enable Libre calibration + smoothing</string>
+    <string name="fsl_apply_smoothing_summary">Apply offset/slope calibration and exponential smoothing to readings from xDrip source</string>
+    <string name="fsl_cal_offset_title">Calibration offset</string>
+    <string name="fsl_cal_offset_summary">OFFSET in: calibrated = OFFSET + slope × raw</string>
+    <string name="fsl_cal_slope_title">Calibration slope</string>
+    <string name="fsl_cal_slope_summary">SLOPE in: calibrated = offset + SLOPE × raw</string>
+    <string name="fsl_smooth_alpha_title">Smoothing factor (alpha)</string>
+    <string name="fsl_smooth_alpha_summary">Exponential smoothing alpha (0=max smooth, 1=no smooth)</string>
+    <string name="fsl_max_smooth_gap_title">Max smoothing gap (minutes)</string>
+    <string name="fsl_max_smooth_gap_summary">Gap beyond which alpha resets to 1.0 (no smoothing carry-over)</string>
+    <string name="fsl_calibration_trigger_title">Start calibration period</string>
+    <string name="fsl_calibration_trigger_summary">Begins a calibration period during which SMBs are blocked</string>
+    <string name="fsl_calibration_end_title">Calibration finished — re-enable SMBs</string>
+    <string name="fsl_calibration_end_summary">Mark calibration as complete to re-enable SMBs before the timer expires</string>
     <string name="restart">Restart</string>
     <string name="ns_client_title">NSClientV1</string>
     <string name="ns_client_v3_title">NSClientV3</string>
