@@ -219,7 +219,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.5f, mPaint)
                     // label stacked upward from BGL
-                    if (showSmbLabels && value.label.isNotEmpty()) {
+                    val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
+                    if (showSmbLabels && displayedHours <= 6.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
