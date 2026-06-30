@@ -841,14 +841,14 @@ class NSClientV3Plugin @Inject constructor(
                 )
             )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClient3UseWs, summary = R.string.ns_use_ws_summary, title = R.string.ns_use_ws_title))
+            if (config.AAPSCLIENT)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientUploadData, summary = R.string.ns_upload_summary, title = R.string.ns_upload))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.BgSourceUploadToNs, title = app.aaps.core.ui.R.string.do_ns_upload_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCgmData, summary = R.string.ns_receive_cgm_summary, title = R.string.ns_receive_cgm))
-                if (config.AAPSCLIENT)
-                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileStore, summary = R.string.ns_receive_profile_store_summary, title = R.string.ns_receive_profile_store))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTempTarget, summary = R.string.ns_receive_temp_target_summary, title = R.string.ns_receive_temp_target))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileSwitch, summary = R.string.ns_receive_profile_switch_summary, title = R.string.ns_receive_profile_switch))

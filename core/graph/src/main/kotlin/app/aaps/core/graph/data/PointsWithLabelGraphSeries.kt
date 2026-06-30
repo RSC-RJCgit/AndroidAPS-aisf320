@@ -194,21 +194,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
                     smbStack[bucket] = stackIndex + 1
                     val size = value.size * scaledPxSize * 0.7f
-                    // triangle at baseline (endY from getY() = OverviewLowMark)
+                    val bgValY = value.labelY - minY
+                    val bgRatY = bgValY / diffY
+                    val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
+                    // triangle just below the relevant BGL point
                     mPaint.strokeWidth = 0f
                     val points = arrayOf(
-                        Point(endX.toInt(), (endY - size).toInt()),
-                        Point((endX + size).toInt(), (endY + size * 0.67).toInt()),
-                        Point((endX - size).toInt(), (endY + size * 0.67).toInt())
+                        Point(endX.toInt(), (bgEndY + size).toInt()),
+                        Point((endX + size).toInt(), (bgEndY + size + size * 0.67f).toInt()),
+                        Point((endX - size).toInt(), (bgEndY + size + size * 0.67f).toInt())
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // label at BG line, stacked upward for same 5-min window
+                    // label stacked upward from BGL, half font-height steps
                     if (showSmbLabels && value.label.isNotEmpty()) {
-                        val bgValY = value.labelY - minY
-                        val bgRatY = bgValY / diffY
-                        val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                        val labelY = bgEndY - size - stackIndex * 28f
+                        val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.5f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
                         drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
