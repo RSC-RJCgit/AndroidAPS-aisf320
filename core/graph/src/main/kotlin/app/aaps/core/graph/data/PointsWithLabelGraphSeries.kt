@@ -197,27 +197,28 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgValY = value.labelY - minY
                     val bgRatY = bgValY / diffY
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                    // triangle just below the relevant BGL point
+                    // narrow triangle just below the relevant BGL point
                     mPaint.strokeWidth = 0f
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 0.67f
+                    val halfWidth = size * 0.4f
                     val points = arrayOf(
                         Point(endX.toInt(), triTop.toInt()),
-                        Point((endX + size).toInt(), triBase.toInt()),
-                        Point((endX - size).toInt(), triBase.toInt())
+                        Point((endX + halfWidth).toInt(), triBase.toInt()),
+                        Point((endX - halfWidth).toInt(), triBase.toInt())
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // vertical tail below triangle, length = font height
-                    mPaint.strokeWidth = 3f
+                    // thick vertical tail below triangle, length = font height
+                    mPaint.strokeWidth = 6f
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize, mPaint)
-                    // label stacked upward from BGL, half font-height steps
+                    // label stacked upward from BGL, 1 font-height steps
                     if (showSmbLabels && value.label.isNotEmpty()) {
-                        val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.5f)
+                        val labelY = bgEndY - size - stackIndex * scaledTextSize
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
-                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
+                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.325f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
