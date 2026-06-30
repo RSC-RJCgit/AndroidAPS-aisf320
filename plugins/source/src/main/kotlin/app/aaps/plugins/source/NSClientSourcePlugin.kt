@@ -28,7 +28,7 @@ import javax.inject.Singleton
 class NSClientSourcePlugin @Inject constructor(
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
-    config: Config
+    private val config: Config
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
