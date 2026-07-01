@@ -214,7 +214,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
-                    val halfWidth = size * 0.4f
+                    val halfWidth = size * 0.25f
                     val points = arrayOf(
                         Point(endX.toInt(), triTop.toInt()),
                         Point((endX + halfWidth).toInt(), triBase.toInt()),

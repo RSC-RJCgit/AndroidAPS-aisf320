@@ -66,6 +66,7 @@ interface OverviewData {
     val actScale: Scale
     var activitySeries: SeriesData
     var activityPredictionSeries: SeriesData
+    var activityPeakSeries: SeriesData
 
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale

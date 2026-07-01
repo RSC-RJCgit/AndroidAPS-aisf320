@@ -109,6 +109,23 @@ class PrepareIobAutosensGraphDataWorker(
         }
     }
 
+    class ActivityPeakDataPoint(
+        private val x: Double,
+        private val y: Double,
+        private val labelText: String,
+        private val rh: ResourceHelper
+    ) : DataPointWithLabelInterface {
+        override fun getX(): Double = x
+        override fun getY(): Double = y
+        override fun setY(y: Double) {}
+        override val label: String = labelText
+        override val duration = 0L
+        override val shape = Shape.GENERAL
+        override val size = 0f
+        override val paintStyle: Paint.Style = Paint.Style.FILL
+        override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.activityColor)
+    }
+
     override suspend fun doWorkAndLog(): Result {
         val data = dataWorkerStorage.pickupObject(inputData.getLong(DataWorkerStorage.STORE_KEY, -1)) as PrepareIobAutosensData?
             ?: return Result.failure(workDataOf("Error" to "missing input data"))
@@ -304,6 +321,18 @@ class PrepareIobAutosensGraphDataWorker(
             it.thickness = 3
         }
         data.overviewData.cobMinFailOverSeries = PointsWithLabelGraphSeries(Array(minFailOverActiveList.size) { i -> minFailOverActiveList[i] })
+
+        // ACTIVITY peak label
+        val allActPoints = actArrayHist + actArrayPrediction
+        val peakPoint = allActPoints.maxByOrNull { it.y }
+        data.overviewData.activityPeakSeries = if (peakPoint != null && data.overviewData.maxIAValue > 0.0) {
+            val peakLabel = decimalFormatter.to2Decimal(data.overviewData.maxIAValue)
+            PointsWithLabelGraphSeries(arrayOf<DataPointWithLabelInterface>(
+                ActivityPeakDataPoint(peakPoint.x, peakPoint.y, peakLabel, rh)
+            ))
+        } else {
+            PointsWithLabelGraphSeries()
+        }
 
         // ACTIVITY
         data.overviewData.activitySeries = FixedLineGraphSeries(Array(actArrayHist.size) { i -> actArrayHist[i] }).also {

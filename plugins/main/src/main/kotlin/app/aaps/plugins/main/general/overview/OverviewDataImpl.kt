@@ -74,6 +74,7 @@ class OverviewDataImpl @Inject constructor(
         maxIAValue = 0.0
         activitySeries = FixedLineGraphSeries<ScaledDataPoint>()
         activityPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        activityPeakSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxBgParabolaValue = 280.0
         bgParabolaSeries = FixedLineGraphSeries<ScaledDataPoint>()
         bgParabolaPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -231,6 +232,7 @@ class OverviewDataImpl @Inject constructor(
     override val actScale = Scale()
     override var activitySeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var activityPredictionSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+    override var activityPeakSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
     override var maxBgParabolaValue = 0.0
     override val bgParabolaScale = Scale()

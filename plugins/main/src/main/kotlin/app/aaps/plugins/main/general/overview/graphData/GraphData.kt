@@ -132,6 +132,7 @@ class GraphData @Inject constructor(
     fun addActivity(scale: Double) {
         addSeries(overviewData.activitySeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.activityPredictionSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.activityPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         overviewData.actScale.multiplier = maxY * scale / overviewData.maxIAValue
     }
 
