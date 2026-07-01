@@ -15,11 +15,13 @@ import kotlinx.serialization.builtins.ArraySerializer
 import kotlinx.serialization.json.Json
 import javax.inject.Provider
 
+private val lenientJson = Json { ignoreUnknownKeys = true }
+
 fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSResult>): APSResult =
     when (algorithm) {
         app.aaps.database.entities.APSResult.Algorithm.AMA,
         app.aaps.database.entities.APSResult.Algorithm.SMB      ->
-            apsResultProvider.get().with(Json.decodeFromString(this.resultJson)).also { result ->
+            apsResultProvider.get().with(lenientJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     this.glucoseStatusJson?.let { Json.decodeFromString(it) }
@@ -34,7 +36,7 @@ fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: Provider<APSR
             }
 
         app.aaps.database.entities.APSResult.Algorithm.AUTO_ISF ->
-            apsResultProvider.get().with(Json.decodeFromString(this.resultJson)).also { result ->
+            apsResultProvider.get().with(lenientJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = try {
                     this.glucoseStatusJson?.let { Json.decodeFromString(it) }
