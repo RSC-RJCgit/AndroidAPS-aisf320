@@ -44,6 +44,7 @@ import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
 import app.aaps.plugins.automation.triggers.TriggerBgPpISFweight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+import app.aaps.plugins.automation.triggers.TriggerCarbsAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
 import app.aaps.plugins.automation.triggers.TriggerConnector
@@ -98,6 +99,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerAutosensValueInjector(): TriggerAutosensValue
     @ContributesAndroidInjector abstract fun triggerBgInjector(): TriggerBg
     @ContributesAndroidInjector abstract fun triggerBolusAgoInjector(): TriggerBolusAgo
+    @ContributesAndroidInjector abstract fun triggerCarbsAgoInjector(): TriggerCarbsAgo
     @ContributesAndroidInjector abstract fun triggerSensorAgeInjector(): TriggerSensorAge
     @ContributesAndroidInjector abstract fun triggerPadChangeInjector(): TriggerPodChange
     @ContributesAndroidInjector abstract fun triggerCannulaAgeInjector(): TriggerCannulaAge

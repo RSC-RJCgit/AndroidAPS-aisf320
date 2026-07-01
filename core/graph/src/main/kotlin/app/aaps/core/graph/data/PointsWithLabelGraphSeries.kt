@@ -204,6 +204,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
                     // narrow triangle just below the relevant BGL point
                     mPaint.strokeWidth = 0f
+                    mPaint.color = Color.RED
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
                     val halfWidth = size * 0.4f
@@ -225,7 +226,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
-                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.65f)
+                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.5f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {

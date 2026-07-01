@@ -848,7 +848,6 @@ class NSClientV3Plugin @Inject constructor(
                 addPreference(PreferenceCategory(context).also { cat ->
                     cat.key = "aapsclient_libre_settings"
                     cat.title = rh.gs(R.string.aapsclient_libre_settings)
-                    cat.initialExpandedChildrenCount = 0
                     addPreference(cat)
                     cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
                     cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))

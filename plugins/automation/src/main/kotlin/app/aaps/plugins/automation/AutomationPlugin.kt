@@ -76,6 +76,7 @@ import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBgDuraWeight
 import app.aaps.plugins.automation.triggers.TriggerBgPpISFweight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+import app.aaps.plugins.automation.triggers.TriggerCarbsAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
 import app.aaps.plugins.automation.triggers.TriggerConnector
@@ -477,6 +478,7 @@ class AutomationPlugin @Inject constructor(
             TriggerAutosensValue(injector),
             TriggerTddRatio(injector),
             TriggerBolusAgo(injector),
+            TriggerCarbsAgo(injector),
             TriggerPumpLastConnection(injector),
             TriggerBTDevice(injector),
             TriggerHeartRate(injector),
