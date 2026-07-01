@@ -26,7 +26,7 @@ class BolusDataPoint(
             decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep).trimStart('0')
         else
             decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep)
-    override val labelY: Double get() = preferences.get(UnitDoubleKey.OverviewLowMark)
+    override val labelY: Double get() = if (data.type == BS.Type.SMB) yValue else preferences.get(UnitDoubleKey.OverviewLowMark)
     override val duration = 0L
     override val size = 2f
     override val paintStyle: Paint.Style = Paint.Style.FILL // not used
