@@ -129,7 +129,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(adjStr(r.duraIsf),                         colorAdjustments),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
-                    Cell(insulinStr(r.smbDelivered),                colorInsulin),
+                    Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
                     Cell(df2.format(r.iobThEffective),              colorHeader)
                 )
             )
@@ -141,6 +141,24 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     /** Show "--" for zero insulin values. */
     private fun insulinStr(v: Double): String = if (v == 0.0) "--" else df2.format(v)
+
+    /** Color SMB cell by dominant AutoISF adaptation type, or colorInsulin if no dominant factor. */
+    private fun smbIsfColor(r: AIV): Int {
+        if (r.smbDelivered == 0.0) return colorInsulin
+        val acce = kotlin.math.abs(r.acceIsf - 1.0)
+        val bg   = kotlin.math.abs(r.bgIsf   - 1.0)
+        val pp   = kotlin.math.abs(r.ppIsf   - 1.0)
+        val dura = kotlin.math.abs(r.duraIsf - 1.0)
+        val maxDev = maxOf(acce, bg, pp, dura)
+        if (maxDev <= 0.01) return colorInsulin
+        val ctx = context
+        return when {
+            acce >= maxDev -> rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
+            bg   >= maxDev -> rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
+            pp   >= maxDev -> rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
+            else           -> rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
+        }
+    }
 
     private data class Cell(val text: String, val color: Int, val span: Int = 1, val bold: Boolean = false)
 
