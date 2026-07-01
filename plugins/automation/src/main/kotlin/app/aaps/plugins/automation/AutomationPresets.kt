@@ -41,6 +41,7 @@ class AutomationPresets @Inject constructor(
         plugin.addIfNotExists(buildMj2())
         plugin.addIfNotExists(buildSkittles3ok2BG90())
         plugin.addIfNotExists(buildSkittlesTT3CurrP002())
+        plugin.addIfNotExists(buildSkittlesA3ok8056())
     }
 
     // ---------------------------------------------------------------------------
@@ -186,6 +187,112 @@ class AutomationPresets @Inject constructor(
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
+            })
+        }
+
+    // ---------------------------------------------------------------------------
+    // SkittlesA3ok8.0,5.0,6.0: high-IOB falling scenarios → temp target 5.7@180min
+    //   Branch 1 AND: Delta<=-0.9, SDelta<=-0.9, IOB>2.8, BG<=6.0, Profile>=65%, bolus>=5min
+    //   Branch 2 AND: COB<=15, Delta<=-0.5, BG<=6.5, Profile>=65%, bolus>=5min, SDelta<=-0.4, LDelta<=-0.2, IOB>=1.5
+    //   Branch 3 AND: BG<=9.0, Delta<=-0.5, IOB>=2.9, COB<=15, Profile>=65%, SDelta<=-0.4, bolus>=5min,
+    //                 LDelta<=-0.4, State Steroids=Steroids Off
+    //   Precondition (on weight action): temp target not exists
+    //   Actions: TT 5.7@180, AcceWeight 0.02, profile current, note "Skit3"
+    // ---------------------------------------------------------------------------
+    private fun buildSkittlesA3ok8056(): AutomationEventObject =
+        AutomationEventObject(injector).apply {
+            title = "SkittlesA3ok8.0,5.0,6.0"
+            systemAction = true
+            readOnly = true
+            repeatInterval = 5
+            trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                // Branch 1: steep fast drop with moderate BG and high IOB
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.9,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.9,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerIob(injector).apply {
+                        fromJSON("""{"insulin":2.8,"comparator":"IS_GREATER"}""")
+                    })
+                    list.add(TriggerBg(injector, 6.0, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerProfilePercent(injector).apply {
+                        fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerBolusAgo(injector).apply {
+                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                })
+                // Branch 2: moderate drop with low carbs and significant IOB
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerCOB(injector).apply {
+                        fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.5,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerBg(injector, 6.5, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerProfilePercent(injector).apply {
+                        fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerBolusAgo(injector).apply {
+                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.4,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.2,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerIob(injector).apply {
+                        fromJSON("""{"insulin":1.5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                })
+                // Branch 3: higher BG but very high IOB, steroids off
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerBg(injector, 9.0, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.5,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerIob(injector).apply {
+                        fromJSON("""{"insulin":2.9,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerCOB(injector).apply {
+                        fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
+                    })
+                    list.add(TriggerProfilePercent(injector).apply {
+                        fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.4,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerBolusAgo(injector).apply {
+                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.4,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerAutomationState(injector).apply {
+                        fromJSON("""{"stateName":"Steroids","stateValue":"Steroids Off"}""")
+                    })
+                })
+            }
+            actions.add(ActionStartTempTarget(injector).apply {
+                fromJSON("""{"value":5.7,"units":"mmol","durationInMinutes":180}""")
+            })
+            actions.add(ActionSetAcceWeight(injector).apply {
+                fromJSON("""{"weight":0.02}""")
+                precondition = TriggerTempTarget(injector).apply {
+                    fromJSON("""{"comparator":"NOT_EXISTS"}""")
+                }
+            })
+            actions.add(ActionProfileSwitchPercent(injector).apply {
+                fromJSON("""{"percentage":100.0,"durationInMinutes":0}""")
+            })
+            actions.add(ActionCarePortalEvent(injector).apply {
+                fromJSON("""{"cpEvent":"NOTE","note":"Skit3"}""")
             })
         }
 
