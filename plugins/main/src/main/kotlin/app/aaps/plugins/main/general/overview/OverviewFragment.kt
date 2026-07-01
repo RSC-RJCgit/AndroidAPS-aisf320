@@ -1046,13 +1046,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.put(StringKey.GeneralSkin, SkinExtraLargeDisplay::class.java.name)
                     binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
                     binding.graphsLayout.bgGraph.requestLayout()
-                    overviewMenus.setPredictionsEnabled(false)
-                    rxBus.send(EventScale(1))
+                    rxBus.send(EventScale(3))
                 } else {
                     preferences.put(StringKey.GeneralSkin, SkinLargeDisplay::class.java.name)
                     binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
                     binding.graphsLayout.bgGraph.requestLayout()
-                    overviewMenus.setPredictionsEnabled(true)
                     rxBus.send(EventScale(6))
                 }
                 rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))

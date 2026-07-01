@@ -204,7 +204,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
                     // narrow triangle just below the relevant BGL point
                     mPaint.strokeWidth = 0f
-                    mPaint.color = Color.RED
+                    mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
                     val halfWidth = size * 0.4f
