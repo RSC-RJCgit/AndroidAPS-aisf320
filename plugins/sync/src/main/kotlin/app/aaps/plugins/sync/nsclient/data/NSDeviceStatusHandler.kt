@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclient.data
 
+import app.aaps.core.data.model.AIV
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -166,6 +167,21 @@ class NSDeviceStatusHandler @Inject constructor(
                     processedDeviceStatusData.openAPSData.clockSuggested = clock
                     processedDeviceStatusData.getAPSResult()?.let { apsResult ->
                         disposable += persistenceLayer.insertOrUpdateApsResult(apsResult).subscribe()
+                    }
+                    processedDeviceStatusData.openAPSData.suggested?.let { rt ->
+                        if (rt.autoIsfFinal != null) {
+                            val aiv = AIV(
+                                timestamp   = clock,
+                                acceIsf     = rt.autoIsfAcce  ?: 1.0,
+                                bgIsf       = rt.autoIsfBg    ?: 1.0,
+                                ppIsf       = rt.autoIsfPp    ?: 1.0,
+                                driftIsf    = 1.0,
+                                duraIsf     = rt.autoIsfDura  ?: 1.0,
+                                finalIsf    = rt.autoIsfFinal ?: 1.0,
+                                iobThEffective = 0.0
+                            )
+                            disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
+                        }
                     }
                 }
             }

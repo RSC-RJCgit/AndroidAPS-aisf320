@@ -583,6 +583,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             autoIsfValues.insulinReq = result.json()?.optDouble("insulinReq", 0.0) ?: 0.0
             autoIsfValues.tbrRate    = result.rate
             autoIsfValues.smbDelivered = result.smb
+            result.autoIsfAcce  = autoIsfValues.acceIsf
+            result.autoIsfBg    = autoIsfValues.bgIsf
+            result.autoIsfPp    = autoIsfValues.ppIsf
+            result.autoIsfDura  = autoIsfValues.duraIsf
+            result.autoIsfFinal = autoIsfValues.finalIsf
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
         rxBus.send(EventOpenAPSUpdateGui())
@@ -1494,5 +1499,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt20TDDAU158
+OpenAPSAutoISFPlugin.ktSt20TDDAU159
  */
