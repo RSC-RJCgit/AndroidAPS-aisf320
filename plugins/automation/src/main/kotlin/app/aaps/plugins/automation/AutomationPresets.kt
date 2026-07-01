@@ -7,6 +7,7 @@ import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
 import app.aaps.plugins.automation.actions.ActionSetAutomationState
+import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerBg
@@ -39,6 +40,7 @@ class AutomationPresets @Inject constructor(
         plugin.addIfNotExists(buildMj3())
         plugin.addIfNotExists(buildMj2())
         plugin.addIfNotExists(buildSkittles3ok2BG90())
+        plugin.addIfNotExists(buildSkittlesTT3CurrP002())
     }
 
     // ---------------------------------------------------------------------------
@@ -91,6 +93,99 @@ class AutomationPresets @Inject constructor(
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"Skit4"}""")
+            })
+        }
+
+    // ---------------------------------------------------------------------------
+    // SkittlesTT3CurrP002: falling BG scenarios → temp target 5.7@180min
+    //   Branch 1 AND: BG<=4.5, Delta<=-0.05, IOB>=-0.2, SDelta<=-0.05, LDelta<=-0.05, COB<=15, Profile%>=65, bolus>=5min
+    //   Branch 2 AND: Delta<=-0.285, IOB>=0.3, BG<=5.0, Profile%>=65, bolus>=5min, SDelta<=-0.2, LDelta<=-0.2,
+    //                 nested OR(COB<=15 OR bolus>=60min)
+    //   Branch 3 OR: BG<=2.5 OR BG<=3.0
+    //   Actions: TT 5.7@180, AcceWeight 0.02 (precondition: TT NOT_EXISTS), Profile 100%, note "Skit"
+    // ---------------------------------------------------------------------------
+    private fun buildSkittlesTT3CurrP002(): AutomationEventObject =
+        AutomationEventObject(injector).apply {
+            title = "SkittlesTT3CurrP002"
+            systemAction = true
+            readOnly = true
+            repeatInterval = 5
+            trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                // Branch 1: acute low with falling delta
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerBg(injector, 4.5, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.05,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerIob(injector).apply {
+                        fromJSON("""{"insulin":-0.2,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.05,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.05,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerCOB(injector).apply {
+                        fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
+                    })
+                    list.add(TriggerProfilePercent(injector).apply {
+                        fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerBolusAgo(injector).apply {
+                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                })
+                // Branch 2: moderate low with significant falling delta + nested COB or bolus age OR
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.285,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerIob(injector).apply {
+                        fromJSON("""{"insulin":0.3,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerBg(injector, 5.0, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerProfilePercent(injector).apply {
+                        fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerBolusAgo(injector).apply {
+                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.2,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerDelta(injector).apply {
+                        fromJSON("""{"value":-0.2,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
+                    })
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerCOB(injector).apply {
+                            fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
+                        })
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":60,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                    })
+                })
+                // Branch 3: critical low — immediate response regardless of other conditions
+                list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                    list.add(TriggerBg(injector, 2.5, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                    list.add(TriggerBg(injector, 3.0, GlucoseUnit.MMOL, Comparator.Compare.IS_EQUAL_OR_LESSER))
+                })
+            }
+            actions.add(ActionStartTempTarget(injector).apply {
+                fromJSON("""{"value":5.7,"units":"mmol","durationInMinutes":180}""")
+            })
+            actions.add(ActionSetAcceWeight(injector).apply {
+                fromJSON("""{"weight":0.02}""")
+                precondition = TriggerTempTarget(injector).apply {
+                    fromJSON("""{"comparator":"NOT_EXISTS"}""")
+                }
+            })
+            actions.add(ActionProfileSwitchPercent(injector).apply {
+                fromJSON("""{"percentage":100.0,"durationInMinutes":0}""")
+            })
+            actions.add(ActionCarePortalEvent(injector).apply {
+                fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
             })
         }
 
