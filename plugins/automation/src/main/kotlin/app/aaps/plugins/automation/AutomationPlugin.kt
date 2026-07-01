@@ -131,7 +131,8 @@ class AutomationPlugin @Inject constructor(
     private val locationServiceHelper: LocationServiceHelper,
     private val dateUtil: DateUtil,
     private val activePlugin: ActivePlugin,
-    private val timerUtil: TimerUtil
+    private val timerUtil: TimerUtil,
+    private val automationPresets: AutomationPresets
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -180,6 +181,7 @@ class AutomationPlugin @Inject constructor(
         super.onStart()
         Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
         loadFromSP()
+        automationPresets.registerAll(this)
         handler?.postDelayed(refreshLoop, T.mins(1).msecs())
 
         disposable += rxBus

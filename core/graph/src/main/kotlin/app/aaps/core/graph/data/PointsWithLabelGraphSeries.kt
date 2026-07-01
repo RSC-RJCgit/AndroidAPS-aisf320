@@ -180,7 +180,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
-                        mPaint.color = android.graphics.Color.RED
+                        mPaint.color = Color.YELLOW
                         drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                         mPaint.color = savedColor
                     }
@@ -202,8 +202,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgValY = value.labelY - minY
                     val bgRatY = bgValY / diffY
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                    // narrow triangle just below the relevant BGL point
+                    // original blue triangle at baseline (IOB graph zero line)
                     mPaint.strokeWidth = 0f
+                    mPaint.style = Paint.Style.FILL_AND_STROKE
+                    drawArrows(arrayOf(
+                        Point(endX.toInt(), (endY - scaledPxSize).toInt()),
+                        Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
+                        Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
+                    ), canvas, mPaint)
+                    // narrow yellow triangle just below the relevant BGL point
                     mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
@@ -221,7 +228,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
                     // label stacked upward from BGL
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
-                    if (showSmbLabels && displayedHours <= 12.0 && value.label.isNotEmpty()) {
+                    if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         mPaint.color = Color.WHITE
