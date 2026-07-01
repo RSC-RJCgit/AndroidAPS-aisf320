@@ -74,7 +74,7 @@ class PrepareTreatmentsDataWorker(
                 dp.y = getNearestBg(data.overviewData, dp.x.toLong())
                 if (dp.data.type == BS.Type.SMB && aivList.isNotEmpty()) {
                     val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - dp.x.toLong()) }
-                    if (nearest != null) {
+                    if (nearest != null && kotlin.math.abs(nearest.timestamp - dp.x.toLong()) < T.mins(15).msecs()) {
                         val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
                         val bg   = kotlin.math.abs(nearest.bgIsf   - 1.0)
                         val pp   = kotlin.math.abs(nearest.ppIsf   - 1.0)

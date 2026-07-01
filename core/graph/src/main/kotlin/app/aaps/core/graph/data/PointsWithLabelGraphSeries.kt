@@ -303,19 +303,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             }
             // BOLUS diamond: drawn outside overdraw gate so it always appears when x is on-screen
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
-                mPaint.color = value.color(graphView.context)
+                mPaint.color = Color.BLACK
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
-                val d = scaledPxSize * 1.4f
-                val bEndY = endY.coerceIn(graphTop + d, graphTop + graphHeight - d)
-                val diamondPath = android.graphics.Path().apply {
-                    moveTo(endX, bEndY - d)
-                    lineTo(endX + d, bEndY)
-                    lineTo(endX, bEndY + d)
-                    lineTo(endX - d, bEndY)
-                    close()
-                }
-                canvas.drawPath(diamondPath, mPaint)
+                val bEndY = endY.coerceIn(graphTop + scaledPxSize, graphTop + graphHeight - scaledPxSize)
+                drawArrows(arrayOf(
+                    Point(endX.toInt(), (bEndY - scaledPxSize).toInt()),
+                    Point((endX + scaledPxSize).toInt(), (bEndY + scaledPxSize * 0.67).toInt()),
+                    Point((endX - scaledPxSize).toInt(), (bEndY + scaledPxSize * 0.67).toInt())
+                ), canvas, mPaint)
                 if (value.label.isNotEmpty()) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
