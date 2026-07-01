@@ -170,18 +170,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     drawArrows(points, canvas, mPaint)
                 } else if (value.shape == Shape.BOLUS) {
+                    // Diamond marker at BG position
                     mPaint.strokeWidth = 0f
-                    val points = arrayOf(
-                        Point(endX.toInt(), (endY - scaledPxSize).toInt()),
-                        Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
-                        Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
-                    )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
-                    drawArrows(points, canvas, mPaint)
+                    val d = scaledPxSize * 0.9f
+                    val diamondPath = android.graphics.Path().apply {
+                        moveTo(endX, endY - d)           // top
+                        lineTo(endX + d, endY)           // right
+                        lineTo(endX, endY + d)           // bottom
+                        lineTo(endX - d, endY)           // left
+                        close()
+                    }
+                    canvas.drawPath(diamondPath, mPaint)
+                    // Label at bottom of graph area (alongside SMB triangles)
                     if (value.label.isNotEmpty()) {
                         val savedColor = mPaint.color
                         mPaint.color = Color.YELLOW
-                        drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
+                        val labelBaseY = graphTop + graphHeight
+                        drawLabel45Right(endX, labelBaseY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.CARBS) {
