@@ -2,6 +2,19 @@ name: AAPS CI
 
 on:
   workflow_dispatch:
+    inputs:
+      build_full:
+        description: 'Build full (main AAPS)'
+        type: boolean
+        default: true
+      build_aapsclient:
+        description: 'Build aapsclient'
+        type: boolean
+        default: false
+      build_aapsclient2:
+        description: 'Build aapsclient2'
+        type: boolean
+        default: true
 
   push:
     branches:
@@ -171,6 +184,7 @@ jobs:
           echo "✅ Gradle cache cleaned"
 
       - name: Build fullRelease APK
+        if: ${{ github.event_name == 'push' || inputs.build_full }}
         run: |
           ./gradlew :app:assembleFullRelease \
           -Dorg.gradle.jvmargs="-Xmx8g" \
@@ -185,7 +199,24 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
+      - name: Build aapsclientRelease APK
+        if: ${{ inputs.build_aapsclient }}
+        run: |
+          ./gradlew :app:assembleAapsclientRelease \
+          -Dorg.gradle.jvmargs="-Xmx8g" \
+          -Dkotlin.daemon.jvm.options="-Xmx3g" \
+          -Dkotlin.compiler.execution.strategy="in-process" \
+          -Dorg.gradle.daemon=true \
+          -Dorg.gradle.parallel=false \
+          -Dorg.gradle.workers.max=2 \
+          -Dorg.gradle.caching=true \
+          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
       - name: Build aapsclient2Release APK
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient2 }}
         run: |
           ./gradlew :app:assembleAapsclient2Release \
           -Dorg.gradle.jvmargs="-Xmx8g" \
@@ -202,8 +233,9 @@ jobs:
 
       - name: Rename APKs with version
         run: |
-          mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk
-          mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk
+          [ -f app/build/outputs/apk/full/release/*.apk ] && mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk || true
+          [ -f app/build/outputs/apk/aapsclient/release/*.apk ] && mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
+          [ -f app/build/outputs/apk/aapsclient2/release/*.apk ] && mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
 
       - name: Upload APK to Google Drive
         run: |
@@ -285,8 +317,9 @@ jobs:
             echo "✅ Uploaded: $NAME"
           }
 
-          upload_to_gdrive "aaps-${{ env.VERSION }}.apk" "aaps-${{ env.VERSION }}.apk"
-          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
+          [ -f "aaps-${{ env.VERSION }}.apk" ]           && upload_to_gdrive "aaps-${{ env.VERSION }}.apk"           "aaps-${{ env.VERSION }}.apk"           || true
+          [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]  && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk"  "aaps-${{ env.VERSION }}-aapsclient.apk"  || true
+          [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ] && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk" || true
           echo "🎉 All APKs successfully uploaded to Google Drive!"
 
       - name: Upload APKs as GitHub artifacts
@@ -295,5 +328,6 @@ jobs:
           name: aaps-${{ env.VERSION }}-all
           path: |
             aaps-${{ env.VERSION }}.apk
+            aaps-${{ env.VERSION }}-aapsclient.apk
             aaps-${{ env.VERSION }}-aapsclient2.apk
           retention-days: 30
