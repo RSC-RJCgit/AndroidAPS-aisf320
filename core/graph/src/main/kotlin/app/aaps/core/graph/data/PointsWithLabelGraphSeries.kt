@@ -169,27 +169,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
                     )
                     drawArrows(points, canvas, mPaint)
-                } else if (value.shape == Shape.BOLUS) {
-                    // Diamond marker at BG position
-                    mPaint.strokeWidth = 0f
-                    mPaint.style = Paint.Style.FILL_AND_STROKE
-                    val d = scaledPxSize * 0.9f
-                    val diamondPath = android.graphics.Path().apply {
-                        moveTo(endX, endY - d)           // top
-                        lineTo(endX + d, endY)           // right
-                        lineTo(endX, endY + d)           // bottom
-                        lineTo(endX - d, endY)           // left
-                        close()
-                    }
-                    canvas.drawPath(diamondPath, mPaint)
-                    // Label at bottom of graph area (alongside SMB triangles)
-                    if (value.label.isNotEmpty()) {
-                        val savedColor = mPaint.color
-                        mPaint.color = Color.YELLOW
-                        val labelBaseY = graphTop + graphHeight
-                        drawLabel45Right(endX, labelBaseY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
-                        mPaint.color = savedColor
-                    }
                 } else if (value.shape == Shape.CARBS) {
                     mPaint.strokeWidth = 0f
                     val points = arrayOf(
@@ -321,6 +300,30 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 }
                 // set values above point
+            }
+            // BOLUS diamond: drawn outside overdraw gate so it always appears when x is on-screen
+            if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
+                mPaint.color = value.color(graphView.context)
+                mPaint.strokeWidth = 0f
+                mPaint.style = Paint.Style.FILL_AND_STROKE
+                val d = scaledPxSize * 1.4f
+                val bEndY = endY.coerceIn(graphTop + d, graphTop + graphHeight - d)
+                val diamondPath = android.graphics.Path().apply {
+                    moveTo(endX, bEndY - d)
+                    lineTo(endX + d, bEndY)
+                    lineTo(endX, bEndY + d)
+                    lineTo(endX - d, bEndY)
+                    close()
+                }
+                canvas.drawPath(diamondPath, mPaint)
+                if (value.label.isNotEmpty()) {
+                    val labelRatY = (value.labelY - minY) / diffY
+                    val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
+                    val savedColor = mPaint.color
+                    mPaint.color = Color.YELLOW
+                    drawLabel45Right(endX, labelEndY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
+                    mPaint.color = savedColor
+                }
             }
         }
     }
