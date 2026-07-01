@@ -66,12 +66,31 @@ class PrepareTreatmentsDataWorker(
         val filteredTherapyEvents: MutableList<DataPointWithLabelInterface> = ArrayList()
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
+        val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
-            .forEach {
-                it.y = getNearestBg(data.overviewData, it.x.toLong())
-                filteredTreatments.add(it)
+            .forEach { dp ->
+                dp.y = getNearestBg(data.overviewData, dp.x.toLong())
+                if (dp.data.type == BS.Type.SMB && aivList.isNotEmpty()) {
+                    val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - dp.x.toLong()) }
+                    if (nearest != null) {
+                        val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
+                        val bg   = kotlin.math.abs(nearest.bgIsf   - 1.0)
+                        val pp   = kotlin.math.abs(nearest.ppIsf   - 1.0)
+                        val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
+                        val maxDev = maxOf(acce, bg, pp, dura)
+                        if (maxDev > 0.01) {
+                            dp.colorOverride = when {
+                                acce >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.acceIsfColor)
+                                bg   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
+                                pp   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
+                                else           -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
+                            }
+                        }
+                    }
+                }
+                filteredTreatments.add(dp)
             }
         persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
             .map { CarbsDataPoint(it, rh) }

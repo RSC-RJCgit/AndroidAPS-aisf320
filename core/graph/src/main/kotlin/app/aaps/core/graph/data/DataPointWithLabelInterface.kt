@@ -18,4 +18,5 @@ interface DataPointWithLabelInterface : DataPointInterface {
     val size: Float
     val paintStyle: Paint.Style
     @ColorInt fun color(context: Context?): Int
+    val hasColorOverride: Boolean get() = false
 }

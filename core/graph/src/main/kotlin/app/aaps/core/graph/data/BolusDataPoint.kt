@@ -17,6 +17,7 @@ class BolusDataPoint(
 ) : DataPointWithLabelInterface {
 
     private var yValue = 0.0
+    var colorOverride: Int = 0
 
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue
@@ -32,8 +33,11 @@ class BolusDataPoint(
     override val shape
         get() = if (data.type == BS.Type.SMB) Shape.SMB else Shape.BOLUS
 
+    override val hasColorOverride: Boolean get() = colorOverride != 0
+
     override fun color(context: Context?): Int =
-        if (data.type == BS.Type.SMB) rh.gac(context, app.aaps.core.ui.R.attr.smbColor)
+        if (data.type == BS.Type.SMB && colorOverride != 0) colorOverride
+        else if (data.type == BS.Type.SMB) rh.gac(context, app.aaps.core.ui.R.attr.smbColor)
         else if (data.isValid) rh.gac(context, app.aaps.core.ui.R.attr.bolusDataPointColor)
         else rh.gac(context, app.aaps.core.ui.R.attr.alarmColor)
 

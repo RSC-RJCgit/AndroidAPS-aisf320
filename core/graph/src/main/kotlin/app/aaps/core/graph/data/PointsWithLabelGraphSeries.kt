@@ -210,8 +210,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
                         Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
                     ), canvas, mPaint)
-                    // narrow yellow triangle just below the relevant BGL point
-                    mPaint.color = Color.YELLOW
+                    // narrow triangle just below the relevant BGL point — ISF color if available, else yellow
+                    if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
                     val halfWidth = size * 0.25f
@@ -231,7 +231,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
-                        mPaint.color = Color.WHITE
+                        if (!value.hasColorOverride) mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
                         drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.5f)
                         mPaint.color = savedColor
