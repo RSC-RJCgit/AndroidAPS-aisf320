@@ -82,7 +82,7 @@ class PrepareTreatmentsDataWorker(
                         val maxDev = maxOf(acce, bg, pp, dura)
                         if (maxDev > 0.01) {
                             dp.colorOverride = when {
-                                acce >= maxDev -> android.graphics.Color.rgb(100, 200, 255)
+                                acce >= maxDev -> android.graphics.Color.rgb(3, 169, 244)
                                 bg   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
                                 pp   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
                                 else           -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
