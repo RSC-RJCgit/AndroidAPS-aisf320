@@ -326,7 +326,7 @@ class PrepareIobAutosensGraphDataWorker(
         val allActPoints = actArrayHist + actArrayPrediction
         val peakPoint = allActPoints.maxByOrNull { it.y }
         data.overviewData.activityPeakSeries = if (peakPoint != null && data.overviewData.maxIAValue > 0.0) {
-            val peakLabel = decimalFormatter.to2Decimal(data.overviewData.maxIAValue)
+            val peakLabel = decimalFormatter.to2Decimal(data.overviewData.maxIAValue * 60.0)
             PointsWithLabelGraphSeries(arrayOf<DataPointWithLabelInterface>(
                 ActivityPeakDataPoint(peakPoint.x, peakPoint.y, peakLabel, rh)
             ))

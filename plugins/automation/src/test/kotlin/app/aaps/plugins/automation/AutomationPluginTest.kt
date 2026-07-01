@@ -19,6 +19,7 @@ class AutomationPluginTest : TestBaseWithProfile() {
     @Mock lateinit var loop: Loop
     @Mock lateinit var locationServiceHelper: LocationServiceHelper
     @Mock lateinit var timerUtil: TimerUtil
+    @Mock lateinit var automationPresets: AutomationPresets
     private lateinit var automationPlugin: AutomationPlugin
 
     init {
@@ -32,7 +33,7 @@ class AutomationPluginTest : TestBaseWithProfile() {
     @BeforeEach fun prepare() {
         automationPlugin = AutomationPlugin(
             injector, aapsLogger, rh, preferences, context, fabricPrivacy, loop, rxBus, constraintChecker,
-            aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil
+            aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil, automationPresets
         )
     }
 
