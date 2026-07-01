@@ -48,11 +48,16 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     // Colors matching Trio TAI history screen
     private val colorFinalRatio = Color.parseColor("#FF6060")  // red
-    private val colorAdjustments = Color.parseColor("#FFA040")  // orange
     private val colorGlucose    = Color.parseColor("#60C060")  // green
     private val colorInsulin    = Color.parseColor("#4A9EFF")  // blue
     private val colorTime       = Color.WHITE
     private val colorHeader     = Color.LTGRAY
+
+    // ISF type colors from theme (resolved lazily after view is attached)
+    private val colorAcceIsf  get() = rh.gac(context, app.aaps.core.ui.R.attr.acceIsfColor)
+    private val colorBgIsf    get() = rh.gac(context, app.aaps.core.ui.R.attr.bgIsfColor)
+    private val colorPpIsf    get() = rh.gac(context, app.aaps.core.ui.R.attr.ppIsfColor)
+    private val colorDuraIsf  get() = rh.gac(context, app.aaps.core.ui.R.attr.duraIsfColor)
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         dialog?.window?.requestFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -88,7 +93,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("", colorTime),
                 Cell("BG", colorGlucose, span = 4, bold = true),
                 Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),
-                Cell("Adjustments", colorAdjustments, span = 4, bold = true),
+                Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
                 Cell("Insulin", colorInsulin, span = 3, bold = true),
                 Cell("iobTH", colorHeader, bold = true)
             )
@@ -103,10 +108,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SΔ",     colorGlucose, bold = true),
                 Cell("acce",   colorGlucose, bold = true),
                 Cell("Final",  colorFinalRatio, bold = true),
-                Cell("acce",   colorAdjustments, bold = true),
-                Cell("bg",     colorAdjustments, bold = true),
-                Cell("pp",     colorAdjustments, bold = true),
-                Cell("dura",   colorAdjustments, bold = true),
+                Cell("acce",   colorAcceIsf, bold = true),
+                Cell("bg",     colorBgIsf,   bold = true),
+                Cell("pp",     colorPpIsf,   bold = true),
+                Cell("dura",   colorDuraIsf, bold = true),
                 Cell("Req",    colorInsulin, bold = true),
                 Cell("TBR",    colorInsulin, bold = true),
                 Cell("SMB",    colorInsulin, bold = true),
@@ -123,10 +128,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df2.format(r.finalIsf),                    colorFinalRatio),
-                    Cell(adjStr(r.acceIsf),                         colorAdjustments),
-                    Cell(adjStr(r.bgIsf),                           colorAdjustments),
-                    Cell(adjStr(r.ppIsf),                           colorAdjustments),
-                    Cell(adjStr(r.duraIsf),                         colorAdjustments),
+                    Cell(adjStr(r.acceIsf),                         colorAcceIsf),
+                    Cell(adjStr(r.bgIsf),                           colorBgIsf),
+                    Cell(adjStr(r.ppIsf),                           colorPpIsf),
+                    Cell(adjStr(r.duraIsf),                         colorDuraIsf),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
