@@ -60,10 +60,10 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerCOB(injector).apply {
                         fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
                     })
-                    list.add(TriggerDelta(injector, GlucoseUnit.MMOL).apply {
+                    list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.8,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
                     })
-                    list.add(TriggerDelta(injector, GlucoseUnit.MMOL).apply {
+                    list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-1.1,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
                     })
                     list.add(TriggerIob(injector).apply {
@@ -75,7 +75,7 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerBolusAgo(injector).apply {
                         fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerDelta(injector, GlucoseUnit.MMOL).apply {
+                    list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.8,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
                     })
                 })
