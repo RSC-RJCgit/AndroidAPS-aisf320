@@ -93,7 +93,8 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"Skit4"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"Skit4"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"Skit4","durationInMinutes":30}""")
             })
         }
 
@@ -185,7 +186,9 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"Skit","durationInMinutes":30}""")
+
             })
         }
 
@@ -290,7 +293,8 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"Skit3"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"Skit3"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"Skit3","durationInMinutes":30}""")
             })
         }
 
@@ -322,7 +326,8 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"inputStateName":"MJ","inputState":"NOMJremains"}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"MJoff"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"MJoff"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"MJoff","durationInMinutes":30}""")
             })
         }
 
@@ -346,7 +351,8 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"inputStateName":"MJ","inputState":"MJ3"}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"MJ3"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"MJ3"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"MJ3","durationInMinutes":30}""")
             })
         }
 
@@ -370,7 +376,8 @@ class AutomationPresets @Inject constructor(
                 fromJSON("""{"inputStateName":"MJ","inputState":"MJ2"}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"MJ2"}""")
+                //fromJSON("""{"cpEvent":"NOTE","note":"MJ2"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"MJ2","durationInMinutes":30}""")
             })
         }
 
@@ -392,6 +399,7 @@ class AutomationPresets @Inject constructor(
             }
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"A1"}""")
+                fromJSON("""{"cpEvent":"NOTE","note":"A1","durationInMinutes":30}""")
             })
             actions.add(ActionSetAutomationState(injector).apply {
                 fromJSON("""{"inputStateName":"MJ","inputState":"NOMJremains"}""")
