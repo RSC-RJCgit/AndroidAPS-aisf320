@@ -55,7 +55,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "Skittles3ok2BG9.0"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
@@ -109,7 +108,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "SkittlesTT3CurrP002"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 // Branch 1: acute low with falling delta
@@ -203,7 +201,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "SkittlesA3ok8.0,5.0,6.0"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 // Branch 1: steep fast drop with moderate BG and high IOB
@@ -304,7 +301,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "MJoff"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
@@ -336,7 +332,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "MJ3"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
@@ -361,7 +356,6 @@ class AutomationPresets @Inject constructor(
         AutomationEventObject(injector).apply {
             title = "MJ2"
             systemAction = true
-            readOnly = true
             repeatInterval = 5
             trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
                 list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
