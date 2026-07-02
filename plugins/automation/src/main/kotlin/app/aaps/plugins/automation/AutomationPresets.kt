@@ -42,6 +42,7 @@ class AutomationPresets @Inject constructor(
         plugin.addIfNotExists(buildSkittles3ok2BG90())
         plugin.addIfNotExists(buildSkittlesTT3CurrP002())
         plugin.addIfNotExists(buildSkittlesA3ok8056())
+        plugin.addIfNotExists(buildTest())
     }
 
     // ---------------------------------------------------------------------------
@@ -370,6 +371,30 @@ class AutomationPresets @Inject constructor(
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"MJ2"}""")
+            })
+        }
+
+    // ---------------------------------------------------------------------------
+    // Test: State MJ=MJ4 → Note "A1" + set MJ=NOMJremains  (user action button)
+    // ---------------------------------------------------------------------------
+    private fun buildTest(): AutomationEventObject =
+        AutomationEventObject(injector).apply {
+            title = "Test"
+            systemAction = true
+            userAction = true
+            repeatInterval = 5
+            trigger = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                list.add(TriggerConnector(injector, TriggerConnector.Type.AND).apply {
+                    list.add(TriggerAutomationState(injector).apply {
+                        fromJSON("""{"stateName":"MJ","stateValue":"MJ4"}""")
+                    })
+                })
+            }
+            actions.add(ActionCarePortalEvent(injector).apply {
+                fromJSON("""{"cpEvent":"NOTE","note":"A1"}""")
+            })
+            actions.add(ActionSetAutomationState(injector).apply {
+                fromJSON("""{"inputStateName":"MJ","inputState":"NOMJremains"}""")
             })
         }
 }

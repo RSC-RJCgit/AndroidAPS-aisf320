@@ -168,7 +168,7 @@
     <color name="actionsConfirm">#FFFF00</color>
     <color name="deviations">#FF0000</color>
     <color name="cobAlert">#7484E2</color>
-    <color name="inRangeBackground">#4000FF00</color>
+    <color name="inRangeBackground">#3000FF00</color>
     <color name="baseBasal">#C83F51B5</color>
     <color name="graphGrid">#757575</color>
     <color name="warning">#ff1a1a</color>
