@@ -389,7 +389,6 @@ class AutomationPlugin @Inject constructor(
                     e.trigger = event.trigger
                     e.actions.clear()
                     e.actions.addAll(event.actions)
-                    e.preconditions = event.preconditions
                     rxBus.send(EventAutomationDataChanged())
                 }
                 return
