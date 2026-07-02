@@ -384,7 +384,16 @@ class AutomationPlugin @Inject constructor(
     @Synchronized
     fun addIfNotExists(event: AutomationEventObject) {
         for (e in automationEvents) {
-            if (event.title == e.title) return
+            if (event.title == e.title) {
+                if (event.systemAction) {
+                    e.trigger = event.trigger
+                    e.actions.clear()
+                    e.actions.addAll(event.actions)
+                    e.preconditions = event.preconditions
+                    rxBus.send(EventAutomationDataChanged())
+                }
+                return
+            }
         }
         automationEvents.add(event)
         rxBus.send(EventAutomationDataChanged())
