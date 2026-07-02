@@ -4,7 +4,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
-import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
+import app.aaps.plugins.automation.actions.ActionProfileSwitch
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
 import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
@@ -89,8 +89,8 @@ class AutomationPresets @Inject constructor(
                     fromJSON("""{"comparator":"NOT_EXISTS"}""")
                 }
             })
-            actions.add(ActionProfileSwitchPercent(injector).apply {
-                fromJSON("""{"percentage":100.0,"durationInMinutes":0}""")
+            actions.add(ActionProfileSwitch(injector).apply {
+                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"Skit4"}""")
@@ -182,8 +182,8 @@ class AutomationPresets @Inject constructor(
                     fromJSON("""{"comparator":"NOT_EXISTS"}""")
                 }
             })
-            actions.add(ActionProfileSwitchPercent(injector).apply {
-                fromJSON("""{"percentage":100.0,"durationInMinutes":0}""")
+            actions.add(ActionProfileSwitch(injector).apply {
+                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
@@ -288,8 +288,8 @@ class AutomationPresets @Inject constructor(
                     fromJSON("""{"comparator":"NOT_EXISTS"}""")
                 }
             })
-            actions.add(ActionProfileSwitchPercent(injector).apply {
-                fromJSON("""{"percentage":100.0,"durationInMinutes":0}""")
+            actions.add(ActionProfileSwitch(injector).apply {
+                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 fromJSON("""{"cpEvent":"NOTE","note":"Skit3"}""")
