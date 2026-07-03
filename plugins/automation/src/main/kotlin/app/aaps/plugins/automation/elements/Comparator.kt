@@ -56,10 +56,12 @@ class Comparator(private val rh: ResourceHelper) : Element {
             }
         }
 
-        // Double overload with tolerance (half the input step) to absorb unit-conversion drift.
-        // Only active when fuzzyEquals is enabled in settings.
+        // Double overload with a fixed 0.001 tolerance to absorb unit-conversion drift.
+        // Always applied (not gated by fuzzyEquals): AutomationFuzzyEquals has no settings UI to enable it,
+        // so it was permanently off in practice. The 0.001 constant itself was already validated as correct
+        // (a prior half-step-based tolerance was reverted for not working reliably; flat 0.001 replaced it).
         fun check(obj1: Double, obj2: Double, tolerance: Double): Boolean {
-            val tol = if (fuzzyEquals) tolerance else 0.0
+            val tol = tolerance
             return when (this) {
                 IS_LESSER           -> obj1 < obj2 - tol
                 IS_EQUAL_OR_LESSER  -> obj1 <= obj2 + tol

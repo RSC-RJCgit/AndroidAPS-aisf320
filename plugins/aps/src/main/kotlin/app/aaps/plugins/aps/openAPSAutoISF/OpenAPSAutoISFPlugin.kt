@@ -388,6 +388,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ).subscribe()
     }
 
+    // Not yet called anywhere; ready for later conditions. Mirrors TriggerAutomationState: exact string
+    // equality (state values are names, not numbers), gated the same way — false when states are disabled.
+    // Not affected by the fuzzy-equals tolerance noted below, since that only applies to Double comparisons.
+    private fun checkAutomationState(stateName: String, stateValue: String): Boolean {
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
+        return automationStateService.inState(stateName, stateValue)
+    }
+
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionSetAutomationState: no-ops (rather
+    // than throwing) when states are disabled or stateValue isn't a valid value for stateName — setState()
+    // itself throws IllegalStateException for an unknown stateName/stateValue, same as the automation action.
+    private fun setAutomationState(stateName: String, stateValue: String): Boolean {
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
+        automationStateService.setState(stateName, stateValue)
+        return true
+    }
+
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
@@ -1595,5 +1612,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt20TDDAU174
+OpenAPSAutoISFPlugin.ktSt20TDDAU175
  */
