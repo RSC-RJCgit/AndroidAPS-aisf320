@@ -33,7 +33,11 @@ class GlucoseValueDataPoint(
     override val duration = 0L
     override val shape get() = if (isPrediction) Shape.PREDICTION else Shape.BG
     override val size = if (isPrediction) 1f else 0.6f
-    override val paintStyle: Paint.Style = if (isPrediction) Paint.Style.FILL else Paint.Style.STROKE
+    // FILL (not just STROKE) when colorOverride is set, so the ISF-weight color is actually visible on
+    // this small a dot instead of just tinting a thin outline. colorOverride is set externally after
+    // construction (see PrepareBgDataWorker.kt), so this has to be a computed get(), not a val fixed
+    // at construction time.
+    override val paintStyle: Paint.Style get() = if (isPrediction || colorOverride != 0) Paint.Style.FILL else Paint.Style.STROKE
 
     override fun color(context: Context?): Int {
         return when {

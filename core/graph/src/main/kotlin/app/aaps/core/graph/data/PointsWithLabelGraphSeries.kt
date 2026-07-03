@@ -190,13 +190,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // original blue triangle at baseline (IOB graph zero line)
                     mPaint.strokeWidth = 0f
                     mPaint.style = Paint.Style.FILL_AND_STROKE
+                    val baseTriBase = endY + scaledPxSize * 0.67f
                     drawArrows(arrayOf(
                         Point(endX.toInt(), (endY - scaledPxSize).toInt()),
-                        Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
-                        Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
+                        Point((endX + scaledPxSize).toInt(), baseTriBase.toInt()),
+                        Point((endX - scaledPxSize).toInt(), baseTriBase.toInt())
                     ), canvas, mPaint)
+                    // shaft below the baseline arrowhead — length scales with value.shaftLengthMultiplier (dose size)
+                    mPaint.strokeWidth = 2f
+                    mPaint.style = Paint.Style.STROKE
+                    canvas.drawLine(endX, baseTriBase, endX, baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
-                    // Together with the shaft drawn right after, this forms a full arrow, not a bare triangle.
+                    // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
+                    // baseline arrowhead's shaft above instead.
                     if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
@@ -208,18 +214,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // arrow shaft below the arrowhead — length scales with value.shaftLengthMultiplier (dose size)
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
-                    // label stacked upward from BGL
+                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
+                    // label centered over the BGL dot instead of offset to the right
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         if (!value.hasColorOverride) mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
-                        drawLabel45Right(endX, labelY, value, canvas, scaledPxSize, scaledTextSize * 0.5f)
+                        drawLabelCentered(endX, labelY, value, canvas, scaledTextSize * 0.5f)
                         mPaint.color = savedColor
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
@@ -301,6 +306,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
                     // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
+                    // Right-aligned (text grows leftward from endX) since this is a live point that sits at
+                    // the current/rightmost time position — left-aligned text would run off the screen edge.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
@@ -309,10 +316,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val bounds = Rect()
                         mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
                         mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.RIGHT
                         val py = graphTop + 130
                         canvas.drawText(value.label, endX, py, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
                         mPaint.strokeWidth = 5f
-                        canvas.drawRect(endX - 3, bounds.top + py - 3, xPlusLength + 3, bounds.bottom + py + 3, mPaint)
+                        canvas.drawRect(endX - bounds.width() - 3, bounds.top + py - 3, endX + 3, bounds.bottom + py + 3, mPaint)
                     }
                 }
                 // set values above point
@@ -320,8 +329,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // BOLUS arrowhead+shaft: drawn outside overdraw gate so it always appears when x is on-screen.
             // Same size/shaft proportions as the SMB arrow (value.size * scaledPxSize * 1.2f arrowhead,
             // scaledTextSize * 0.25f shaft), instead of the smaller bare-triangle-no-shaft look this used before.
+            // Color.BLACK previously here likely blended into a dark theme's graph background — this was
+            // a themed value.color(context) (bolusDataPointColor, a visible blue/cyan) before an earlier
+            // change hardcoded it to black. Using a fixed bright color instead of black or a theme lookup,
+            // so it can't blend into either a light or dark background.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
-                mPaint.color = Color.BLACK
+                mPaint.color = Color.MAGENTA
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f
@@ -387,5 +400,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             drawText(value.label, endX - scaledPxSize, py, mPaint)
             mPaint.textAlign = Paint.Align.LEFT
         }
+    }
+
+    // Upright, horizontally centered on endX — unlike drawLabel45Right/Left, no rotation and no offset,
+    // so the label sits directly over/under the point instead of angled off to one side.
+    private fun drawLabelCentered(endX: Float, endY: Float, value: E, canvas: Canvas, scaledTextSize: Float) {
+        mPaint.textSize = (scaledTextSize * 0.8).toFloat()
+        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
+        mPaint.isFakeBoldText = true
+        mPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText(value.label, endX, endY, mPaint)
+        mPaint.textAlign = Paint.Align.LEFT
     }
 }
