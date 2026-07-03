@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -33,6 +34,7 @@ class DetermineBasalAutoISF @Inject constructor(
 ) {
 
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var profileFunction: ProfileFunction
 
     // TDD-based ratio passed from OpenAPSAutoISFPlugin via class-level properties (Option 3)
     var tddRatio: Double = 1.0
@@ -74,6 +76,9 @@ class DetermineBasalAutoISF @Inject constructor(
 
     fun convert_isf(value: Double): String =
         String.format("%.1f", profileUtil.fromMgdlToUnits(value))
+
+    // Not yet called anywhere; ready for later conditions that need to branch on the active profile.
+    private fun currentProfileName(): String = profileFunction.getProfileName()
 
     fun enable_smb(profile: OapsProfileAutoIsf, microBolusAllowed: Boolean, meal_data: MealData, target_bg: Double): Boolean {
         // disable SMB when a high temptarget is set
@@ -319,7 +324,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 2320TDDAU171")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 2320TDDAU172")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -689,7 +694,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 2320TDDAU171 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 2320TDDAU172 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1534,5 +1539,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDDAU171
+DetermineBasalAutoISF.kt320TDDAU172
 */

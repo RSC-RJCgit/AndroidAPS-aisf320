@@ -18,6 +18,9 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -293,6 +296,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         // this return is mandatory, otherwise it messed up the AutoISF algo.
         return Pair("OFF", null)
+    }
+
+    // Not yet called anywhere; ready for later conditions that need to switch profile in code, without an automation.
+    // Mirrors ActionProfileSwitch: no-ops if targetProfileName is already active or doesn't exist.
+    private fun switchProfileIfNeeded(targetProfileName: String, durationInMinutes: Int = 0): Boolean {
+        if (targetProfileName == profileFunction.getProfileName()) return false
+        val profileStore = activePlugin.activeProfileSource.profile ?: return false
+        if (profileStore.getSpecificProfile(targetProfileName) == null) return false
+        return profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = targetProfileName,
+            durationInMinutes = durationInMinutes,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Loop,
+            note = "AutoISF code-based profile switch",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(targetProfileName),
+                ValueWithUnit.Percent(100)
+            )
+        )
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
@@ -1502,5 +1528,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt20TDDAU171
+OpenAPSAutoISFPlugin.ktSt20TDDAU172
  */

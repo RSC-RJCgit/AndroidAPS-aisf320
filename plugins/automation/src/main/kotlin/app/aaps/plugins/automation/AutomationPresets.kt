@@ -35,14 +35,16 @@ class AutomationPresets @Inject constructor(
 ) {
 
     fun registerAll(plugin: AutomationPlugin) {
-        aapsLogger.debug(LTag.AUTOMATION, "Registering system automation presets")
-        plugin.addIfNotExists(buildMjOff())
-        plugin.addIfNotExists(buildMj3())
-        plugin.addIfNotExists(buildMj2())
-        plugin.addIfNotExists(buildSkittles3ok2BG90())
-        plugin.addIfNotExists(buildSkittlesTT3CurrP002())
-        plugin.addIfNotExists(buildSkittlesA3ok8056())
-        plugin.addIfNotExists(buildTest())
+        // Disabled: these 7 presets are being recreated manually in the AAPS Automation tab instead.
+        // build*() functions below are left in place as a reference for the tuned trigger values.
+        // aapsLogger.debug(LTag.AUTOMATION, "Registering system automation presets")
+        // plugin.addIfNotExists(buildMjOff())
+        // plugin.addIfNotExists(buildMj3())
+        // plugin.addIfNotExists(buildMj2())
+        // plugin.addIfNotExists(buildSkittles3ok2BG90())
+        // plugin.addIfNotExists(buildSkittlesTT3CurrP002())
+        // plugin.addIfNotExists(buildSkittlesA3ok8056())
+        // plugin.addIfNotExists(buildTest())
     }
 
     // ---------------------------------------------------------------------------
