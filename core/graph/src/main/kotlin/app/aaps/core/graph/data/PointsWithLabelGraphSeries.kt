@@ -195,7 +195,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
                         Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
                     ), canvas, mPaint)
-                    // narrow triangle just below the relevant BGL point — ISF color if available, else yellow
+                    // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
+                    // Together with the shaft drawn right after, this forms a full arrow, not a bare triangle.
                     if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                     val triTop = bgEndY + size
                     val triBase = triTop + size * 1.5f
@@ -207,7 +208,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // thin short tail below triangle — length scales with value.shaftLengthMultiplier (dose size)
+                    // arrow shaft below the arrowhead — length scales with value.shaftLengthMultiplier (dose size)
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
