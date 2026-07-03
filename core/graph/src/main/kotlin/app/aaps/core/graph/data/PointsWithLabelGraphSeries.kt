@@ -317,25 +317,31 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 }
                 // set values above point
             }
-            // BOLUS triangle: drawn outside overdraw gate so it always appears when x is on-screen.
-            // Scaled by value.size (same convention SMB's triangle already uses) instead of the bare
-            // scaledPxSize this used before, which made it ~2.4x smaller than the SMB triangle.
+            // BOLUS arrowhead+shaft: drawn outside overdraw gate so it always appears when x is on-screen.
+            // Same size/shaft proportions as the SMB arrow (value.size * scaledPxSize * 1.2f arrowhead,
+            // scaledTextSize * 0.25f shaft), instead of the smaller bare-triangle-no-shaft look this used before.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
                 mPaint.color = Color.BLACK
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
-                val bolusSize = value.size * scaledPxSize
+                val bolusSize = value.size * scaledPxSize * 1.2f
                 val bEndY = endY.coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
+                val bTriBase = bEndY + bolusSize * 0.67f
                 drawArrows(arrayOf(
                     Point(endX.toInt(), (bEndY - bolusSize).toInt()),
-                    Point((endX + bolusSize).toInt(), (bEndY + bolusSize * 0.67).toInt()),
-                    Point((endX - bolusSize).toInt(), (bEndY + bolusSize * 0.67).toInt())
+                    Point((endX + bolusSize).toInt(), bTriBase.toInt()),
+                    Point((endX - bolusSize).toInt(), bTriBase.toInt())
                 ), canvas, mPaint)
+                // shaft below the arrowhead, matching the SMB arrow's shaft style
+                mPaint.strokeWidth = 2f
+                mPaint.style = Paint.Style.STROKE
+                canvas.drawLine(endX, bTriBase, endX, bTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                 if (value.label.isNotEmpty()) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
                     val savedColor = mPaint.color
                     mPaint.color = Color.YELLOW
+                    mPaint.style = Paint.Style.FILL
                     drawLabel45Right(endX, labelEndY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                     mPaint.color = savedColor
                 }

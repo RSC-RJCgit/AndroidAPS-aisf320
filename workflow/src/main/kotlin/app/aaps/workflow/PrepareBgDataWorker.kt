@@ -5,6 +5,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
@@ -52,11 +53,32 @@ class PrepareBgDataWorker(
         val fromTime = data.overviewData.fromTime
         data.overviewData.maxBgValue = Double.MIN_VALUE
         data.overviewData.bgReadingsArray = persistenceLayer.getBgReadingsDataFromTimeToTime(fromTime, toTime, false)
+        // Same dominant-ISF-weight color logic/colors as the SMB arrow override in PrepareTreatmentsDataWorker.kt.
+        val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, toTime)
         val bgListArray: MutableList<DataPointWithLabelInterface> = ArrayList()
         for (bg in data.overviewData.bgReadingsArray) {
             if (bg.timestamp < fromTime || bg.timestamp > toTime) continue
             if (bg.value > data.overviewData.maxBgValue) data.overviewData.maxBgValue = bg.value
-            bgListArray.add(GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil))
+            val dp = GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil)
+            if (aivList.isNotEmpty()) {
+                val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - bg.timestamp) }
+                if (nearest != null && kotlin.math.abs(nearest.timestamp - bg.timestamp) < T.mins(15).msecs()) {
+                    val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
+                    val bgDev = kotlin.math.abs(nearest.bgIsf - 1.0)
+                    val pp = kotlin.math.abs(nearest.ppIsf - 1.0)
+                    val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
+                    val maxDev = maxOf(acce, bgDev, pp, dura)
+                    if (maxDev > 0.01) {
+                        dp.colorOverride = when {
+                            acce >= maxDev  -> android.graphics.Color.CYAN
+                            bgDev >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
+                            pp >= maxDev    -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
+                            else            -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
+                        }
+                    }
+                }
+            }
+            bgListArray.add(dp)
         }
         bgListArray.sortWith { o1: DataPointWithLabelInterface, o2: DataPointWithLabelInterface -> o1.x.compareTo(o2.x) }
         data.overviewData.bgReadingGraphSeries = PointsWithLabelGraphSeries(Array(bgListArray.size) { i -> bgListArray[i] })

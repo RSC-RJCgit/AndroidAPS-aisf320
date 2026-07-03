@@ -17,6 +17,11 @@ class GlucoseValueDataPoint(
     dateUtil: DateUtil
 ) : DataPointWithLabelInterface {
 
+    // Set externally (see PrepareBgDataWorker.kt) to the dominant ISF-weight color, same logic/colors
+    // used for the SMB arrow override in PrepareTreatmentsDataWorker.kt. 0 = no override, use default color.
+    var colorOverride: Int = 0
+    override val hasColorOverride: Boolean get() = colorOverride != 0
+
     private fun valueToUnits(units: GlucoseUnit): Double =
         if (units == GlucoseUnit.MGDL) data.value else data.value * Constants.MGDL_TO_MMOLL
 
@@ -32,8 +37,9 @@ class GlucoseValueDataPoint(
 
     override fun color(context: Context?): Int {
         return when {
-            isPrediction -> predictionColor(context)
-            else         -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
+            isPrediction     -> predictionColor(context)
+            colorOverride != 0 -> colorOverride
+            else             -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
         }
     }
 
