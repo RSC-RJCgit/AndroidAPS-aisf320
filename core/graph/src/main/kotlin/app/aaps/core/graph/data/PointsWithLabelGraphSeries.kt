@@ -316,16 +316,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 }
                 // set values above point
             }
-            // BOLUS diamond: drawn outside overdraw gate so it always appears when x is on-screen
+            // BOLUS triangle: drawn outside overdraw gate so it always appears when x is on-screen.
+            // Scaled by value.size (same convention SMB's triangle already uses) instead of the bare
+            // scaledPxSize this used before, which made it ~2.4x smaller than the SMB triangle.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
                 mPaint.color = Color.BLACK
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
-                val bEndY = endY.coerceIn(graphTop + scaledPxSize, graphTop + graphHeight - scaledPxSize)
+                val bolusSize = value.size * scaledPxSize
+                val bEndY = endY.coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
                 drawArrows(arrayOf(
-                    Point(endX.toInt(), (bEndY - scaledPxSize).toInt()),
-                    Point((endX + scaledPxSize).toInt(), (bEndY + scaledPxSize * 0.67).toInt()),
-                    Point((endX - scaledPxSize).toInt(), (bEndY + scaledPxSize * 0.67).toInt())
+                    Point(endX.toInt(), (bEndY - bolusSize).toInt()),
+                    Point((endX + bolusSize).toInt(), (bEndY + bolusSize * 0.67).toInt()),
+                    Point((endX - bolusSize).toInt(), (bEndY + bolusSize * 0.67).toInt())
                 ), canvas, mPaint)
                 if (value.label.isNotEmpty()) {
                     val labelRatY = (value.labelY - minY) / diffY
