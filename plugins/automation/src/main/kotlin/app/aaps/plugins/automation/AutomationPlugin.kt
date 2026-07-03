@@ -181,6 +181,7 @@ class AutomationPlugin @Inject constructor(
         super.onStart()
         Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
         loadFromSP()
+        clearStaleReadOnlyOnSystemPresets()
         automationPresets.registerAll(this)
         handler?.postDelayed(refreshLoop, T.mins(1).msecs())
 
@@ -243,6 +244,19 @@ class AutomationPlugin @Inject constructor(
         importInProgress = false
         loadFromSP()
         rxBus.send(EventAutomationUpdateGui())
+    }
+
+    // One-time fix for entries stuck with readOnly=true from an older build of AutomationPresets.kt
+    // that used to set it. No-ops once those entries are cleared (systemAction && readOnly no longer matches).
+    private fun clearStaleReadOnlyOnSystemPresets() {
+        var changed = false
+        automationEvents.forEach {
+            if (it.systemAction && it.readOnly) {
+                it.readOnly = false
+                changed = true
+            }
+        }
+        if (changed) storeToSP()
     }
 
     private fun storeToSP() {
