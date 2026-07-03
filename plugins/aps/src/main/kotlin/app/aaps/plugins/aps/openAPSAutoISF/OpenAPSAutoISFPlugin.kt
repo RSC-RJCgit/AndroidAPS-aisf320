@@ -405,6 +405,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return true
     }
 
+    // Ready for later conditions that could otherwise re-fire every loop cycle (down to 1-minute cycles)
+    // instead of a minimum interval. Mirrors AutomationEventObject's own repeatInterval/lastRun throttle.
+    // `key` should be unique per ported condition (e.g. its old automation title).
+    private val lastRunTimestamps = mutableMapOf<String, Long>()
+
+    private fun readyToRun(key: String, minIntervalMinutes: Int): Boolean =
+        (lastRunTimestamps[key] ?: 0L) <= dateUtil.now() - T.mins(minIntervalMinutes.toLong()).msecs()
+
+    private fun markRun(key: String) {
+        lastRunTimestamps[key] = dateUtil.now()
+    }
+
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
@@ -638,6 +650,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
+
+        // Code port of the "Test" automation. Self-guarding: firing sets MJ to a value the condition
+        // no longer matches, so no readyToRun() throttle is needed for this one specifically.
+        if (checkAutomationState("MJ", "MJ4")) {
+            addCarePortalNote("A1", 30)
+            setAutomationState("MJ", "NOMJremains")
+        }
 
         val gson = Gson()
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal AutoISF <<<")
