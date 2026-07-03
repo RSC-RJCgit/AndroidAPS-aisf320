@@ -3,6 +3,7 @@ package app.aaps.workflow
 import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
@@ -77,4 +78,26 @@ class PrepareBgDataWorker(
 
     private fun addUpperChartMargin(maxBgValue: Double) =
         if (profileUtil.units == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
+
+    // Not yet called anywhere; ready for a future graph annotation. `readings` is expected newest-first,
+    // e.g. data.overviewData.bgReadingsArray as already fetched above (ascending=false). Delta is between
+    // whatever the two most recent readings actually are — assumes ~1-minute sensor cadence rather than
+    // enforcing an exact 1-minute gap, since that's this fork's typical reading interval.
+
+    // gv.noise: same field already plotted as the red raw-BG line in doWorkAndLog() above.
+    private fun currentNoisyBg(readings: List<GV>): Double? = readings.firstOrNull()?.noise
+
+    // gv.value delta between the two newest readings.
+    private fun aapsOneMinuteDelta(readings: List<GV>): Double? {
+        if (readings.size < 2) return null
+        return readings[0].value - readings[1].value
+    }
+
+    // gv.noise delta between the two newest readings (Libre/xDrip raw native signal, not gv.value).
+    private fun libreOneMinuteDelta(readings: List<GV>): Double? {
+        if (readings.size < 2) return null
+        val newest = readings[0].noise ?: return null
+        val previous = readings[1].noise ?: return null
+        return newest - previous
+    }
 }

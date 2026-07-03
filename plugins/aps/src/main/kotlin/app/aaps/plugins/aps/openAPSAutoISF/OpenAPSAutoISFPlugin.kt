@@ -369,8 +369,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
     private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)
 
-    // Not yet called anywhere; ready for later conditions. Mirrors ActionCarePortalEvent for a plain note.
-    private fun addCarePortalNote(note: String, durationInMinutes: Int = 0) {
+    // Mirrors ActionCarePortalEvent for a plain note. Default duration is 5 min (not the 30 min the
+    // original ported automations used) per explicit preference.
+    private fun addCarePortalNote(note: String, durationInMinutes: Int = 5) {
         val therapyEvent = TE(
             timestamp = dateUtil.now(),
             type = TE.Type.NOTE,
@@ -654,7 +655,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of the "Test" automation. Self-guarding: firing sets MJ to a value the condition
         // no longer matches, so no readyToRun() throttle is needed for this one specifically.
         if (checkAutomationState("MJ", "MJ4")) {
-            addCarePortalNote("A1", 30)
+            addCarePortalNote("A1")
             setAutomationState("MJ", "NOMJremains")
         }
 
