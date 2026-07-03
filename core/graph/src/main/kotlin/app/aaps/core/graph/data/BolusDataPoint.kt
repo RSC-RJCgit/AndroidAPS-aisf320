@@ -35,6 +35,12 @@ class BolusDataPoint(
 
     override val hasColorOverride: Boolean get() = colorOverride != 0
 
+    // 1 shaft length at the 0.05U baseline, +1 for every further 0.05U (0.05->1, 0.10->2, 0.20->4, ...).
+    // +0.001 epsilon guards against float drift (e.g. 0.15 - 0.05 landing a hair under 0.10).
+    override val shaftLengthMultiplier: Int
+        get() = if (data.type == BS.Type.SMB) 1 + (((data.amount - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0))
+        else 1
+
     override fun color(context: Context?): Int =
         if (data.type == BS.Type.SMB && colorOverride != 0) colorOverride
         else if (data.type == BS.Type.SMB) rh.gac(context, app.aaps.core.ui.R.attr.smbColor)

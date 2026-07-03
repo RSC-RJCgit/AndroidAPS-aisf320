@@ -19,4 +19,8 @@ interface DataPointWithLabelInterface : DataPointInterface {
     val paintStyle: Paint.Style
     @ColorInt fun color(context: Context?): Int
     val hasColorOverride: Boolean get() = false
+
+    // Shape.SMB tail length multiplier: 1 = baseline. Only BolusDataPoint overrides this (per-0.05U-over-
+    // 0.05U-baseline dose scaling); everything else keeps the default fixed length.
+    val shaftLengthMultiplier: Int get() = 1
 }

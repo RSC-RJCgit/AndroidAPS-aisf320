@@ -207,10 +207,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    // thin short tail below triangle
+                    // thin short tail below triangle — length scales with value.shaftLengthMultiplier (dose size)
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
+                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                     // label stacked upward from BGL
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
