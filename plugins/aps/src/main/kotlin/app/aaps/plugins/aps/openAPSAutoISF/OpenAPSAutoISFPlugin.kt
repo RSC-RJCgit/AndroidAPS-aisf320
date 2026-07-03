@@ -14,8 +14,11 @@ import androidx.preference.SwitchPreference
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
@@ -52,6 +55,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
@@ -90,6 +94,7 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
 import java.time.LocalDateTime
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -143,6 +148,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
+    @Inject lateinit var smsCommunicator: SmsCommunicator
 
     // last values
     override var lastAPSRun: Long = 0
@@ -312,13 +318,74 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             timeShiftInHours = 0,
             timestamp = dateUtil.now(),
             action = Action.PROFILE_SWITCH,
-            source = Sources.Loop,
+            source = Sources.Automation,
             note = "AutoISF code-based profile switch",
             listValues = listOf(
                 ValueWithUnit.SimpleString(targetProfileName),
                 ValueWithUnit.Percent(100)
             )
         )
+    }
+
+    // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
+    // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
+    // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
+    private fun minutesSinceLastNormalBolus(): Int? {
+        val lastBolusTime = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)?.timestamp ?: return null
+        return ((dateUtil.now() - lastBolusTime).toDouble() / (60 * 1000)).toInt()
+    }
+
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionSetAcceWeight: same underlying
+    // preference key ("bgAccel_ISF_weight") the DoubleKey.ApsAutoIsfBgAccelWeight getter already reads.
+    private fun setBgAccelIsfWeight(weight: Double) {
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
+    }
+
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionStartTempTarget, including its
+    // own built-in guard: no-ops if a temp target is already active rather than stacking/replacing it.
+    private fun startTempTargetIfNeeded(targetMgdl: Double, durationInMinutes: Int): Boolean {
+        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) return false
+        val tt = TT(
+            timestamp = dateUtil.now(),
+            duration = TimeUnit.MINUTES.toMillis(durationInMinutes.toLong()),
+            reason = TT.Reason.AUTOMATION,
+            lowTarget = targetMgdl,
+            highTarget = targetMgdl
+        )
+        disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = tt,
+            action = Action.TT,
+            source = Sources.Automation,
+            note = "AutoISF code-based temp target",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                ValueWithUnit.Mgdl(targetMgdl),
+                ValueWithUnit.Minute(durationInMinutes)
+            )
+        ).subscribe()
+        return true
+    }
+
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
+    private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)
+
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionCarePortalEvent for a plain note.
+    private fun addCarePortalNote(note: String, durationInMinutes: Int = 0) {
+        val therapyEvent = TE(
+            timestamp = dateUtil.now(),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            this.note = note
+            this.duration = TimeUnit.MINUTES.toMillis(durationInMinutes.toLong())
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation, // matches ActionCarePortalEvent, which your working automations use
+            note = "AutoISF code-based note",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe()
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
@@ -1528,5 +1595,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt20TDDAU173
+OpenAPSAutoISFPlugin.ktSt20TDDAU174
  */
