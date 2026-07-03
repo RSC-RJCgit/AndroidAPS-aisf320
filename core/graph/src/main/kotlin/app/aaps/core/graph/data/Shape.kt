@@ -24,6 +24,7 @@ enum class Shape {
     EXERCISE,
     GENERAL,
     GENERAL_WITH_DURATION,
+    GENERAL_WITH_DURATION_OFFSET, // same fixed-top-of-graph style as GENERAL_WITH_DURATION, drawn lower to avoid overlapping CarePortal notes
     COB_FAIL_OVER,
     IOB_PREDICTION,
     BUCKETED_BG,

@@ -129,6 +129,10 @@ class GraphData @Inject constructor(
         addSeries(overviewData.therapyEventSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addNoisyBgDeltaAnnotation() {
+        addSeries(overviewData.noisyBgDeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addActivity(scale: Double) {
         addSeries(overviewData.activitySeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.activityPredictionSeries as FixedLineGraphSeries<ScaledDataPoint>)

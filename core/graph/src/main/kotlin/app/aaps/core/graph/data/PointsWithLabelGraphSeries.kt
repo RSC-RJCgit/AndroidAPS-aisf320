@@ -298,6 +298,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.strokeWidth = 5f
                         canvas.drawRect(endX - 3, bounds.top + py - 3, xPlusLength + 3, bounds.bottom + py + 3, mPaint)
                     }
+                } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
+                    // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.strokeWidth = 0f
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        val bounds = Rect()
+                        mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
+                        mPaint.style = Paint.Style.FILL
+                        val py = graphTop + 130
+                        canvas.drawText(value.label, endX, py, mPaint)
+                        mPaint.strokeWidth = 5f
+                        canvas.drawRect(endX - 3, bounds.top + py - 3, xPlusLength + 3, bounds.bottom + py + 3, mPaint)
+                    }
                 }
                 // set values above point
             }

@@ -105,6 +105,7 @@ class OverviewDataImpl @Inject constructor(
         maxTherapyEventValue = 0.0
         therapyEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         rawBgSeries = LineGraphSeries<ScaledDataPoint>()
+        noisyBgDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsCountGraphSeries = PointsWithLabelGraphSeries<StepsDataPoint>()
         maxVarSensValueFound = 200.0
@@ -284,6 +285,7 @@ class OverviewDataImpl @Inject constructor(
     override var dsMaxSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
     override var dsMinSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
     override var rawBgSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var noisyBgDeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var heartRateScale = Scale()
     override var heartRateGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsForScale = Scale()
