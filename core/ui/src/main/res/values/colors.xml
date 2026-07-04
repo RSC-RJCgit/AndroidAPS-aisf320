@@ -101,7 +101,7 @@
     <color name="sens">#008585</color>
 
     <!--    AutoISF-->
-    <color name="bgParabolaColor">#FF00FF</color>
+    <color name="bgParabolaColor">#8CFF00FF</color>
     <color name="acceIsfColor">#0044FF</color>
     <color name="bgIsfColor">#FF0000</color>
     <color name="ppIsfColor">#00BB00</color>
