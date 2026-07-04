@@ -23,6 +23,10 @@ class BolusDataPoint(
     // branch fired for this SMB in DetermineBasalAutoISF; empty otherwise.
     override var fastRiseLabel: String = ""
 
+    // Set externally (see PrepareTreatmentsDataWorker.kt) when a matching ExtendedBolus was found near
+    // this bolus's timestamp (dual-wave/combo split).
+    override var hasDelayedComponent: Boolean = false
+
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue
     override val label

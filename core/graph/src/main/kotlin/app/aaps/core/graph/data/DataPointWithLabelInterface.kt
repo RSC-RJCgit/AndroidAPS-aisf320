@@ -27,4 +27,8 @@ interface DataPointWithLabelInterface : DataPointInterface {
     // Shape.SMB fast-rise indicator: empty = no fast-rise branch fired for this dose. Only BolusDataPoint
     // overrides this, drawn at the bottom of the baseline arrowhead's shaft when non-empty.
     val fastRiseLabel: String get() = ""
+
+    // Shape.BOLUS only: true when this bolus has a paired delayed/extended portion (dual-wave/combo,
+    // e.g. a 50% now / 50% extended split) — drawn yellow instead of the normal bolus color.
+    val hasDelayedComponent: Boolean get() = false
 }

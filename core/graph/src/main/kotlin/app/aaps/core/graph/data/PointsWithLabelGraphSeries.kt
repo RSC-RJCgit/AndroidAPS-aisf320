@@ -96,6 +96,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // draw data
         val diffY = maxY - minY
         val diffX = maxX - minX
+        // Center-justify the top/bottom fixed annotations only on the tightest (~3h) zoom level, where there's
+        // room either side of endX; wider ranges compress the x-axis enough that centered text would clip, so
+        // those fall back to right-justified (grows leftward from endX).
+        val displayedHoursForAlignment = diffX / (1000.0 * 60 * 60)
+        val fixedAnnotationAlign = if (displayedHoursForAlignment <= 3.0) Paint.Align.CENTER else Paint.Align.RIGHT
         val graphHeight = graphView.graphContentHeight.toFloat()
         val graphWidth = graphView.graphContentWidth.toFloat()
         val graphLeft = graphView.graphContentLeft.toFloat()
@@ -318,14 +323,14 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
                     // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
-                    // Centered over the BGL point (endX) — no bounding box (unlike GENERAL_WITH_DURATION), just the text.
+                    // No bounding box (unlike GENERAL_WITH_DURATION) — just the text.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textAlign = Paint.Align.CENTER
+                        mPaint.textAlign = fixedAnnotationAlign
                         val py = graphTop + 130
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
@@ -338,7 +343,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textAlign = Paint.Align.CENTER
+                        mPaint.textAlign = fixedAnnotationAlign
                         val lines = value.label.split("\n")
                         val lineHeight = scaledTextSize * 0.7f
                         val bottomLineY = graphTop + graphHeight - 150
@@ -358,7 +363,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // change hardcoded it to black. Using a fixed bright color instead of black or a theme lookup,
             // so it can't blend into either a light or dark background.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
-                mPaint.color = Color.MAGENTA
+                mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f

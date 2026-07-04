@@ -75,37 +75,51 @@ class PrepareTreatmentsDataWorker(
         // Actual reason text is "<threshold>  = microBolus  * <factor> ; microBolus = <result>"
         // (the token before "=" is a threshold number, not the word "microBolus" again).
         val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
-        persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
+        val bolusDataPoints = persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
-            .forEach { dp ->
-                dp.y = getNearestBg(data.overviewData, dp.x.toLong())
-                if (dp.data.type == BS.Type.SMB && aivList.isNotEmpty()) {
-                    val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - dp.x.toLong()) }
-                    if (nearest != null && kotlin.math.abs(nearest.timestamp - dp.x.toLong()) < T.mins(15).msecs()) {
-                        val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
-                        val bg   = kotlin.math.abs(nearest.bgIsf   - 1.0)
-                        val pp   = kotlin.math.abs(nearest.ppIsf   - 1.0)
-                        val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
-                        val maxDev = maxOf(acce, bg, pp, dura)
-                        if (maxDev > 0.01) {
-                            dp.colorOverride = when {
-                                acce >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.acceIsfColor)
-                                bg   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
-                                pp   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
-                                else           -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
-                            }
+        bolusDataPoints.forEach { dp ->
+            dp.y = getNearestBg(data.overviewData, dp.x.toLong())
+            if (dp.data.type == BS.Type.SMB && aivList.isNotEmpty()) {
+                val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - dp.x.toLong()) }
+                if (nearest != null && kotlin.math.abs(nearest.timestamp - dp.x.toLong()) < T.mins(15).msecs()) {
+                    val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
+                    val bg   = kotlin.math.abs(nearest.bgIsf   - 1.0)
+                    val pp   = kotlin.math.abs(nearest.ppIsf   - 1.0)
+                    val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
+                    val maxDev = maxOf(acce, bg, pp, dura)
+                    if (maxDev > 0.01) {
+                        dp.colorOverride = when {
+                            acce >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.acceIsfColor)
+                            bg   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
+                            pp   >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
+                            else           -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
                         }
                     }
                 }
-                if (dp.data.type == BS.Type.SMB && apsResultsList.isNotEmpty()) {
-                    val nearestResult = apsResultsList.minByOrNull { r -> kotlin.math.abs(r.date - dp.x.toLong()) }
-                    if (nearestResult != null && kotlin.math.abs(nearestResult.date - dp.x.toLong()) < T.mins(15).msecs()) {
-                        val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
-                        if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
-                    }
+            }
+            if (dp.data.type == BS.Type.SMB && apsResultsList.isNotEmpty()) {
+                val nearestResult = apsResultsList.minByOrNull { r -> kotlin.math.abs(r.date - dp.x.toLong()) }
+                if (nearestResult != null && kotlin.math.abs(nearestResult.date - dp.x.toLong()) < T.mins(15).msecs()) {
+                    val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
+                    if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
                 }
-                filteredTreatments.add(dp)
+            }
+            filteredTreatments.add(dp)
+        }
+        // Split-bolus (delayed component) detection: see SplitBolusWorker.kt, enqueued from BolusWizard.kt
+        // both when the recommended dose exceeds maxBolus and when a bolus is given on a 50% profile.
+        // The delayed portion is delivered 10-30 min later with notes literally containing this marker;
+        // flag both it and the earlier bolus that triggered it so the whole split shows yellow.
+        val splitBolusMarker = "Split bolus attempt"
+        bolusDataPoints
+            .filter { it.data.notes?.contains(splitBolusMarker) == true }
+            .forEach { splitDp ->
+                splitDp.hasDelayedComponent = true
+                bolusDataPoints
+                    .filter { it !== splitDp && it.x < splitDp.x && (splitDp.x - it.x) <= T.mins(40).msecs() }
+                    .maxByOrNull { it.x }
+                    ?.hasDelayedComponent = true
             }
         persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
             .map { CarbsDataPoint(it, rh) }

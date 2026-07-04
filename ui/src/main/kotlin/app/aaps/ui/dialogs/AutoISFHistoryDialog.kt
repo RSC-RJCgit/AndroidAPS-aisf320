@@ -147,17 +147,25 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         }
     }
 
+    // "...for early/mild fast rise <value> ..." — the fast-rise-specific ratio itself (e.g. 0.507), as
+    // opposed to the "microBolus * <factor>" multiplier below, which is a coarser single-digit fallback.
+    private val fastRiseFullRegex = Regex("""fast\s*rise\s*([0-9]+\.[0-9]+)""", RegexOption.IGNORE_CASE)
+
     // Same reason-text pattern used for the graph's fast-rise SMB label (see PrepareTreatmentsDataWorker.kt):
     // "<threshold>  = microBolus  * <factor> ; microBolus = <result>".
-    private val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
+    private val fastRiseFactorRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
 
-    /** Exact (unrounded) fast-rise multiplier from the nearest APSResult within 15 min, as a fixed
-     *  4-digit string with the "0." prefix stripped (factors always fall in (0,1)); "--" if none fired. */
+    /** Fast-rise value from the nearest APSResult within 15 min. Prefers the full ratio following
+     *  "fast rise" (e.g. 0.507 -> "0507", decimal point dropped but leading digit kept — 4 characters);
+     *  falls back to the coarser single-digit "microBolus * factor" (e.g. 0.4 -> "4") if the full value
+     *  isn't present in that branch's reason text; "--" if neither fired. */
     private fun exactFastRiseStr(timestamp: Long, apsResults: List<APSResult>): String {
         val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
-        val factor = fastRiseRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
-        return String.format(Locale.US, "%.4f", factor).removePrefix("0.")
+        val full = fastRiseFullRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull()
+        if (full != null) return String.format(Locale.US, "%.3f", full).replace(".", "")
+        val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return Math.round(factor * 10).toString()
     }
 
     /** Show "--" for neutral (1.0) adjustment values, matching Trio display. */
