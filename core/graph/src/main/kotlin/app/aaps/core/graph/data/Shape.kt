@@ -29,5 +29,6 @@ enum class Shape {
     IOB_PREDICTION,
     BUCKETED_BG,
     HEART_RATE,
-    STEPS
+    STEPS,
+    STEPS_STACKED_BOTTOM // two stacked lines fixed near the bottom of the graph, above the SMB baseline triangles
 }

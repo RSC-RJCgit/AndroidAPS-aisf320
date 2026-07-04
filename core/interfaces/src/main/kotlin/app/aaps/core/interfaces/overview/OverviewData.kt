@@ -119,6 +119,7 @@ interface OverviewData {
     var dsMinSeries: SeriesData
     var rawBgSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
+    var stepsStackedSeries: SeriesData
     var heartRateScale: Scale
     var heartRateGraphSeries: SeriesData
     var stepsForScale: Scale

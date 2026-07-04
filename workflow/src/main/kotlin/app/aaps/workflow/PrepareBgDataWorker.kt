@@ -11,6 +11,7 @@ import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -102,7 +103,9 @@ class PrepareBgDataWorker(
         val noisyBg = currentNoisyBg(data.overviewData.bgReadingsArray)
         val aapsDelta = aapsOneMinuteDelta(data.overviewData.bgReadingsArray)
         val libreDelta = libreOneMinuteDelta(data.overviewData.bgReadingsArray)
-        val latestSteps = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime).maxByOrNull { it.timestamp }
+        // Fixed 2h lookback independent of the graph's own display range, so Step30max always has its full window.
+        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(toTime - T.hours(2).msecs(), toTime)
+        val latestSteps = stepsCountList.maxByOrNull { it.timestamp }
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val stepsTxt = latestSteps?.let { " St15=${it.steps15min} St60=${it.steps60min}" } ?: ""
@@ -111,6 +114,22 @@ class PrepareBgDataWorker(
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+        // Two stacked rows near the bottom, above the SMB baseline triangles:
+        // "Steps5=<current 5min>/<max 5min over last 30min>" and "Steps30=<current 30min>/<max 30min over last 2h>".
+        data.overviewData.stepsStackedSeries =
+            if (latest != null && latestSteps != null) {
+                val step5max = stepsCountList
+                    .filter { it.timestamp >= toTime - T.mins(30).msecs() }
+                    .maxOfOrNull { it.steps5min } ?: 0
+                val step30max = stepsCountList.maxOfOrNull { it.steps30min } ?: 0
+                val label = "Steps5=${latestSteps.steps5min}/$step5max\nSteps30=${latestSteps.steps30min}/$step30max"
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

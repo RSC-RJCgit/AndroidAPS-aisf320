@@ -330,6 +330,23 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
+                } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
+                    // Two lines ("Steps5=.../..." then "Steps30=.../...") fixed near the bottom of the
+                    // graph, positioned above the SMB baseline triangles (Shape.SMB's baseTriBase/shaft).
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.CENTER
+                        val lines = value.label.split("\n")
+                        val lineHeight = scaledTextSize * 0.7f
+                        val bottomLineY = graphTop + graphHeight - 150
+                        lines.reversed().forEachIndexed { i, line ->
+                            canvas.drawText(line, endX, bottomLineY - i * lineHeight, mPaint)
+                        }
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
                 }
                 // set values above point
             }

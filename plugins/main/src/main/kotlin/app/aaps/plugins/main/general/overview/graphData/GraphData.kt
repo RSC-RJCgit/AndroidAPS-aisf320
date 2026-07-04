@@ -133,6 +133,10 @@ class GraphData @Inject constructor(
         addSeries(overviewData.noisyBgDeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addStepsStackedAnnotation() {
+        addSeries(overviewData.stepsStackedSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addActivity(scale: Double) {
         addSeries(overviewData.activitySeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.activityPredictionSeries as FixedLineGraphSeries<ScaledDataPoint>)

@@ -1142,6 +1142,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
         graphData.addNoisyBgDeltaAnnotation()
+        graphData.addStepsStackedAnnotation()
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
