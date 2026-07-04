@@ -94,7 +94,7 @@ class PrepareBgDataWorker(
             .sortedBy { it.timestamp }
             .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
         data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
-            it.color = android.graphics.Color.parseColor("#000080") // navy blue
+            it.color = android.graphics.Color.parseColor("#8CFF0000") // transparent red (~55% opacity)
             it.thickness = 4
         }
 

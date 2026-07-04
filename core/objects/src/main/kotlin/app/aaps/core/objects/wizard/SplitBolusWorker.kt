@@ -47,6 +47,7 @@ class SplitBolusWorker(
         const val KEY_ORIGINAL_DOSE = "originalDose"
         const val KEY_FULL_REQUIRED = "fullRequired"
         const val KEY_ATTEMPT = "attempt"
+        const val KEY_ORIGINAL_TIME = "originalTime"
 
         private val SPLIT_BGL_MGDL   = 4.5  * 18.0182
         private val SPLIT_DELTA_MGDL = 0.1  * 18.0182
@@ -54,17 +55,21 @@ class SplitBolusWorker(
         private val SPLIT_LD_MGDL    = 0.05 * 18.0182
         private val SPLIT_BGL_AGE_MS = T.mins(5).msecs()
 
-        fun enqueue(context: Context, originalDose: Double, fullRequired: Double, attempt: Int) {
+        // Flat 10-minute poll: each call (first attempt or retry) waits 10 min from whenever it's made,
+        // for up to 3 attempts total, then gives up. originalTime is just carried along for logging
+        // (total elapsed time since the original bolus), it doesn't affect the delay.
+        fun enqueue(context: Context, originalDose: Double, fullRequired: Double, attempt: Int, originalTime: Long = System.currentTimeMillis()) {
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
                     WORK_NAME,
                     ExistingWorkPolicy.REPLACE,
                     OneTimeWorkRequest.Builder(SplitBolusWorker::class.java)
-                        .setInitialDelay(10L * attempt, TimeUnit.MINUTES)
+                        .setInitialDelay(10L, TimeUnit.MINUTES)
                         .setInputData(workDataOf(
                             KEY_ORIGINAL_DOSE to originalDose,
                             KEY_FULL_REQUIRED to fullRequired,
-                            KEY_ATTEMPT to attempt
+                            KEY_ATTEMPT to attempt,
+                            KEY_ORIGINAL_TIME to originalTime
                         ))
                         .build()
                 )
@@ -75,6 +80,7 @@ class SplitBolusWorker(
         val originalDose = inputData.getDouble(KEY_ORIGINAL_DOSE, 0.0)
         val fullRequired = inputData.getDouble(KEY_FULL_REQUIRED, 0.0)
         val attempt = inputData.getInt(KEY_ATTEMPT, 1)
+        val originalTime = inputData.getLong(KEY_ORIGINAL_TIME, dateUtil.now())
 
         if (BolusProgressData.splitBolusCancelled) {
             aapsLogger.info(LTag.CORE, "Split bolus attempt $attempt: cancelled by user")
@@ -121,7 +127,7 @@ class SplitBolusWorker(
             }
             if (attempt < 3) {
                 aapsLogger.info(LTag.CORE, "Split bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in 10 min")
-                enqueue(applicationContext, originalDose, fullRequired, attempt + 1)
+                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime)
             } else {
                 aapsLogger.info(LTag.CORE, "Split bolus: $reason at attempt $attempt — no split dose delivered")
             }
