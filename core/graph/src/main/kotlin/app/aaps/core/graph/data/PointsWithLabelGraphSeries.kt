@@ -27,6 +27,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
     companion object {
         var showSmbLabels: Boolean = true
+
+        // Toggles the near-BGL-line arrowheads (Shape.SMB's "arrowhead just below the relevant BGL
+        // point" and Shape.BOLUS's arrowhead) — NOT the SMB baseline triangles at the bottom of the
+        // graph, which always draw regardless of this flag.
+        var showBglArrowheads: Boolean = true
     }
 
     // Default spSize
@@ -210,29 +215,32 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawLine(endX, baseTriBase, endX, baseShaftEnd, mPaint)
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
-                    // baseline arrowhead's shaft above instead.
-                    if (!value.hasColorOverride) mPaint.color = Color.YELLOW
-                    val triTop = bgEndY + size
-                    val triBase = triTop + size * 1.5f
-                    val halfWidth = size * 0.25f
-                    val points = arrayOf(
-                        Point(endX.toInt(), triTop.toInt()),
-                        Point((endX + halfWidth).toInt(), triBase.toInt()),
-                        Point((endX - halfWidth).toInt(), triBase.toInt())
-                    )
-                    mPaint.style = Paint.Style.FILL_AND_STROKE
-                    drawArrows(points, canvas, mPaint)
-                    mPaint.strokeWidth = 2f
-                    mPaint.style = Paint.Style.STROKE
-                    val bgShaftEnd = triBase + scaledTextSize * 0.25f
-                    canvas.drawLine(endX, triBase, endX, bgShaftEnd, mPaint)
-                    // fast-rise indicator (factor*10, rounded) at the bottom of this shaft, if one fired for this dose.
-                    // Stacked by stackIndex (same bucket as the dose label) since close-together SMBs share
-                    // a similar BG position and would otherwise overlap here.
-                    if (value.fastRiseLabel.isNotEmpty()) {
-                        mPaint.style = Paint.Style.FILL
-                        val fastRiseY = bgShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
-                        drawLabelCentered(endX, fastRiseY, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
+                    // baseline arrowhead's shaft above instead. Toggled by showBglArrowheads (long-press
+                    // basal icon) — the baseline triangle/shaft above always draws regardless.
+                    if (showBglArrowheads) {
+                        if (!value.hasColorOverride) mPaint.color = Color.YELLOW
+                        val triTop = bgEndY + size
+                        val triBase = triTop + size * 1.5f
+                        val halfWidth = size * 0.25f
+                        val points = arrayOf(
+                            Point(endX.toInt(), triTop.toInt()),
+                            Point((endX + halfWidth).toInt(), triBase.toInt()),
+                            Point((endX - halfWidth).toInt(), triBase.toInt())
+                        )
+                        mPaint.style = Paint.Style.FILL_AND_STROKE
+                        drawArrows(points, canvas, mPaint)
+                        mPaint.strokeWidth = 2f
+                        mPaint.style = Paint.Style.STROKE
+                        val bgShaftEnd = triBase + scaledTextSize * 0.25f
+                        canvas.drawLine(endX, triBase, endX, bgShaftEnd, mPaint)
+                        // fast-rise indicator (factor*10, rounded) at the bottom of this shaft, if one fired for this dose.
+                        // Stacked by stackIndex (same bucket as the dose label) since close-together SMBs share
+                        // a similar BG position and would otherwise overlap here.
+                        if (value.fastRiseLabel.isNotEmpty()) {
+                            mPaint.style = Paint.Style.FILL
+                            val fastRiseY = bgShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
+                            drawLabelCentered(endX, fastRiseY, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
+                        }
                     }
                     // label centered over the BGL dot instead of offset to the right
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
@@ -362,7 +370,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // a themed value.color(context) (bolusDataPointColor, a visible blue/cyan) before an earlier
             // change hardcoded it to black. Using a fixed bright color instead of black or a theme lookup,
             // so it can't blend into either a light or dark background.
-            if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
+            if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth && showBglArrowheads) {
                 mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE

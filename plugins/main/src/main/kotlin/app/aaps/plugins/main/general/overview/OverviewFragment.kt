@@ -973,6 +973,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.baseBasal.setTextColor(temporaryBasalColor)
             binding.infoLayout.baseBasalIcon.setImageResource(temporaryBasalIcon)
             binding.infoLayout.basalLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.basal), temporaryBasalDialogText) } }
+            binding.infoLayout.basalLayout.setOnLongClickListener {
+                PointsWithLabelGraphSeries.showBglArrowheads = !PointsWithLabelGraphSeries.showBglArrowheads
+                rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
+                true
+            }
         }
     }
 
