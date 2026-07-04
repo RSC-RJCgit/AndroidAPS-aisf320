@@ -72,7 +72,9 @@ class PrepareTreatmentsDataWorker(
         // per cycle since the branches are if/else-if chained. Matches the same nearest-within-15-min
         // join pattern as aivList above, but against APSResult.reason instead of AIV fields.
         val apsResultsList = persistenceLayer.getApsResults(fromTime, endTime)
-        val fastRiseRegex = Regex("""microBolus = microBolus \* ([\d.]+)""")
+        // Actual reason text is "<threshold>  = microBolus  * <factor> ; microBolus = <result>"
+        // (the token before "=" is a threshold number, not the word "microBolus" again).
+        val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
