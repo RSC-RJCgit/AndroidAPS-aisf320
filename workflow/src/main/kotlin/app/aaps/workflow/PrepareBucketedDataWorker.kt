@@ -3,9 +3,11 @@ package app.aaps.workflow
 import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.InMemoryGlucoseValueDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -27,6 +29,7 @@ class PrepareBucketedDataWorker(
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var persistenceLayer: PersistenceLayer
 
     class PrepareBucketedData(
         val iobCobCalculator: IobCobCalculator, // cannot be injected : HistoryBrowser uses different instance
@@ -45,10 +48,31 @@ class PrepareBucketedDataWorker(
             aapsLogger.debug("No bucketed data.")
             return Result.success()
         }
+        // Same dominant-ISF-weight color logic/colors as GlucoseValueDataPoint/the SMB arrow override.
+        val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, toTime)
         val bucketedListArray: MutableList<DataPointWithLabelInterface> = ArrayList()
         for (inMemoryGlucoseValue in bucketedData) {
             if (inMemoryGlucoseValue.timestamp < fromTime || inMemoryGlucoseValue.timestamp > toTime) continue
-            bucketedListArray.add(InMemoryGlucoseValueDataPoint(inMemoryGlucoseValue, preferences, profileFunction, rh))
+            val dp = InMemoryGlucoseValueDataPoint(inMemoryGlucoseValue, preferences, profileFunction, rh)
+            if (aivList.isNotEmpty()) {
+                val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - inMemoryGlucoseValue.timestamp) }
+                if (nearest != null && kotlin.math.abs(nearest.timestamp - inMemoryGlucoseValue.timestamp) < T.mins(15).msecs()) {
+                    val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
+                    val bgDev = kotlin.math.abs(nearest.bgIsf - 1.0)
+                    val pp = kotlin.math.abs(nearest.ppIsf - 1.0)
+                    val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
+                    val maxDev = maxOf(acce, bgDev, pp, dura)
+                    if (maxDev > 0.01) {
+                        dp.colorOverride = when {
+                            acce >= maxDev  -> android.graphics.Color.CYAN
+                            bgDev >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
+                            pp >= maxDev    -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
+                            else            -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
+                        }
+                    }
+                }
+            }
+            bucketedListArray.add(dp)
         }
         bucketedListArray.sortWith { o1: DataPointWithLabelInterface, o2: DataPointWithLabelInterface -> o1.x.compareTo(o2.x) }
         data.overviewData.bucketedGraphSeries = PointsWithLabelGraphSeries(Array(bucketedListArray.size) { i -> bucketedListArray[i] })

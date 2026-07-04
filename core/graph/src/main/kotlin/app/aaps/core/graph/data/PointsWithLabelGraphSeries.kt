@@ -321,6 +321,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                         mPaint.strokeWidth = 5f
+                        mPaint.style = Paint.Style.STROKE // outline only — FILL here would paint a solid block over the text just drawn
                         canvas.drawRect(endX - bounds.width() - 3, bounds.top + py - 3, endX + 3, bounds.bottom + py + 3, mPaint)
                     }
                 }

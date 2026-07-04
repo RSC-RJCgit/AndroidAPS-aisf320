@@ -19,6 +19,11 @@ class InMemoryGlucoseValueDataPoint(
     private val rh: ResourceHelper
 ) : DataPointWithLabelInterface {
 
+    // Set externally (see PrepareBucketedDataWorker.kt) to the dominant ISF-weight color, same logic/colors
+    // used for the SMB arrow and GlucoseValueDataPoint overrides. 0 = no override, use default range color.
+    var colorOverride: Int = 0
+    override val hasColorOverride: Boolean get() = colorOverride != 0
+
     private fun valueToUnits(units: GlucoseUnit): Double =
         if (units == GlucoseUnit.MGDL) data.recalculated else data.recalculated * Constants.MGDL_TO_MMOLL
 
@@ -37,6 +42,7 @@ class InMemoryGlucoseValueDataPoint(
         val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
         val highLine = preferences.get(UnitDoubleKey.OverviewHighMark)
         val color = when {
+            colorOverride != 0              -> colorOverride
             valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
             valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
             else                           -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
