@@ -318,16 +318,14 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
                     // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
-                    // Right-aligned (text grows leftward from endX) since this is a live point that sits at
-                    // the current/rightmost time position — left-aligned text would run off the screen edge.
-                    // No bounding box (unlike GENERAL_WITH_DURATION) — just the text.
+                    // Centered over the BGL point (endX) — no bounding box (unlike GENERAL_WITH_DURATION), just the text.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textAlign = Paint.Align.RIGHT
+                        mPaint.textAlign = Paint.Align.CENTER
                         val py = graphTop + 130
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT

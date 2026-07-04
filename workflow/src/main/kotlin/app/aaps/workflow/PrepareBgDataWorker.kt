@@ -97,15 +97,17 @@ class PrepareBgDataWorker(
             it.thickness = 4
         }
 
-        // Live "L=<noisy bgl> A1=<aaps delta> L=<libre delta>" annotation at the current reading.
+        // Live "L=<noisy bgl> A1=<aaps delta> L1=<libre delta> St15=<steps> St60=<steps>" annotation at the current reading.
         val latest = data.overviewData.bgReadingsArray.firstOrNull()
         val noisyBg = currentNoisyBg(data.overviewData.bgReadingsArray)
         val aapsDelta = aapsOneMinuteDelta(data.overviewData.bgReadingsArray)
         val libreDelta = libreOneMinuteDelta(data.overviewData.bgReadingsArray)
+        val latestSteps = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime).maxByOrNull { it.timestamp }
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
+                val stepsTxt = latestSteps?.let { " St15=${it.steps15min} St60=${it.steps60min}" } ?: ""
                 val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
-                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}"
+                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + stepsTxt
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)

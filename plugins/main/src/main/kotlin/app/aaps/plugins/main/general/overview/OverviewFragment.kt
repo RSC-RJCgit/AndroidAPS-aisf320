@@ -94,8 +94,6 @@ import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.plugins.main.skins.SkinExtraLargeDisplay
-import app.aaps.plugins.main.skins.SkinLargeDisplay
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
@@ -1042,17 +1040,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.iobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) } }
             binding.infoLayout.iobLayout.setOnLongClickListener {
                 PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
-                if (PointsWithLabelGraphSeries.showSmbLabels) {
-                    preferences.put(StringKey.GeneralSkin, SkinExtraLargeDisplay::class.java.name)
-                    binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
-                    binding.graphsLayout.bgGraph.requestLayout()
-                    rxBus.send(EventScale(3))
-                } else {
-                    preferences.put(StringKey.GeneralSkin, SkinLargeDisplay::class.java.name)
-                    binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
-                    binding.graphsLayout.bgGraph.requestLayout()
-                    rxBus.send(EventScale(6))
-                }
                 rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
                 true
             }

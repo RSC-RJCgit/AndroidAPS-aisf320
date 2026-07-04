@@ -11,6 +11,7 @@ import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import app.aaps.core.data.model.AIV
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -74,12 +75,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         val twoHoursAgo = now - TimeUnit.HOURS.toMillis(2)
         val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(twoHoursAgo, now)
             .sortedByDescending { it.timestamp }
+        val apsResults = persistenceLayer.getApsResults(twoHoursAgo, now)
 
-        populateTable(records)
-        exportToCsv(records, now)
+        populateTable(records, apsResults)
+        exportToCsv(records, apsResults, now)
     }
 
-    private fun populateTable(records: List<AIV>) {
+    private fun populateTable(records: List<AIV>, apsResults: List<APSResult>) {
         val table = binding.historyTable
 
         if (records.isEmpty()) {
@@ -91,11 +93,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         addRow(
             table, cells = listOf(
                 Cell("", colorTime),
-                Cell("BG", colorGlucose, span = 4, bold = true),
-                Cell("Final Ratio", colorFinalRatio, span = 1, bold = true),
+                Cell("BG", colorGlucose, bold = true),
+                Cell("Final Ratio", colorFinalRatio, bold = true),
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
-                Cell("Insulin", colorInsulin, span = 3, bold = true),
-                Cell("iobTH", colorHeader, bold = true)
+                Cell("SMB", colorInsulin, span = 2, bold = true),
+                Cell("iobTH", colorHeader, bold = true),
+                Cell("BG", colorGlucose, span = 3, bold = true),
+                Cell("Insulin", colorInsulin, span = 2, bold = true)
             )
         )
 
@@ -104,18 +108,19 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             table, cells = listOf(
                 Cell("Time",   colorHeader, bold = true),
                 Cell("BGL",    colorGlucose, bold = true),
-                Cell("Δ",      colorGlucose, bold = true),
-                Cell("SΔ",     colorGlucose, bold = true),
-                Cell("acce",   colorGlucose, bold = true),
                 Cell("Final",  colorFinalRatio, bold = true),
                 Cell("acce",   colorAcceIsf, bold = true),
                 Cell("bg",     colorBgIsf,   bold = true),
                 Cell("pp",     colorPpIsf,   bold = true),
                 Cell("dura",   colorDuraIsf, bold = true),
-                Cell("Req",    colorInsulin, bold = true),
-                Cell("TBR",    colorInsulin, bold = true),
                 Cell("SMB",    colorInsulin, bold = true),
-                Cell("iobTH",  colorHeader, bold = true)
+                Cell("FR",     colorInsulin, bold = true),
+                Cell("iobTH",  colorHeader, bold = true),
+                Cell("acce",   colorGlucose, bold = true),
+                Cell("Δ",      colorGlucose, bold = true),
+                Cell("SΔ",     colorGlucose, bold = true),
+                Cell("Req",    colorInsulin, bold = true),
+                Cell("TBR",    colorInsulin, bold = true)
             )
         )
 
@@ -123,22 +128,36 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             addRow(
                 table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp),          colorTime),
-                    Cell(df1.format(r.glucose / MGDL_TO_MMOL),     colorGlucose),
-                    Cell(df1.format(r.delta / MGDL_TO_MMOL),       colorGlucose),
-                    Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
-                    Cell(df2.format(r.bgAcceleration),              colorGlucose),
+                    Cell(df1.format(r.glucose / MGDL_TO_MMOL),      colorGlucose),
                     Cell(df2.format(r.finalIsf),                    colorFinalRatio),
                     Cell(adjStr(r.acceIsf),                         colorAcceIsf),
                     Cell(adjStr(r.bgIsf),                           colorBgIsf),
                     Cell(adjStr(r.ppIsf),                           colorPpIsf),
                     Cell(adjStr(r.duraIsf),                         colorDuraIsf),
-                    Cell(insulinStr(r.insulinReq),                  colorInsulin),
-                    Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
-                    Cell(df2.format(r.iobThEffective),              colorHeader)
+                    Cell(exactFastRiseStr(r.timestamp, apsResults), colorInsulin),
+                    Cell(df2.format(r.iobThEffective),              colorHeader),
+                    Cell(df2.format(r.bgAcceleration),              colorGlucose),
+                    Cell(df1.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
+                    Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
+                    Cell(insulinStr(r.insulinReq),                  colorInsulin),
+                    Cell(insulinStr(r.tbrRate),                     colorInsulin)
                 )
             )
         }
+    }
+
+    // Same reason-text pattern used for the graph's fast-rise SMB label (see PrepareTreatmentsDataWorker.kt):
+    // "<threshold>  = microBolus  * <factor> ; microBolus = <result>".
+    private val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
+
+    /** Exact (unrounded) fast-rise multiplier from the nearest APSResult within 15 min, as a fixed
+     *  4-digit string with the "0." prefix stripped (factors always fall in (0,1)); "--" if none fired. */
+    private fun exactFastRiseStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val factor = fastRiseRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return String.format(Locale.US, "%.4f", factor).removePrefix("0.")
     }
 
     /** Show "--" for neutral (1.0) adjustment values, matching Trio display. */
@@ -186,7 +205,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         table.addView(row)
     }
 
-    private fun exportToCsv(records: List<AIV>, now: Long) {
+    private fun exportToCsv(records: List<AIV>, apsResults: List<APSResult>, now: Long) {
         val ctx = context ?: return
         val act = activity
         Executors.newSingleThreadExecutor().execute {
@@ -196,17 +215,18 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
                 val file = File(dir, fileName)
                 file.bufferedWriter().use { writer ->
-                    writer.write("Time,BGL,Delta,SDelta,acceBG,Final,acce,bg,pp,dura,Req,TBR,SMB,iobTH\n")
+                    writer.write("Time,BGL,Final,acce,bg,pp,dura,SMB,FastRise,iobTH,acceBG,Delta,SDelta,Req,TBR\n")
                     for (r in records) {
                         writer.write(
                             "${dateUtil.timeString(r.timestamp)}," +
-                                "${df1.format(r.glucose / MGDL_TO_MMOL)}," +
-                                "${df1.format(r.delta / MGDL_TO_MMOL)},${df1.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
-                                "${df2.format(r.bgAcceleration)},${df2.format(r.finalIsf)}," +
+                                "${df1.format(r.glucose / MGDL_TO_MMOL)},${df2.format(r.finalIsf)}," +
                                 "${df2.format(r.acceIsf)},${df2.format(r.bgIsf)}," +
                                 "${df2.format(r.ppIsf)},${df2.format(r.duraIsf)}," +
-                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)},${df2.format(r.smbDelivered)}," +
-                                "${df2.format(r.iobThEffective)}\n"
+                                "${df2.format(r.smbDelivered)},${exactFastRiseStr(r.timestamp, apsResults)}," +
+                                "${df2.format(r.iobThEffective)}," +
+                                "${df2.format(r.bgAcceleration)}," +
+                                "${df1.format(r.delta / MGDL_TO_MMOL)},${df1.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
+                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)}\n"
                         )
                     }
                 }
