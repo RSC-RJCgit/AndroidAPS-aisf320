@@ -67,6 +67,12 @@ class PrepareTreatmentsDataWorker(
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
         val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        // Every "fast rise" branch in DetermineBasalAutoISF.kt appends this exact phrase with the real
+        // multiplier as plain text (e.g. "microBolus = microBolus * 0.7 ; ..."); at most one can match
+        // per cycle since the branches are if/else-if chained. Matches the same nearest-within-15-min
+        // join pattern as aivList above, but against APSResult.reason instead of AIV fields.
+        val apsResultsList = persistenceLayer.getApsResults(fromTime, endTime)
+        val fastRiseRegex = Regex("""microBolus = microBolus \* ([\d.]+)""")
         persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
@@ -88,6 +94,13 @@ class PrepareTreatmentsDataWorker(
                                 else           -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
                             }
                         }
+                    }
+                }
+                if (dp.data.type == BS.Type.SMB && apsResultsList.isNotEmpty()) {
+                    val nearestResult = apsResultsList.minByOrNull { r -> kotlin.math.abs(r.date - dp.x.toLong()) }
+                    if (nearestResult != null && kotlin.math.abs(nearestResult.date - dp.x.toLong()) < T.mins(15).msecs()) {
+                        val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
+                        if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
                     }
                 }
                 filteredTreatments.add(dp)

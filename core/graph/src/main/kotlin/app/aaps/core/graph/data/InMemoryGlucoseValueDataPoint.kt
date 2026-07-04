@@ -33,7 +33,7 @@ class InMemoryGlucoseValueDataPoint(
     override val label: String = ""
     override val duration = 0L
     override val shape = Shape.BUCKETED_BG
-    override val size = 1f
+    override val size = 0.6f // matches GlucoseValueDataPoint's BG dot size — was 1f, overwhelming/blurring the BG line
     override val paintStyle: Paint.Style = Paint.Style.FILL
 
     @ColorInt

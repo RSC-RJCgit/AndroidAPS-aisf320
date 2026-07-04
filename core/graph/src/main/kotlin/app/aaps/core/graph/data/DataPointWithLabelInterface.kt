@@ -23,4 +23,8 @@ interface DataPointWithLabelInterface : DataPointInterface {
     // Shape.SMB tail length multiplier: 1 = baseline. Only BolusDataPoint overrides this (per-0.05U-over-
     // 0.05U-baseline dose scaling); everything else keeps the default fixed length.
     val shaftLengthMultiplier: Int get() = 1
+
+    // Shape.SMB fast-rise indicator: empty = no fast-rise branch fired for this dose. Only BolusDataPoint
+    // overrides this, drawn at the bottom of the baseline arrowhead's shaft when non-empty.
+    val fastRiseLabel: String get() = ""
 }

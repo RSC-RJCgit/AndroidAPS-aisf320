@@ -105,7 +105,7 @@ class PrepareBgDataWorker(
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
-                    "A1=${formatMmolDelta(aapsDelta)} L=${formatMmolDelta(libreDelta)}"
+                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)

@@ -19,6 +19,10 @@ class BolusDataPoint(
     private var yValue = 0.0
     var colorOverride: Int = 0
 
+    // Set externally (see PrepareTreatmentsDataWorker.kt) to "<factor*10, rounded>" when a fast-rise
+    // branch fired for this SMB in DetermineBasalAutoISF; empty otherwise.
+    override var fastRiseLabel: String = ""
+
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue
     override val label

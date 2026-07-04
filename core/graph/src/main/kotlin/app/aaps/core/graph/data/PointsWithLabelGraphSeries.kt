@@ -199,7 +199,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // shaft below the baseline arrowhead — length scales with value.shaftLengthMultiplier (dose size)
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, baseTriBase, endX, baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
+                    val baseShaftEnd = baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier
+                    canvas.drawLine(endX, baseTriBase, endX, baseShaftEnd, mPaint)
+                    // fast-rise indicator (factor*10, rounded) at the bottom of the shaft, if one fired for this dose
+                    if (value.fastRiseLabel.isNotEmpty()) {
+                        mPaint.style = Paint.Style.FILL
+                        drawLabelCentered(endX, baseShaftEnd + scaledTextSize * 0.5f, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
+                    }
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
                     // baseline arrowhead's shaft above instead.
@@ -308,21 +314,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
                     // Right-aligned (text grows leftward from endX) since this is a live point that sits at
                     // the current/rightmost time position — left-aligned text would run off the screen edge.
+                    // No bounding box (unlike GENERAL_WITH_DURATION) — just the text.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
-                        val bounds = Rect()
-                        mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.RIGHT
                         val py = graphTop + 130
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
-                        mPaint.strokeWidth = 5f
-                        mPaint.style = Paint.Style.STROKE // outline only — FILL here would paint a solid block over the text just drawn
-                        canvas.drawRect(endX - bounds.width() - 3, bounds.top + py - 3, endX + 3, bounds.bottom + py + 3, mPaint)
                     }
                 }
                 // set values above point
@@ -405,12 +407,14 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
     // Upright, horizontally centered on endX — unlike drawLabel45Right/Left, no rotation and no offset,
     // so the label sits directly over/under the point instead of angled off to one side.
-    private fun drawLabelCentered(endX: Float, endY: Float, value: E, canvas: Canvas, scaledTextSize: Float) {
+    // text defaults to value.label (the SMB dose number); pass an explicit string for anything else
+    // (e.g. the fast-rise indicator, which isn't value.label).
+    private fun drawLabelCentered(endX: Float, endY: Float, value: E, canvas: Canvas, scaledTextSize: Float, text: String = value.label) {
         mPaint.textSize = (scaledTextSize * 0.8).toFloat()
         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
         mPaint.isFakeBoldText = true
         mPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText(value.label, endX, endY, mPaint)
+        canvas.drawText(text, endX, endY, mPaint)
         mPaint.textAlign = Paint.Align.LEFT
     }
 }
