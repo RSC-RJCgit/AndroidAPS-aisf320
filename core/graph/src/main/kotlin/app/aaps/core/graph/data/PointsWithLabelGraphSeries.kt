@@ -203,11 +203,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     val baseShaftEnd = baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier
                     canvas.drawLine(endX, baseTriBase, endX, baseShaftEnd, mPaint)
-                    // fast-rise indicator (factor*10, rounded) at the bottom of the shaft, if one fired for this dose
-                    if (value.fastRiseLabel.isNotEmpty()) {
-                        mPaint.style = Paint.Style.FILL
-                        drawLabelCentered(endX, baseShaftEnd + scaledTextSize * 0.5f, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
-                    }
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
                     // baseline arrowhead's shaft above instead.
@@ -224,7 +219,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f, mPaint)
+                    val bgShaftEnd = triBase + scaledTextSize * 0.25f
+                    canvas.drawLine(endX, triBase, endX, bgShaftEnd, mPaint)
+                    // fast-rise indicator (factor*10, rounded) at the bottom of this shaft, if one fired for this dose.
+                    // Stacked by stackIndex (same bucket as the dose label) since close-together SMBs share
+                    // a similar BG position and would otherwise overlap here.
+                    if (value.fastRiseLabel.isNotEmpty()) {
+                        mPaint.style = Paint.Style.FILL
+                        val fastRiseY = bgShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
+                        drawLabelCentered(endX, fastRiseY, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
+                    }
                     // label centered over the BGL dot instead of offset to the right
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
