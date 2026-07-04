@@ -196,8 +196,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         Point((endX + scaledPxSize).toInt(), baseTriBase.toInt()),
                         Point((endX - scaledPxSize).toInt(), baseTriBase.toInt())
                     ), canvas, mPaint)
-                    // shaft below the baseline arrowhead — length scales with value.shaftLengthMultiplier (dose size)
-                    mPaint.strokeWidth = 2f
+                    // shaft below the baseline arrowhead — length scales with value.shaftLengthMultiplier (dose size).
+                    // shaftLengthMultiplier >= 4 corresponds to dose >= 0.20U (1 + floor((amount-0.05)/0.05));
+                    // thicker stroke for these larger doses.
+                    mPaint.strokeWidth = if (value.shaftLengthMultiplier >= 4) 4f else 2f
                     mPaint.style = Paint.Style.STROKE
                     val baseShaftEnd = baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier
                     canvas.drawLine(endX, baseTriBase, endX, baseShaftEnd, mPaint)
@@ -341,7 +343,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f
-                val bEndY = endY.coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
+                // Offset down from the BG line so this doesn't sit exactly on top of a carb marker,
+                // which is also placed at the nearest-BG-line position.
+                val bEndY = (endY + bolusSize * 2f).coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
                 val bTriBase = bEndY + bolusSize * 0.67f
                 drawArrows(arrayOf(
                     Point(endX.toInt(), (bEndY - bolusSize).toInt()),

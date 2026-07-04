@@ -64,7 +64,7 @@ class PrepareBucketedDataWorker(
                     val maxDev = maxOf(acce, bgDev, pp, dura)
                     if (maxDev > 0.01) {
                         dp.colorOverride = when {
-                            acce >= maxDev  -> android.graphics.Color.CYAN
+                            acce >= maxDev  -> rh.gac(null, app.aaps.core.ui.R.attr.acceIsfColor)
                             bgDev >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
                             pp >= maxDev    -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
                             else            -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
