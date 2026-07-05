@@ -11,6 +11,7 @@ import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -76,12 +77,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(twoHoursAgo, now)
             .sortedByDescending { it.timestamp }
         val apsResults = persistenceLayer.getApsResults(twoHoursAgo, now)
+        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(twoHoursAgo, now)
 
-        populateTable(records, apsResults)
-        exportToCsv(records, apsResults, now)
+        populateTable(records, apsResults, stepsCountList)
+        exportToCsv(records, apsResults, stepsCountList, now)
     }
 
-    private fun populateTable(records: List<AIV>, apsResults: List<APSResult>) {
+    private fun populateTable(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>) {
         val table = binding.historyTable
 
         if (records.isEmpty()) {
@@ -99,7 +101,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SMB", colorInsulin, span = 2, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("BG", colorGlucose, span = 3, bold = true),
-                Cell("Insulin", colorInsulin, span = 2, bold = true)
+                Cell("Insulin", colorInsulin, span = 2, bold = true),
+                Cell("Steps", colorHeader, span = 5, bold = true)
             )
         )
 
@@ -120,16 +123,22 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("Δ",      colorGlucose, bold = true),
                 Cell("SΔ",     colorGlucose, bold = true),
                 Cell("Req",    colorInsulin, bold = true),
-                Cell("TBR",    colorInsulin, bold = true)
+                Cell("TBR",    colorInsulin, bold = true),
+                Cell("S5",     colorHeader, bold = true),
+                Cell("S15",    colorHeader, bold = true),
+                Cell("S30",    colorHeader, bold = true),
+                Cell("S60",    colorHeader, bold = true),
+                Cell("S180",   colorHeader, bold = true)
             )
         )
 
         for (r in records) {
+            val sc = stepsAt(r.timestamp, stepsCountList)
             addRow(
                 table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp),          colorTime),
                     Cell(df1.format(r.glucose / MGDL_TO_MMOL),      colorGlucose),
-                    Cell(df2.format(r.finalIsf),                    colorFinalRatio),
+                    Cell(df2.format(r.finalIsf),                    dominantIsfColor(r, colorFinalRatio)),
                     Cell(adjStr(r.acceIsf),                         colorAcceIsf),
                     Cell(adjStr(r.bgIsf),                           colorBgIsf),
                     Cell(adjStr(r.ppIsf),                           colorPpIsf),
@@ -141,10 +150,22 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df1.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
-                    Cell(insulinStr(r.tbrRate),                     colorInsulin)
+                    Cell(insulinStr(r.tbrRate),                     colorInsulin),
+                    Cell(sc?.steps5min?.toString()   ?: "--",       colorHeader),
+                    Cell(sc?.steps15min?.toString()  ?: "--",       colorHeader),
+                    Cell(sc?.steps30min?.toString()  ?: "--",       colorHeader),
+                    Cell(sc?.steps60min?.toString()  ?: "--",       colorHeader),
+                    Cell(sc?.steps180min?.toString() ?: "--",       colorHeader)
                 )
             )
         }
+    }
+
+    // Nearest StepsCount record within 15 min of `timestamp`, or null if none close enough.
+    private fun stepsAt(timestamp: Long, stepsCountList: List<SC>): SC? {
+        val nearest = stepsCountList.minByOrNull { kotlin.math.abs(it.timestamp - timestamp) } ?: return null
+        if (kotlin.math.abs(nearest.timestamp - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return null
+        return nearest
     }
 
     // "...for early/mild fast rise <value> ..." — the fast-rise-specific ratio itself (e.g. 0.507), as
@@ -174,15 +195,14 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     /** Show "--" for zero insulin values. */
     private fun insulinStr(v: Double): String = if (v == 0.0) "--" else df2.format(v)
 
-    /** Color SMB cell by dominant AutoISF adaptation type, or colorInsulin if no dominant factor. */
-    private fun smbIsfColor(r: AIV): Int {
-        if (r.smbDelivered == 0.0) return colorInsulin
+    /** Color by dominant AutoISF adaptation type (acce/bg/pp/dura), or `fallback` if no factor dominates. */
+    private fun dominantIsfColor(r: AIV, fallback: Int): Int {
         val acce = kotlin.math.abs(r.acceIsf - 1.0)
         val bg   = kotlin.math.abs(r.bgIsf   - 1.0)
         val pp   = kotlin.math.abs(r.ppIsf   - 1.0)
         val dura = kotlin.math.abs(r.duraIsf - 1.0)
         val maxDev = maxOf(acce, bg, pp, dura)
-        if (maxDev <= 0.01) return colorInsulin
+        if (maxDev <= 0.01) return fallback
         val ctx = context
         return when {
             acce >= maxDev -> rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
@@ -190,6 +210,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             pp   >= maxDev -> rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
             else           -> rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
         }
+    }
+
+    /** Color SMB cell by dominant AutoISF adaptation type, or colorInsulin if no SMB or no dominant factor. */
+    private fun smbIsfColor(r: AIV): Int {
+        if (r.smbDelivered == 0.0) return colorInsulin
+        return dominantIsfColor(r, colorInsulin)
     }
 
     private data class Cell(val text: String, val color: Int, val span: Int = 1, val bold: Boolean = false)
@@ -213,7 +239,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         table.addView(row)
     }
 
-    private fun exportToCsv(records: List<AIV>, apsResults: List<APSResult>, now: Long) {
+    private fun exportToCsv(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, now: Long) {
         val ctx = context ?: return
         val act = activity
         Executors.newSingleThreadExecutor().execute {
@@ -223,8 +249,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
                 val file = File(dir, fileName)
                 file.bufferedWriter().use { writer ->
-                    writer.write("Time,BGL,Final,acce,bg,pp,dura,SMB,FastRise,iobTH,acceBG,Delta,SDelta,Req,TBR\n")
+                    writer.write("Time,BGL,Final,acce,bg,pp,dura,SMB,FastRise,iobTH,acceBG,Delta,SDelta,Req,TBR,S5,S15,S30,S60,S180\n")
                     for (r in records) {
+                        val sc = stepsAt(r.timestamp, stepsCountList)
                         writer.write(
                             "${dateUtil.timeString(r.timestamp)}," +
                                 "${df1.format(r.glucose / MGDL_TO_MMOL)},${df2.format(r.finalIsf)}," +
@@ -234,7 +261,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                                 "${df2.format(r.iobThEffective)}," +
                                 "${df2.format(r.bgAcceleration)}," +
                                 "${df1.format(r.delta / MGDL_TO_MMOL)},${df1.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
-                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)}\n"
+                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)}," +
+                                "${sc?.steps5min ?: ""},${sc?.steps15min ?: ""},${sc?.steps30min ?: ""}," +
+                                "${sc?.steps60min ?: ""},${sc?.steps180min ?: ""}\n"
                         )
                     }
                 }
