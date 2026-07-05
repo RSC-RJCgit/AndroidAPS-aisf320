@@ -91,7 +91,11 @@ class OverviewMenusImpl @Inject constructor(
         } catch (e: Exception) {
             false
         }
-    private val masterAutoIsf: Boolean; get() = runningAutoIsf && !config.AAPSCLIENT
+    // AAPSCLIENT has no locally active APS algorithm to check (it only follows), so runningAutoIsf can
+    // never be true there — always allow selection instead, same precedent as PRE's visibility check
+    // above. The underlying AIV data is populated on AAPSCLIENT too, via NS device-status sync
+    // (NSDeviceStatusHandler.kt reconstructing AIV rows from the synced RT.autoIsf* fields).
+    private val masterAutoIsf: Boolean; get() = runningAutoIsf || config.AAPSCLIENT
     private val runningDynIsf: Boolean
         get() = preferences.get(BooleanKey.ApsUseDynamicSensitivity) &&
             try {
