@@ -10,6 +10,7 @@ import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSAlarm
@@ -69,7 +70,8 @@ class NSClientPlugin @Inject constructor(
     private val dateUtil: DateUtil,
     private val profileUtil: ProfileUtil,
     private val nsSettingsStatus: NSSettingsStatus,
-    private val decimalFormatter: DecimalFormatter
+    private val decimalFormatter: DecimalFormatter,
+    private val config: Config
 ) : NsClient, Sync, PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -270,6 +272,9 @@ class NSClientPlugin @Inject constructor(
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MIN_LENGTH, minLength = 12)
                 )
             )
+            if (config.AAPSCLIENT) {
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
+            }
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)
