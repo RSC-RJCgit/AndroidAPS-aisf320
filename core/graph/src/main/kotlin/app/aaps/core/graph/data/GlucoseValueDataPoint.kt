@@ -37,11 +37,12 @@ class GlucoseValueDataPoint(
     // this small a dot instead of just tinting a thin outline. colorOverride is set externally after
     // construction (see PrepareBgDataWorker.kt), so this has to be a computed get(), not a val fixed
     // at construction time.
-    override val paintStyle: Paint.Style get() = if (isPrediction || colorOverride != 0) Paint.Style.FILL else Paint.Style.STROKE
+    override val paintStyle: Paint.Style get() = if (isPrediction || colorOverride != 0 || PointsWithLabelGraphSeries.uniformGreenBg) Paint.Style.FILL else Paint.Style.STROKE
 
     override fun color(context: Context?): Int {
         return when {
             isPrediction     -> predictionColor(context)
+            PointsWithLabelGraphSeries.uniformGreenBg -> PointsWithLabelGraphSeries.uniformGreenBgColor
             colorOverride != 0 -> colorOverride
             else             -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
         }

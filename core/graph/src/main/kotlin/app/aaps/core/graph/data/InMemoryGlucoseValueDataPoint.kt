@@ -42,6 +42,7 @@ class InMemoryGlucoseValueDataPoint(
         val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
         val highLine = preferences.get(UnitDoubleKey.OverviewHighMark)
         val color = when {
+            PointsWithLabelGraphSeries.uniformGreenBg -> PointsWithLabelGraphSeries.uniformGreenBgColor
             colorOverride != 0              -> colorOverride
             valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
             valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)

@@ -974,7 +974,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.baseBasalIcon.setImageResource(temporaryBasalIcon)
             binding.infoLayout.basalLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.basal), temporaryBasalDialogText) } }
             binding.infoLayout.basalLayout.setOnLongClickListener {
-                PointsWithLabelGraphSeries.showBglArrowheads = !PointsWithLabelGraphSeries.showBglArrowheads
+                // Cycles 3 presets: 0=arrowheads on/normal colors/transparent noisy line,
+                // 1=arrowheads off/normal colors/opaque noisy line, 2=arrowheads off/uniform green/opaque noisy line.
+                PointsWithLabelGraphSeries.basalToggleIndex += 1
                 rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
                 true
             }
@@ -1045,6 +1047,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.iobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) } }
             binding.infoLayout.iobLayout.setOnLongClickListener {
                 PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
+                // Always reset the basal-toggle preset back to 0 (normal ISF colors, transparent noisy
+                // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
+                // the other display settings, independent of the SMB-label state.
+                PointsWithLabelGraphSeries.basalToggleIndex = 0
                 rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
                 true
             }

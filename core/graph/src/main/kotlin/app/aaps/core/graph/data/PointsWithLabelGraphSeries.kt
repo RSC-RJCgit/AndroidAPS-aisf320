@@ -28,10 +28,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
     companion object {
         var showSmbLabels: Boolean = true
 
-        // Toggles the near-BGL-line arrowheads (Shape.SMB's "arrowhead just below the relevant BGL
-        // point" and Shape.BOLUS's arrowhead) — NOT the SMB baseline triangles at the bottom of the
-        // graph, which always draw regardless of this flag.
-        var showBglArrowheads: Boolean = true
+        // Basal long-press cycles through 3 display presets (0→1→2→0...). IOB long-press always resets
+        // this back to 0 in addition to its own showSmbLabels toggle, regardless of which direction that
+        // toggle goes, so the "reset to normal" gesture is independent of the SMB-label state.
+        //   0: near-BGL arrowheads on,  normal per-point ISF colors, noisy/raw BG line transparent
+        //   1: near-BGL arrowheads off, normal per-point ISF colors, noisy/raw BG line opaque
+        //   2: near-BGL arrowheads off, uniform transparent green BG dots, noisy/raw BG line opaque
+        var basalToggleIndex: Int = 0
+            set(value) { field = ((value % 3) + 3) % 3 }
+
+        // Shape.SMB's "arrowhead just below the relevant BGL point" and Shape.BOLUS's arrowhead are NOT
+        // affected by this — Shape.BOLUS (meal bolus arrows) always draws regardless, and the SMB
+        // baseline triangle at the bottom of the graph always draws regardless too.
+        val showBglArrowheads: Boolean get() = basalToggleIndex == 0
+        val uniformGreenBg: Boolean get() = basalToggleIndex == 2
+        val noisyLineTransparent: Boolean get() = basalToggleIndex == 0
+
+        // Flat color used for all BG dots when uniformGreenBg is active, ignoring per-point ISF-weight overrides.
+        val uniformGreenBgColor: Int = android.graphics.Color.argb(140, 0, 200, 0)
     }
 
     // Default spSize
@@ -370,7 +384,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // a themed value.color(context) (bolusDataPointColor, a visible blue/cyan) before an earlier
             // change hardcoded it to black. Using a fixed bright color instead of black or a theme lookup,
             // so it can't blend into either a light or dark background.
-            if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth && showBglArrowheads) {
+            if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
                 mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE

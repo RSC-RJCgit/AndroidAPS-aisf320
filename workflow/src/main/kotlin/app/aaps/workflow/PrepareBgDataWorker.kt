@@ -94,7 +94,9 @@ class PrepareBgDataWorker(
             .sortedBy { it.timestamp }
             .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
         data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
-            it.color = android.graphics.Color.parseColor("#8CFF0000") // transparent red (~55% opacity)
+            // Transparency follows the basal-long-press cycle (PointsWithLabelGraphSeries.basalToggleIndex):
+            // transparent (~55% opacity) on preset 0, fully opaque red otherwise.
+            it.color = if (PointsWithLabelGraphSeries.noisyLineTransparent) android.graphics.Color.parseColor("#8CFF0000") else android.graphics.Color.RED
             it.thickness = 4
         }
 
