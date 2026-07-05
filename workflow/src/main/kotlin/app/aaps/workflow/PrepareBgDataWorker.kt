@@ -124,10 +124,13 @@ class PrepareBgDataWorker(
         // "Steps5=<current 5min>/<max 5min over last 30min>" and "Steps30=<current 30min>/<max 30min over last 2h>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                val step5max = stepsCountList
-                    .filter { it.timestamp >= toTime - T.mins(30).msecs() }
-                    .maxOfOrNull { it.steps5min } ?: 0
-                val step30max = stepsCountList.maxOfOrNull { it.steps30min } ?: 0
+                // maxOf(..., latestSteps.stepsXmin) so the max always includes the current reading even if
+                // it falls outside the lookback window (e.g. a data gap leaves the latest record >30min old).
+                val step5max = maxOf(
+                    stepsCountList.filter { it.timestamp >= toTime - T.mins(30).msecs() }.maxOfOrNull { it.steps5min } ?: 0,
+                    latestSteps.steps5min
+                )
+                val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
                 val label = "Steps5=${latestSteps.steps5min}/$step5max\nSteps30=${latestSteps.steps30min}/$step30max"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
@@ -143,24 +146,30 @@ class PrepareBgDataWorker(
         if (profileUtil.units == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
 
     // `readings` is expected newest-first (data.overviewData.bgReadingsArray, ascending=false above).
-    // Delta is between whatever the two most recent readings actually are — assumes ~1-minute sensor
-    // cadence rather than enforcing an exact 1-minute gap, since that's this fork's typical interval.
+    // Delta is between whatever the two most recent readings actually are, normalized to a per-5-minute
+    // rate the same way DeltaCalculator.kt does (change / minutesAgo * 5), so A1/L1 are directly
+    // comparable to the Delta/SDelta/LDelta values shown elsewhere instead of being a raw per-tick diff.
 
     // gv.noise: same field already plotted as the red raw-BG line in doWorkAndLog() above.
     private fun currentNoisyBg(readings: List<GV>): Double? = readings.firstOrNull()?.noise
 
-    // gv.value delta between the two newest readings.
+    // gv.value delta between the two newest readings, scaled to a 5-minute-equivalent rate.
     private fun aapsOneMinuteDelta(readings: List<GV>): Double? {
         if (readings.size < 2) return null
-        return readings[0].value - readings[1].value
+        val minutesAgo = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
+        if (minutesAgo <= 0.0) return null
+        return (readings[0].value - readings[1].value) / minutesAgo * 5
     }
 
-    // gv.noise delta between the two newest readings (Libre/xDrip raw native signal, not gv.value).
+    // gv.noise delta between the two newest readings (Libre/xDrip raw native signal, not gv.value),
+    // scaled to a 5-minute-equivalent rate.
     private fun libreOneMinuteDelta(readings: List<GV>): Double? {
         if (readings.size < 2) return null
         val newest = readings[0].noise ?: return null
         val previous = readings[1].noise ?: return null
-        return newest - previous
+        val minutesAgo = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
+        if (minutesAgo <= 0.0) return null
+        return (newest - previous) / minutesAgo * 5
     }
 
     // deltaMgdl -> signed mmol string, 2 decimal places (e.g. "+0.34", "-0.11").

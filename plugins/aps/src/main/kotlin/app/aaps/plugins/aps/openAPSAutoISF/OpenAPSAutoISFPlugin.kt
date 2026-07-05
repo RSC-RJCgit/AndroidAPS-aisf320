@@ -1632,5 +1632,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktSt320TDD2AU194
+OpenAPSAutoISFPlugin.ktSt320TDD2AU195
  */

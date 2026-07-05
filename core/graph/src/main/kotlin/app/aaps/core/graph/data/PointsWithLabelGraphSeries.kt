@@ -359,16 +359,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
                     // Two lines ("Steps5=.../..." then "Steps30=.../...") fixed near the bottom of the
-                    // graph, positioned above the SMB baseline triangles (Shape.SMB's baseTriBase/shaft).
+                    // graph, below the SMB baseline triangles (Shape.SMB's baseTriBase/shaft). Positioned
+                    // as a fraction of graphHeight (not a fixed pixel offset) so it stays below the SMB
+                    // row across display sizes — a fixed px offset was landing above the SMB triangles
+                    // on the smaller/original display size, since graphHeight itself varies with it.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.45f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = fixedAnnotationAlign
                         val lines = value.label.split("\n")
-                        val lineHeight = scaledTextSize * 0.7f
-                        val bottomLineY = graphTop + graphHeight - 150
+                        val lineHeight = scaledTextSize * 0.5f
+                        val bottomLineY = graphTop + graphHeight * 0.94f
                         lines.reversed().forEachIndexed { i, line ->
                             canvas.drawText(line, endX, bottomLineY - i * lineHeight, mPaint)
                         }
