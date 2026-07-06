@@ -2,7 +2,6 @@ package app.aaps
 
 import android.app.Application
 import android.bluetooth.BluetoothDevice
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
@@ -177,16 +176,6 @@ class MainApp : Application(), HasAndroidInjector, Configuration.Provider {
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
     private lateinit var refreshWidget: Runnable
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    // logback.xml resolves EXT_FILES_DIR from the "EXT_DIR" system property, defaulting to
-    // /sdcard if unset. On targetSdk 30+, direct java.io.File writes outside the app's own
-    // sandboxed directory require MANAGE_EXTERNAL_STORAGE, which this app does not request, so
-    // the default silently fails to write. Must be set before the first Logger is obtained
-    // (logback initializes lazily), so this runs in attachBaseContext, ahead of Hilt's own setup.
-    override fun attachBaseContext(base: Context) {
-        System.setProperty("EXT_DIR", base.getExternalFilesDir(null)?.absolutePath ?: base.filesDir.absolutePath)
-        super.attachBaseContext(base)
-    }
 
     override fun onCreate() {
         super.onCreate()
