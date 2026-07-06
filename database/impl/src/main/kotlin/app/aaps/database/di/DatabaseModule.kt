@@ -329,7 +329,16 @@ open class DatabaseModule {
         }
     }
 
+    // Devices that already reached version 35 before this cleanup was added to migration34to35
+    // never had that migration re-run (Room only migrates across a version boundary it actually
+    // crosses), so the stray index survived. Same fix, on the boundary those devices will cross.
+    internal val migration35to36 = object : Migration(35, 36) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL("DROP INDEX IF EXISTS `index_carbs_end`")
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35)
+    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36)
 }
