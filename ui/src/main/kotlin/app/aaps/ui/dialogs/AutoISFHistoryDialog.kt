@@ -73,11 +73,11 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         binding.closeButton.setOnClickListener { dismiss() }
 
         val now = System.currentTimeMillis()
-        val twoHoursAgo = now - TimeUnit.HOURS.toMillis(2)
-        val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(twoHoursAgo, now)
+        val fourHoursAgo = now - TimeUnit.HOURS.toMillis(4)
+        val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(fourHoursAgo, now)
             .sortedByDescending { it.timestamp }
-        val apsResults = persistenceLayer.getApsResults(twoHoursAgo, now)
-        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(twoHoursAgo, now)
+        val apsResults = persistenceLayer.getApsResults(fourHoursAgo, now)
+        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(fourHoursAgo, now)
 
         populateTable(records, apsResults, stepsCountList)
         exportToCsv(records, apsResults, stepsCountList, now)
@@ -87,7 +87,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         val table = binding.historyTable
 
         if (records.isEmpty()) {
-            addRow(table, cells = listOf(Cell("No AutoISF data in last 2 hours", colorTime)))
+            addRow(table, cells = listOf(Cell("No AutoISF data in last 4 hours", colorTime)))
             return
         }
 
