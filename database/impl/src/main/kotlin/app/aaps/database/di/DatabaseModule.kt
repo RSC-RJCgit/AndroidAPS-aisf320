@@ -335,6 +335,14 @@ open class DatabaseModule {
     internal val migration35to36 = object : Migration(35, 36) {
         override fun migrate(connection: SQLiteConnection) {
             connection.execSQL("DROP INDEX IF EXISTS `index_carbs_end`")
+            // Some devices are also missing this column from an earlier schema state. SQLite has no
+            // ADD COLUMN IF NOT EXISTS, and most devices already have it, so guard with a try/catch
+            // instead of failing every device that isn't affected.
+            try {
+                connection.execSQL("ALTER TABLE `$TABLE_TOTAL_DAILY_DOSES` ADD COLUMN `carbInsulin` REAL NOT NULL DEFAULT 0")
+            } catch (e: Exception) {
+                if (e.message?.contains("duplicate column", ignoreCase = true) != true) throw e
+            }
         }
     }
 
