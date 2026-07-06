@@ -201,11 +201,10 @@ jobs:
         run: |
           EXTRA_TARGETS=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            EXTRA_TARGETS=":app:assembleaapsclient2Release :app:assembleaapsclientRelease"
+            EXTRA_TARGETS=":wear:assemble${{ env.BUILD_VARIANT }} :app:assembleaapsclient2Release :app:assembleaapsclientRelease"
           fi
           ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
           $EXTRA_TARGETS \
-          :wear:assemble${{ env.BUILD_VARIANT }} \
           -Dorg.gradle.jvmargs="-Xmx8g" \
           -Dkotlin.daemon.jvm.options="-Xmx3g" \
           -Dkotlin.compiler.execution.strategy="in-process" \
@@ -221,7 +220,7 @@ jobs:
       - name: Rename APKs with version
         run: |
           mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
-          mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+          mv wear/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk || true
           mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
           mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
 
@@ -306,9 +305,11 @@ jobs:
           }
 
           upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
-          upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
-          # aapsclient2/aapsclient are only built on workflow_dispatch (see "Build APKs" step) — skip
-          # their upload on push-triggered runs instead of hard-failing on a missing file.
+          # wear/aapsclient2/aapsclient are only built on workflow_dispatch (see "Build APKs" step) —
+          # skip their upload on push-triggered runs instead of hard-failing on a missing file.
+          if [ -f "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" ]; then
+            upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
+          fi
           if [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ]; then
             upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
           fi
