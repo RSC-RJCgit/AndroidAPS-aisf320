@@ -126,7 +126,6 @@ fun OverviewChipsColumn(
         )
         SensitivityChipBlock(
             state = sensitivityUiState,
-            onNavigate = onNavigate,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -194,7 +193,10 @@ private fun NarrowChips(
         }
         TbrChip(
             state = tbrState,
-            onClick = onTbrChipClick
+            onClick = onTbrChipClick,
+            // TODO: gate on AutoISF being the active algorithm once it's registered as a selectable
+            // APS algorithm on this fork — unconditional for now since there's nothing to gate against yet.
+            onLongPress = { onNavigate(NavigationRequest.Element(ElementType.AUTOISF_HISTORY)) }
         )
     }
 }
