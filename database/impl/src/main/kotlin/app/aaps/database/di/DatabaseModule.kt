@@ -321,6 +321,11 @@ open class DatabaseModule {
             )
             // Only index timestamp — a separate index on id would be redundant on the primary key (see migration33to34 cleanup above)
             connection.execSQL("CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTOISF_VALUES` (`timestamp`)")
+            // Pre-existing stray index left over from an earlier schema on some devices — doesn't
+            // correspond to any column on the current Carbs entity and fails Room's schema
+            // validation ("Migration didn't properly handle: carbs") once a version bump forces a
+            // full re-check. migration33to34's index cleanup above didn't target this one.
+            connection.execSQL("DROP INDEX IF EXISTS `index_carbs_end`")
         }
     }
 
