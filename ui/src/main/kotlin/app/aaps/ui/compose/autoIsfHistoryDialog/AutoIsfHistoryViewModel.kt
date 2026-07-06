@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.autoIsfHistoryDialog
 
+import android.content.Context
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,15 +9,27 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.storage.Storage
 import app.aaps.core.interfaces.utils.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DecimalFormat
+import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -30,11 +43,27 @@ import kotlin.math.abs
 class AutoIsfHistoryViewModel @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val dateUtil: DateUtil,
-    private val profileUtil: ProfileUtil
+    private val profileUtil: ProfileUtil,
+    private val fileListProvider: FileListProvider,
+    private val storage: Storage,
+    private val aapsLogger: AAPSLogger,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AutoIsfHistoryUiState())
     val uiState: StateFlow<AutoIsfHistoryUiState> = _uiState.asStateFlow()
+
+    sealed class SideEffect {
+        data class ExportCompleted(val fileName: String) : SideEffect()
+        data class ExportFailed(val message: String) : SideEffect()
+    }
+
+    private val _sideEffect = MutableSharedFlow<SideEffect>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
 
     private val df2 = DecimalFormat("0.00")
 
@@ -52,7 +81,60 @@ class AutoIsfHistoryViewModel @Inject constructor(
             val isMmol = profileUtil.units == GlucoseUnit.MMOL
             val rows = records.map { toRow(it, apsResults, stepsCountList, isMmol) }
             _uiState.update { it.copy(rows = rows, isLoading = false) }
+
+            // Automatic CSV export on open, matching the source dialog's behavior — no separate
+            // export button. Exported even when empty (header-only file) so the "nothing to show"
+            // case still leaves a record of when the table was opened.
+            exportCsv(records, apsResults, stepsCountList, isMmol, now)
         }
+    }
+
+    private suspend fun exportCsv(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, isMmol: Boolean, now: Long) {
+        withContext(Dispatchers.IO) {
+            try {
+                val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(now) + ".csv"
+                val dir = fileListProvider.ensureExportDirExists() ?: throw java.io.FileNotFoundException("Export directory not accessible")
+                val newFile = dir.createFile("text/csv", fileName) ?: throw java.io.FileNotFoundException("Could not create export file")
+                val csv = buildCsv(records, apsResults, stepsCountList, isMmol)
+                storage.putFileContents(context.contentResolver, newFile, csv)
+                aapsLogger.debug(LTag.UI, "AutoISF history exported to $fileName")
+                _sideEffect.emit(SideEffect.ExportCompleted(fileName))
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
+                _sideEffect.emit(SideEffect.ExportFailed(e.message ?: "export failed"))
+            }
+        }
+    }
+
+    // Mirrors the table's column set, but always writes the raw formatted value (never "--")
+    // even for neutral/zero cells — more useful for spreadsheet/graphing post-processing than the
+    // table's "--" placeholders.
+    private fun buildCsv(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, isMmol: Boolean): String {
+        val sb = StringBuilder("Time,BGL,Final,acce,bg,pp,dura,SMB,FastRise,iobTH,acceBG,Delta,SDelta,Req,TBR,S5,S15,S30,S60,S180\n")
+        for (r in records) {
+            val sc = stepsAt(r.timestamp, stepsCountList)
+            sb.append(dateUtil.timeString(r.timestamp)).append(',')
+                .append(formatBg(r.glucose, isMmol)).append(',')
+                .append(df2.format(r.finalIsf)).append(',')
+                .append(df2.format(r.acceIsf)).append(',')
+                .append(df2.format(r.bgIsf)).append(',')
+                .append(df2.format(r.ppIsf)).append(',')
+                .append(df2.format(r.duraIsf)).append(',')
+                .append(df2.format(r.smbDelivered)).append(',')
+                .append(fastRiseStr(r.timestamp, apsResults)).append(',')
+                .append(df2.format(r.iobThEffective)).append(',')
+                .append(df2.format(r.bgAcceleration)).append(',')
+                .append(formatBg(r.delta, isMmol)).append(',')
+                .append(formatBg(r.shortAvgDelta, isMmol)).append(',')
+                .append(df2.format(r.insulinReq)).append(',')
+                .append(df2.format(r.tbrRate)).append(',')
+                .append(sc?.steps5min ?: "").append(',')
+                .append(sc?.steps15min ?: "").append(',')
+                .append(sc?.steps30min ?: "").append(',')
+                .append(sc?.steps60min ?: "").append(',')
+                .append(sc?.steps180min ?: "").append('\n')
+        }
+        return sb.toString()
     }
 
     private fun toRow(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, isMmol: Boolean): AutoIsfRow {

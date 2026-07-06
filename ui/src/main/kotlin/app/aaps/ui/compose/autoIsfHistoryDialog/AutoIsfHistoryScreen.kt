@@ -19,9 +19,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +58,16 @@ fun AutoIsfHistoryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = AapsTheme.generalColors
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.sideEffect.collect { effect ->
+            when (effect) {
+                is AutoIsfHistoryViewModel.SideEffect.ExportCompleted -> snackbarHostState.showSnackbar("Exported: ${effect.fileName}")
+                is AutoIsfHistoryViewModel.SideEffect.ExportFailed    -> snackbarHostState.showSnackbar("Export failed: ${effect.message}")
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -66,7 +80,8 @@ fun AutoIsfHistoryScreen(
                 },
                 actions = {}
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { padding ->
         when {
             uiState.isLoading    ->
