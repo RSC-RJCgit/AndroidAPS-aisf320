@@ -4,6 +4,7 @@ import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -12,6 +13,7 @@ import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
@@ -219,6 +221,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     private val autoIsfCache = LongSparseArray<Double>()
+
+    // Captured at each return point of autoISF() below (which has multiple early exits, so these
+    // are set explicitly at every `return` rather than relying on one final assignment) — read back
+    // in invoke() after determine_basal() completes, to log this cycle's factors into the AIV table
+    // for the AutoISF history table. Purely for display; does not affect dosing.
+    private var lastAcceIsf = 1.0
+    private var lastBgIsf = 1.0
+    private var lastPpIsf = 1.0
+    private var lastDuraIsf = 1.0
+    private var lastFinalIsf = 1.0
 
     private suspend fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
         val profile = profileFunction.getProfile(timestamp)
@@ -459,6 +471,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             lastAPSRun = now
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
+
+            // Log this cycle's AutoISF factors for the AutoISF history table. Display only — the
+            // values themselves were already applied above via variableSensitivity; this doesn't
+            // feed back into dosing.
+            if (autoIsfMode) {
+                persistenceLayer.insertOrUpdateAutoIsfValues(
+                    AIV(
+                        timestamp = now,
+                        acceIsf = lastAcceIsf,
+                        bgIsf = lastBgIsf,
+                        ppIsf = lastPpIsf,
+                        driftIsf = 1.0,
+                        duraIsf = lastDuraIsf,
+                        finalIsf = lastFinalIsf,
+                        iobThEffective = oapsProfile.max_iob,
+                        glucose = glucoseStatus?.glucose ?: 0.0,
+                        insulinReq = it.insulinReq ?: 0.0,
+                        tbrRate = it.rate ?: 0.0,
+                        smbDelivered = it.units ?: 0.0,
+                        delta = glucoseStatus?.delta ?: 0.0,
+                        shortAvgDelta = glucoseStatus?.shortAvgDelta ?: 0.0,
+                        bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0
+                    )
+                )
+            }
         }
 
         rxBus.send(EventOpenAPSUpdateGui())
@@ -599,6 +636,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("----------------------------------")
             consoleError.add("end AutoISF")
             consoleError.add("----------------------------------")
+            lastAcceIsf = 1.0; lastBgIsf = 1.0; lastPpIsf = 1.0; lastDuraIsf = 1.0; lastFinalIsf = 1.0
             return round(sens / sensitivityRatio, 1)
         }
         val autosensResult = AutosensResult()
@@ -607,6 +645,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val autosensData = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")
             if (autosensData == null) {
                 rxBus.send(EventResetOpenAPSGui(rh.gs(R.string.openaps_no_as_data)))
+                lastAcceIsf = 1.0; lastBgIsf = 1.0; lastPpIsf = 1.0; lastDuraIsf = 1.0; lastFinalIsf = 1.0
                 return sens
             }
             autosensData.autosensResult
@@ -679,6 +718,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            lastAcceIsf = acce_ISF; lastBgIsf = bg_ISF; lastPpIsf = 1.0; lastDuraIsf = 1.0; lastFinalIsf = final_ISF
             return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
@@ -732,11 +772,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            lastAcceIsf = acce_ISF; lastBgIsf = bg_ISF; lastPpIsf = pp_ISF; lastDuraIsf = dura_ISF; lastFinalIsf = final_ISF
             return round(sens / final_ISF, 1)
         }
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
+        lastAcceIsf = acce_ISF; lastBgIsf = bg_ISF; lastPpIsf = pp_ISF; lastDuraIsf = dura_ISF; lastFinalIsf = 1.0
         return round(sens / sensitivityRatio, 1)     // nothing changed
     }
 
