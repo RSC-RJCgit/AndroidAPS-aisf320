@@ -346,7 +346,28 @@ open class DatabaseModule {
         }
     }
 
+    // Devices that already reached version 35 before glucose/insulinReq/tbrRate/smbDelivered/delta/
+    // shortAvgDelta/bgAcceleration were added to migration34to35 (and before index_autoIsfValues_id
+    // was dropped from it) never had that migration re-run, so autoIsfValues is stuck with the old,
+    // incomplete shape on those devices — same boundary-crossing problem as migration35to36 above.
+    internal val migration36to37 = object : Migration(36, 37) {
+        override fun migrate(connection: SQLiteConnection) {
+            connection.execSQL("DROP INDEX IF EXISTS `index_autoIsfValues_id`")
+            val missingColumns = listOf(
+                "glucose" to "0.0", "insulinReq" to "0.0", "tbrRate" to "0.0", "smbDelivered" to "0.0",
+                "delta" to "0.0", "shortAvgDelta" to "0.0", "bgAcceleration" to "0.0"
+            )
+            for ((column, default) in missingColumns) {
+                try {
+                    connection.execSQL("ALTER TABLE `$TABLE_AUTOISF_VALUES` ADD COLUMN `$column` REAL NOT NULL DEFAULT $default")
+                } catch (e: Exception) {
+                    if (e.message?.contains("duplicate column", ignoreCase = true) != true) throw e
+                }
+            }
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36)
+    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37)
 }
