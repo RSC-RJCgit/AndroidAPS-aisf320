@@ -13,6 +13,7 @@ import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.NE
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TB
@@ -1522,6 +1523,25 @@ interface PersistenceLayer {
      * @return List of inserted/updated records
      */
     suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): TransactionResult<SC>
+
+    // AIV
+
+    /**
+     * Get AutoISF adjustment-factor records from interval
+     *
+     * @param startTime from
+     * @param endTime to
+     * @return list of AutoISF value records
+     */
+    suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV>
+
+    /**
+     * Insert or update a single AutoISF adjustment-factor record
+     *
+     * @param autoIsfValues record
+     * @return List of inserted/updated records
+     */
+    suspend fun insertOrUpdateAutoIsfValues(autoIsfValues: AIV): TransactionResult<AIV>
 
     // VersionChange
 

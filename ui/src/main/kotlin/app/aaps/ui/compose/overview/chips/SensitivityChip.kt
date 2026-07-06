@@ -1,6 +1,6 @@
 package app.aaps.ui.compose.overview.chips
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
@@ -35,6 +35,7 @@ import app.aaps.core.ui.compose.navigation.color
 internal fun SensitivityChip(
     state: SensitivityUiState,
     onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val icon = selectSensIcon(ratio = state.ratio, isEnabled = state.isEnabled)
@@ -44,7 +45,7 @@ internal fun SensitivityChip(
         color = ElementType.SENSITIVITY.color().copy(alpha = 0.2f),
         modifier = modifier
             .heightIn(min = AapsSpacing.chipHeight)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

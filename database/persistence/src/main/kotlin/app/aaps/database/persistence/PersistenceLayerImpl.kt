@@ -13,6 +13,7 @@ import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.NE
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TB
@@ -72,6 +73,7 @@ import app.aaps.database.transactions.InsertOrUpdateFoodTransaction
 import app.aaps.database.transactions.InsertOrUpdateHeartRatesTransaction
 import app.aaps.database.transactions.InsertOrUpdateProfileSwitchTransaction
 import app.aaps.database.transactions.InsertOrUpdateRunningModeTransaction
+import app.aaps.database.transactions.InsertOrUpdateAutoIsfValuesTransaction
 import app.aaps.database.transactions.InsertOrUpdateStepsCountsTransaction
 import app.aaps.database.transactions.InsertOrUpdateTherapyEventTransaction
 import app.aaps.database.transactions.InsertTemporaryBasalWithTempIdTransaction
@@ -2435,6 +2437,30 @@ class PersistenceLayerImpl @Inject constructor(
             transactionResult
         } catch (e: Exception) {
             aapsLogger.error(LTag.DATABASE, "Error while saving StepsCount batch $e")
+            throw e
+        }
+    }
+
+    // AIV
+    override suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV> = withContext(Dispatchers.IO) {
+        repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { it.fromDb() }
+    }
+
+    override suspend fun insertOrUpdateAutoIsfValues(autoIsfValues: AIV): PersistenceLayer.TransactionResult<AIV> = withContext(Dispatchers.IO) {
+        try {
+            val result = repository.runTransactionForResultSuspend(InsertOrUpdateAutoIsfValuesTransaction(autoIsfValues.toDb()))
+            val transactionResult = PersistenceLayer.TransactionResult<AIV>()
+            result.inserted.forEach {
+                aapsLogger.debug(LTag.DATABASE, "Inserted AutoIsfValues $it")
+                transactionResult.inserted.add(it.fromDb())
+            }
+            result.updated.forEach {
+                aapsLogger.debug(LTag.DATABASE, "Updated AutoIsfValues $it")
+                transactionResult.updated.add(it.fromDb())
+            }
+            transactionResult
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.DATABASE, "Error while saving AutoIsfValues $e")
             throw e
         }
     }

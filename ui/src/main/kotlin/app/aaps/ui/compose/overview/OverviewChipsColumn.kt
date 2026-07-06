@@ -126,6 +126,7 @@ fun OverviewChipsColumn(
         )
         SensitivityChipBlock(
             state = sensitivityUiState,
+            onNavigate = onNavigate,
             modifier = Modifier.fillMaxWidth()
         )
     }

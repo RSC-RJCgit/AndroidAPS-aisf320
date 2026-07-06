@@ -1,6 +1,7 @@
 package app.aaps.database
 
 import app.aaps.database.daos.APSResultDao
+import app.aaps.database.daos.AutoIsfValuesDao
 import app.aaps.database.daos.BolusCalculatorResultDao
 import app.aaps.database.daos.BolusDao
 import app.aaps.database.daos.CarbsDao
@@ -21,6 +22,7 @@ import app.aaps.database.daos.TotalDailyDoseDao
 import app.aaps.database.daos.UserEntryDao
 import app.aaps.database.daos.VersionChangeDao
 import app.aaps.database.daos.delegated.DelegatedAPSResultDao
+import app.aaps.database.daos.delegated.DelegatedAutoIsfValuesDao
 import app.aaps.database.daos.delegated.DelegatedBolusCalculatorResultDao
 import app.aaps.database.daos.delegated.DelegatedBolusDao
 import app.aaps.database.daos.delegated.DelegatedCarbsDao
@@ -64,5 +66,6 @@ internal class DelegatedAppDatabase(val changes: MutableList<DBEntry>, val datab
     val runningModeDao: RunningModeDao = DelegatedRunningModeDao(changes, database.runningModeDao)
     val heartRateDao: HeartRateDao = DelegatedHeartRateDao(changes, database.heartRateDao)
     val stepsCountDao: StepsCountDao = DelegatedStepsCountDao(changes, database.stepsCountDao)
+    val autoIsfValuesDao: AutoIsfValuesDao = DelegatedAutoIsfValuesDao(changes, database.autoIsfValuesDao)
     fun clearAllTables() = database.clearAllTables()
 }
