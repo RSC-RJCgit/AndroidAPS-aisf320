@@ -199,9 +199,12 @@ jobs:
 
       - name: Build APKs
         run: |
+          EXTRA_TARGETS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            EXTRA_TARGETS=":app:assembleaapsclient2Release :app:assembleaapsclientRelease"
+          fi
           ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
-          :app:assembleaapsclient2Release \
-          :app:assembleaapsclientRelease \
+          $EXTRA_TARGETS \
           :wear:assemble${{ env.BUILD_VARIANT }} \
           -Dorg.gradle.jvmargs="-Xmx8g" \
           -Dkotlin.daemon.jvm.options="-Xmx3g" \
@@ -304,6 +307,12 @@ jobs:
 
           upload_to_gdrive "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
           upload_to_gdrive "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk" "aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk"
-          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
-          upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
+          # aapsclient2/aapsclient are only built on workflow_dispatch (see "Build APKs" step) — skip
+          # their upload on push-triggered runs instead of hard-failing on a missing file.
+          if [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ]; then
+            upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
+          fi
+          if [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]; then
+            upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
+          fi
           echo "🎉 APKs successfully uploaded to Google Drive!"
