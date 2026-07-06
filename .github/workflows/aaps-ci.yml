@@ -317,3 +317,15 @@ jobs:
             upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
           fi
           echo "🎉 APKs successfully uploaded to Google Drive!"
+
+      - name: Upload APKs as GitHub artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}-all
+          path: |
+            aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+            aaps-wear-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
+            aaps-${{ env.VERSION }}-aapsclient2.apk
+            aaps-${{ env.VERSION }}-aapsclient.apk
+          retention-days: 30
+          if-no-files-found: ignore
