@@ -29,6 +29,7 @@ import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.navigation.descriptionResId
 import app.aaps.core.ui.compose.navigation.icon
 import app.aaps.core.ui.compose.navigation.labelResId
+import app.aaps.core.ui.R as CoreUiR
 
 @Composable
 fun MainDrawer(
@@ -76,7 +77,11 @@ fun MainDrawer(
             DrawerMenuItem(ElementType.MAINTENANCE) { onNavigate(NavigationRequest.Element(ElementType.MAINTENANCE)) }
             DrawerMenuItem(ElementType.SETUP_WIZARD) { onNavigate(NavigationRequest.Element(ElementType.SETUP_WIZARD)) }
             DrawerMenuItem(ElementType.CONFIGURATION) { onNavigate(NavigationRequest.Element(ElementType.CONFIGURATION)) }
-            DrawerMenuItem(ElementType.AUTOMATION_MANAGEMENT) { onNavigate(NavigationRequest.Element(ElementType.AUTOMATION_MANAGEMENT)) }
+            DrawerMenuItem(
+                label = stringResource(CoreUiR.string.automation),
+                icon = ElementType.AUTOMATION.icon(),
+                onClick = { onNavigate(NavigationRequest.Element(ElementType.AUTOMATION)) }
+            )
         }
 
         // Bottom section with About and Exit

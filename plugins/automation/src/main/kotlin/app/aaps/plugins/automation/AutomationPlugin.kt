@@ -92,6 +92,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
@@ -158,6 +161,17 @@ class AutomationPlugin @Inject constructor(
     private val automationEvents = ArrayList<AutomationEventObject>()
     var executionLog: MutableList<String> = ArrayList()
     var btConnects: MutableList<EventBTChange> = ArrayList()
+
+    private val _events = MutableStateFlow(userEvents())
+    override val events: StateFlow<List<AutomationEvent>> = _events.asStateFlow()
+    override val executionEnabled: Boolean get() = config.APS
+
+    init {
+        disposable += rxBus
+            .toObservable(EventAutomationDataChanged::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ _events.value = userEvents() }, fabricPrivacy::logException)
+    }
 
     companion object {
 
