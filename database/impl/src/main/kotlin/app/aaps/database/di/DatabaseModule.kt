@@ -367,7 +367,19 @@ open class DatabaseModule {
         }
     }
 
+    // createCustomIndexes() runs unconditionally on every onOpen(), so any device that already
+    // passed version 34 (when dropCustomIndexes() was only called from migration33to34) has had
+    // these re-created by every session since. migration35to36 already had to re-drop
+    // index_carbs_end for the same reason; extendedBoluses/temporaryBasals/temporaryTargets/
+    // runningModes were never re-dropped, so they're the same latent bug waiting to surface on the
+    // next version bump a device crosses. dropCustomIndexes() is IF EXISTS, safe to call again.
+    internal val migration37to38 = object : Migration(37, 38) {
+        override fun migrate(connection: SQLiteConnection) {
+            dropCustomIndexes(connection)
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37)
+    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37, migration37to38)
 }
