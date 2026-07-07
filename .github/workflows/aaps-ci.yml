@@ -17,9 +17,9 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
+
   push:
     branches:
-      - '*RJC*'
       - '3.4.0.0+aisf3.2.0'
       - '**aisf3.2.0'
       - 'tdd-sensitivity-autosens-off'
