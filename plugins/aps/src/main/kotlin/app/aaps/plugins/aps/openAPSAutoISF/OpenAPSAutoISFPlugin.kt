@@ -766,6 +766,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             setAutomationState("MJ", "NOMJremains")
         }
 
+        // --- MJ2 old: advances MJ state from "MJ active" → MJ2 at 02:10–03:10 AM ---
+        if (checkAutomationState("MJ", "MJ active") && isTimeBetween(2, 10, 3, 10)) {
+            sendSms("MJ2")
+            setAutomationState("MJ", "MJ2")
+            addCarePortalNote("MJ2")
+            setAutomationState("MJstate", "MJon")
+        }
+
+        // --- MJ3 old: advances MJ state from MJ2 → MJ3 at 01:05–02:05 AM ---
+        if (checkAutomationState("MJ", "MJ2") && isTimeBetween(1, 5, 2, 5)) {
+            sendSms("MJ3")
+            setAutomationState("MJ", "MJ3")
+            addCarePortalNote("MJ3")
+            setAutomationState("MJstate", "MJon")
+        }
+
+        // --- MJoff old: exits MJ cycle when MJ3 active ---
+        // Block 1: 12:00–21:04 with BGL >= 10.5 mmol. Block 2: midnight 00:00–01:00.
+        if (checkAutomationState("MJ", "MJ3")) {
+            val g = glucoseStatus.glucose
+            val mjB1 = isTimeBetween(12, 0, 21, 4) && g >= 189.2   // 10.5 mmol
+            val mjB2 = isTimeBetween(0, 0, 1, 0)
+            val mjBlock = when { mjB1 -> "1"; mjB2 -> "2"; else -> null }
+            if (mjBlock != null) {
+                sendSms("MJoff [b$mjBlock]: g=${String.format("%.1f", g / 18.016)}")
+                setAutomationState("MJ", "NOMJremains")
+                addCarePortalNote("MJoff-$mjBlock")
+                setAutomationState("MJstate", "MJoff")
+            }
+        }
+
         // --- prepare Set50%: replaces "prepare Set50%0.07 50%" automation ---
         // Precondition guard: profile_percentage == 100. Once the 50% profile switch fires,
         // profile_percentage becomes 50 on the next loop cycle and the block stops running.
@@ -2008,5 +2039,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU211
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU212
  */
