@@ -1028,6 +1028,70 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- 50pc makes5.7: safety TT when on 50% profile and BGL dropping below 5.0 mmol ---
+        // Precondition: no TT active. Self-guarding: TT set so activeTtMgdl() != null next cycle.
+        if (profile_percentage == 50 && activeTtMgdl() == null) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            if (g < 90.1 && d <= -0.9) {   // < 5.0 mmol, delta <= -0.05 mmol
+                startTempTargetIfNeeded(102.7, 150)   // 5.7 mmol for 150 min
+                sendSms("50pc makes5.7: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("50pcTT")
+                aapsLogger.debug(LTag.APS, "50pc makes5.7: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)}")
+            }
+        }
+
+        // --- carbsStopTT1ok4.4: cancel very-low TT (<=4.4 mmol) when carbs active and rising ---
+        // Self-guarding: cancels TT so tt<=79.3 is false next cycle.
+        run {
+            val tt = activeTtMgdl()
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val iob = iobData.iob
+            if (tt != null && tt <= 79.3          // TT <= 4.4 mmol
+                && mealData.mealCOB >= 10.0
+                && d >= 3.6                        // Delta >= 0.2 mmol
+                && iob <= 0.3
+                && isTimeBetween(10, 0, 22, 0)
+            ) {
+                cancelCurrentTempTarget()
+                setBgAccelIsfWeight(0.50)
+                applyCurrentProfileAt100()
+                sendSms("carbsStopTT1: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
+                addCarePortalNote("Coff4")
+                aapsLogger.debug(LTag.APS, "carbsStopTT1: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
+            }
+        }
+
+        // --- CarbsStopTT5.7: cancel 5.7 mmol TT when carbs up or recent bolus and BGL stable/rising ---
+        // Self-guarding: cancels TT so TT range checks fail next cycle.
+        run {
+            val tt = activeTtMgdl()
+            if (tt != null) {
+                val g  = glucoseStatus.glucose
+                val d  = glucoseStatus.delta
+                val cob = mealData.mealCOB
+                val iob = iobData.iob
+                val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+                // Block 1: TT 4.6–5.9 mmol, COB>10, IOB>=2.2, BGL>=5.0, Delta>=0
+                val cb1 = cob > 10.0 && tt <= 106.3 && tt >= 82.9 && iob >= 2.2 && g >= 90.1 && d >= 0.0
+                // Block 2: TT 6.2–6.4 mmol, COB>10, BGL>=5.0, Delta>=0.05 mmol, IOB<=2.2
+                val cb2 = cob > 10.0 && g >= 90.1 && d >= 0.9 && tt >= 111.7 && tt < 115.3 && iob <= 2.2
+                // Block 3: bolus <=10 min ago, TT 5.7–5.8 mmol, BGL>=5.0, Delta>=0
+                val cb3 = lastBolusMin <= 10 && tt >= 102.7 && tt <= 104.5 && g >= 90.1 && d >= 0.0
+                val cBlock = when { cb1 -> "1"; cb2 -> "2"; cb3 -> "3"; else -> null }
+                if (cBlock != null) {
+                    cancelCurrentTempTarget()
+                    applyCurrentProfileAt100()
+                    setBgAccelIsfWeight(0.50)
+                    setAutomationState("LowBG", "NO50rec")
+                    sendSms("CarbsStopTT [b$cBlock]: g=${String.format("%.1f", g / 18.016)} tt=${String.format("%.1f", tt / 18.016)}")
+                    addCarePortalNote("Coff2-$cBlock")
+                    aapsLogger.debug(LTag.APS, "CarbsStopTT block $cBlock: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} cob=${cob.toInt()} iob=${String.format("%.2f", iob)} d=${String.format("%.2f", d / 18.016)}")
+                }
+            }
+        }
+
         // --- Usual2forTH70: restores iobTH=70 and acce weight=0.50 when BGL has recovered ---
         // Replaces "Usual2forTH70 CurrProfReal0.35" automation.
         // Guard: profile at 100% (not in 50% state), iobTH still reduced (<70), no TT, BGL >= 5.5mmol.
@@ -1063,6 +1127,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("UsuIP-$u2block")
                 aapsLogger.debug(LTag.APS, "Usual2forTH block $u2block: g=${String.format("%.1f", g / 18.016)}mmol iobTH=$iobTH steps60=$steps60 steps180=$steps180 cob=${cob.toInt()} sd=${String.format("%.2f", sd / 18.016)}")
+            }
+        }
+
+        // --- CarbsTHoff: lowers iobTH to 50% when post-carb BGL is falling or mid-range anomaly ---
+        if (profile_percentage == 100 && activeTtMgdl() == null
+            && checkAutomationState("Steroids", "Steroids Off")) {
+            val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
+            val sd  = glucoseStatus.shortAvgDelta
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val iobTH = iobThresholdPercent
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            // Block 1: BGL falling (SDelta<=-0.1mmol, Delta<=-0.1mmol), 5.0–8.5mmol,
+            //          bolus>=80min ago, either iobTH at normal (>=71) or deep-hypo acce (<=0.03)
+            val ctB1 = sd <= -1.8 && d <= -1.8 && g > 90.1 && g <= 153.1
+                && lastBolusMin >= 80
+                && (iobTH >= 71 || acceW <= 0.03)
+            // Block 2: BGL 9.5–11.0mmol, acce NOT exactly 0.50 (<=0.49 OR >=0.51),
+            //          iobTH 71–96 (normal-ish but not over-boosted)
+            val ctB2 = g <= 198.2 && (acceW <= 0.49 || acceW >= 0.51)
+                && iobTH >= 71 && iobTH <= 96 && g >= 171.2
+            val ctBlock = when { ctB1 -> "1"; ctB2 -> "2"; else -> null }
+            if (ctBlock != null) {
+                setBgAccelIsfWeight(0.50)
+                switchProfileIfNeeded("Current ProfileReal", 30)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
+                setAutomationState("LowBG", "NO50rec")
+                sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
+                addCarePortalNote("COff1-$ctBlock")
             }
         }
 
