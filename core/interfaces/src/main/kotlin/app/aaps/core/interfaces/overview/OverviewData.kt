@@ -82,6 +82,7 @@ interface OverviewData {
     var epsSeries: SeriesData
     var maxTreatmentsValue: Double
     var treatmentsSeries: SeriesData
+    var smbLabelSeries: SeriesData
     var maxTherapyEventValue: Double
     var therapyEventSeries: SeriesData
 

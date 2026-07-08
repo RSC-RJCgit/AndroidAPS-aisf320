@@ -104,6 +104,7 @@ class OverviewDataImpl @Inject constructor(
         dsMinSeries = LineGraphSeries<ScaledDataPoint>()
         maxTreatmentsValue = 0.0
         treatmentsSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        smbLabelSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxEpsValue = 0.0
         epsSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxTherapyEventValue = 0.0
@@ -254,6 +255,7 @@ class OverviewDataImpl @Inject constructor(
     override var epsSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var maxTreatmentsValue = 0.0
     override var treatmentsSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var smbLabelSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var maxTherapyEventValue = 0.0
     override var therapyEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 

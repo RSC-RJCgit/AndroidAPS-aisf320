@@ -174,6 +174,10 @@ class GraphData @Inject constructor(
     }
 
     // scale in % of vertical size (like 0.3)
+    fun addSmbLabels() {
+        addSeries(overviewData.smbLabelSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addIobTh(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
         if (maxCommonIob>0.0) {
             maxY = maxCommonIob

@@ -165,6 +165,25 @@ class PrepareTreatmentsDataWorker(
             ?.let { data.overviewData.maxTherapyEventValue = maxOf(data.overviewData.maxTherapyEventValue, it) }
 
         data.overviewData.treatmentsSeries = PointsWithLabelGraphSeries(filteredTreatments.toTypedArray())
+
+        // SMB labels for graph 2 — fixed at Y=0 so they sit on the IOB baseline
+        val smbLabels = bolusDataPoints
+            .filter { it.data.type == BS.Type.SMB && it.label.isNotEmpty() }
+            .map { dp ->
+                object : DataPointWithLabelInterface {
+                    override fun getX(): Double = dp.x
+                    override fun getY(): Double = 0.0
+                    override fun setY(y: Double) {}
+                    override val label: String = dp.label
+                    override val duration: Long = 0L
+                    override val shape = app.aaps.core.graph.data.Shape.SMB_GRAPH2
+                    override val size: Float = 1.0f
+                    override val paintStyle = android.graphics.Paint.Style.FILL
+                    override fun color(context: android.content.Context?) = android.graphics.Color.WHITE
+                }
+            }
+        data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
+
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 

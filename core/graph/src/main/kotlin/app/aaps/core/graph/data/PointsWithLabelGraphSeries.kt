@@ -257,19 +257,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         }
                     }
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
-                    // label near BG dot — existing behaviour, gated by showSmbLabels / long-press
+                    // label near BG dot — gated by showSmbLabels long-press, unchanged behaviour
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
-                        val savedColor = mPaint.color
-                        if (!value.hasColorOverride) mPaint.color = Color.WHITE
-                        mPaint.style = Paint.Style.FILL
-                        drawLabelCentered(endX, labelY, value, canvas, scaledTextSize * 0.5f)
-                        mPaint.color = savedColor
-                    }
-                    // additional label fixed near bottom of graph — always visible regardless of long-press
-                    if (displayedHours <= 15.0 && value.label.isNotEmpty()) {
-                        val bottomAnchor = graphTop + graphHeight * 0.88f
-                        val labelY = bottomAnchor - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         if (!value.hasColorOverride) mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
@@ -365,6 +355,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = fixedAnnotationAlign
                         val py = graphTop + 130
                         canvas.drawText(value.label, endX, py, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
+                } else if (value.shape == Shape.SMB_GRAPH2) {
+                    if (value.label.isNotEmpty()) {
+                        mPaint.strokeWidth = 0f
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.color = Color.WHITE
+                        mPaint.textAlign = Paint.Align.CENTER
+                        canvas.drawText(value.label, endX, graphTop + scaledTextSize, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {

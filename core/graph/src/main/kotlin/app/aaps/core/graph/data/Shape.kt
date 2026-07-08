@@ -30,5 +30,6 @@ enum class Shape {
     BUCKETED_BG,
     HEART_RATE,
     STEPS,
-    STEPS_STACKED_BOTTOM // two stacked lines fixed near the bottom of the graph, above the SMB baseline triangles
+    STEPS_STACKED_BOTTOM, // two stacked lines fixed near the bottom of the graph, above the SMB baseline triangles
+    SMB_GRAPH2 // SMB dose label fixed near top of graph 2 (IOB graph), always visible
 }
