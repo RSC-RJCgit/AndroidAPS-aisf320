@@ -93,12 +93,10 @@ class GraphData @Inject constructor(
             )
         addSeries(overviewData.baseBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.tempBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
-        if (!PointsWithLabelGraphSeries.uniformGreenBg) {
-            addSeries(overviewData.tempBasalAcceIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalBgIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalPpIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalDuraIsfSeries as LineGraphSeries<ScaledDataPoint>)
-        }
+        addSeries(overviewData.tempBasalAcceIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalBgIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalPpIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalDuraIsfSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.basalLineGraphSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.absoluteBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
         maxY = max(maxY, preferences.get(UnitDoubleKey.OverviewHighMark))

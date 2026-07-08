@@ -370,6 +370,39 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    private fun startProfile50For180() {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return
+        val profileName = profileFunction.getProfileName()
+        profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = profileName,
+            durationInMinutes = 180,
+            percentage = 50,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: activity 50% for 180 min",
+            listValues = listOf(ValueWithUnit.Percent(50), ValueWithUnit.Minute(180))
+        )
+    }
+
+    private fun startProfile110For10(profileName: String) {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return
+        profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = profileName,
+            durationInMinutes = 10,
+            percentage = 110,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: 110% for 10 min",
+            listValues = listOf(ValueWithUnit.Percent(110), ValueWithUnit.Minute(10))
+        )
+    }
+
     // Temporary 110% profile boost for 5 min — used by HighOldPod to force insulin on stale/fresh cannula.
     private fun startProfile110For5(profileName: String) {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
@@ -1104,6 +1137,98 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
+            }
+        }
+
+        // --- Shower12: drops iobTH to 12% during quiet morning rise (no steps, no COB, long post-bolus) ---
+        if (profile_percentage > 50 && iobThresholdPercent > 12
+            && checkAutomationState("Steroids", "Steroids Off")) {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val tt = activeTtMgdl()
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            if (isTimeBetween(5, 30, 8, 30)
+                && g <= 144.1 /* 8.0 mmol */ && d >= 6.3 /* 0.35 mmol */ && sd >= 4.5 /* 0.25 mmol */
+                && recentSteps60Minutes < 10 && mealData.mealCOB == 0.0 && lastBolusMin >= 180
+                && (tt == null || tt <= 127.9 /* 7.1 mmol */)) {
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
+                sendSms("Shower12: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=${iobThresholdPercent}")
+            }
+        }
+
+        // --- HighNight00AM: overnight high BGL (>=9.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
+        // Fires 01:00–05:45 when glucose elevated and gently rising/flat, iobTH<=50 OR old cannula + MJ state.
+        if (activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
+            val g       = glucoseStatus.glucose
+            val d       = glucoseStatus.delta
+            val sd      = glucoseStatus.shortAvgDelta
+            val ld      = glucoseStatus.longAvgDelta
+            val iobTH   = iobThresholdPercent
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val baseOk  = isTimeBetween(1, 0, 5, 45) && g >= 162.1 /* 9.0 mmol */
+                && d >= 0.0 && d <= 14.4 /* 0.8 mmol */ && sd >= 0.0 && ld >= 0.0 && ld <= 6.3 /* 0.35 mmol */
+            val branch1 = baseOk && iobTH <= 50
+            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 162.1 && cannulaH >= 60.0
+            if (branch1 || branch2) {
+                switchProfileIfNeeded("Current ProfileReal", 30)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)
+                setBgAccelIsfWeight(0.50)
+                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
+                setAutomationState("Profile", "C100")
+                sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
+                addCarePortalNote("HOff")
+            }
+        }
+
+        // --- ActivityProf50%: sets 50% profile for 180 min during activity TT (7.3–7.9 mmol), BGL stable/falling ---
+        if (profile_percentage == 100) {
+            val tt = activeTtMgdl()
+            if (tt != null && tt >= 131.5 /* 7.3 mmol */ && tt <= 142.3 /* 7.9 mmol */
+                && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ && glucoseStatus.delta <= 1.8 /* 0.1 mmol */) {
+                sendSms("ActivityProf50%: g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)}")
+                setBgAccelIsfWeight(0.02)
+                applyCurrentProfileAt100()
+                startProfile50For180()
+                addCarePortalNote("ActivityProf50%")
+            }
+        }
+
+        // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
+        // 20-min throttle. Two trigger blocks; preconditions: profile=100%, no TT.
+        if (profile_percentage == 100 && activeTtMgdl() == null
+            && readyToRun("BolusGiven", 20)) {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val iobTH = iobThresholdPercent
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val cob = mealData.mealCOB
+            // Block 1: recent bolus (5–35 min), rising BGL, low steps, iobTH<71, steroids off
+            val bgRise1 = g >= 108.1 && sd >= 3.6 && d >= 3.6   // >=6.0 mmol rising
+            val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
+            val profileName = profileFunction.getProfileName()
+            val onNormalProfile = profileName == "Current ProfileReal" || profileName == "Current Profile"
+            val bg1 = (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
+                && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
+                && (lastBolusMin <= 120 || cob >= 10)
+                && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile
+            // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state
+            val bg2 = g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
+                && !checkAutomationState("MJ", "NOMJremains")
+            if (bg1 || bg2) {
+                val bBlock = if (bg1) "1" else "2"
+                markRun("BolusGiven")
+                sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
+                cancelCurrentTempTarget()
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
+                switchProfileIfNeeded("Current ProfileReal", 30)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Given-$bBlock")
+                setAutomationState("Profile", "Bolus")
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                startProfile110For10("Current ProfileReal")
+                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
             }
         }
 

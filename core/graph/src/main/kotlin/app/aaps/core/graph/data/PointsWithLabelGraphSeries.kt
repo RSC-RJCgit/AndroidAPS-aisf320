@@ -266,9 +266,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         drawLabelCentered(endX, labelY, value, canvas, scaledTextSize * 0.5f)
                         mPaint.color = savedColor
                     }
-                    // additional label below baseline shaft — always visible regardless of long-press
+                    // additional label fixed near bottom of graph — always visible regardless of long-press
                     if (displayedHours <= 15.0 && value.label.isNotEmpty()) {
-                        val labelY = baseShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
+                        val bottomAnchor = graphTop + graphHeight * 0.88f
+                        val labelY = bottomAnchor - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         if (!value.hasColorOverride) mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
