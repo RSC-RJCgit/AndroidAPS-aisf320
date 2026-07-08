@@ -149,6 +149,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var steps5: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var smsCommunicator: SmsCommunicator
+    @Inject lateinit var receiverStatusStore: app.aaps.core.interfaces.receivers.ReceiverStatusStore
 
     // last values
     override var lastAPSRun: Long = 0
@@ -366,6 +367,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             source = Sources.Automation,
             note = "AutoISF: prepare 50% for 360 min",
             listValues = listOf(ValueWithUnit.Percent(50), ValueWithUnit.Minute(360))
+        )
+    }
+
+    // Temporary 110% profile boost for 5 min — used by HighOldPod to force insulin on stale/fresh cannula.
+    private fun startProfile110For5(profileName: String) {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return
+        profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = profileName,
+            durationInMinutes = 5,
+            percentage = 110,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: 110% for 5 min",
+            listValues = listOf(ValueWithUnit.Percent(110), ValueWithUnit.Minute(5))
         )
     }
 
@@ -1037,6 +1055,55 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("OffP-$ohBlock")
+            }
+        }
+
+        // --- Battery1%: when phone battery drops to <=1%, switch to Current Profile50 and alert ---
+        // Guard: profile=100% (precondition). State Profile must be PP130, C100, or AllOK (normal running states).
+        // Self-guarding: switching to Profile50 makes profile_percentage=50 next cycle, failing the precondition.
+        if (profile_percentage == 100
+            && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
+            && receiverStatusStore.batteryLevel <= 1) {
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (cannulaH <= 80.0) {
+                switchProfileIfNeeded("Current Profile50", 0)
+                uiInteraction.addNotification(Notification.LOW_BATTERY, "Batt1%", Notification.URGENT)
+                sendSms("LowBattery")
+            }
+        }
+
+        // --- BatteryOver1%: when battery recovers above 1%, restore Current ProfileReal ---
+        // Fires when on 50% (Profile50 name or pct=50) and state Profile=Batt1%.
+        if (checkAutomationState("Profile", "Batt1%")
+            && (profile_percentage == 50 || profileFunction.getProfileName() == "Current Profile50")
+            && receiverStatusStore.batteryLevel > 1) {
+            switchProfileIfNeeded("Current ProfileReal", 0)
+            sendSms("AllOK Batt")
+            setAutomationState("Profile", "AllOK")
+            addCarePortalNote("AOK")
+        }
+
+        // --- HighOldPod: sets a brief TT 5.0 + 110% profile when cannula is stale (>=60h) or fresh (<=6h) ---
+        // Preconditions: no TT, profile=100%. Guards: MJ=NOMJremains state + bolus >=90 min ago.
+        if (profile_percentage == 100 && activeTtMgdl() == null
+            && checkAutomationState("MJ", "NOMJremains")) {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val oldOrNew = cannulaH >= 60.0 || cannulaH <= 6.0
+            if (g >= 180.2 /* 10.0 mmol */ && d in 1.8..5.4 /* 0.1–0.3 mmol */
+                && sd >= 1.8 /* 0.1 mmol */ && ld >= 0.0
+                && lastBolusMin >= 90 && oldOrNew) {
+                val targetProfile = "Current ProfileReal"
+                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
+                switchProfileIfNeeded(targetProfile, 30)
+                startProfile110For5(targetProfile)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Old")
+                sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
             }
         }
 
