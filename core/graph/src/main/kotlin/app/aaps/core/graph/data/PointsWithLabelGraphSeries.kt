@@ -256,10 +256,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                             drawLabelCentered(endX, fastRiseY, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
                         }
                     }
-                    // label centered over the BGL dot instead of offset to the right
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
+                    // label near BG dot — existing behaviour, gated by showSmbLabels / long-press
                     if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
+                        val savedColor = mPaint.color
+                        if (!value.hasColorOverride) mPaint.color = Color.WHITE
+                        mPaint.style = Paint.Style.FILL
+                        drawLabelCentered(endX, labelY, value, canvas, scaledTextSize * 0.5f)
+                        mPaint.color = savedColor
+                    }
+                    // additional label below baseline shaft — always visible regardless of long-press
+                    if (displayedHours <= 15.0 && value.label.isNotEmpty()) {
+                        val labelY = baseShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         if (!value.hasColorOverride) mPaint.color = Color.WHITE
                         mPaint.style = Paint.Style.FILL
