@@ -359,13 +359,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
+                        val bucket2 = (value.x / 600_000L).toLong()
+                        val stackIndex2 = smbStack.getOrDefault(bucket2, 0)
+                        smbStack[bucket2] = stackIndex2 + 1
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.color = Color.WHITE
                         mPaint.textAlign = Paint.Align.CENTER
-                        canvas.drawText(value.label, endX, graphTop + scaledTextSize * (1 + stackIndex), mPaint)
+                        canvas.drawText(value.label, endX, graphTop + scaledTextSize * (1 + stackIndex2), mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
