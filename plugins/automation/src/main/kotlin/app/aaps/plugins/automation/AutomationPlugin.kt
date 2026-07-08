@@ -101,7 +101,6 @@ import app.aaps.plugins.automation.triggers.TriggerTempTarget
 import app.aaps.plugins.automation.triggers.TriggerTempTargetValue
 import app.aaps.plugins.automation.triggers.TriggerTime
 import app.aaps.plugins.automation.triggers.TriggerTimeRange
-import app.aaps.plugins.automation.triggers.TriggerSkittlesHypoRisk
 import app.aaps.plugins.automation.triggers.TriggerTddRatio
 import app.aaps.plugins.automation.triggers.TriggerWifiSsid
 import app.aaps.plugins.automation.ui.TimerUtil
@@ -503,7 +502,6 @@ class AutomationPlugin @Inject constructor(
             TriggerLocation(injector),
             TriggerAutosensValue(injector),
             TriggerTddRatio(injector),
-            TriggerSkittlesHypoRisk(injector),
             TriggerBolusAgo(injector),
             TriggerCarbsAgo(injector),
             TriggerPumpLastConnection(injector),

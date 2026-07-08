@@ -327,6 +327,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Force a profile switch to the current profile at 100%, even when already on that named profile.
+    // Needed to cancel a temporary % reduction (e.g. prepare50 sets profile to 50% for 360 min).
+    // switchProfileIfNeeded() short-circuits when the name matches; this never short-circuits.
+    private fun applyCurrentProfileAt100() {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return
+        val profileName = profileFunction.getProfileName()
+        profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = profileName,
+            durationInMinutes = 0,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: reset to 100%",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(profileName),
+                ValueWithUnit.Percent(100)
+            )
+        )
+    }
+
     // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
     // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
     // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
@@ -657,6 +680,57 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (checkAutomationState("MJ", "MJ4")) {
             addCarePortalNote("A1")
             setAutomationState("MJ", "NOMJremains")
+        }
+
+        // --- Skittles hypo-risk: replaces SkittlesTT3CurrP02, SkittlesA3ok8.0,5.0,6.0, Skittles3ok2BG9.0 ---
+        // Primary guard: startTempTargetIfNeeded() no-ops when a TT is already active, so the
+        // 7 condition blocks are evaluated every loop cycle but actions only fire once per TT period.
+        // All glucose/delta thresholds in mg/dL; originals in mmol/L noted in comments.
+        run {
+            val g   = glucoseStatus.glucose      // mg/dL
+            val d   = glucoseStatus.delta        // mg/dL, 5-min
+            val sd  = glucoseStatus.shortAvgDelta // mg/dL, 15-min avg
+            val ld  = glucoseStatus.longAvgDelta  // mg/dL, 40-min avg
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val gate = profile_percentage >= 65 && lastBolusMin >= 5
+
+            // Block A — SkittlesTT3 #1: fallback at very low glucose (BGL/data issues tolerated)
+            val blkA = g <= 81.1 /* 4.5 */ && d <= -0.9 /* -0.05 */ && iob >= -0.2 &&
+                sd <= -0.9 && ld <= -0.9 && cob <= 15.0 && gate
+
+            // Block B — SkittlesTT3 #2: moderate fall with active insulin; COB or 60-min bolus fallback
+            val blkB = g <= 90.1 /* 5.0 */ && d <= -5.13 /* -0.285 */ && iob >= 0.3 &&
+                sd <= -3.60 /* -0.20 */ && ld <= -3.60 && gate && (cob <= 15.0 || lastBolusMin >= 60)
+
+            // Block C — SkittlesTT3 #3 (FIXED from OR(<=2.5,<=3.0)): emergency floor
+            val blkC = g <= 63.1 /* 3.5 */ && d <= 0.0
+
+            // Block D — SkittlesA3ok #1: rapid sustained fall at target glucose, high IOB
+            val blkD = g <= 108.1 /* 6.0 */ && d <= -16.21 /* -0.90 */ && sd <= -16.21 && iob > 2.8 && gate
+
+            // Block E — SkittlesA3ok #2: moderate multi-timeframe fall
+            val blkE = g <= 117.1 /* 6.5 */ && d <= -9.01 /* -0.50 */ && sd <= -7.21 /* -0.40 */ &&
+                ld <= -3.60 /* -0.20 */ && iob >= 1.5 && cob <= 15.0 && gate
+
+            // Block F — SkittlesA3ok #3: very high IOB at higher glucose, steroids off
+            val blkF = g <= 162.1 /* 9.0 */ && d <= -9.01 && sd <= -7.21 && ld <= -7.21 &&
+                iob >= 2.9 && cob <= 15.0 && gate && checkAutomationState("Steroids", "Steroids Off")
+
+            // Block G — Skittles3ok2BG9.0: tight multi-delta confirmation at higher glucose
+            val blkG = g <= 171.2 /* 9.5 */ && d <= -19.82 /* -1.10 */ && sd <= -14.41 /* -0.80 */ &&
+                ld <= -14.41 && iob >= 1.4 && cob <= 15.0 && gate
+
+            val block = when { blkA -> "A"; blkB -> "B"; blkC -> "C"; blkD -> "D"; blkE -> "E"; blkF -> "F"; blkG -> "G"; else -> null }
+            if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
+                setBgAccelIsfWeight(0.02)
+                applyCurrentProfileAt100()
+                setAutomationState("LowBG", "50recent")
+                sendSms("Skittles $block: hypo risk — TT 5.7 set")
+                addCarePortalNote("TT3-$block")
+                aapsLogger.debug(LTag.APS, "Skittles block $block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} pct=$profile_percentage")
+            }
         }
 
         val gson = Gson()
