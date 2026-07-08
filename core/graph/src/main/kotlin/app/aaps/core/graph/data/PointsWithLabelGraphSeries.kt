@@ -365,7 +365,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.style = Paint.Style.FILL
                         mPaint.color = Color.WHITE
                         mPaint.textAlign = Paint.Align.CENTER
-                        canvas.drawText(value.label, endX, graphTop + scaledTextSize, mPaint)
+                        canvas.drawText(value.label, endX, graphTop + scaledTextSize * (1 + stackIndex), mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
