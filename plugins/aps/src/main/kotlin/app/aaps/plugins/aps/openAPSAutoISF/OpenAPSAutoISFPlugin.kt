@@ -1067,7 +1067,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (cannulaH <= 80.0) {
                 switchProfileIfNeeded("Current Profile50", 0)
-                uiInteraction.addNotification(Notification.LOW_BATTERY, "Batt1%", Notification.URGENT)
+                uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
                 sendSms("LowBattery")
             }
         }
