@@ -369,6 +369,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Raw CGM helpers — use gv.noise (Libre native signal), same source as graph "L=" annotation.
+    private fun rawGlucoseMgdl(): Double? {
+        val now = dateUtil.now()
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - 10 * 60 * 1000L, now, ascending = false).firstOrNull()?.noise
+    }
+
+    private fun rawDelta1MinMgdl(): Double? {
+        val now = dateUtil.now()
+        val r = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 3 * 60 * 1000L, now, ascending = false)
+        if (r.size < 2) return null
+        val n = r[0].noise ?: return null
+        val p = r[1].noise ?: return null
+        val mins = (r[0].timestamp - r[1].timestamp) / 60_000.0
+        if (mins <= 0) return null
+        return (n - p) / mins * 5.0
+    }
+
+    private fun rawDelta5MinMgdl(): Double? {
+        val now = dateUtil.now()
+        val r = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60 * 1000L, now, ascending = false)
+        if (r.size < 2) return null
+        val newest = r[0].noise ?: return null
+        val fiveMinAgo = now - 5 * 60 * 1000L
+        val ref = r.minByOrNull { kotlin.math.abs(it.timestamp - fiveMinAgo) } ?: return null
+        if (ref.timestamp == r[0].timestamp) return null
+        return newest - (ref.noise ?: return null)
+    }
+
     // True when the local clock is inside [startH:startM, endH:endM). Handles overnight ranges
     // (e.g. 22:00–01:00) by checking the complement and inverting.
     private fun isTimeBetween(startH: Int, startM: Int, endH: Int, endM: Int): Boolean {
@@ -772,6 +800,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("Set50-$p50block")
                 aapsLogger.debug(LTag.APS, "prepare50 block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} steps30=$recentSteps30Minutes")
+            }
+        }
+
+        // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
+        // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
+        // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
+        if (readyToRun("GentleHypoRisk", 30)) {
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            if (acceW > 0.03 && acceW <= 0.08 && isTimeBetween(7, 30, 22, 0)) {
+                val g    = glucoseStatus.glucose
+                val d    = glucoseStatus.delta
+                val sd   = glucoseStatus.shortAvgDelta
+                val rawG  = rawGlucoseMgdl()
+                val rawD1 = rawDelta1MinMgdl()
+                val rawD5 = rawDelta5MinMgdl()
+
+                // Block 1: AAPS BGL ≤ 5.3 + raw BGL ≤ 4.0 + OR(raw ≤ 3.5, raw-1min < 0, raw-5min < 0)
+                val rawLow = rawG != null && rawG <= 72.1 /* 4.0 mmol */
+                val rawOr1 = (rawG != null && rawG <= 63.1 /* 3.5 */) ||
+                    (rawD1 != null && rawD1 < 0.0) ||
+                    (rawD5 != null && rawD5 < 0.0)
+                val ghB1 = g <= 95.5 /* 5.3 */ && rawLow && rawOr1
+
+                // Block 2: AAPS BGL ≤ 5.5 + profile=50% + delta ≤ -0.3 + sdelta ≤ -0.2 + raw fallback OR
+                // Note: d ≤ -0.3 already implies d ≤ 0.0, so the OR's AAPS-delta arm is always satisfied.
+                val rawOr2 = (rawG != null && rawG <= 63.1 /* 3.5 */) ||
+                    d <= 0.0 ||
+                    (rawD5 != null && rawD5 <= 0.0)
+                val ghB2 = g <= 99.1 /* 5.5 */ && profile_percentage == 50 &&
+                    d <= -5.40 /* -0.30 */ && sd <= -3.60 /* -0.20 */ && rawOr2
+
+                val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; else -> null }
+                if (ghBlock != null) {
+                    setBgAccelIsfWeight(0.02)
+                    preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                    sendSms("GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                    uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
+                    setAutomationState("MJstate", "MJon")
+                    setAutomationState("BGLstate", "BGLlastLOW")
+                    markRun("GentleHypoRisk")
+                    aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }}")
+                }
             }
         }
 
