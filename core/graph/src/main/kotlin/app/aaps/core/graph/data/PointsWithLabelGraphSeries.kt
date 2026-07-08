@@ -366,9 +366,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.color = Color.WHITE
+                        // white when uniform-green active; ISF color override otherwise
+                        mPaint.color = if (uniformGreenBg) Color.WHITE else value.color(graphView.context)
                         mPaint.textAlign = Paint.Align.CENTER
-                        canvas.drawText(value.label, endX, graphTop + scaledTextSize * (1 + stackIndex2), mPaint)
+                        // near bottom of graph, stacking upward with half-height steps
+                        val labelY = graphTop + graphHeight - scaledTextSize * 0.3f - stackIndex2 * scaledTextSize * 0.5f
+                        canvas.drawText(value.label, endX, labelY, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {

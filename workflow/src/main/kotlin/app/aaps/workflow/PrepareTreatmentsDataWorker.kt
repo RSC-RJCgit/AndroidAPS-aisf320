@@ -179,7 +179,7 @@ class PrepareTreatmentsDataWorker(
                     override val shape = app.aaps.core.graph.data.Shape.SMB_GRAPH2
                     override val size: Float = 1.0f
                     override val paintStyle = android.graphics.Paint.Style.FILL
-                    override fun color(context: android.content.Context?) = android.graphics.Color.WHITE
+                    override fun color(context: android.content.Context?) = if (dp.colorOverride != 0) dp.colorOverride else android.graphics.Color.WHITE
                 }
             }
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
