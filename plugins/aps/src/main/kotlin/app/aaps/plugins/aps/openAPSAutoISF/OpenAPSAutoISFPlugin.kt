@@ -350,6 +350,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Sets a temporary 50% profile for 360 min on the current named profile.
+    // Mirrors "Start profile 50% for 360 min" action. Does not guard against an existing switch.
+    private fun startProfile50For360() {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return
+        val profileName = profileFunction.getProfileName()
+        profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = profileName,
+            durationInMinutes = 360,
+            percentage = 50,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: prepare 50% for 360 min",
+            listValues = listOf(ValueWithUnit.Percent(50), ValueWithUnit.Minute(360))
+        )
+    }
+
     // True when the local clock is inside [startH:startM, endH:endM). Handles overnight ranges
     // (e.g. 22:00–01:00) by checking the complement and inverting.
     private fun isTimeBetween(startH: Int, startM: Int, endH: Int, endM: Int): Boolean {
@@ -717,6 +736,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("A1")
             switchProfileIfNeeded("Current ProfileReal", 30)
             setAutomationState("MJ", "NOMJremains")
+        }
+
+        // --- prepare Set50%: replaces "prepare Set50%0.07 50%" automation ---
+        // Precondition guard: profile_percentage == 100. Once the 50% profile switch fires,
+        // profile_percentage becomes 50 on the next loop cycle and the block stops running.
+        // All 4 blocks also check Profile pct = 100 in the original; the outer guard handles that.
+        if (profile_percentage == 100) {
+            val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
+            val sd  = glucoseStatus.shortAvgDelta
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+
+            // Block 1 — dual delta confirmation, no carbs
+            val p50b1 = g <= 99.1 /* 5.5 */ && d <= -4.50 /* -0.25 */ && sd <= -4.50 && cob == 0.0
+
+            // Block 2 — exercise + IOB risk: moving with significant IOB and falling
+            val p50b2 = g <= 99.1 /* 5.5 */ && recentSteps30Minutes >= 300 &&
+                cob == 0.0 && iob >= 1.2 && d <= -1.80 /* -0.10 */
+
+            // Block 3 — fallback: any slight fall below 5.0
+            val p50b3 = g < 90.1 /* 5.0 */ && d <= -0.90 /* -0.05 */
+
+            // Block 4 — pre-sleep: falling into sleep window at higher glucose
+            val p50b4 = g <= 126.1 /* 7.0 */ && isTimeBetween(21, 0, 0, 0) &&
+                sd <= -1.80 /* -0.10 */ && d <= -3.60 /* -0.20 */
+
+            val p50block = when { p50b1->"1"; p50b2->"2"; p50b3->"3"; p50b4->"4"; else->null }
+            if (p50block != null) {
+                setBgAccelIsfWeight(0.07)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                startProfile50For360()
+                setAutomationState("LowBG", "50recent")
+                sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("Set50-$p50block")
+                aapsLogger.debug(LTag.APS, "prepare50 block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} steps30=$recentSteps30Minutes")
+            }
         }
 
         // --- PP50.Off: replaces "PP50.Off CurrProfReal 70_0.70 0.35" automation ---
