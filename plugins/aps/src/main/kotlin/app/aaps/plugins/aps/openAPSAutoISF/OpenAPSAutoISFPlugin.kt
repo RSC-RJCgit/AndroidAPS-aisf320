@@ -350,6 +350,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // True when the local clock is inside [startH:startM, endH:endM). Handles overnight ranges
+    // (e.g. 22:00–01:00) by checking the complement and inverting.
+    private fun isTimeBetween(startH: Int, startM: Int, endH: Int, endM: Int): Boolean {
+        val cal = Calendar.getInstance()
+        val nowMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val startMins = startH * 60 + startM
+        val endMins   = endH * 60 + endM
+        return if (startMins <= endMins) nowMins in startMins until endMins
+        else nowMins >= startMins || nowMins < endMins   // overnight: wraps midnight
+    }
+
+    // Hours since the last recorded cannula/site change, or null if none found.
+    private fun hoursSinceLastCannulaChange(): Double? {
+        val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return null
+        return (dateUtil.now() - last.timestamp) / 3_600_000.0
+    }
+
     // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
     // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
     // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
@@ -689,11 +706,68 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
 
-        // Code port of the "Test" automation. Self-guarding: firing sets MJ to a value the condition
-        // no longer matches, so no readyToRun() throttle is needed for this one specifically.
+        // Code port of the "Test" automation (MJ=MJ4). Self-guarding: state change prevents re-fire.
         if (checkAutomationState("MJ", "MJ4")) {
             addCarePortalNote("A1")
             setAutomationState("MJ", "NOMJremains")
+        }
+
+        // Code port of the "Test2" automation (MJ=MJ5): also switches to Current ProfileReal for 30 min.
+        if (checkAutomationState("MJ", "MJ5")) {
+            addCarePortalNote("A1")
+            switchProfileIfNeeded("Current ProfileReal", 30)
+            setAutomationState("MJ", "NOMJremains")
+        }
+
+        // --- PP50.Off: replaces "PP50.Off CurrProfReal 70_0.70 0.35" automation ---
+        // Exits the 50% prepare state: restores full profile, resets acce weight, clears LowBG=50recent.
+        // Guard: LowBG=50recent state must be set; firing sets LowBG=NO50rec so it won't re-trigger.
+        if (checkAutomationState("LowBG", "50recent")) {
+            val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
+            val sd  = glucoseStatus.shortAvgDelta
+            val ld  = glucoseStatus.longAvgDelta
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+
+            // Daytime window: 01:01 – 22:00. Overnight window: 22:00 – 01:00.
+            val isDaytime  = isTimeBetween(1, 1, 22, 0)
+            val isOvernight = isTimeBetween(22, 0, 1, 0)
+
+            // Block 1 — core recovery: any stabilisation above 6.0 during daytime
+            val p50b1 = isDaytime && g >= 108.1 /* 6.0 */ && d > -1.80 /* -0.10 */ &&
+                sd > -3.60 /* -0.20 */ && ld > -7.21 /* -0.40 */
+
+            // Block 2 — fast active rise, cannula verified, daytime
+            val p50b2 = isDaytime && g >= 108.1 && d > 5.40 /* 0.30 */ &&
+                sd > 5.40 && cannulaH >= 3.0
+
+            // Block 3 — treated hypo: carbs active + recent bolus + positive trend, cannula verified, daytime
+            val p50b3 = isDaytime && g >= 108.1 && cob > 0.0 && lastBolusMin <= 30 &&
+                d > 0.90 /* 0.05 */ && sd > 0.90 && ld > 0.90 && cannulaH >= 3.0
+
+            // Block 4 — IOB threat resolved: minimal IOB + positive trend + cannula verified, daytime
+            val p50b4 = isDaytime && g >= 108.1 && iob <= 0.5 &&
+                d > 0.90 && sd > 0.90 && ld > 0.90 && cannulaH >= 3.0
+
+            // Block 5 — overnight: tighter glucose floor (6.5), positive trend
+            val p50b5 = isOvernight && g >= 117.1 /* 6.5 */ && d > 0.90 && sd > 0.90 && ld > 0.90
+
+            // Block 6 — acce weight gate: weight <= 0.1 means prepare50/alarm has fired; catch via weight flag
+            val p50b6 = acceWeight <= 0.1 && g >= 99.1 /* 5.5 */ && d > 1.80 /* 0.10 */ && sd > 1.80
+
+            val p50block = when { p50b1->"1"; p50b2->"2"; p50b3->"3"; p50b4->"4"; p50b5->"5"; p50b6->"6"; else->null }
+            if (p50block != null) {
+                applyCurrentProfileAt100()
+                setBgAccelIsfWeight(0.50)
+                setAutomationState("LowBG", "NO50rec")
+                sendSms("PP50.Off [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("50ff-$p50block")
+                aapsLogger.debug(LTag.APS, "PP50.Off block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} cannula=${String.format("%.1f", cannulaH)}h acce=$acceWeight")
+            }
         }
 
         // --- Skittles hypo-risk: replaces SkittlesTT3CurrP02, SkittlesA3ok8.0,5.0,6.0, Skittles3ok2BG9.0 ---
