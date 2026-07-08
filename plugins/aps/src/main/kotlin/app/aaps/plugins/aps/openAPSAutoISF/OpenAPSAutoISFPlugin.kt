@@ -997,6 +997,44 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- Usual2forTH70: restores iobTH=70 and acce weight=0.50 when BGL has recovered ---
+        // Replaces "Usual2forTH70 CurrProfReal0.35" automation.
+        // Guard: profile at 100% (not in 50% state), iobTH still reduced (<70), no TT, BGL >= 5.5mmol.
+        // Self-guarding: sets iobTH=70 so condition iobThresholdPercent<70 fails next cycle.
+        if (profile_percentage == 100
+            && iobThresholdPercent < 70
+            && activeTtMgdl() == null
+            && glucoseStatus.glucose >= 99.1     // 5.5 mmol
+            && checkAutomationState("Steroids", "Steroids Off")
+        ) {
+            val g   = glucoseStatus.glucose
+            val sd  = glucoseStatus.shortAvgDelta
+            val cob = mealData.mealCOB
+            val steps60  = recentSteps60Minutes
+            val steps180 = StepService.getRecentStepCount180Min()
+            val iobTH = iobThresholdPercent
+            // block 1: daytime 08:00–20:00, some activity, iobTH low or reduced
+            val u2b1 = isTimeBetween(8, 0, 20, 0) &&
+                (steps180 >= 10 || iobTH <= 19 || iobTH == 50) &&
+                steps60 >= 50
+            // block 2: day 09:01–20:00, iobTH at night/twilight level
+            val u2b2 = isTimeBetween(9, 1, 20, 0) &&
+                (iobTH <= 19 || iobTH == 50)
+            // block 3: 05:01–20:00, waking/rising BGL
+            val u2b3 = isTimeBetween(5, 1, 20, 0) &&
+                (cob >= 10.0 || steps60 >= 100 || g >= 153.1 || sd >= 18.0)  // 8.5mmol / 1.0mmol
+            val u2block = when { u2b1->"1"; u2b2->"2"; u2b3->"3"; else->null }
+            if (u2block != null) {
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                setBgAccelIsfWeight(0.50)
+                setAutomationState("LowBG", "NO50rec")
+                applyCurrentProfileAt100()
+                sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
+                addCarePortalNote("UsuIP-$u2block")
+                aapsLogger.debug(LTag.APS, "Usual2forTH block $u2block: g=${String.format("%.1f", g / 18.016)}mmol iobTH=$iobTH steps60=$steps60 steps180=$steps180 cob=${cob.toInt()} sd=${String.format("%.2f", sd / 18.016)}")
+            }
+        }
+
         val gson = Gson()
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal AutoISF <<<")
         aapsLogger.debug(LTag.APS, "Glucose status:     $glucoseStatus")
@@ -1970,5 +2008,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU210
  */
