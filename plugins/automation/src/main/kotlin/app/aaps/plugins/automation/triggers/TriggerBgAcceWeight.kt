@@ -5,7 +5,7 @@ import java.util.Optional
 import dagger.android.HasAndroidInjector
 import app.aaps.plugins.automation.R
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.DoubleKey
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.elements.InputWeight
 import app.aaps.plugins.automation.elements.LabelWithElement
@@ -13,11 +13,8 @@ import app.aaps.plugins.automation.elements.LayoutBuilder
 import app.aaps.plugins.automation.elements.StaticLabel
 import org.json.JSONObject
 import app.aaps.core.utils.JsonHelper
-import javax.inject.Inject
 
 class TriggerBgAcceWeight(injector: HasAndroidInjector) : Trigger(injector) {
-
-    @Inject lateinit var sp: SP
 
     var acceWeight = InputWeight()
     var comparator = Comparator(rh)
@@ -44,8 +41,7 @@ class TriggerBgAcceWeight(injector: HasAndroidInjector) : Trigger(injector) {
     }
 
     override fun shouldRun(): Boolean {
-        val actualWeight = sp.getDouble(R.string.bgAccel_ISF_weight
-            ,0.0)
+        val actualWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
         if (comparator.value.check(actualWeight, acceWeight.value, 0.001)) {
             aapsLogger.debug(LTag.AUTOMATION, "set bgAccel_ISF_weight ready for execution: " + friendlyDescription())
             return true
