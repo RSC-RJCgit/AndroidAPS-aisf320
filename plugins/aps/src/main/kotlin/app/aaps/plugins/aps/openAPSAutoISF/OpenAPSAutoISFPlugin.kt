@@ -978,6 +978,68 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- 50SetRecent: flags LowBG=50recent whenever profile drops to 50% while in NO50rec state ---
+        if (profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
+            setAutomationState("LowBG", "50recent")
+            sendSms("50%Recently")
+            addCarePortalNote("50Rec")
+        }
+
+        // --- Not50%Recently: clears 50recent flag once profile is back at 100% and BGL rising ---
+        if (profile_percentage == 100 && checkAutomationState("LowBG", "50recent")
+            && glucoseStatus.delta >= 1.8 /* 0.1 mmol */) {
+            setAutomationState("LowBG", "NO50rec")
+            addCarePortalNote("No50")
+        }
+
+        // --- Extra50%: deepens hypo protection (acce→0.07, iobTH→50%) when BGL falling on 100% profile ---
+        if (profile_percentage == 100 && checkAutomationState("LowBG", "NO50rec")) {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val noMJ = !checkAutomationState("MJ", "NOMJremains")
+            // Block 1: steep multi-delta fall, <=8.5 mmol
+            val xb1 = d <= -6.3 && sd <= -4.5 && ld <= -3.6 && g <= 153.1 && noMJ
+            // Block 2: moderate fall at <=6.5 mmol
+            val xb2 = g <= 117.1 && ld <= -2.7 && d <= -3.6 && sd <= -1.8 && noMJ
+            // Block 3: overnight (01:00–05:00), <=7.5 mmol, falling
+            val xb3 = isTimeBetween(1, 0, 5, 0) && g <= 135.1 && sd < -3.6 && d < -3.6
+            val xBlock = when { xb1 -> "1"; xb2 -> "2"; xb3 -> "3"; else -> null }
+            if (xBlock != null) {
+                setBgAccelIsfWeight(0.07)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                applyCurrentProfileAt100()
+                setAutomationState("LowBG", "50recent")
+                sendSms("Extra50% [b$xBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("X50-$xBlock")
+            }
+        }
+
+        // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
+        // Fires when NOT on "Current Profile" (i.e. on a named high/steroid profile), Steroids Off, no TT.
+        run {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            val noTT = activeTtMgdl() == null
+            val steroidOff = checkAutomationState("Steroids", "Steroids Off")
+            // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
+            val ohb1 = isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9
+                && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
+            // Block 2: 05:00–05:30, g <= 7.5 mmol, pct = 100, not on Current Profile
+            val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
+                && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
+            val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
+            if (ohBlock != null) {
+                switchProfileIfNeeded("Current Profile", 30)
+                setBgAccelIsfWeight(0.18)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("OffP-$ohBlock")
+            }
+        }
+
         // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations ---
         // Primary guard: activeTtMgdl() must be ~5.7 mmol/L. Once TT is cancelled the guard fails,
         // so these conditions self-prevent re-firing without needing readyToRun() throttle.
@@ -1213,7 +1275,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         autoIsfValues.timestamp = now
         lastAPSResult?.let { result ->
             autoIsfValues.insulinReq = result.json()?.optDouble("insulinReq", 0.0) ?: 0.0
-            autoIsfValues.tbrRate    = result.rate
+            autoIsfValues.tbrRate    = if (currentTemp.rate > 0.0 && currentTemp.duration > 0) currentTemp.rate else result.rate
             autoIsfValues.smbDelivered = result.smb
             (result.rawData() as? RT)?.let { rt ->
                 rt.autoIsfAcce  = autoIsfValues.acceIsf

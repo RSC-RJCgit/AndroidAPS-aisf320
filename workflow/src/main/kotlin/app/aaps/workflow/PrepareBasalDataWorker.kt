@@ -121,7 +121,9 @@ class PrepareBasalDataWorker(
             .sortedBy { it.timestamp }
         val stepMs = 5 * 60 * 1000L
         aivList.forEach { aiv ->
-            val rate = aiv.tbrRate
+            val profile = profileFunction.getProfile(aiv.timestamp) ?: return@forEach
+            val basalData = data.iobCobCalculator.getBasalData(profile, aiv.timestamp)
+            val rate = if (basalData.isTempBasalRunning) basalData.tempBasalAbsolute else 0.0
             if (rate > 0.0) {
                 val acce = abs(aiv.acceIsf - 1.0)
                 val bg   = abs(aiv.bgIsf   - 1.0)
