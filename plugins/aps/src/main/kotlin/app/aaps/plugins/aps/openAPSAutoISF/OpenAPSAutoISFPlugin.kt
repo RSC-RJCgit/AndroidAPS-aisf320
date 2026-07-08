@@ -364,6 +364,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
     }
 
+    // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
+    private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
+
+    // Cancels the current TT unconditionally. Mirrors ActionStopTempTarget.
+    private fun cancelCurrentTempTarget() {
+        disposable += persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+            timestamp = dateUtil.now(),
+            action = Action.CANCEL_TT,
+            source = Sources.Automation,
+            note = "AutoISF code-based TT cancel",
+            listValues = listOf()
+        ).subscribe()
+    }
+
     // Not yet called anywhere; ready for later conditions. Mirrors ActionStartTempTarget, including its
     // own built-in guard: no-ops if a temp target is already active rather than stacking/replacing it.
     private fun startTempTargetIfNeeded(targetMgdl: Double, durationInMinutes: Int): Boolean {
@@ -730,6 +744,56 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Skittles $block: hypo risk — TT 5.7 set")
                 addCarePortalNote("TT3-$block")
                 aapsLogger.debug(LTag.APS, "Skittles block $block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} pct=$profile_percentage")
+            }
+        }
+
+        // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations ---
+        // Primary guard: activeTtMgdl() must be ~5.7 mmol/L. Once TT is cancelled the guard fails,
+        // so these conditions self-prevent re-firing without needing readyToRun() throttle.
+        // All glucose/delta thresholds in mg/dL; originals in mmol/L in comments.
+        run {
+            val ttMgdl = activeTtMgdl() ?: return@run
+            if (kotlin.math.abs(ttMgdl - 102.7) > 1.8) return@run   // guard: only act on 5.7 mmol TT
+
+            val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
+            val sd  = glucoseStatus.shortAvgDelta
+            val ld  = glucoseStatus.longAvgDelta
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+
+            // TToff2 — loosest: any stabilisation ≥ 6.0 (earliest exit)
+            val off2 = g >= 108.1 /* 6.0 */ && d >= -4.50 /* -0.25 */ && sd >= -4.50
+
+            // TToff3 — stagnation plateau: flat BGL, low IOB, trivial COB
+            val off3 = cob <= 4.0 && g >= 81.1 /* 4.5 */ && iob <= 0.8 &&
+                d  in -1.80 /* -0.10 */ .. 1.80 /* 0.10 */ &&
+                sd in -1.80 .. 1.80 &&
+                ld in -1.80 .. 1.80
+
+            // TToff4 — confident recovery: fast active rise, not exercising
+            val off4 = g >= 108.1 /* 6.0 */ && d >= 5.40 /* 0.30 */ && sd >= 3.60 /* 0.20 */ &&
+                recentSteps30Minutes <= 300
+
+            // TToff5 — gentle capped rise: rising but not overshooting
+            val off5 = g > 108.1 /* 6.0 */ && d in 1.80 /* 0.10 */ .. 14.41 /* 0.80 */ && sd >= 1.80
+
+            // HypoTTOff1 — early catch: rising fast while still ≤ 5.5, not exercising
+            val off1 = g <= 99.1 /* 5.5 */ &&
+                d  in 9.01 /* 0.50 */ .. 14.41 /* 0.80 */ &&
+                sd in 0.90 /* 0.05 */ .. 14.41 &&
+                ld in 0.90 .. 9.01 /* 0.50 */ &&
+                recentSteps60Minutes <= 500 && recentSteps15Minutes <= 100 && recentSteps30Minutes <= 200
+
+            val which = when { off2 -> "off2"; off3 -> "off3"; off4 -> "off4"; off5 -> "off5"; off1 -> "off1"; else -> null }
+            if (which != null) {
+                cancelCurrentTempTarget()
+                setBgAccelIsfWeight(0.50)
+                applyCurrentProfileAt100()
+                setAutomationState("LowBG", "NO50rec")
+                sendSms("TT 5.7 ended [$which]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                addCarePortalNote("TToff-$which")
+                aapsLogger.debug(LTag.APS, "TT reversal [$which]: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} sd=${String.format("%.2f", sd / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()}")
             }
         }
 
