@@ -1343,7 +1343,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         ((IOB > 0.10 * profile.max_iob)
-                            || (nowHour >= 18 || nowHour <= 5))
+                            || (nowHour >= 22 || nowHour <= 5))
                     ) {
                         if (Delta >= 1.0 * 18 &&
                             SDelta >= 1.0 * 18 &&

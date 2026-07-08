@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.ScaledDataPoint
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -16,6 +17,7 @@ import app.aaps.core.interfaces.rx.events.EventIobCalculationProgress
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
@@ -28,6 +30,7 @@ class PrepareBasalDataWorker(
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var rxBus: RxBus
+    @Inject lateinit var persistenceLayer: PersistenceLayer
     private var ctx: Context = rh.getThemedCtx(context)
 
     class PrepareBasalData(
@@ -43,6 +46,10 @@ class PrepareBasalDataWorker(
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_BASAL_DATA, 0, null))
         val baseBasalArray: MutableList<ScaledDataPoint> = ArrayList()
         val tempBasalArray: MutableList<ScaledDataPoint> = ArrayList()
+        val tempBasalAcceArray: MutableList<ScaledDataPoint> = ArrayList()
+        val tempBasalBgArray: MutableList<ScaledDataPoint> = ArrayList()
+        val tempBasalPpArray: MutableList<ScaledDataPoint> = ArrayList()
+        val tempBasalDuraArray: MutableList<ScaledDataPoint> = ArrayList()
         val basalLineArray: MutableList<ScaledDataPoint> = ArrayList()
         val absoluteBasalLineArray: MutableList<ScaledDataPoint> = ArrayList()
         var lastLineBasal = 0.0
@@ -109,6 +116,36 @@ class PrepareBasalDataWorker(
         tempBasalArray.add(ScaledDataPoint(endTime, lastTempBasal, data.overviewData.basalScale))
         absoluteBasalLineArray.add(ScaledDataPoint(endTime, lastAbsoluteLineBasal, data.overviewData.basalScale))
 
+        // ISF-colored temp basal overlay: one 5-min rectangle per autoISF cycle, colored by dominant ISF factor
+        val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+            .sortedBy { it.timestamp }
+        val stepMs = 5 * 60 * 1000L
+        aivList.forEach { aiv ->
+            val rate = aiv.tbrRate
+            if (rate > 0.0) {
+                val acce = abs(aiv.acceIsf - 1.0)
+                val bg   = abs(aiv.bgIsf   - 1.0)
+                val pp   = abs(aiv.ppIsf   - 1.0)
+                val dura = abs(aiv.duraIsf - 1.0)
+                val maxDev = maxOf(acce, bg, pp, dura)
+                val arr = when {
+                    maxDev <= 0.01 -> null  // no ISF deviation — leave default tempBasalColor showing
+                    acce >= maxDev -> tempBasalAcceArray
+                    bg   >= maxDev -> tempBasalBgArray
+                    pp   >= maxDev -> tempBasalPpArray
+                    else           -> tempBasalDuraArray
+                }
+                if (arr != null) {
+                    val t0 = aiv.timestamp
+                    val t1 = t0 + stepMs
+                    arr.add(ScaledDataPoint(t0, 0.0,  data.overviewData.basalScale))
+                    arr.add(ScaledDataPoint(t0, rate, data.overviewData.basalScale))
+                    arr.add(ScaledDataPoint(t1, rate, data.overviewData.basalScale))
+                    arr.add(ScaledDataPoint(t1, 0.0,  data.overviewData.basalScale))
+                }
+            }
+        }
+
         // create series
         data.overviewData.baseBasalGraphSeries = LineGraphSeries(Array(baseBasalArray.size) { i -> baseBasalArray[i] }).also {
             it.isDrawBackground = true
@@ -118,6 +155,26 @@ class PrepareBasalDataWorker(
         data.overviewData.tempBasalGraphSeries = LineGraphSeries(Array(tempBasalArray.size) { i -> tempBasalArray[i] }).also {
             it.isDrawBackground = true
             it.backgroundColor = rh.gac(ctx, app.aaps.core.ui.R.attr.tempBasalColor)
+            it.thickness = 0
+        }
+        data.overviewData.tempBasalAcceIsfSeries = LineGraphSeries(Array(tempBasalAcceArray.size) { i -> tempBasalAcceArray[i] }).also {
+            it.isDrawBackground = true
+            it.backgroundColor = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
+            it.thickness = 0
+        }
+        data.overviewData.tempBasalBgIsfSeries = LineGraphSeries(Array(tempBasalBgArray.size) { i -> tempBasalBgArray[i] }).also {
+            it.isDrawBackground = true
+            it.backgroundColor = rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
+            it.thickness = 0
+        }
+        data.overviewData.tempBasalPpIsfSeries = LineGraphSeries(Array(tempBasalPpArray.size) { i -> tempBasalPpArray[i] }).also {
+            it.isDrawBackground = true
+            it.backgroundColor = rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
+            it.thickness = 0
+        }
+        data.overviewData.tempBasalDuraIsfSeries = LineGraphSeries(Array(tempBasalDuraArray.size) { i -> tempBasalDuraArray[i] }).also {
+            it.isDrawBackground = true
+            it.backgroundColor = rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
             it.thickness = 0
         }
         data.overviewData.basalLineGraphSeries = LineGraphSeries(Array(basalLineArray.size) { i -> basalLineArray[i] }).also {

@@ -56,6 +56,10 @@ interface OverviewData {
     val basalScale: Scale
     var baseBasalGraphSeries: SeriesData
     var tempBasalGraphSeries: SeriesData
+    var tempBasalAcceIsfSeries: SeriesData
+    var tempBasalBgIsfSeries: SeriesData
+    var tempBasalPpIsfSeries: SeriesData
+    var tempBasalDuraIsfSeries: SeriesData
     var basalLineGraphSeries: SeriesData
     var absoluteBasalGraphSeries: SeriesData
 
