@@ -10,6 +10,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import app.aaps.database.AppDatabase
 import app.aaps.database.entities.TABLE_APS_RESULTS
+import app.aaps.database.entities.TABLE_AUTOISF_VALUES
 import app.aaps.database.entities.TABLE_BOLUSES
 import app.aaps.database.entities.TABLE_CALIBRATION_ENTRIES
 import app.aaps.database.entities.TABLE_EFFECTIVE_PROFILE_SWITCHES
@@ -318,7 +319,27 @@ open class DatabaseModule {
         }
     }
 
+    internal val migration35to36 = object : Migration(35, 36) {
+        override fun migrate(connection: SQLiteConnection) {
+            // Creation of table TABLE_AUTOISF_VALUES
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `$TABLE_AUTOISF_VALUES` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestamp` INTEGER NOT NULL, " +
+                    "`acceIsf` DOUBLE NOT NULL, `bgIsf` DOUBLE NOT NULL, `ppIsf` DOUBLE NOT NULL, `driftIsf` DOUBLE NOT NULL, `duraIsf` DOUBLE NOT NULL, " +
+                    "`finalIsf` DOUBLE NOT NULL, `iobThEffective` DOUBLE NOT NULL, `glucose` DOUBLE NOT NULL DEFAULT 0.0, `insulinReq` DOUBLE NOT NULL DEFAULT 0.0, " +
+                    "`tbrRate` DOUBLE NOT NULL DEFAULT 0.0, `smbDelivered` DOUBLE NOT NULL DEFAULT 0.0, `delta` DOUBLE NOT NULL DEFAULT 0.0, " +
+                    "`shortAvgDelta` DOUBLE NOT NULL DEFAULT 0.0, `bgAcceleration` DOUBLE NOT NULL DEFAULT 0.0, `utcOffset` INTEGER NOT NULL, " +
+                    "`version` INTEGER NOT NULL, `dateCreated` INTEGER NOT NULL, `isValid` INTEGER NOT NULL, `referenceId` INTEGER, " +
+                    "`nightscoutSystemId` TEXT, `nightscoutId` TEXT, `pumpType` TEXT, `pumpSerial` TEXT, `temporaryId` INTEGER, `pumpId` INTEGER, " +
+                    "`startId` INTEGER, `endId` INTEGER)"
+            )
+            // Only index timestamp — a separate index on id would be redundant on the primary key (see migration33to34 cleanup above)
+            connection.execSQL("CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTOISF_VALUES` (`timestamp`)")
+            // Custom indexes must be dropped on migration to pass room schema checking after upgrade
+            dropCustomIndexes(connection)
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35)
+    internal val migrations = arrayOf(migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36)
 }

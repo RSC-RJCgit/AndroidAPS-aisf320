@@ -101,6 +101,7 @@ fun ElementType.color(): Color = when (this) {
 
     ElementType.PROFILE_HELPER          -> AapsTheme.elementColors.profileSwitch
     ElementType.HISTORY_BROWSER,
+    ElementType.AUTOISF_HISTORY,
     ElementType.SETUP_WIZARD,
     ElementType.MAINTENANCE,
     ElementType.CONFIGURATION           -> AapsTheme.elementColors.navigation
@@ -165,6 +166,7 @@ fun ElementType.icon(): ImageVector = when (this) {
 
     ElementType.PROFILE_HELPER          -> IcProfile
     ElementType.HISTORY_BROWSER         -> IcHistory
+    ElementType.AUTOISF_HISTORY         -> IcHistory // TODO: dedicated icon once the real table UI is built
     ElementType.SETUP_WIZARD            -> IcSetupWizard
     ElementType.MAINTENANCE             -> IcPluginMaintenance
     ElementType.CONFIGURATION           -> IcPluginConfigBuilder
@@ -219,6 +221,7 @@ fun ElementType.labelResId(): Int = when (this) {
     ElementType.TDD_CYCLE_PATTERN       -> R.string.tdd_cycle_pattern
     ElementType.PROFILE_HELPER          -> R.string.nav_profile_helper
     ElementType.HISTORY_BROWSER         -> R.string.nav_history_browser
+    ElementType.AUTOISF_HISTORY         -> 0 // placeholder screen, no label yet
     ElementType.SETUP_WIZARD            -> R.string.nav_setupwizard
     ElementType.MAINTENANCE             -> R.string.maintenance
     ElementType.CONFIGURATION           -> R.string.nav_configuration
@@ -268,6 +271,7 @@ fun ElementType.descriptionResId(): Int = when (this) {
     ElementType.TDD_CYCLE_PATTERN       -> R.string.tdd_cycle_pattern_desc
     ElementType.PROFILE_HELPER          -> R.string.nav_profile_helper_desc
     ElementType.HISTORY_BROWSER         -> R.string.nav_history_browser_desc
+    ElementType.AUTOISF_HISTORY         -> 0 // placeholder screen, no description yet
     ElementType.SETUP_WIZARD            -> R.string.nav_setupwizard_desc
     ElementType.MAINTENANCE             -> R.string.description_maintenance
     ElementType.CONFIGURATION           -> R.string.nav_configuration_desc

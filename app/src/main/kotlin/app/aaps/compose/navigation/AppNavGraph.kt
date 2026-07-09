@@ -64,6 +64,7 @@ import app.aaps.plugins.configuration.setupwizard.SWDefinition
 import app.aaps.plugins.configuration.setupwizard.SetupWizardScreen
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.compose.AuthorizedClientsScreen
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.compose.PairWithMasterScreen
+import app.aaps.ui.compose.autoIsfHistoryDialog.AutoIsfHistoryScreen
 import app.aaps.ui.compose.calibrationDialog.CalibrationDialogScreen
 import app.aaps.ui.compose.carbsDialog.CarbsDialogScreen
 import app.aaps.ui.compose.careDialog.CareDialogScreen
@@ -486,6 +487,12 @@ fun NavGraphBuilder.appNavGraph(
     composable(AppRoute.HistoryBrowser.route) {
         HistoryScreen(
             title = stringResource(PluginsMainR.string.nav_history_browser),
+            onNavigateBack = { navController.safePopBackStack() }
+        )
+    }
+
+    composable(AppRoute.AutoIsfHistory.route) {
+        AutoIsfHistoryScreen(
             onNavigateBack = { navController.safePopBackStack() }
         )
     }

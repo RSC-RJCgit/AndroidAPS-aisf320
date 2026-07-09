@@ -4,6 +4,7 @@ import android.os.StatFs
 import androidx.room.Transactor.SQLiteTransactionType
 import androidx.room.useWriterConnection
 import app.aaps.database.entities.APSResult
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.CalibrationEntry
@@ -200,6 +201,7 @@ class AppRepository @Inject internal constructor(
             removed.add(Pair("RunningMode", database.runningModeDao.deleteOlderThan(than)))
         removed.add(Pair("HeartRate", database.heartRateDao.deleteOlderThan(than)))
         removed.add(Pair("StepsCount", database.stepsCountDao.deleteOlderThan(than)))
+        removed.add(Pair("AutoIsfValues", database.autoIsfValuesDao.deleteOlderThan(than)))
 
         if (deleteTrackedChanges) {
             removed.add(Pair("CHANGES APSResult", database.apsResultDao.deleteTrackedChanges()))
@@ -219,6 +221,7 @@ class AppRepository @Inject internal constructor(
             removed.add(Pair("CHANGES RunningMode", database.runningModeDao.deleteTrackedChanges()))
             removed.add(Pair("CHANGES HeartRate", database.heartRateDao.deleteTrackedChanges()))
             removed.add(Pair("CHANGES StepsCount", database.stepsCountDao.deleteTrackedChanges()))
+            removed.add(Pair("CHANGES AutoIsfValues", database.autoIsfValuesDao.deleteTrackedChanges()))
         }
         repositoryScope.launch { _databaseClearedFlow.emit(Unit) }
         val ret = StringBuilder()
@@ -880,6 +883,14 @@ class AppRepository @Inject internal constructor(
 
     suspend fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long): StepsCount? =
         database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+
+// AUTO ISF VALUES
+
+    suspend fun getAutoIsfValuesFromTime(timeMillis: Long): List<AutoIsfValues> =
+        database.autoIsfValuesDao.getFromTime(timeMillis)
+
+    suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
+        database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)
 
     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),

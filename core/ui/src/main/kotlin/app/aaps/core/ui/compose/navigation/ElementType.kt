@@ -82,6 +82,9 @@ enum class ElementType(
     TDD_CYCLE_PATTERN(category = ElementCategory.NAVIGATION, searchable = true),
     PROFILE_HELPER(category = ElementCategory.NAVIGATION, searchable = true),
     HISTORY_BROWSER(category = ElementCategory.NAVIGATION, searchable = true),
+    // searchable=false for now (placeholder screen) — flip to true and add ElementTypeStyle.kt
+    // icon/label/description entries once the real table UI is built.
+    AUTOISF_HISTORY(category = ElementCategory.NAVIGATION),
     SETUP_WIZARD(category = ElementCategory.NAVIGATION, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES),
     MAINTENANCE(category = ElementCategory.NAVIGATION, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES),
     CONFIGURATION(category = ElementCategory.NAVIGATION, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES),

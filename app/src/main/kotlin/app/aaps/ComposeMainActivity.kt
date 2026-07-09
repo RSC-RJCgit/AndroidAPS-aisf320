@@ -1100,6 +1100,7 @@ class ComposeMainActivity : AppCompatActivity() {
 
             ElementType.PROFILE_HELPER          -> navController.navigate(AppRoute.ProfileHelper.route)
             ElementType.HISTORY_BROWSER         -> navController.navigate(AppRoute.HistoryBrowser.route)
+            ElementType.AUTOISF_HISTORY         -> navController.navigate(AppRoute.AutoIsfHistory.route)
             ElementType.SETUP_WIZARD            -> navController.navigate(AppRoute.SetupWizard.route)
             ElementType.MAINTENANCE             -> mainViewModel.setShowMaintenanceSheet(true)
             ElementType.CONFIGURATION           -> navController.navigate(AppRoute.Configuration.route)

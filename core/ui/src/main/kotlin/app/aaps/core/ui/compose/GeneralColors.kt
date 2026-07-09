@@ -104,7 +104,15 @@ data class GeneralColors(
     val notificationAnnouncement: Color,
     val onNotification: Color,
     // Toggle colors
-    val toggleOn: Color
+    val toggleOn: Color,
+    // AutoISF history table and, later, SMB triangle/arrow/graph-dot/label coloring elsewhere
+    val autoIsfAcce: Color,
+    val autoIsfBg: Color,
+    val autoIsfPp: Color,
+    val autoIsfDura: Color,
+    val autoIsfFinalRatio: Color,
+    val autoIsfGlucose: Color,
+    val autoIsfInsulin: Color
 )
 
 /**
@@ -161,7 +169,14 @@ val LightGeneralColors = GeneralColors(
     notificationInfo = Color(0xFF009705),         // green for info notifications
     notificationAnnouncement = Color(0xFFFF8C00), // orange for announcements
     onNotification = Color(0xFFFFFFFF),            // white text on notification backgrounds
-    toggleOn = Color(0xFF4CAF50)                    // green for active/selected toggles
+    toggleOn = Color(0xFF4CAF50),                   // green for active/selected toggles
+    autoIsfAcce = Color(0xFF4499FF),         // matches acceIsfColor attr
+    autoIsfBg = Color(0xFFFF0000),           // matches bgIsfColor attr
+    autoIsfPp = Color(0xFF00BB00),           // matches ppIsfColor attr (light)
+    autoIsfDura = Color(0xFFFF8800),         // matches duraIsfColor attr
+    autoIsfFinalRatio = Color(0xFFFF6060),   // Trio-style red for Final ISF ratio
+    autoIsfGlucose = Color(0xFF60C060),      // Trio-style green for glucose/delta columns
+    autoIsfInsulin = Color(0xFF4A9EFF)       // Trio-style blue for SMB/insulin columns
 )
 
 /**
@@ -218,7 +233,14 @@ val DarkGeneralColors = GeneralColors(
     notificationInfo = Color(0xFF009705),
     notificationAnnouncement = Color(0xFFFF8C00),
     onNotification = Color(0xFFFFFFFF),
-    toggleOn = Color(0xFF81C784)                    // lighter green for active/selected toggles (dark mode)
+    toggleOn = Color(0xFF81C784),                   // lighter green for active/selected toggles (dark mode)
+    autoIsfAcce = Color(0xFF4499FF),         // matches acceIsfColor attr (same in both modes)
+    autoIsfBg = Color(0xFFFF0000),           // matches bgIsfColor attr (same in both modes)
+    autoIsfPp = Color(0xFF00FF00),           // matches ppIsfColor attr (night)
+    autoIsfDura = Color(0xFFFF8800),         // matches duraIsfColor attr (same in both modes)
+    autoIsfFinalRatio = Color(0xFFFF6060),   // Trio-style red for Final ISF ratio (same in both modes)
+    autoIsfGlucose = Color(0xFF60C060),      // Trio-style green for glucose/delta columns (same in both modes)
+    autoIsfInsulin = Color(0xFF4A9EFF)       // Trio-style blue for SMB/insulin columns (same in both modes)
 )
 
 /**
