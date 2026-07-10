@@ -64,6 +64,7 @@ enum class BooleanKey(
     ApsAutoIsfTddFactor("autoisf_tdd_factor", true, defaultedBySM = true),
     ApsActivityDetection("activity_detection", false, defaultedBySM = true),
     AutomationStatesEnabled("automation_states_enabled", true),
+    ApsAutoIsfCustomAutomationsEnabled("autoisf_custom_automations_enabled", true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),

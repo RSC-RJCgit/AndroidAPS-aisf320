@@ -804,6 +804,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
 
+        if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
+
         // Code port of the "Test" automation (MJ=MJ4). Self-guarding: state change prevents re-fire.
         if (checkAutomationState("MJ", "MJ4")) {
             addCarePortalNote("A1")
@@ -1413,6 +1415,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("COff1-$ctBlock")
             }
         }
+
+        } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
         aapsLogger.debug(LTag.APS, ">>> Invoking determine_basal AutoISF <<<")
@@ -2387,5 +2391,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU221
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU222
  */

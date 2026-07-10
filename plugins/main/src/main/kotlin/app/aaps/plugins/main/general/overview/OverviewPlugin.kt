@@ -232,6 +232,7 @@ class OverviewPlugin @Inject constructor(
             title = rh.gs(R.string.overview)
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewKeepScreenOn, summary = R.string.keep_screen_on_summary, title = R.string.keep_screen_on_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfCustomAutomationsEnabled, summary = R.string.custom_automations_enabled_summary, title = R.string.custom_automations_enabled_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "overview_buttons_settings"
                 title = rh.gs(R.string.overview_buttons_selection)
