@@ -30,6 +30,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventProfileSwitchChanged
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
@@ -139,8 +140,19 @@ class KeepAliveWorker(
         maintenancePlugin.deleteLogs(30)
         workerDbStatus()
         databaseCleanup()
+        exportLogsToCloudIfDue()
 
         return Result.success()
+    }
+
+    // Automatic cloud log export, mirroring databaseCleanup()'s throttle pattern below.
+    private fun exportLogsToCloudIfDue() {
+        if (!preferences.get(BooleanKey.MaintenanceAutoExportLogsToCloud)) return
+        val lastRun = preferences.get(LongNonKey.LastCloudLogExport)
+        if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
+            maintenancePlugin.sendLogs()
+            preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
+        }
     }
 
     // Perform history data cleanup every day

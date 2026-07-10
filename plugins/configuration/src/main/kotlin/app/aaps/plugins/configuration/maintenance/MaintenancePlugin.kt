@@ -271,27 +271,32 @@ class MaintenancePlugin @Inject constructor(
                             fallbackToEmailLogs(zipFile)
                             return@launch
                         }
-                        
+
+                        // Scope the logs folder per patient, e.g. "/AAPS/export/logs_<PatientName>".
+                        // Falls back to the plain CLOUD_PATH_LOGS when no patient name is configured.
+                        val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+                        val logsPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_LOGS}_$patientName" else CloudConstants.CLOUD_PATH_LOGS
+
                         // First set selected folder, then try path upload
-                        provider.getOrCreateFolderPath(CloudConstants.CLOUD_PATH_LOGS)?.let { 
-                            provider.setSelectedFolderId(it) 
+                        provider.getOrCreateFolderPath(logsPath)?.let {
+                            provider.setSelectedFolderId(it)
                         }
-                        
+
                         ToastUtils.longInfoToast(context, rh.gs(R.string.uploading_to_cloud))
 
                         var uploadedFileId = provider.uploadFileToPath(
                             zipFile.name ?: "logs.zip",
                             bytes,
                             "application/zip",
-                            CloudConstants.CLOUD_PATH_LOGS
+                            logsPath
                         )
                         if (uploadedFileId == null) {
                             uploadedFileId = provider.uploadFile(zipFile.name ?: "logs.zip", bytes, "application/zip")
                         }
-                        
+
                         if (uploadedFileId != null) {
                             aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
-                            ToastUtils.infoToast(context, rh.gs(R.string.logs_uploaded_to_cloud) + "\n" + rh.gs(R.string.cloud_directory_path, CloudConstants.CLOUD_PATH_LOGS))
+                            ToastUtils.infoToast(context, rh.gs(R.string.logs_uploaded_to_cloud) + "\n" + rh.gs(R.string.cloud_directory_path, logsPath))
                         } else {
                             aapsLogger.error("Failed to upload logs to cloud storage")
                             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
@@ -350,6 +355,13 @@ class MaintenancePlugin @Inject constructor(
                 )
             )
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MaintenanceLogsAmount, title = R.string.maintenance_amount))
+            addPreference(
+                AdaptiveSwitchPreference(
+                    ctx = context, booleanKey = BooleanKey.MaintenanceAutoExportLogsToCloud,
+                    title = R.string.auto_export_logs_to_cloud_title,
+                    summary = R.string.auto_export_logs_to_cloud_summary
+                )
+            )
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "data_choice_setting"
                 title = rh.gs(R.string.data_choices)

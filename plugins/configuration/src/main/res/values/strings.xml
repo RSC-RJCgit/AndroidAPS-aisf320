@@ -136,6 +136,8 @@
     <string name="maintenance_settings">Maintenance Settings</string>
     <string name="maintenance_email">Email recipient</string>
     <string name="maintenance_amount">No of Logs to send</string>
+    <string name="auto_export_logs_to_cloud_title">Auto-export logs to cloud every 6h</string>
+    <string name="auto_export_logs_to_cloud_summary">Automatically upload logs to cloud storage every 6 hours, using the same destination as the manual Send Logs button.</string>
     <string name="send_all_logs">Send Logs by Email</string>
     <string name="delete_logs">Delete Logs</string>
     <string name="configbuilder_nightscoutversion_label">Nightscout version:</string>
