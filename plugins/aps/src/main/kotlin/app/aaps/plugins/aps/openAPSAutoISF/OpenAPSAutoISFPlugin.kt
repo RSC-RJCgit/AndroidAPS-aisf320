@@ -916,7 +916,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     d <= -5.40 /* -0.30 */ && sd <= -3.60 /* -0.20 */ && rawOr2
 
                 val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; else -> null }
-                if (ghBlock != null) {
+
+                // Extra gate on top of the above (does not replace it): only actually fire if
+                // Libre glucose < 4.0 mmol OR step60 > 200, AND Libre delta-1min <= 0, AND Libre delta-5min <= 0.
+                val ghExtraLow = (rawG != null && rawG < 72.1 /* 4.0 mmol */) || recentSteps60Minutes > 200
+                val ghExtraD1  = rawD1 != null && rawD1 <= 0.0
+                val ghExtraD5  = rawD5 != null && rawD5 <= 0.0
+                val ghExtraOk  = ghExtraLow && ghExtraD1 && ghExtraD5
+
+                if (ghBlock != null && ghExtraOk) {
                     setBgAccelIsfWeight(0.02)
                     preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                     sendSms("GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
@@ -2391,5 +2399,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU222
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU223
  */
