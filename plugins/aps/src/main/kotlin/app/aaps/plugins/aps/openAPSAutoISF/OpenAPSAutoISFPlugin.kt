@@ -838,6 +838,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             setAutomationState("MJ", "NOMJremains")
         }
 
+        // Code port of the "Test3" automation (MJ=MJ6): validates the state-check -> notification ->
+        // state-set mechanics, including the graph-announcement fix (addGraphAnnouncement). 1-min
+        // interval throttle via readyToRun/markRun, matching the original's "Min interval (min): 1".
+        // Self-guarding: the state-set action moves MJ away from MJ6, so it fires once per cycle
+        // that reaches MJ6.
+        if (readyToRun("Test3", 1) && checkAutomationState("MJ", "MJ6")) {
+            uiInteraction.addNotification(id = 9002, text = "_____Test3", level = Notification.URGENT)
+            addGraphAnnouncement("_____Test3")
+            setAutomationState("MJ", "NOMJremains")
+            markRun("Test3")
+        }
+
         // --- MJ2 old: advances MJ state from "MJ active" → MJ2 at 02:10–03:10 AM ---
         if (checkAutomationState("MJ", "MJ active") && isTimeBetween(2, 10, 3, 10)) {
             sendSms("MJ2")
@@ -2420,5 +2432,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU225
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU226
  */
