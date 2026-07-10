@@ -20,6 +20,7 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -1136,16 +1137,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- Battery1%: when phone battery drops to <=1%, switch to Current Profile50 and alert ---
         // Guard: profile=100% (precondition). State Profile must be PP130, C100, or AllOK (normal running states).
         // Self-guarding: switching to Profile50 makes profile_percentage=50 next cycle, failing the precondition.
+        // Live-pump-only: skip entirely on Virtual Pump (model() == GENERIC_AAPS is how this codebase
+        // identifies it elsewhere, e.g. TriggerPumpBatteryLevelTest).
+        // No cannula-age gate — that threshold (80h) was pod-specific and doesn't generalize to tubed
+        // pumps with independent infusion-set lifespans; critical phone battery should react regardless.
         if (profile_percentage == 100
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
-            && receiverStatusStore.batteryLevel <= 1) {
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if (cannulaH <= 80.0) {
-                switchProfileIfNeeded("Current Profile50", 0)
-                uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
-                addGraphAnnouncement("Batt1%")
-                sendSms("LowBattery")
-            }
+            && receiverStatusStore.batteryLevel <= 1
+            && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            switchProfileIfNeeded("Current Profile50", 0)
+            uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
+            addGraphAnnouncement("Batt1%")
+            sendSms("LowBattery")
         }
 
         // --- BatteryOver1%: when battery recovers above 1%, restore Current ProfileReal ---
@@ -2432,5 +2435,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU226
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU227
  */
