@@ -55,6 +55,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
@@ -69,6 +70,7 @@ import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.getPassedDurationToTimeInMinutes
 import app.aaps.core.objects.extensions.plannedRemainingMinutes
@@ -541,6 +543,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ).subscribe()
     }
 
+    // Mirrors ActionNotification's TherapyEvent handling exactly (confirmed on-device working:
+    // shows on the BGL graph and in Treatments/Notes) — unlike addCarePortalNote()'s TE.Type.NOTE,
+    // which does not render on the graph. TE.asAnnouncement() + Action.TREATMENT + the explicit
+    // EventRefreshOverview send are all load-bearing; this isn't just insertPumpTherapyEventIfNewByTimestamp
+    // with a different Type.
+    private fun addGraphAnnouncement(note: String) {
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE.asAnnouncement(note),
+            timestamp = dateUtil.now(),
+            action = Action.TREATMENT,
+            source = Sources.Automation,
+            note = note,
+            listValues = listOf()
+        ).subscribe()
+        rxBus.send(EventRefreshOverview("AutoISF"))
+    }
+
     // Not yet called anywhere; ready for later conditions. Mirrors TriggerAutomationState: exact string
     // equality (state values are names, not numbers), gated the same way — false when states are disabled.
     // Not affected by the fuzzy-equals tolerance noted below, since that only applies to Double comparisons.
@@ -929,6 +948,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                     sendSms("GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                     uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
+                    addGraphAnnouncement("______Gentle5")
                     setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
@@ -1111,6 +1131,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (cannulaH <= 80.0) {
                 switchProfileIfNeeded("Current Profile50", 0)
                 uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
+                addGraphAnnouncement("Batt1%")
                 sendSms("LowBattery")
             }
         }
@@ -2399,5 +2420,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU224
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU225
  */
