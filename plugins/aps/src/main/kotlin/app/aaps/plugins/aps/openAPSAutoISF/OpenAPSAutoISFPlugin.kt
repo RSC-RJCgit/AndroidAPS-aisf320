@@ -1538,6 +1538,59 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "MJ recent or Steps CurrProf Acce" (title kept the stale "Steps" reference,
+        // dropped here since the actual condition tree has no steps-count check at all — confirmed
+        // against the current automation dialog). No live-pump gate: the original's Note field was
+        // empty (no "not virtual pump" restriction specified for this one).
+        if (readyToRun("MJrecentCurrProfAcce", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            if ((g <= 144.1 /* 8.0 mmol */ || d <= 1.8 /* 0.1 mmol */)
+                && checkAutomationState("Steroids", "Steroids Off")
+                && cannulaH < 72.0
+                && !checkAutomationState("MJ", "NOMJremains")
+                && activeTtMgdl() == null
+                && profile_percentage == 100
+                && isTimeBetween(0, 0, 8, 0)
+                && !onCurrentProfile) {
+                sendSms("MJ recent CurrProf Acce")
+                switchProfileIfNeeded("Current Profile")
+                setBgAccelIsfWeight(0.50)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                addCarePortalNote("MJrec")
+                markRun("MJrecentCurrProfAcce")
+            }
+        }
+
+        // Code port of "BasalUp": raises acce weight back to neutral (0.50) and switches to Current
+        // ProfileReal when glucose is stable/rising outside a pod/MJ/afternoon guard window, low
+        // activity, and currently on "Current Profile". No live-pump gate: the original's Note field
+        // was empty.
+        if (readyToRun("BasalUp", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            val cannulaOrStateOk = cannulaH >= 72.0 || cannulaH <= 6.0 ||
+                checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
+            if (g >= 81.1 /* 4.5 mmol */
+                && cannulaOrStateOk
+                && recentSteps60Minutes <= 1000
+                && recentSteps30Minutes <= 600
+                && isTimeBetween(7, 0, 0, 0)
+                && profile_percentage == 100
+                && d >= 3.6 /* 0.2 mmol */
+                && onCurrentProfile) {
+                switchProfileIfNeeded("Current ProfileReal")
+                setBgAccelIsfWeight(0.50)
+                sendSms("BasalUp Acce")
+                addCarePortalNote("BsUp")
+                markRun("BasalUp")
+            }
+        }
+
         } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
@@ -2513,5 +2566,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU228
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU229
  */
