@@ -45,7 +45,10 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.notifications.NotificationUserMessage
+import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -56,6 +59,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -72,6 +76,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.asAnnouncement
+import app.aaps.core.objects.extensions.asSettingsExport
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.getPassedDurationToTimeInMinutes
 import app.aaps.core.objects.extensions.plannedRemainingMinutes
@@ -131,7 +136,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: Provider<APSResult>,
-    private val tddCalculator: TddCalculator
+    private val tddCalculator: TddCalculator,
+    private val context: Context,
+    private val importExportPrefs: ImportExportPrefs,
+    private val exportPasswordDataStore: ExportPasswordDataStore
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -518,6 +526,67 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listValues = listOf()
         ).subscribe()
         rxBus.send(EventRefreshOverview("AutoISF"))
+    }
+
+    // Faithful port of ActionSettingsExport.doAction() — reuses the exact same password/encryption
+    // infrastructure (ImportExportPrefs, ExportPasswordDataStore) rather than reimplementing any of
+    // it, so the exported settings backup stays encrypted exactly as it would via the real action.
+    // `label` matches what the original action's "text" field would have been, e.g. "NewPod".
+    private fun exportSettingsFor(label: String) {
+        var exportResultMessage: String
+        var announceAlert = false
+        val notification: NotificationUserMessage
+
+        if (exportPasswordDataStore.exportPasswordStoreEnabled()) {
+            val (password, isExpired, isAboutToExpire) = exportPasswordDataStore.getPasswordFromDataStore(context)
+            if (password.isNotEmpty() && !isExpired) {
+                exportResultMessage = if (isAboutToExpire) {
+                    rh.gs(app.aaps.core.ui.R.string.export_result_message_about_to_expire)
+                } else {
+                    rh.gs(app.aaps.core.ui.R.string.export_result_message_exported)
+                }
+                var localNotification = NotificationUserMessage(exportResultMessage, if (isAboutToExpire) Notification.LOW else Notification.INFO)
+                if (!importExportPrefs.exportSharedPreferencesNonInteractive(context, password)) {
+                    exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_failed)
+                    localNotification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                    announceAlert = true
+                }
+                notification = localNotification
+            } else {
+                exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_expired)
+                notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                exportPasswordDataStore.clearPasswordDataStore(context)
+                announceAlert = true
+            }
+        } else {
+            exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_disabled)
+            notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+        }
+        rxBus.send(EventNewNotification(notification))
+
+        val error = "$label: $exportResultMessage"
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE.asSettingsExport(error = error),
+            timestamp = dateUtil.now(),
+            action = Action.EXPORT_SETTINGS,
+            source = Sources.Automation,
+            note = exportResultMessage,
+            listValues = listOf()
+        ).subscribe()
+
+        if (announceAlert && preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
+            val alert = "${rh.gs(app.aaps.core.ui.R.string.export_alert)}($label): $exportResultMessage"
+            disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                therapyEvent = TE.asAnnouncement(error = alert),
+                timestamp = dateUtil.now(),
+                action = Action.EXPORT_SETTINGS,
+                source = Sources.Automation,
+                note = exportResultMessage,
+                listValues = listOf()
+            ).subscribe()
+        }
+
+        rxBus.send(EventRefreshOverview("ExportSettingsPodActivation"))
     }
 
     // Not yet called anywhere; ready for later conditions. Mirrors TriggerAutomationState: exact string
@@ -1737,6 +1806,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "ExportSettingsPodActivation": triggers a real encrypted settings backup
+        // (exportSettingsFor, faithfully mirroring ActionSettingsExport) when a new pod has been
+        // activated since the last export — mirrors TriggerPodChange's own "Pod activated" check
+        // (last CANNULA_CHANGE more recent than last SETTINGS_EXPORT). Live-pump-only, matching the
+        // original's note.
+        if (readyToRun("ExportSettingsPodActivation", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val lastPodChange = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+            val lastSettingsExport = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SETTINGS_EXPORT)
+            val podActivatedSinceExport = lastPodChange != null && lastSettingsExport != null
+                && lastSettingsExport.timestamp < lastPodChange.timestamp
+            if (podActivatedSinceExport) {
+                sendSms("ExportSettingsPodActivation")
+                exportSettingsFor("NewPod")
+                switchProfileIfNeeded("Current ProfileReal")
+                cancelCurrentTempTarget()
+                setAutomationState("Profile", "PP130")
+                markRun("ExportSettingsPodActivation")
+            }
+        }
+
         } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
@@ -2712,5 +2801,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU231
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU232
  */
