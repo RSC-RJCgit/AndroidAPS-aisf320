@@ -1901,10 +1901,40 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "SemiTwilightAcce_0.50TH16": drops acce weight to 0.50 and iobTH to 16% across
+        // 3 morning branches. Branch 3's iobTH check was screenshotted as AND(>17, <=15) — impossible
+        // as an AND (self-contradictory, always false). Per user confirmation the actual condition was
+        // a single "iobTH percent = 16" equality check, misread off the screenshot as two separate
+        // threshold rows. No live-pump gate: the original's Note field was empty.
+        if (readyToRun("SemiTwilightAcce", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val iobTH = iobThresholdPercent
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val stB1 = isTimeBetween(6, 0, 9, 0) && StepService.getRecentStepCount180Min() >= 10
+                && activeTtMgdl() == null && iobTH <= 15 && checkAutomationState("Steroids", "Steroids Off")
+            val stB2 = isTimeBetween(2, 0, 9, 0) && g >= 180.2 /* 10.0 mmol */ && acceW <= 0.025
+                && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")
+            val stB3 = isTimeBetween(6, 0, 10, 30) && g >= 126.1 /* 7.0 mmol */
+                && ld >= 0.0 && d >= 1.8 /* 0.1 mmol */ && sd >= 0.0
+                && iobTH == 16 && iobTH < 40
+                && checkAutomationState("Steroids", "Steroids Off")
+            if (stB1 || stB2 || stB3) {
+                setBgAccelIsfWeight(0.50)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
+                sendSms("SemiTwilightAcce_0.50TH16")
+                addCarePortalNote("Semi")
+                markRun("SemiTwilightAcce")
+            }
+        }
+
         // Code port of "ConnectPod": alerts when the pump hasn't reported in >=20 min during the
         // day while the pod is still within its normal wear window. Mirrors TriggerPumpLastConnection
-        // (activePump.lastDataTime). No live-pump gate: the original's Note field was empty.
-        if (readyToRun("ConnectPod", 5)) {
+        // (activePump.lastDataTime). Live-pump-only: "last connection to pump" is meaningless on the
+        // Virtual Pump.
+        if (readyToRun("ConnectPod", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
             val lastConnectionMinAgo = (dateUtil.now() - activePlugin.activePump.lastDataTime) / 60_000
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (lastConnectionMinAgo >= 20
@@ -2890,5 +2920,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU233
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU234
  */
