@@ -452,6 +452,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
     private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
 
+    // Converts mmol/L to mg/dL using the app's actual conversion constant (Constants.MMOLL_TO_MGDL
+    // = 18.0), NOT the 18.016 this file's comments otherwise use for display rounding. Use this
+    // (not a hand-computed literal) wherever a value is being compared for near-equality against a
+    // specific manually-set constant, e.g. identifying which of several closely-spaced TT presets is
+    // active — that's where the 18.016-vs-18.0 gap can actually flip a match, unlike ordinary
+    // glucose/delta thresholds where a ~0.1 mg/dL drift is inconsequential.
+    private fun mmolToMgdl(mmol: Double): Double = mmol * Constants.MMOLL_TO_MGDL
+
+    // True when the currently active TT is within toleranceMmol of targetMmol. Centralizes the
+    // "identify which manually-set TT is active" pattern (5.7/5.8mmol reversal, 6.8mmol Activity,
+    // 8.0mmol hyp) so the conversion constant and tolerance are correct and consistent everywhere.
+    private fun activeTtNear(targetMmol: Double, toleranceMmol: Double): Boolean {
+        val ttMgdl = activeTtMgdl() ?: return false
+        return kotlin.math.abs(ttMgdl - mmolToMgdl(targetMmol)) <= mmolToMgdl(toleranceMmol)
+    }
+
+    // Mirrors the real automation engine's Comparator.Compare.check(obj1, obj2, tolerance) —
+    // see plugins/automation/.../elements/Comparator.kt: every native trigger comparison (not just
+    // equality) is fuzzed by a fixed 0.001 mg/dL tolerance, documented there as already validated
+    // ("a prior half-step-based tolerance was reverted for not working reliably; flat 0.001 replaced
+    // it"). Use this for any future near-equality check against a fixed mg/dL value that isn't the
+    // TT-matching case activeTtNear() already covers.
+    private fun fuzzyEquals(a: Double, b: Double, toleranceMgdl: Double = 0.001): Boolean =
+        kotlin.math.abs(a - b) <= toleranceMgdl
+
     // Cancels the current TT unconditionally. Mirrors ActionStopTempTarget.
     private fun cancelCurrentTempTarget() {
         disposable += persistenceLayer.cancelCurrentTemporaryTargetIfAny(
@@ -1306,13 +1331,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations ---
+        // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations, plus
+        // TT5.8New1/2/3 — screenshotted as "TT=5.8mmol" but ported here against the same 5.7 mmol
+        // guard per user confirmation (nothing in this file ever sets a 5.8 mmol TT; CarbsStopTT5.7's
+        // own cb3 branch already treats 102.7-104.5 mg/dL, i.e. 5.7-5.8 mmol, as the same TT). ---
         // Primary guard: activeTtMgdl() must be ~5.7 mmol/L. Once TT is cancelled the guard fails,
         // so these conditions self-prevent re-firing without needing readyToRun() throttle.
         // All glucose/delta thresholds in mg/dL; originals in mmol/L in comments.
         run {
             val ttMgdl = activeTtMgdl() ?: return@run
-            if (kotlin.math.abs(ttMgdl - 102.7) > 1.8) return@run   // guard: only act on 5.7 mmol TT
+            // Guard: only act on the 5.7 mmol TT. Tolerance is 0.1mmol, which intentionally reaches
+            // exactly to 5.8mmol (5.7 and 5.8 are 0.1mmol apart) — CarbsStopTT5.7's own cb3 branch
+            // already treats them as the same TT, so TT5.8New1/2/3 below fold into this same guard.
+            if (kotlin.math.abs(ttMgdl - mmolToMgdl(5.7)) > mmolToMgdl(0.1)) return@run
 
             val g   = glucoseStatus.glucose
             val d   = glucoseStatus.delta
@@ -1344,6 +1375,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ld in 0.90 .. 9.01 /* 0.50 */ &&
                 recentSteps60Minutes <= 500 && recentSteps15Minutes <= 100 && recentSteps30Minutes <= 200
 
+            // TT5.8New1 — falling catch: cancels while BGL is actively dropping, regardless of how
+            // high it still is. Fills the gap the 5 branches above don't cover (they require delta
+            // >= -0.25 or flat/rising).
+            val new1 = g <= 162.1 /* 9.0 */ && d <= -1.8 /* -0.1 */
+
+            // TT5.8New2 — high-G, low-IOB/COB catch: no delta requirement, covers falls steeper than
+            // off2's -0.25 floor once insulin/carbs are no longer driving anything.
+            val new2 = g >= 147.7 /* 8.2 */ && iob <= 1.6 && cob <= 4.0
+
+            // TT5.8New3 — mid-G, very-low-IOB/COB catch: like off3 but without requiring flatness.
+            val new3 = g >= 117.1 /* 6.5 */ && iob <= 0.8 && cob <= 4.0
+
             val which = when { off2 -> "off2"; off3 -> "off3"; off4 -> "off4"; off5 -> "off5"; off1 -> "off1"; else -> null }
             if (which != null) {
                 cancelCurrentTempTarget()
@@ -1353,6 +1396,71 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("TT 5.7 ended [$which]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("TToff-$which")
                 aapsLogger.debug(LTag.APS, "TT reversal [$which]: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} sd=${String.format("%.2f", sd / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()}")
+            } else {
+                // TT5.8New1/2/3's original action lists were just "Send SMS" + "Stop temp target" —
+                // no acce/profile/state reset, no CarePortal note. Kept minimal to match exactly.
+                val whichNew = when { new1 -> "TT5.8New1"; new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; else -> null }
+                if (whichNew != null) {
+                    cancelCurrentTempTarget()
+                    sendSms(whichNew)
+                }
+            }
+        }
+
+        // --- Activity TT reversal block: TT6.0New1/TT6.0New2 — exit criteria for the manually-set
+        // "Activity" temp target (GUI default ~6.8 mmol, sits inside this 6.5-7.6 mmol band). Nothing
+        // in this file creates a TT in this range; it's set by hand via the GUI. Self-guarding like
+        // the 5.7 TT block above: cancelling the TT fails the range guard next cycle. Original action
+        // lists were just "Send SMS" + "Stop temp target" — kept minimal to match exactly.
+        run {
+            val ttMgdl = activeTtMgdl() ?: return@run
+            if (ttMgdl < mmolToMgdl(6.5) || ttMgdl > mmolToMgdl(7.6)) return@run
+
+            val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+
+            // TT6.0New1 — active meal recovery: high/rising BGL with carbs still onboard and IOB headroom
+            val new1 = d >= 1.8 /* 0.1 */ && g >= 162.1 /* 9.0 */ && cob >= 4.0 && iob <= 2.0
+
+            // TT6.0New2 — quiet/settled: moderate BGL, very low IOB, flat-or-rising, no COB requirement
+            val new2 = g >= 144.1 /* 8.0 */ && iob <= 0.8 && d >= 0.0
+
+            if (new1) {
+                cancelCurrentTempTarget()
+                sendSms("TT6.0New")
+            } else if (new2) {
+                cancelCurrentTempTarget()
+                sendSms("TT6.0New2")
+            }
+        }
+
+        // --- T8.0Off3ok: exit criteria for the manually-set "hyp" temp target (8.0mmol for 20 min
+        // via GUI, per user confirmation — a separate TT from the 6.5-7.6mmol Activity band above).
+        // The screenshot's "Temp Target" bound checks were a misread per user correction: the real
+        // check is glucose reaching the TT's own 8.0mmol value, so this guards on the TT itself
+        // (~8.0mmol, same ±1.8mg/dL tolerance style as the 5.7mmol block). The inner OR keeps its
+        // original two-branch tradeoff — a lower glucose floor (6.5mmol) needs a steeper rise
+        // (0.3mmol) to compensate, vs a higher floor (7.0mmol) only needing a gentler rise (0.2mmol)
+        // — with no extra top-level glucose gate stacked on top of it. Original action list was just
+        // "Send SMS" + "Stop temp target".
+        run {
+            val ttMgdl = activeTtMgdl() ?: return@run
+            // Guard: only act on the 8.0 mmol "hyp" TT. Tolerance is the native engine's own
+            // validated 0.001 mg/dL constant (Comparator.check's default), not 0.001 mmol.
+            if (!fuzzyEquals(ttMgdl, mmolToMgdl(8.0))) return@run
+
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val stepsOk = recentSteps60Minutes <= 1500 && recentSteps30Minutes <= 300 &&
+                recentSteps5Minutes <= 50 && recentSteps15Minutes <= 500
+            val riseOk = (g >= 126.1 /* 7.0 mmol */ && d >= 3.6 /* 0.2 mmol */) ||
+                (g >= 117.1 /* 6.5 mmol */ && d >= 5.4 /* 0.3 mmol */)
+
+            if (stepsOk && riseOk) {
+                cancelCurrentTempTarget()
+                sendSms("TT8.0lf")
             }
         }
 
@@ -1942,6 +2050,101 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && cannulaH <= 80.0) {
                 sendSms("ConnectPod")
                 markRun("ConnectPod")
+            }
+        }
+
+        // Code port of "Bolus2": starts a brief 6.8mmol temp target after a bolus when BGL is
+        // falling fast post-bolus (branch 1), or when carbs are up and MJ is active shortly after a
+        // bolus (branch 2). Precondition: no TT active. No live-pump gate: the original's Note field
+        // was the user's own uncertainty comment ("not sure if auto needed"), not a virtual-pump
+        // restriction. SMS text kept literal ("BolusTTfor10mins") despite the action's actual 5 min
+        // duration — that mismatch is in the source automation, not introduced here.
+        if (readyToRun("Bolus2", 20) && activeTtMgdl() == null) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val iob = iobData.iob
+            val cob = mealData.mealCOB
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val b1 = lastBolusMin <= 5 && sd <= -3.6 /* -0.2 mmol */ && d <= -5.4 /* -0.3 mmol */
+                && g <= 126.1 /* 7.0 mmol */ && iob >= 0.5 && cob >= 9.0
+            val b2 = lastBolusMin <= 15 && checkAutomationState("MJ", "MJ active")
+                && cob >= 4.0 && g <= 126.1 /* 7.0 mmol */
+            if (b1 || b2) {
+                startTempTargetIfNeeded(122.5 /* 6.8 mmol */, 5)
+                sendSms("BolusTTfor10mins Acce")
+                addCarePortalNote("Bol2")
+                markRun("Bolus2")
+            }
+        }
+
+        // Code port of "AlarmHypo1 0.700.35": hypo alarm — 3 OR-branches (time-gated slow decline,
+        // an unconditional emergency floor at 3.0mmol with no time gate, and a steps-driven
+        // variant), drops acce weight to 0.10. Per user correction, sets BOTH BGLstate=BGLlastLOW
+        // and LowBG=50recent (screenshot only showed the former, but both AlarmHypo automations
+        // should set both).
+        if (readyToRun("AlarmHypo1", 15)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val ah1b1 = isTimeBetween(7, 30, 23, 30) && d < -0.36 /* -0.02 mmol */ && sd < -0.36
+                && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
+            val ah1b2 = g < 54.0 /* 3.0 mmol */
+            val ah1b3 = isTimeBetween(7, 0, 23, 0) && d <= -0.9 /* -0.05 mmol */
+                && recentSteps60Minutes >= 102 && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
+            if (ah1b1 || ah1b2 || ah1b3) {
+                setBgAccelIsfWeight(0.10)
+                sendSms("AlarmHypo")
+                uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
+                addGraphAnnouncement("H4")
+                setAutomationState("BGLstate", "BGLlastLOW")
+                setAutomationState("LowBG", "50recent")
+                markRun("AlarmHypo1")
+            }
+        }
+
+        // Code port of "AlarmHypo2 0.700.35": hypo alarm — single AND group, catches either
+        // G<=4.3mmol outright or G<=5.5mmol with recent exercise (Steps30>=1000) likely
+        // accelerating the drop. Sets both BGLstate=BGLlastLOW and LowBG=50recent, feeding the
+        // existing 50%-profile state machine (50SetRecent/Not50%Recently/Extra50%/PP50.Off).
+        if (readyToRun("AlarmHypo2", 15)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val lowOk = g <= 77.5 /* 4.3 mmol */ || (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000)
+            if (isTimeBetween(7, 30, 23, 30) && d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
+                setBgAccelIsfWeight(0.10)
+                sendSms("AlarmHypo")
+                uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
+                addGraphAnnouncement("A4")
+                setAutomationState("LowBG", "50recent")
+                uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
+                addGraphAnnouncement("H4")
+                setAutomationState("BGLstate", "BGLlastLOW")
+                markRun("AlarmHypo2")
+            }
+        }
+
+        // Code port of "Steps Steroids OFF": asserts Steroids=Steroids Off based on sustained
+        // activity with moderate IOB, controlled glucose, and no carbs. Per user confirmation, this
+        // is the automation that actually sets the Steroids state (previously only ever read as a
+        // precondition elsewhere in this file, never set) — Steroids ON is a manual user action, no
+        // automated counterpart needed.
+        if (readyToRun("StepsSteroidsOff", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val iob = iobData.iob
+            if (recentSteps60Minutes >= 1000 && iob <= 4.0 && iob >= 2.0
+                && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
+                sendSms("Steps Steroids OFF")
+                setAutomationState("Steroids", "Steroids Off")
+                switchProfileIfNeeded("Current Profile")
+                setBgAccelIsfWeight(0.70)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                addCarePortalNote("Steps Steroids OFF")
+                markRun("StepsSteroidsOff")
             }
         }
 
@@ -2920,5 +3123,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU234
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU235
  */
