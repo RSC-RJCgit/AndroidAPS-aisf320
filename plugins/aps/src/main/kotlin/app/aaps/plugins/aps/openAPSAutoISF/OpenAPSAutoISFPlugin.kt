@@ -354,72 +354,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
-    // Sets a temporary 50% profile for 360 min on the current named profile.
-    // Mirrors "Start profile 50% for 360 min" action. Does not guard against an existing switch.
-    private fun startProfile50For360() {
-        val profileStore = activePlugin.activeProfileSource.profile ?: return
-        val profileName = profileFunction.getProfileName()
-        profileFunction.createProfileSwitch(
-            profileStore = profileStore,
-            profileName = profileName,
-            durationInMinutes = 360,
-            percentage = 50,
-            timeShiftInHours = 0,
-            timestamp = dateUtil.now(),
-            action = Action.PROFILE_SWITCH,
-            source = Sources.Automation,
-            note = "AutoISF: prepare 50% for 360 min",
-            listValues = listOf(ValueWithUnit.Percent(50), ValueWithUnit.Minute(360))
-        )
-    }
-
-    private fun startProfile50For180() {
-        val profileStore = activePlugin.activeProfileSource.profile ?: return
-        val profileName = profileFunction.getProfileName()
-        profileFunction.createProfileSwitch(
-            profileStore = profileStore,
-            profileName = profileName,
-            durationInMinutes = 180,
-            percentage = 50,
-            timeShiftInHours = 0,
-            timestamp = dateUtil.now(),
-            action = Action.PROFILE_SWITCH,
-            source = Sources.Automation,
-            note = "AutoISF: activity 50% for 180 min",
-            listValues = listOf(ValueWithUnit.Percent(50), ValueWithUnit.Minute(180))
-        )
-    }
-
-    private fun startProfile110For10(profileName: String) {
+    // Temporary percentage-only profile boost for a fixed duration, at profileName (defaults to
+    // whatever profile is currently active — pass an explicit name only when the original action
+    // targeted a specific named profile, e.g. HighOldPod/BolusGiven71's "Current ProfileReal").
+    // Replaces the former startProfile50For360/180, startProfile110For5/10, startProfile120For5,
+    // startProfile130For60 — all identical apart from percentage/duration/profileName.
+    private fun startProfilePercentFor(percentage: Int, durationMinutes: Int, profileName: String = profileFunction.getProfileName()) {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = profileName,
-            durationInMinutes = 10,
-            percentage = 110,
+            durationInMinutes = durationMinutes,
+            percentage = percentage,
             timeShiftInHours = 0,
             timestamp = dateUtil.now(),
             action = Action.PROFILE_SWITCH,
             source = Sources.Automation,
-            note = "AutoISF: 110% for 10 min",
-            listValues = listOf(ValueWithUnit.Percent(110), ValueWithUnit.Minute(10))
-        )
-    }
-
-    // Temporary 110% profile boost for 5 min — used by HighOldPod to force insulin on stale/fresh cannula.
-    private fun startProfile110For5(profileName: String) {
-        val profileStore = activePlugin.activeProfileSource.profile ?: return
-        profileFunction.createProfileSwitch(
-            profileStore = profileStore,
-            profileName = profileName,
-            durationInMinutes = 5,
-            percentage = 110,
-            timeShiftInHours = 0,
-            timestamp = dateUtil.now(),
-            action = Action.PROFILE_SWITCH,
-            source = Sources.Automation,
-            note = "AutoISF: 110% for 5 min",
-            listValues = listOf(ValueWithUnit.Percent(110), ValueWithUnit.Minute(5))
+            note = "AutoISF: $percentage% for $durationMinutes min",
+            listValues = listOf(ValueWithUnit.Percent(percentage), ValueWithUnit.Minute(durationMinutes))
         )
     }
 
@@ -918,7 +870,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (p50block != null) {
                 setBgAccelIsfWeight(0.07)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                startProfile50For360()
+                startProfilePercentFor(50, 360)
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("Set50-$p50block")
@@ -1186,7 +1138,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val targetProfile = "Current ProfileReal"
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
                 switchProfileIfNeeded(targetProfile, 30)
-                startProfile110For5(targetProfile)
+                startProfilePercentFor(110, 5, targetProfile)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
@@ -1242,7 +1194,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("ActivityProf50%: g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)}")
                 setBgAccelIsfWeight(0.02)
                 applyCurrentProfileAt100()
-                startProfile50For180()
+                startProfilePercentFor(50, 180)
                 addCarePortalNote("ActivityProf50%")
             }
         }
@@ -1280,7 +1232,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Given-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
-                startProfile110For10("Current ProfileReal")
+                startProfilePercentFor(110, 10, "Current ProfileReal")
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
             }
         }
@@ -1588,6 +1540,132 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
                 markRun("BasalUp")
+            }
+        }
+
+        // Code port of "MoreMJ": advances MJ state to MJ3 when acce weight is very low, activity is
+        // low, glucose is falling low on the 50% profile with no carbs and IOB still present. No
+        // live-pump gate: the original's Note field was empty.
+        if (readyToRun("MoreMJ", 5)) {
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            if (acceW <= 0.11
+                && StepService.getRecentStepCount180Min() <= 400
+                && recentSteps60Minutes <= 200
+                && checkAutomationState("MJ", "NOMJremains")
+                && isTimeBetween(10, 30, 22, 0)
+                && glucoseStatus.glucose < 99.1 /* 5.5 mmol */
+                && profile_percentage == 50
+                && mealData.mealCOB <= 0.0
+                && lastBolusMin > 210
+                && checkAutomationState("BGLstate", "BGLlastLOW")
+                && iobData.iob >= 0.2) {
+                sendSms("MoreMJ")
+                setAutomationState("MJ", "MJ3")
+                addCarePortalNote("MoreMJ")
+                markRun("MoreMJ")
+            }
+        }
+
+        // Code port of "High6PP": brief 120% profile boost across 3 condition blocks when BGL is high
+        // with controlled delta and a low/no temp target tolerance. Note: "TT now <=4.2 tolerant".
+        // Precondition: profile=100%.
+        if (readyToRun("High6PP", 5) && profile_percentage == 100) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val tt = activeTtMgdl() ?: Double.MAX_VALUE
+            val h6b1 = g >= 144.1 /* 8.0 mmol */ && tt <= 77.5 /* 4.3 mmol */ && isTimeBetween(0, 0, 21, 0)
+                && d >= 1.8 /* 0.1 mmol */ && d <= 5.4 /* 0.3 mmol */
+            val h6b2 = g >= 126.1 /* 7.0 mmol */ && tt <= 75.7 /* 4.2 mmol */ && isTimeBetween(10, 0, 22, 0)
+                && ld >= 0.0 && sd >= 0.0 && d >= 0.0 && d <= 5.4 /* 0.3 mmol */ && sd <= 5.4
+            val h6b3 = g >= 108.1 /* 6.0 mmol */ && mealData.mealCOB >= 10.0 && tt <= 75.7 /* 4.2 mmol */
+                && d <= 5.4 /* 0.3 mmol */ && d >= 1.8 /* 0.1 mmol */
+            if (h6b1 || h6b2 || h6b3) {
+                startProfilePercentFor(120, 5)
+                sendSms("High6PP Acce")
+                addCarePortalNote("P120")
+                markRun("High6PP")
+            }
+        }
+
+        // Code port of "High6PPoff": exits the 120% boost when either no TT exists at 120%, or
+        // BGL/delta have stabilised in the evening window at 120%. No live-pump gate: the original's
+        // Note field was empty.
+        if (readyToRun("High6PPoff", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val off1 = profile_percentage == 120 && activeTtMgdl() == null
+            val off2 = isTimeBetween(21, 0, 0, 0) && g <= 144.1 /* 8.0 mmol */
+                && profile_percentage == 120 && d <= 3.6 /* 0.2 mmol */
+            if (off1 || off2) {
+                switchProfileIfNeeded("Current ProfileReal")
+                sendSms("High6PPoff Acce")
+                addCarePortalNote("off120")
+                markRun("High6PPoff")
+            }
+        }
+
+        // Code port of "PodChangeHighPP130": brief 130% profile boost around a pod change (fresh
+        // <=2h or stale >=78h) when BGL is high and rising, 10am-6pm. Live-pump-only, matching the
+        // original's note. Precondition: profile=100%.
+        if (readyToRun("PodChangeHighPP130", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+            && profile_percentage == 100) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (checkAutomationState("Profile", "PP130")
+                && (cannulaH >= 78.0 || cannulaH <= 2.0)
+                && g >= 144.1 /* 8.0 mmol */
+                && d >= 3.6 /* 0.2 mmol */
+                && cannulaH <= 80.0
+                && isTimeBetween(10, 0, 18, 0)) {
+                switchProfileIfNeeded("Current ProfileReal")
+                setAutomationState("Profile", "C100")
+                startProfilePercentFor(130, 60)
+                sendSms("PodChangeHighPP130 Acce")
+                addCarePortalNote("Pod130")
+                markRun("PodChangeHighPP130")
+            }
+        }
+
+        // Code port of "HighPP130Off": exits the 130%/110% boost across 3 exit conditions
+        // (stabilised no-TT, falling with TT, or simply no-TT at all while boosted). Note: "or 110%".
+        if (readyToRun("HighPP130Off", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val boosted = profile_percentage == 130 || profile_percentage == 110
+            val off1 = cannulaH <= 78.0 && cannulaH >= 2.0 && g <= 180.2 /* 10.0 mmol */
+                && boosted && activeTtMgdl() == null
+            val off2 = g <= 180.2 /* 10.0 mmol */ && d <= -5.4 /* -0.3 mmol */
+                && boosted && activeTtMgdl() != null
+            val off3 = activeTtMgdl() == null && boosted
+            if (off1 || off2 || off3) {
+                sendSms("HighPP130Off")
+                setAutomationState("Profile", "C100")
+                switchProfileIfNeeded("Current ProfileReal")
+                addCarePortalNote("130Off")
+                setAutomationState("LowBG", "NO50rec")
+                markRun("HighPP130Off")
+            }
+        }
+
+        // Code port of "AcceUp0.5": raises acce weight to 0.70 when currently very low, BGL is
+        // stable/rising, no TT, and either MJ is clear or steroids are on. No live-pump gate: the
+        // original's Note field was empty.
+        if (readyToRun("AcceUp0.5", 5)) {
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            if (acceW <= 0.5
+                && glucoseStatus.glucose >= 108.1 /* 6.0 mmol */
+                && profile_percentage == 100
+                && activeTtMgdl() == null
+                && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("Steroids", "SteroidsON"))) {
+                setBgAccelIsfWeight(0.70)
+                sendSms("AcceUp")
+                addCarePortalNote("Acce")
+                markRun("AcceUp0.5")
             }
         }
 
@@ -2566,5 +2644,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU229
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU230
  */
