@@ -1826,6 +1826,95 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "EveningTH CurrProf 50_0.45": lowers acce weight/iobTH ceiling in the evening
+        // while MJ is still clear, then flips to a higher iobTH floor once MJ goes active overnight.
+        // No live-pump gate: the original's Note field described a recent MJ-state change, not a
+        // virtual-pump restriction.
+        if (readyToRun("EveningTH", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val onCurrentProfileEither = profileFunction.getProfileName() == "Current Profile" || profileFunction.getProfileName() == "Current ProfileReal"
+            val evB1 = isTimeBetween(20, 0, 1, 0) && g <= 135.1 /* 7.5 mmol */ && iobThresholdPercent < 50
+                && mealData.mealCOB <= 0.0 && d <= 3.6 /* 0.2 mmol */ && activeTtMgdl() == null
+                && lastBolusMin >= 90 && !checkAutomationState("MJ", "MJ active")
+            val evB2 = iobThresholdPercent >= 51 && g <= 135.1 /* 7.5 mmol */ && mealData.mealCOB <= 0.0
+                && isTimeBetween(20, 0, 1, 0) && activeTtMgdl() == null && d <= -1.8 /* -0.1 mmol */
+                && onCurrentProfileEither && lastBolusMin >= 90 && profile_percentage == 100
+                && !checkAutomationState("MJ", "MJ active")
+            val evB3 = isTimeBetween(22, 0, 5, 0) && g >= 122.5 /* 6.8 mmol */ && d >= 1.8 /* 0.1 mmol */
+                && onCurrentProfileEither && lastBolusMin >= 90 && profile_percentage == 100
+                && iobThresholdPercent >= 51 && checkAutomationState("MJ", "MJ active")
+            if (evB1 || evB2 || evB3) {
+                setBgAccelIsfWeight(0.45)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                switchProfileIfNeeded("Current Profile")
+                sendSms("EveningTH CurrProf 50_0.45 Acce")
+                addCarePortalNote("Eve")
+                markRun("EveningTH")
+            }
+        }
+
+        // Code port of "TwilightTH15Acce0.50": drops iobTH to 15% and acce weight to 0.50 during a
+        // quiet early morning (low steps, flat/falling BGL) while iobTH sits in the 17-39% band. No
+        // live-pump gate: the original's Note field was empty.
+        if (readyToRun("TwilightTH15Acce", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val iobTH = iobThresholdPercent
+            if (isTimeBetween(6, 0, 8, 0)
+                && recentSteps60Minutes <= 10
+                && g <= 117.1 /* 6.5 mmol */
+                && activeTtMgdl() == null
+                && iobTH > 16 && iobTH <= 39
+                && checkAutomationState("Steroids", "Steroids Off")
+                && d <= 0.0) {
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 15)
+                setBgAccelIsfWeight(0.50)
+                switchProfileIfNeeded("Current Profile")
+                sendSms("TwilightTH15Acce0.50")
+                addCarePortalNote("TWi")
+                markRun("TwilightTH15Acce")
+            }
+        }
+
+        // Code port of "NightAcce_0.35TH18": overnight iobTH/acce reset to 18%/0.35 (plus a
+        // settings-export backup, reusing exportSettingsFor) when iobTH sits outside the 18% band,
+        // no carbs are active, and BGL is low. No live-pump gate: the original's Note field was empty.
+        if (readyToRun("NightAcce", 5)) {
+            val iobTH = iobThresholdPercent
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            if (isTimeBetween(1, 0, 6, 0)
+                && (iobTH >= 19 || iobTH <= 17)
+                && mealData.mealCOB <= 0.0
+                && activeTtMgdl() == null
+                && glucoseStatus.glucose <= 108.1 /* 6.0 mmol */
+                && checkAutomationState("Steroids", "Steroids Off")
+                && acceW >= 0.08) {
+                setBgAccelIsfWeight(0.35)
+                switchProfileIfNeeded("Current Profile")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                exportSettingsFor("AutoExport")
+                sendSms("NightAcce_0.35TH18")
+                addCarePortalNote("Night")
+                markRun("NightAcce")
+            }
+        }
+
+        // Code port of "ConnectPod": alerts when the pump hasn't reported in >=20 min during the
+        // day while the pod is still within its normal wear window. Mirrors TriggerPumpLastConnection
+        // (activePump.lastDataTime). No live-pump gate: the original's Note field was empty.
+        if (readyToRun("ConnectPod", 5)) {
+            val lastConnectionMinAgo = (dateUtil.now() - activePlugin.activePump.lastDataTime) / 60_000
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (lastConnectionMinAgo >= 20
+                && isTimeBetween(8, 0, 23, 0)
+                && cannulaH <= 80.0) {
+                sendSms("ConnectPod")
+                markRun("ConnectPod")
+            }
+        }
+
         } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
@@ -2801,5 +2890,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU232
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU233
  */
