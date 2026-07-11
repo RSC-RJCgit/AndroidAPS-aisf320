@@ -1669,6 +1669,74 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "OldPod2": brief 130% profile boost + hypo-safety 5.0mmol TT when BGL is very
+        // high and stable/rising with MJ clear. Live-pump-only, matching the original's note.
+        // Preconditions: no TT, profile=100%.
+        if (readyToRun("OldPod2", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+            && activeTtMgdl() == null && profile_percentage == 100) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            if (g >= 234.2 /* 13.0 mmol */
+                && d >= -1.8 /* -0.1 mmol */
+                && checkAutomationState("MJ", "NOMJremains")) {
+                addCarePortalNote("Old2")
+                sendSms("OldPod2")
+                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
+                setBgAccelIsfWeight(0.95)
+                switchProfileIfNeeded("Current ProfileReal")
+                startProfilePercentFor(130, 5)
+                markRun("OldPod2")
+            }
+        }
+
+        // Code port of "RecentPodOff": relaxes acce weight back to 0.71 once the RecentPod/OldPod2
+        // safety TT has ended and acce weight is still at its 0.95 safety level. No live-pump gate:
+        // the original's Note field was empty.
+        if (readyToRun("RecentPodOff", 5)) {
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            if (acceW == 0.95 && activeTtMgdl() == null) {
+                setBgAccelIsfWeight(0.71)
+                switchProfileIfNeeded("Current ProfileReal")
+                sendSms("RecentPodOff Acce")
+                addCarePortalNote("pTTOff")
+                markRun("RecentPodOff")
+            }
+        }
+
+        // Code port of "Exercise limit Acce": alerts when a fast rise coincides with high recent step
+        // activity. No live-pump gate: the original's Note field was empty.
+        if (readyToRun("ExerciseLimitAcce", 5)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            if (g >= 126.1 /* 7.0 mmol */ && d >= 7.2 /* 0.4 mmol */ && recentSteps60Minutes >= 1000) {
+                uiInteraction.addNotification(id = 9008, text = "_____ST601k", level = Notification.URGENT)
+                addGraphAnnouncement("_____ST601k")
+                sendSms("Exercise limit Acce")
+                markRun("ExerciseLimitAcce")
+            }
+        }
+
+        // Code port of "RecentPod": brief 130% profile boost + 4.2mmol TT when cannula is very
+        // fresh/stale, carbs are up, and BGL is rising with headroom on IOB. Live-pump-only, matching
+        // the original's note. Preconditions: profile=100%, no TT.
+        if (readyToRun("RecentPod", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+            && profile_percentage == 100 && activeTtMgdl() == null) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if ((cannulaH <= 6.0 || cannulaH >= 48.0)
+                && d >= 3.6 /* 0.2 mmol */
+                && mealData.mealCOB >= 16.0
+                && iobData.iob <= 4.0
+                && g >= 90.1 /* 5.0 mmol */) {
+                startProfilePercentFor(130, 5)
+                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
+                setBgAccelIsfWeight(0.95)
+                sendSms("RecentPod Acce")
+                markRun("RecentPod")
+            }
+        }
+
         } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
@@ -2644,5 +2712,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU230
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU231
  */
