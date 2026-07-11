@@ -468,6 +468,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return (dateUtil.now() - last.timestamp) / 3_600_000.0
     }
 
+    // Hours since the last recorded sensor change, or null if none found. Matches TriggerSensorAge's
+    // use of TE.Type.SENSOR_CHANGE.
+    private fun hoursSinceLastSensorChange(): Double? {
+        val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SENSOR_CHANGE) ?: return null
+        return (dateUtil.now() - last.timestamp) / 3_600_000.0
+    }
+
     // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
     // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
     // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
@@ -1460,6 +1467,77 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code port of "PreSoakSENSOR24hrs": reminds to pre-soak a new sensor ~14.0 or ~14.5 days into
+        // the current sensor's life. Two narrow ~0.1h match windows, each gated on cannula age <=80h
+        // (skip if the pod is also near end of life). Live-pump-only, matching the original's note.
+        if (readyToRun("PreSoakSensor24hrs", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val sensorH = hoursSinceLastSensorChange() ?: 0.0
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val soakB1 = sensorH >= 336.0 && sensorH <= 336.1 && cannulaH <= 80.0
+            val soakB2 = sensorH >= 348.0 && sensorH <= 348.1 && cannulaH <= 80.0
+            if (soakB1 || soakB2) {
+                sendSms("_____SOAK")
+                uiInteraction.addNotification(id = 9003, text = "PreSoak24hrs", level = Notification.URGENT)
+                addGraphAnnouncement("PreSoak24hrs")
+                markRun("PreSoakSensor24hrs")
+            }
+        }
+
+        // Code port of "SENSOR at 14.9 days": narrow ~0.1h match window, gated on cannula age <=80h.
+        // Live-pump-only, matching the original's note.
+        if (readyToRun("SensorS1hr", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val sensorH = hoursSinceLastSensorChange() ?: 0.0
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (sensorH >= 359.0 && sensorH <= 359.1 && cannulaH <= 80.0) {
+                uiInteraction.addNotification(id = 9004, text = "_____S1hr", level = Notification.URGENT)
+                addGraphAnnouncement("_____S1hr")
+                sendSms("SENSOR at 14.9 days ? overlap")
+                markRun("SensorS1hr")
+            }
+        }
+
+        // Code port of "SENSOR at 14 days 22 hours due": narrow ~0.1h match window, gated on cannula
+        // age <=80h. Live-pump-only, matching the original's note.
+        if (readyToRun("SensorS2hr", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val sensorH = hoursSinceLastSensorChange() ?: 0.0
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (sensorH >= 357.9 && sensorH <= 358.0 && cannulaH <= 80.0) {
+                uiInteraction.addNotification(id = 9005, text = "_____S2hr", level = Notification.URGENT)
+                addGraphAnnouncement("_____S2hr")
+                sendSms("SENSOR at 14 days 22 hours due")
+                markRun("SensorS2hr")
+            }
+        }
+
+        // Code port of "POD 78 hours": narrow ~0.1h match window during 08:00 AM-11:59 PM, permanently
+        // switches to Current ProfileReal and flags Profile state PP130. Live-pump-only, matching the
+        // original's note.
+        if (readyToRun("Pod2", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (cannulaH >= 78.0 && cannulaH <= 78.1 && isTimeBetween(8, 0, 23, 59)) {
+                uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
+                addGraphAnnouncement("_____POD2")
+                setAutomationState("Profile", "PP130")
+                switchProfileIfNeeded("Current ProfileReal")
+                sendSms("POD 78 hours")
+                markRun("Pod2")
+            }
+        }
+
+        // Code port of "POD 79 hours": narrow ~0.1h match window during 07:00 AM-11:59 PM. Live-pump-only,
+        // matching the original's note. (Original had a 2nd OR-branch, "Time BTW 12:03 AM & 12:03 AM",
+        // which is a zero-width/dead window under isTimeBetween's semantics — dropped per instruction,
+        // this now matches Pod2's single-AND-group structure.)
+        if (readyToRun("Pod1", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            if (cannulaH >= 79.0 && cannulaH <= 79.1 && isTimeBetween(7, 0, 23, 59)) {
+                uiInteraction.addNotification(id = 9007, text = "POD 79 h", level = Notification.URGENT)
+                addGraphAnnouncement("POD 79 h")
+                sendSms("_____POD1hr")
+                markRun("Pod1")
+            }
+        }
+
         } // end ApsAutoIsfCustomAutomationsEnabled
 
         val gson = Gson()
@@ -2435,5 +2513,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU227
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU228
  */
