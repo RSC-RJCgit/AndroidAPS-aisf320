@@ -20,7 +20,6 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -56,6 +55,7 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profiling.Profiler
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
@@ -1197,7 +1197,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (profile_percentage == 100
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
             && receiverStatusStore.batteryLevel <= 1
-            && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+            && activePlugin.activePump !is VirtualPump) {
             switchProfileIfNeeded("Current Profile50", 0)
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
@@ -1631,7 +1631,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "PreSoakSENSOR24hrs": reminds to pre-soak a new sensor ~14.0 or ~14.5 days into
         // the current sensor's life. Two narrow ~0.1h match windows, each gated on cannula age <=80h
         // (skip if the pod is also near end of life). Live-pump-only, matching the original's note.
-        if (readyToRun("PreSoakSensor24hrs", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("PreSoakSensor24hrs", 5) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val soakB1 = sensorH >= 336.0 && sensorH <= 336.1 && cannulaH <= 80.0
@@ -1646,7 +1646,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "SENSOR at 14.9 days": narrow ~0.1h match window, gated on cannula age <=80h.
         // Live-pump-only, matching the original's note.
-        if (readyToRun("SensorS1hr", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("SensorS1hr", 5) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (sensorH >= 359.0 && sensorH <= 359.1 && cannulaH <= 80.0) {
@@ -1659,7 +1659,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "SENSOR at 14 days 22 hours due": narrow ~0.1h match window, gated on cannula
         // age <=80h. Live-pump-only, matching the original's note.
-        if (readyToRun("SensorS2hr", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("SensorS2hr", 5) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (sensorH >= 357.9 && sensorH <= 358.0 && cannulaH <= 80.0) {
@@ -1673,7 +1673,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "POD 78 hours": narrow ~0.1h match window during 08:00 AM-11:59 PM, permanently
         // switches to Current ProfileReal and flags Profile state PP130. Live-pump-only, matching the
         // original's note.
-        if (readyToRun("Pod2", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("Pod2", 5) && activePlugin.activePump !is VirtualPump) {
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (cannulaH >= 78.0 && cannulaH <= 78.1 && isTimeBetween(8, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
@@ -1689,7 +1689,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // matching the original's note. (Original had a 2nd OR-branch, "Time BTW 12:03 AM & 12:03 AM",
         // which is a zero-width/dead window under isTimeBetween's semantics — dropped per instruction,
         // this now matches Pod2's single-AND-group structure.)
-        if (readyToRun("Pod1", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("Pod1", 5) && activePlugin.activePump !is VirtualPump) {
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (cannulaH >= 79.0 && cannulaH <= 79.1 && isTimeBetween(7, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9007, text = "POD 79 h", level = Notification.URGENT)
@@ -1819,7 +1819,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "PodChangeHighPP130": brief 130% profile boost around a pod change (fresh
         // <=2h or stale >=78h) when BGL is high and rising, 10am-6pm. Live-pump-only, matching the
         // original's note. Precondition: profile=100%.
-        if (readyToRun("PodChangeHighPP130", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+        if (readyToRun("PodChangeHighPP130", 5) && activePlugin.activePump !is VirtualPump
             && profile_percentage == 100) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -1881,7 +1881,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "OldPod2": brief 130% profile boost + hypo-safety 5.0mmol TT when BGL is very
         // high and stable/rising with MJ clear. Live-pump-only, matching the original's note.
         // Preconditions: no TT, profile=100%.
-        if (readyToRun("OldPod2", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+        if (readyToRun("OldPod2", 5) && activePlugin.activePump !is VirtualPump
             && activeTtMgdl() == null && profile_percentage == 100) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -1928,7 +1928,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "RecentPod": brief 130% profile boost + 4.2mmol TT when cannula is very
         // fresh/stale, carbs are up, and BGL is rising with headroom on IOB. Live-pump-only, matching
         // the original's note. Preconditions: profile=100%, no TT.
-        if (readyToRun("RecentPod", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS
+        if (readyToRun("RecentPod", 5) && activePlugin.activePump !is VirtualPump
             && profile_percentage == 100 && activeTtMgdl() == null) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -1951,7 +1951,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // activated since the last export — mirrors TriggerPodChange's own "Pod activated" check
         // (last CANNULA_CHANGE more recent than last SETTINGS_EXPORT). Live-pump-only, matching the
         // original's note.
-        if (readyToRun("ExportSettingsPodActivation", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("ExportSettingsPodActivation", 5) && activePlugin.activePump !is VirtualPump) {
             val lastPodChange = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
             val lastSettingsExport = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SETTINGS_EXPORT)
             val podActivatedSinceExport = lastPodChange != null && lastSettingsExport != null
@@ -2074,7 +2074,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // day while the pod is still within its normal wear window. Mirrors TriggerPumpLastConnection
         // (activePump.lastDataTime). Live-pump-only: "last connection to pump" is meaningless on the
         // Virtual Pump.
-        if (readyToRun("ConnectPod", 5) && activePlugin.activePump.model() != PumpType.GENERIC_AAPS) {
+        if (readyToRun("ConnectPod", 5) && activePlugin.activePump !is VirtualPump) {
             val lastConnectionMinAgo = (dateUtil.now() - activePlugin.activePump.lastDataTime) / 60_000
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (lastConnectionMinAgo >= 20
@@ -3174,5 +3174,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU236
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU237
  */
