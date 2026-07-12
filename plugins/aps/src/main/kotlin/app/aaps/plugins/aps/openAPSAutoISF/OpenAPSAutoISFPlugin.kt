@@ -1280,16 +1280,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- ActivityProf50%: sets 50% profile for 180 min during activity TT (7.3–7.9 mmol), BGL stable/falling ---
-        if (profile_percentage == 100) {
+        // --- ActivityProf50%: sets 50% profile for 180 min during the 6.8mmol Activity TT, BGL
+        // stable/falling. Corrected per user: the TT check is an exact match on 6.8mmol (not the
+        // 7.3-7.9mmol range this previously guarded on, which never matched the real Activity TT
+        // at all), using fuzzyEquals/mmolToMgdl. Also guards against Bolus2/BolusGiven71's own
+        // brief 6.8mmol post-bolus TT (same numeric value) via the shared Profile=Bolus state, so a
+        // 5-minute post-bolus TT can't be misread as an Activity session and trigger a 180-minute
+        // 50% profile drop. Note/SMS text corrected to match the screenshot exactly ("Ac50" /
+        // "ActivityProf50% Acce", not the old dynamic g=-value SMS text).
+        if (profile_percentage == 100 && !checkAutomationState("Profile", "Bolus")) {
             val tt = activeTtMgdl()
-            if (tt != null && tt >= 131.5 /* 7.3 mmol */ && tt <= 142.3 /* 7.9 mmol */
+            if (tt != null && fuzzyEquals(tt, mmolToMgdl(6.8))
                 && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ && glucoseStatus.delta <= 1.8 /* 0.1 mmol */) {
-                sendSms("ActivityProf50%: g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)}")
+                sendSms("ActivityProf50% Acce")
                 setBgAccelIsfWeight(0.02)
                 applyCurrentProfileAt100()
                 startProfilePercentFor(50, 180)
-                addCarePortalNote("ActivityProf50%")
+                addCarePortalNote("Ac50")
+            }
+        }
+
+        // Code port of "ActivityOff 70_0.70 0.35": exit criteria for ActivityProf50%'s 50% profile
+        // drop — 3 branches (still on the 6.8mmol Activity TT but BGL climbed too high; TT already
+        // ended with BGL stabilising/rising and cannula not brand-new; or a bolus was just given).
+        // Restores ProfileReal, acce to 0.35, iobTH to 70%. Original action list had no CarePortal
+        // note, kept minimal to match exactly.
+        if (readyToRun("ActivityOff", 5) && profile_percentage == 50) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val tt = activeTtMgdl()
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val aoB1 = tt != null && fuzzyEquals(tt, mmolToMgdl(6.8)) && g >= 171.2 /* 9.5 mmol */
+            val aoB2 = tt == null && g <= 153.1 /* 8.5 mmol */ && d >= 1.8 /* 0.1 mmol */
+                && g >= 108.1 /* 6.0 mmol */ && cannulaH >= 3.0
+            val aoB3 = lastBolusMin <= 10
+            if (aoB1 || aoB2 || aoB3) {
+                cancelCurrentTempTarget()
+                switchProfileIfNeeded("Current ProfileReal")
+                setBgAccelIsfWeight(0.35)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                sendSms("Activity 70_0.70 0.35 Acce")
+                markRun("ActivityOff")
             }
         }
 
@@ -2059,6 +2091,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // was the user's own uncertainty comment ("not sure if auto needed"), not a virtual-pump
         // restriction. SMS text kept literal ("BolusTTfor10mins") despite the action's actual 5 min
         // duration — that mismatch is in the source automation, not introduced here.
+        // setAutomationState("Profile","Bolus") is an addition beyond the original screenshot's
+        // action list, per user instruction: this TT shares the exact same 6.8mmol value as the
+        // manually-set Activity TT, so without this marker ActivityProf50% could misread a brief
+        // 5-minute post-bolus TT as an Activity session and trigger its 180-minute 50% profile drop.
+        // Reuses the same Profile=Bolus state BolusGiven71_0.70 already sets for the same reason.
         if (readyToRun("Bolus2", 20) && activeTtMgdl() == null) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -2074,7 +2111,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeeded(122.5 /* 6.8 mmol */, 5)
                 sendSms("BolusTTfor10mins Acce")
                 addCarePortalNote("Bol2")
+                setAutomationState("Profile", "Bolus")
                 markRun("Bolus2")
+            }
+        }
+
+        // Standalone: clears Profile=Bolus (set by Bolus2/BolusGiven71 to disambiguate their own
+        // brief post-bolus 6.8mmol TT from the manually-set Activity TT) once enough time has
+        // passed since the last bolus. Without this, the marker would stick indefinitely and could
+        // block a genuine future Activity TT from ever triggering ActivityProf50%. 15 min chosen to
+        // safely exceed Bolus2's own duration under either reading of it (SMS text says "10mins",
+        // coded action is 5 min — see the mismatch noted on Bolus2 above).
+        if (checkAutomationState("Profile", "Bolus")) {
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            if (lastBolusMin > 15) {
+                setAutomationState("Profile", "C100")
             }
         }
 
@@ -3123,5 +3174,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU235
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU236
  */
