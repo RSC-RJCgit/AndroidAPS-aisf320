@@ -155,7 +155,8 @@ class BuiltInSearchables @Inject constructor(
                 items = listOf(
                     BooleanKey.MaintenanceEnableExportSettingsAutomation
                 )
-            )
+            ),
+            BooleanKey.MaintenanceExportAutoIsfCsvOnOpen
         ),
         icon = IcPluginMaintenance
     )

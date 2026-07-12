@@ -108,6 +108,9 @@ enum class BooleanKey(
 
     MaintenanceEnableFabric("enable_fabric2", true, R.string.pref_title_maintenance_enable_fabric, defaultedBySM = true, hideParentScreenIfHidden = true),
     MaintenanceEnableExportSettingsAutomation("enable_unattended_export", false, R.string.pref_title_maintenance_enable_export_automation, defaultedBySM = false),
+    MaintenanceExportAutoIsfCsvOnOpen(
+        "export_autoisf_csv_on_open", true, R.string.pref_title_maintenance_export_autoisf_csv, R.string.pref_summary_maintenance_export_autoisf_csv, defaultedBySM = false
+    ),
 
     AutotuneAutoSwitchProfile("autotune_auto", false, R.string.pref_title_autotune_auto_switch_profile, R.string.pref_summary_autotune_auto_switch_profile),
     AutotuneCategorizeUamAsBasal("categorize_uam_as_basal", false, R.string.pref_title_autotune_categorize_uam_as_basal, R.string.pref_summary_autotune_categorize_uam_as_basal),

@@ -15,6 +15,8 @@ import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.storage.Storage
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +49,7 @@ class AutoIsfHistoryViewModel @Inject constructor(
     private val fileListProvider: FileListProvider,
     private val storage: Storage,
     private val aapsLogger: AAPSLogger,
+    private val preferences: Preferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -84,8 +87,11 @@ class AutoIsfHistoryViewModel @Inject constructor(
 
             // Automatic CSV export on open, matching the source dialog's behavior — no separate
             // export button. Exported even when empty (header-only file) so the "nothing to show"
-            // case still leaves a record of when the table was opened.
-            exportCsv(records, apsResults, stepsCountList, isMmol, now)
+            // case still leaves a record of when the table was opened. Gated by
+            // BooleanKey.MaintenanceExportAutoIsfCsvOnOpen (Settings > Maintenance), default on.
+            if (preferences.get(BooleanKey.MaintenanceExportAutoIsfCsvOnOpen)) {
+                exportCsv(records, apsResults, stepsCountList, isMmol, now)
+            }
         }
     }
 

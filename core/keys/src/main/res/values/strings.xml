@@ -82,6 +82,8 @@
     <!-- Maintenance preferences -->
     <string name="pref_title_maintenance_enable_fabric">Enable Fabric crash reporting</string>
     <string name="pref_title_maintenance_enable_export_automation">Enable automated settings export</string>
+    <string name="pref_title_maintenance_export_autoisf_csv">Export AutoISF history as CSV on open</string>
+    <string name="pref_summary_maintenance_export_autoisf_csv">Automatically write a CSV file each time the AutoISF history table is opened</string>
 
     <!-- Autotune preferences -->
     <string name="pref_title_autotune_auto_switch_profile">Auto switch profile</string>
