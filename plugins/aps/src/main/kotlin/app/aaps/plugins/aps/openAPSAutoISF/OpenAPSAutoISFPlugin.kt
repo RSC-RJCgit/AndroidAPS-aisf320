@@ -1497,8 +1497,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- 50pc makes5.7: safety TT when on 50% profile and BGL dropping below 5.0 mmol ---
-        // Precondition: no TT active. Self-guarding: TT set so activeTtMgdl() != null next cycle.
-        if (profile_percentage == 50 && activeTtMgdl() == null) {
+        // Precondition: no TT active. Was purely self-guarding (relying on activeTtMgdl() != null
+        // next cycle), but the TT write can lag behind the next loop cycle's read, letting this
+        // re-fire within the same 5-min cycle before the guard takes effect. Added an explicit
+        // 10-min readyToRun() throttle on top of the self-guard to cover that race.
+        if (profile_percentage == 50 && activeTtMgdl() == null && readyToRun("50pcMakes5.7", 10)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             if (g < 90.1 && d <= -0.9) {   // < 5.0 mmol, delta <= -0.05 mmol
@@ -1506,6 +1509,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("50pc makes5.7: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("50pcTT")
                 aapsLogger.debug(LTag.APS, "50pc makes5.7: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)}")
+                markRun("50pcMakes5.7")
             }
         }
 
@@ -3174,5 +3178,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU242
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU243
  */
