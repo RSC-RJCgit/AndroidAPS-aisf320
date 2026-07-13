@@ -880,24 +880,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 
         // Code port of the "Test" automation (MJ=MJ4). Self-guarding: state change prevents re-fire.
-        if (checkAutomationState("MJ", "MJ4")) {
+        // 5-min floor throttle (see readyToRun() usage note near its declaration).
+        if (readyToRun("MJ4", 5) && checkAutomationState("MJ", "MJ4")) {
             addCarePortalNote("A1")
             setAutomationState("MJ", "NOMJremains")
+            markRun("MJ4")
         }
 
         // Code port of the "Test2" automation (MJ=MJ5): also switches to Current ProfileReal for 30 min.
-        if (checkAutomationState("MJ", "MJ5")) {
+        if (readyToRun("MJ5", 5) && checkAutomationState("MJ", "MJ5")) {
             addCarePortalNote("A1")
             switchProfileIfNeeded("Current ProfileReal", 30)
             setAutomationState("MJ", "NOMJremains")
+            markRun("MJ5")
         }
 
         // Code port of the "Test3" automation (MJ=MJ6): validates the state-check -> notification ->
-        // state-set mechanics, including the graph-announcement fix (addGraphAnnouncement). 1-min
-        // interval throttle via readyToRun/markRun, matching the original's "Min interval (min): 1".
+        // state-set mechanics, including the graph-announcement fix (addGraphAnnouncement). Original
+        // screenshot's "Min interval (min): 1" is below the 5-min floor now applied across all ported
+        // automations that lack their own interval, so this uses 5 rather than 1.
         // Self-guarding: the state-set action moves MJ away from MJ6, so it fires once per cycle
         // that reaches MJ6.
-        if (readyToRun("Test3", 1) && checkAutomationState("MJ", "MJ6")) {
+        if (readyToRun("Test3", 5) && checkAutomationState("MJ", "MJ6")) {
             uiInteraction.addNotification(id = 9002, text = "_____Test3", level = Notification.URGENT)
             addGraphAnnouncement("_____Test3")
             setAutomationState("MJ", "NOMJremains")
@@ -905,24 +909,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- MJ2 old: advances MJ state from "MJ active" → MJ2 at 02:10–03:10 AM ---
-        if (checkAutomationState("MJ", "MJ active") && isTimeBetween(2, 10, 3, 10)) {
+        if (readyToRun("MJ2old", 5) && checkAutomationState("MJ", "MJ active") && isTimeBetween(2, 10, 3, 10)) {
             sendSms("MJ2")
             setAutomationState("MJ", "MJ2")
             addCarePortalNote("MJ2")
             setAutomationState("MJstate", "MJon")
+            markRun("MJ2old")
         }
 
         // --- MJ3 old: advances MJ state from MJ2 → MJ3 at 01:05–02:05 AM ---
-        if (checkAutomationState("MJ", "MJ2") && isTimeBetween(1, 5, 2, 5)) {
+        if (readyToRun("MJ3old", 5) && checkAutomationState("MJ", "MJ2") && isTimeBetween(1, 5, 2, 5)) {
             sendSms("MJ3")
             setAutomationState("MJ", "MJ3")
             addCarePortalNote("MJ3")
             setAutomationState("MJstate", "MJon")
+            markRun("MJ3old")
         }
 
         // --- MJoff old: exits MJ cycle when MJ3 active ---
         // Block 1: 12:00–21:04 with BGL >= 10.5 mmol. Block 2: midnight 00:00–01:00.
-        if (checkAutomationState("MJ", "MJ3")) {
+        if (readyToRun("MJoff", 5) && checkAutomationState("MJ", "MJ3")) {
             val g = glucoseStatus.glucose
             val mjB1 = isTimeBetween(12, 0, 21, 4) && g >= 189.2   // 10.5 mmol
             val mjB2 = isTimeBetween(0, 0, 1, 0)
@@ -932,6 +938,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("MJ", "NOMJremains")
                 addCarePortalNote("MJoff-$mjBlock")
                 setAutomationState("MJstate", "MJoff")
+                markRun("MJoff")
             }
         }
 
@@ -939,7 +946,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Precondition guard: profile_percentage == 100. Once the 50% profile switch fires,
         // profile_percentage becomes 50 on the next loop cycle and the block stops running.
         // All 4 blocks also check Profile pct = 100 in the original; the outer guard handles that.
-        if (profile_percentage == 100) {
+        // 5-min floor throttle added on top of the precondition (see readyToRun() usage note).
+        if (profile_percentage == 100 && readyToRun("PrepareSet50", 5)) {
             val g   = glucoseStatus.glucose
             val d   = glucoseStatus.delta
             val sd  = glucoseStatus.shortAvgDelta
@@ -969,6 +977,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("Set50-$p50block")
                 aapsLogger.debug(LTag.APS, "prepare50 block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} steps30=$recentSteps30Minutes")
+                markRun("PrepareSet50")
             }
         }
 
@@ -1026,7 +1035,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- PP50.Off: replaces "PP50.Off CurrProfReal 70_0.70 0.35" automation ---
         // Exits the 50% prepare state: restores full profile, resets acce weight, clears LowBG=50recent.
         // Guard: LowBG=50recent state must be set; firing sets LowBG=NO50rec so it won't re-trigger.
-        if (checkAutomationState("LowBG", "50recent")) {
+        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("PP50Off", 5) && checkAutomationState("LowBG", "50recent")) {
             val g   = glucoseStatus.glucose
             val d   = glucoseStatus.delta
             val sd  = glucoseStatus.shortAvgDelta
@@ -1071,6 +1081,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("PP50.Off [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("50ff-$p50block")
                 aapsLogger.debug(LTag.APS, "PP50.Off block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} cannula=${String.format("%.1f", cannulaH)}h acce=$acceWeight")
+                markRun("PP50Off")
             }
         }
 
@@ -1078,7 +1089,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Primary guard: startTempTargetIfNeeded() no-ops when a TT is already active, so the
         // 7 condition blocks are evaluated every loop cycle but actions only fire once per TT period.
         // All glucose/delta thresholds in mg/dL; originals in mmol/L noted in comments.
+        // 5-min floor throttle added on top of the TT-existence self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("SkittlesHypoRisk", 5)) return@run
             val g   = glucoseStatus.glucose      // mg/dL
             val d   = glucoseStatus.delta        // mg/dL, 5-min
             val sd  = glucoseStatus.shortAvgDelta // mg/dL, 15-min avg
@@ -1122,25 +1135,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Skittles $block: hypo risk — TT 5.7 set")
                 addCarePortalNote("TT3-$block")
                 aapsLogger.debug(LTag.APS, "Skittles block $block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} pct=$profile_percentage")
+                markRun("SkittlesHypoRisk")
             }
         }
 
         // --- 50SetRecent: flags LowBG=50recent whenever profile drops to 50% while in NO50rec state ---
-        if (profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
+        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("50SetRecent", 5) && profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
             setAutomationState("LowBG", "50recent")
             sendSms("50%Recently")
             addCarePortalNote("50Rec")
+            markRun("50SetRecent")
         }
 
         // --- Not50%Recently: clears 50recent flag once profile is back at 100% and BGL rising ---
-        if (profile_percentage == 100 && checkAutomationState("LowBG", "50recent")
+        if (readyToRun("Not50Recently", 5) && profile_percentage == 100 && checkAutomationState("LowBG", "50recent")
             && glucoseStatus.delta >= 1.8 /* 0.1 mmol */) {
             setAutomationState("LowBG", "NO50rec")
             addCarePortalNote("No50")
+            markRun("Not50Recently")
         }
 
         // --- Extra50%: deepens hypo protection (acce→0.07, iobTH→50%) when BGL falling on 100% profile ---
-        if (profile_percentage == 100 && checkAutomationState("LowBG", "NO50rec")) {
+        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("Extra50", 5) && profile_percentage == 100 && checkAutomationState("LowBG", "NO50rec")) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -1160,12 +1178,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("LowBG", "50recent")
                 sendSms("Extra50% [b$xBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("X50-$xBlock")
+                markRun("Extra50")
             }
         }
 
         // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
         // Fires when NOT on "Current Profile" (i.e. on a named high/steroid profile), Steroids Off, no TT.
+        // 5-min floor throttle added (see readyToRun() usage note).
         run {
+            if (!readyToRun("OffHighProf", 5)) return@run
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
@@ -1184,6 +1205,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("OffP-$ohBlock")
+                markRun("OffHighProf")
             }
         }
 
@@ -1194,7 +1216,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // identifies it elsewhere, e.g. TriggerPumpBatteryLevelTest).
         // No cannula-age gate — that threshold (80h) was pod-specific and doesn't generalize to tubed
         // pumps with independent infusion-set lifespans; critical phone battery should react regardless.
-        if (profile_percentage == 100
+        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("Battery1pc", 5) && profile_percentage == 100
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
             && receiverStatusStore.batteryLevel <= 1
             && activePlugin.activePump !is VirtualPump) {
@@ -1202,22 +1225,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
             sendSms("LowBattery")
+            markRun("Battery1pc")
         }
 
         // --- BatteryOver1%: when battery recovers above 1%, restore Current ProfileReal ---
         // Fires when on 50% (Profile50 name or pct=50) and state Profile=Batt1%.
-        if (checkAutomationState("Profile", "Batt1%")
+        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("BatteryOver1pc", 5) && checkAutomationState("Profile", "Batt1%")
             && (profile_percentage == 50 || profileFunction.getProfileName() == "Current Profile50")
             && receiverStatusStore.batteryLevel > 1) {
             switchProfileIfNeeded("Current ProfileReal", 0)
             sendSms("AllOK Batt")
             setAutomationState("Profile", "AllOK")
             addCarePortalNote("AOK")
+            markRun("BatteryOver1pc")
         }
 
         // --- HighOldPod: sets a brief TT 5.0 + 110% profile when cannula is stale (>=60h) or fresh (<=6h) ---
         // Preconditions: no TT, profile=100%. Guards: MJ=NOMJremains state + bolus >=90 min ago.
-        if (profile_percentage == 100 && activeTtMgdl() == null
+        // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        if (readyToRun("HighOldPod", 5) && profile_percentage == 100 && activeTtMgdl() == null
             && checkAutomationState("MJ", "NOMJremains")) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
@@ -1236,11 +1263,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
+                markRun("HighOldPod")
             }
         }
 
         // --- Shower12: drops iobTH to 12% during quiet morning rise (no steps, no COB, long post-bolus) ---
-        if (profile_percentage > 50 && iobThresholdPercent > 12
+        // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        if (readyToRun("Shower12", 5) && profile_percentage > 50 && iobThresholdPercent > 12
             && checkAutomationState("Steroids", "Steroids Off")) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
@@ -1253,12 +1282,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (tt == null || tt <= 127.9 /* 7.1 mmol */)) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
                 sendSms("Shower12: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=${iobThresholdPercent}")
+                markRun("Shower12")
             }
         }
 
         // --- HighNight00AM: overnight high BGL (>=9.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
         // Fires 01:00–05:45 when glucose elevated and gently rising/flat, iobTH<=50 OR old cannula + MJ state.
-        if (activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
+        // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        if (readyToRun("HighNight00AM", 5) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
             val g       = glucoseStatus.glucose
             val d       = glucoseStatus.delta
             val sd      = glucoseStatus.shortAvgDelta
@@ -1277,6 +1308,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("Profile", "C100")
                 sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("HOff")
+                markRun("HighNight00AM")
             }
         }
 
@@ -1288,7 +1320,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 5-minute post-bolus TT can't be misread as an Activity session and trigger a 180-minute
         // 50% profile drop. Note/SMS text corrected to match the screenshot exactly ("Ac50" /
         // "ActivityProf50% Acce", not the old dynamic g=-value SMS text).
-        if (profile_percentage == 100 && !checkAutomationState("Profile", "Bolus")) {
+        // 5-min floor throttle added on top of the precondition (see readyToRun() usage note).
+        if (readyToRun("ActivityProf50", 5) && profile_percentage == 100 && !checkAutomationState("Profile", "Bolus")) {
             val tt = activeTtMgdl()
             if (tt != null && fuzzyEquals(tt, mmolToMgdl(6.8))
                 && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ && glucoseStatus.delta <= 1.8 /* 0.1 mmol */) {
@@ -1297,6 +1330,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 applyCurrentProfileAt100()
                 startProfilePercentFor(50, 180)
                 addCarePortalNote("Ac50")
+                markRun("ActivityProf50")
             }
         }
 
@@ -1370,7 +1404,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Primary guard: activeTtMgdl() must be ~5.7 mmol/L. Once TT is cancelled the guard fails,
         // so these conditions self-prevent re-firing without needing readyToRun() throttle.
         // All glucose/delta thresholds in mg/dL; originals in mmol/L in comments.
+        // 5-min floor throttle added on top of the TT-existence self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("TT57Reversal", 5)) return@run
             val ttMgdl = activeTtMgdl() ?: return@run
             // Guard: only act on the 5.7 mmol TT. Tolerance is 0.1mmol, which intentionally reaches
             // exactly to 5.8mmol (5.7 and 5.8 are 0.1mmol apart) — CarbsStopTT5.7's own cb3 branch
@@ -1428,6 +1464,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("TT 5.7 ended [$which]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("TToff-$which")
                 aapsLogger.debug(LTag.APS, "TT reversal [$which]: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} sd=${String.format("%.2f", sd / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()}")
+                markRun("TT57Reversal")
             } else {
                 // TT5.8New1/2/3's original action lists were just "Send SMS" + "Stop temp target" —
                 // no acce/profile/state reset, no CarePortal note. Kept minimal to match exactly.
@@ -1435,6 +1472,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (whichNew != null) {
                     cancelCurrentTempTarget()
                     sendSms(whichNew)
+                    markRun("TT57Reversal")
                 }
             }
         }
@@ -1444,7 +1482,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // in this file creates a TT in this range; it's set by hand via the GUI. Self-guarding like
         // the 5.7 TT block above: cancelling the TT fails the range guard next cycle. Original action
         // lists were just "Send SMS" + "Stop temp target" — kept minimal to match exactly.
+        // 5-min floor throttle added on top of the TT-existence self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("ActivityTTReversal", 5)) return@run
             val ttMgdl = activeTtMgdl() ?: return@run
             if (ttMgdl < mmolToMgdl(6.5) || ttMgdl > mmolToMgdl(7.6)) return@run
 
@@ -1462,9 +1502,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (new1) {
                 cancelCurrentTempTarget()
                 sendSms("TT6.0New")
+                markRun("ActivityTTReversal")
             } else if (new2) {
                 cancelCurrentTempTarget()
                 sendSms("TT6.0New2")
+                markRun("ActivityTTReversal")
             }
         }
 
@@ -1477,7 +1519,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (0.3mmol) to compensate, vs a higher floor (7.0mmol) only needing a gentler rise (0.2mmol)
         // — with no extra top-level glucose gate stacked on top of it. Original action list was just
         // "Send SMS" + "Stop temp target".
+        // 5-min floor throttle added on top of the TT-existence self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("T80Off3ok", 5)) return@run
             val ttMgdl = activeTtMgdl() ?: return@run
             // Guard: only act on the 8.0 mmol "hyp" TT. Tolerance is the native engine's own
             // validated 0.001 mg/dL constant (Comparator.check's default), not 0.001 mmol.
@@ -1493,6 +1537,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stepsOk && riseOk) {
                 cancelCurrentTempTarget()
                 sendSms("TT8.0lf")
+                markRun("T80Off3ok")
             }
         }
 
@@ -1515,7 +1560,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- carbsStopTT1ok4.4: cancel very-low TT (<=4.4 mmol) when carbs active and rising ---
         // Self-guarding: cancels TT so tt<=79.3 is false next cycle.
+        // 5-min floor throttle added on top of the self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("CarbsStopTT1", 5)) return@run
             val tt = activeTtMgdl()
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
@@ -1532,12 +1579,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("carbsStopTT1: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
                 addCarePortalNote("Coff4")
                 aapsLogger.debug(LTag.APS, "carbsStopTT1: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
+                markRun("CarbsStopTT1")
             }
         }
 
         // --- CarbsStopTT5.7: cancel 5.7 mmol TT when carbs up or recent bolus and BGL stable/rising ---
         // Self-guarding: cancels TT so TT range checks fail next cycle.
+        // 5-min floor throttle added on top of the self-guard (see readyToRun() usage note).
         run {
+            if (!readyToRun("CarbsStopTT57", 5)) return@run
             val tt = activeTtMgdl()
             if (tt != null) {
                 val g  = glucoseStatus.glucose
@@ -1560,6 +1610,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("CarbsStopTT [b$cBlock]: g=${String.format("%.1f", g / 18.016)} tt=${String.format("%.1f", tt / 18.016)}")
                     addCarePortalNote("Coff2-$cBlock")
                     aapsLogger.debug(LTag.APS, "CarbsStopTT block $cBlock: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} cob=${cob.toInt()} iob=${String.format("%.2f", iob)} d=${String.format("%.2f", d / 18.016)}")
+                    markRun("CarbsStopTT57")
                 }
             }
         }
@@ -1568,7 +1619,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Replaces "Usual2forTH70 CurrProfReal0.35" automation.
         // Guard: profile at 100% (not in 50% state), iobTH still reduced (<70), no TT, BGL >= 5.5mmol.
         // Self-guarding: sets iobTH=70 so condition iobThresholdPercent<70 fails next cycle.
-        if (profile_percentage == 100
+        // 5-min floor throttle added on top of the self-guard (see readyToRun() usage note).
+        if (readyToRun("Usual2forTH", 5)
+            && profile_percentage == 100
             && iobThresholdPercent < 70
             && activeTtMgdl() == null
             && glucoseStatus.glucose >= 99.1     // 5.5 mmol
@@ -1599,11 +1652,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("UsuIP-$u2block")
                 aapsLogger.debug(LTag.APS, "Usual2forTH block $u2block: g=${String.format("%.1f", g / 18.016)}mmol iobTH=$iobTH steps60=$steps60 steps180=$steps180 cob=${cob.toInt()} sd=${String.format("%.2f", sd / 18.016)}")
+                markRun("Usual2forTH")
             }
         }
 
         // --- CarbsTHoff: lowers iobTH to 50% when post-carb BGL is falling or mid-range anomaly ---
-        if (profile_percentage == 100 && activeTtMgdl() == null
+        // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        if (readyToRun("CarbsTHoff", 5) && profile_percentage == 100 && activeTtMgdl() == null
             && checkAutomationState("Steroids", "Steroids Off")) {
             val g   = glucoseStatus.glucose
             val d   = glucoseStatus.delta
@@ -1629,6 +1684,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("COff1-$ctBlock")
+                markRun("CarbsTHoff")
             }
         }
 
@@ -3178,5 +3234,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU247
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU248
  */
