@@ -203,12 +203,14 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch selected tag from upstream
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git remote add upstream https://github.com/nightscout/AndroidAPS.git || true
           git fetch upstream refs/tags/${{ github.event.inputs.tagName }}:refs/tags/${{ github.event.inputs.tagName }}
           echo "✅ Tag ${{ github.event.inputs.tagName }} fetched from upstream."
 
       - name: Determine JVM version from tag
+        if: github.event_name == 'workflow_dispatch'
         run: |
           # jdk-map.json must be read before switching to the upstream tag,
           # as the upstream tag does not contain this file.
@@ -223,14 +225,26 @@ jobs:
           echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
           echo "ℹ️ Tag $TAG → JDK $JAVA_VERSION (from jdk-map.json)"
 
+      - name: Determine JVM version for push build
+        if: github.event_name == 'push'
+        run: |
+          # No tag on a push build — just use jdk-map.json's default (this branch's own JDK).
+          JAVA_VERSION=$(jq -r '.default' .github/jdk-map.json)
+          echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
+          echo "ℹ️ Push build → JDK $JAVA_VERSION (jdk-map.json default)"
+
       - name: Switch to selected tag
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git checkout refs/tags/${{ github.event.inputs.tagName }}
           echo "✅ Checked out tag ${{ github.event.inputs.tagName }}"
 
       - name: Set BUILD_VARIANT
         run: |
+          # workflow_dispatch supplies buildVariant directly; a push build has no such input,
+          # so it defaults to fullRelease (matches this job's normal CI-validation build).
           BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
+          if [[ -z "$BUILD_VARIANT" ]]; then BUILD_VARIANT="fullRelease"; fi
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
