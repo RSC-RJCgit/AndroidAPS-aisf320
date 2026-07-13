@@ -1650,7 +1650,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "SENSOR at 14.9 days": narrow ~0.1h match window, gated on cannula age <=80h.
         // Live-pump-only, matching the original's note.
-        if (readyToRun("SensorS1hr", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("SensorS1hr", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (sensorH >= 359.0 && sensorH <= 359.1 && cannulaH <= 80.0) {
@@ -1663,7 +1663,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "SENSOR at 14 days 22 hours due": narrow ~0.1h match window, gated on cannula
         // age <=80h. Live-pump-only, matching the original's note.
-        if (readyToRun("SensorS2hr", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("SensorS2hr", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (sensorH >= 357.9 && sensorH <= 358.0 && cannulaH <= 80.0) {
@@ -1677,7 +1677,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "POD 78 hours": narrow ~0.1h match window during 08:00 AM-11:59 PM, permanently
         // switches to Current ProfileReal and flags Profile state PP130. Live-pump-only, matching the
         // original's note.
-        if (readyToRun("Pod2", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("Pod2", 10) && activePlugin.activePump !is VirtualPump) {
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (cannulaH >= 78.0 && cannulaH <= 78.1 && isTimeBetween(8, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
@@ -1693,7 +1693,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // matching the original's note. (Original had a 2nd OR-branch, "Time BTW 12:03 AM & 12:03 AM",
         // which is a zero-width/dead window under isTimeBetween's semantics — dropped per instruction,
         // this now matches Pod2's single-AND-group structure.)
-        if (readyToRun("Pod1", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("Pod1", 10) && activePlugin.activePump !is VirtualPump) {
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (cannulaH >= 79.0 && cannulaH <= 79.1 && isTimeBetween(7, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9007, text = "POD 79 h", level = Notification.URGENT)
@@ -1918,7 +1918,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "Exercise limit Acce": alerts when a fast rise coincides with high recent step
         // activity. No live-pump gate: the original's Note field was empty.
-        if (readyToRun("ExerciseLimitAcce", 5)) {
+        if (readyToRun("ExerciseLimitAcce", 30)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             if (g >= 126.1 /* 7.0 mmol */ && d >= 7.2 /* 0.4 mmol */ && recentSteps60Minutes >= 1000) {
@@ -2078,7 +2078,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // day while the pod is still within its normal wear window. Mirrors TriggerPumpLastConnection
         // (activePump.lastDataTime). Live-pump-only: "last connection to pump" is meaningless on the
         // Virtual Pump.
-        if (readyToRun("ConnectPod", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("ConnectPod", 20) && activePlugin.activePump !is VirtualPump) {
             val lastConnectionMinAgo = (dateUtil.now() - activePlugin.activePump.lastDataTime) / 60_000
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             if (lastConnectionMinAgo >= 20
@@ -3178,5 +3178,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU243
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU244
  */
