@@ -157,11 +157,11 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
-                    Cell(sc?.steps5min?.toString()   ?: "--",       colorHeader),
-                    Cell(sc?.steps15min?.toString()  ?: "--",       colorHeader),
-                    Cell(sc?.steps30min?.toString()  ?: "--",       colorHeader),
-                    Cell(sc?.steps60min?.toString()  ?: "--",       colorHeader),
-                    Cell(sc?.steps180min?.toString() ?: "--",       colorHeader)
+                    Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString()     ?: "--", colorHeader),
+                    Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString()   ?: "--", colorHeader),
+                    Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString()   ?: "--", colorHeader),
+                    Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps60min, steps60Regex)?.toString()   ?: "--", colorHeader),
+                    Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps180min, steps180Regex)?.toString() ?: "--", colorHeader)
                 )
             )
         }
@@ -194,6 +194,32 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return Math.round(factor * 10).toString()
     }
+
+    // Step counts get written into DetermineBasalAutoISF.kt's reason text as "StepsXM: <value> ;"
+    // (also accepts "stepsXmin is <value>", matching a second phrasing observed in synced data).
+    // On a client build (aapsclient/aapsclient2), NS device-status sync only creates local AIV +
+    // APSResult records — it never populates the local StepsCount table — so the on-device step
+    // columns are otherwise always empty there even though the master's real step data reached the
+    // client fine, just embedded in this text rather than a structured field.
+    private fun stepsRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
+    private val steps5Regex = stepsRegex("[Ss]teps5")
+    private val steps15Regex = stepsRegex("[Ss]teps15")
+    private val steps30Regex = stepsRegex("[Ss]teps30")
+    private val steps60Regex = stepsRegex("[Ss]teps60")
+    private val steps180Regex = stepsRegex("[Ss]teps180")
+
+    /** Step count parsed from the nearest APSResult's reason text within 15 min, or null if no
+     *  match/no result close enough. Used as a fallback when the local StepsCount lookup is empty. */
+    private fun stepsFromReason(timestamp: Long, apsResults: List<APSResult>, regex: Regex): Int? {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return null
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return null
+        val m = regex.find(nearest.reason) ?: return null
+        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+    }
+
+    /** SC's stepXmin if a local record is close enough, else the reason-text fallback. */
+    private fun stepsValue(sc: SC?, timestamp: Long, apsResults: List<APSResult>, scField: (SC) -> Int, regex: Regex): Int? =
+        sc?.let(scField) ?: stepsFromReason(timestamp, apsResults, regex)
 
     /** Show "--" for neutral (1.0) adjustment values, matching Trio display. */
     private fun adjStr(v: Double): String = if (v == 1.0) "--" else df2.format(v)
@@ -270,11 +296,11 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             df1.format(r.shortAvgDelta / MGDL_TO_MMOL),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
-            sc?.steps5min?.toString() ?: "",
-            sc?.steps15min?.toString() ?: "",
-            sc?.steps30min?.toString() ?: "",
-            sc?.steps60min?.toString() ?: "",
-            sc?.steps180min?.toString() ?: ""
+            stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString() ?: "",
+            stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString() ?: "",
+            stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString() ?: "",
+            stepsValue(sc, r.timestamp, apsResults, SC::steps60min, steps60Regex)?.toString() ?: "",
+            stepsValue(sc, r.timestamp, apsResults, SC::steps180min, steps180Regex)?.toString() ?: ""
         )
     }
 
