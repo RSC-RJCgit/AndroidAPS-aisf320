@@ -324,7 +324,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU237")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU240")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -694,7 +694,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD2AU237 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD2AU240 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1425,7 +1425,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
-// =====================================================
+/*/ =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD
 // =====================================================
                     } else if ((Delta >= 0.3 * 18 &&
@@ -1439,7 +1439,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.8
                         rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
-// =====================================================
+*// =====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // =====================================================
                     } else if (((nowHour >= 6) && (nowHour <= 8)) &&
@@ -1539,5 +1539,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD2AU237
+DetermineBasalAutoISF.kt320TDD2AU240
 */
