@@ -1014,7 +1014,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                     sendSms("GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                     uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
-                    addGraphAnnouncement("______Gentle5")
+                    addGraphAnnouncement("________________Gentle5")
                     setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
@@ -2148,7 +2148,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.10)
                 sendSms("AlarmHypo")
                 uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
-                addGraphAnnouncement("H4")
+                addGraphAnnouncement("_____H4")
                 setAutomationState("BGLstate", "BGLlastLOW")
                 setAutomationState("LowBG", "50recent")
                 markRun("AlarmHypo1")
@@ -2169,7 +2169,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.10)
                 sendSms("AlarmHypo")
                 uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
-                addGraphAnnouncement("A4")
+                addGraphAnnouncement("__________A4")
                 setAutomationState("LowBG", "50recent")
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("H4")
@@ -3174,5 +3174,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU241
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU242
  */
