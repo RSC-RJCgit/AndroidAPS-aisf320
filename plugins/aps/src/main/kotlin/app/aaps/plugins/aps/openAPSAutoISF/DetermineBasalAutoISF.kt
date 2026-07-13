@@ -1439,7 +1439,8 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.8
                         rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
-*// =====================================================
+*/
+//=====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // =====================================================
                     } else if (((nowHour >= 6) && (nowHour <= 8)) &&
