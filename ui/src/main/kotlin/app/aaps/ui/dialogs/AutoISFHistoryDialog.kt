@@ -9,7 +9,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TableRow
 import android.widget.TextView
-import android.widget.Toast
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.APSResult
@@ -19,6 +18,12 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.ui.databinding.DialogAutoisfHistoryBinding
 import dagger.android.support.DaggerDialogFragment
 import java.io.File
@@ -37,6 +42,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var fileListProvider: FileListProvider
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var preferences: Preferences
 
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
@@ -239,41 +245,101 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         table.addView(row)
     }
 
+    private val exportHeaders = listOf(
+        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "iobTH",
+        "acceBG", "Delta", "SDelta", "Req", "TBR", "S5", "S15", "S30", "S60", "S180"
+    )
+
+    /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
+     *  and the plain-text table export so the two stay in sync automatically. */
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>): List<String> {
+        val sc = stepsAt(r.timestamp, stepsCountList)
+        return listOf(
+            dateUtil.timeString(r.timestamp),
+            df1.format(r.glucose / MGDL_TO_MMOL),
+            df2.format(r.finalIsf),
+            df2.format(r.acceIsf),
+            df2.format(r.bgIsf),
+            df2.format(r.ppIsf),
+            df2.format(r.duraIsf),
+            df2.format(r.smbDelivered),
+            exactFastRiseStr(r.timestamp, apsResults),
+            df2.format(r.iobThEffective),
+            df2.format(r.bgAcceleration),
+            df1.format(r.delta / MGDL_TO_MMOL),
+            df1.format(r.shortAvgDelta / MGDL_TO_MMOL),
+            df2.format(r.insulinReq),
+            df2.format(r.tbrRate),
+            sc?.steps5min?.toString() ?: "",
+            sc?.steps15min?.toString() ?: "",
+            sc?.steps30min?.toString() ?: "",
+            sc?.steps60min?.toString() ?: "",
+            sc?.steps180min?.toString() ?: ""
+        )
+    }
+
     private fun exportToCsv(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, now: Long) {
-        val ctx = context ?: return
-        val act = activity
+        context ?: return
         Executors.newSingleThreadExecutor().execute {
             try {
                 fileListProvider.ensureAapsLogsDirExists()
                 val dir = fileListProvider.aapsLogsPath
-                val fileName = "AutoISF_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now)) + ".csv"
-                val file = File(dir, fileName)
-                file.bufferedWriter().use { writer ->
-                    writer.write("Time,BGL,Final,acce,bg,pp,dura,SMB,FastRise,iobTH,acceBG,Delta,SDelta,Req,TBR,S5,S15,S30,S60,S180\n")
-                    for (r in records) {
-                        val sc = stepsAt(r.timestamp, stepsCountList)
-                        writer.write(
-                            "${dateUtil.timeString(r.timestamp)}," +
-                                "${df1.format(r.glucose / MGDL_TO_MMOL)},${df2.format(r.finalIsf)}," +
-                                "${df2.format(r.acceIsf)},${df2.format(r.bgIsf)}," +
-                                "${df2.format(r.ppIsf)},${df2.format(r.duraIsf)}," +
-                                "${df2.format(r.smbDelivered)},${exactFastRiseStr(r.timestamp, apsResults)}," +
-                                "${df2.format(r.iobThEffective)}," +
-                                "${df2.format(r.bgAcceleration)}," +
-                                "${df1.format(r.delta / MGDL_TO_MMOL)},${df1.format(r.shortAvgDelta / MGDL_TO_MMOL)}," +
-                                "${df2.format(r.insulinReq)},${df2.format(r.tbrRate)}," +
-                                "${sc?.steps5min ?: ""},${sc?.steps15min ?: ""},${sc?.steps30min ?: ""}," +
-                                "${sc?.steps60min ?: ""},${sc?.steps180min ?: ""}\n"
-                        )
-                    }
+                val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
+                val rows = records.map { exportFields(it, apsResults, stepsCountList) }
+
+                val csvFile = File(dir, "AutoISF_$stamp.csv")
+                csvFile.bufferedWriter().use { writer ->
+                    writer.write(exportHeaders.joinToString(",") + "\n")
+                    for (row in rows) writer.write(row.joinToString(",") + "\n")
                 }
-                aapsLogger.debug(LTag.UI, "AutoISF history exported to ${file.absolutePath}")
-                act?.runOnUiThread {
-                    Toast.makeText(ctx, "Exported: $fileName", Toast.LENGTH_LONG).show()
-                }
+                aapsLogger.debug(LTag.UI, "AutoISF history exported to ${csvFile.absolutePath}")
+
+                exportTableAsText(dir, stamp, rows)
+                exportSettingsText(dir, stamp)
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
             }
+        }
+    }
+
+    /** Same table data as the CSV, in a human-readable, column-aligned plain-text file — for
+     *  viewing directly on a phone/PC without needing a spreadsheet app. */
+    private fun exportTableAsText(dir: File, stamp: String, rows: List<List<String>>) {
+        try {
+            val file = File(dir, "AutoISF_$stamp.txt")
+            val widths = exportHeaders.indices.map { i ->
+                maxOf(exportHeaders[i].length, rows.maxOfOrNull { it[i].length } ?: 0)
+            }
+            file.bufferedWriter().use { writer ->
+                writer.write(exportHeaders.mapIndexed { i, h -> h.padEnd(widths[i]) }.joinToString("  ").trimEnd() + "\n")
+                for (row in rows) {
+                    writer.write(row.mapIndexed { i, v -> v.padEnd(widths[i]) }.joinToString("  ").trimEnd() + "\n")
+                }
+            }
+            aapsLogger.debug(LTag.UI, "AutoISF history text export to ${file.absolutePath}")
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "AutoISF text export failed", e)
+        }
+    }
+
+    /** Plain-text dump of just the AutoISF-specific preference values (not the full app settings
+     *  list), sorted by name, written alongside the CSV so a reviewer knows what AutoISF settings
+     *  were in effect for that export. */
+    private fun exportSettingsText(dir: File, stamp: String) {
+        try {
+            val file = File(dir, "AutoISF_settings_$stamp.txt")
+            val lines = mutableListOf<String>()
+            BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            file.bufferedWriter().use { writer ->
+                for (line in lines.sorted()) writer.write("$line\n")
+            }
+            aapsLogger.debug(LTag.UI, "AutoISF settings exported to ${file.absolutePath}")
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "AutoISF settings export failed", e)
         }
     }
 
