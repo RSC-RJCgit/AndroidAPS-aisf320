@@ -5,6 +5,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.SC
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
@@ -13,6 +14,7 @@ import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
@@ -106,7 +108,17 @@ class PrepareBgDataWorker(
         val aapsDelta = aapsOneMinuteDelta(data.overviewData.bgReadingsArray)
         val libreDelta = libreOneMinuteDelta(data.overviewData.bgReadingsArray)
         // Fixed 2h lookback independent of the graph's own display range, so Step30max always has its full window.
-        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(toTime - T.hours(2).msecs(), toTime)
+        val stepsWindowFrom = toTime - T.hours(2).msecs()
+        val rawStepsCountList = persistenceLayer.getStepsCountFromTimeToTime(stepsWindowFrom, toTime)
+        // On a client build (aapsclient/aapsclient2), NS device-status sync only creates local AIV +
+        // APSResult records — it never populates the local StepsCount table — so stepsCountList is
+        // otherwise always empty there even though the master's real step data reached the client fine,
+        // just embedded as text in APSResult.reason rather than a structured field. Same fallback as
+        // AutoISFHistoryDialog.kt's stepsValue()/stepsFromReason(), reconstructed per-result here since
+        // this needs a max-over-window rather than a single nearest-timestamp lookup.
+        val stepsCountList = rawStepsCountList.ifEmpty {
+            stepsFromReason(persistenceLayer.getApsResults(stepsWindowFrom, toTime))
+        }
         val latestSteps = stepsCountList.maxByOrNull { it.timestamp }
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
@@ -175,4 +187,36 @@ class PrepareBgDataWorker(
     // deltaMgdl -> signed mmol string, 2 decimal places (e.g. "+0.34", "-0.11").
     private fun formatMmolDelta(deltaMgdl: Double): String =
         String.format(Locale.US, "%+.2f", profileUtil.fromMgdlToUnits(deltaMgdl))
+
+    // Step counts get written into DetermineBasalAutoISF.kt's reason text as "StepsXM: <value> ;"
+    // (also accepts "stepsXmin is <value>", matching a second phrasing observed in synced data).
+    private fun stepsFieldRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
+    private val steps5Regex = stepsFieldRegex("[Ss]teps5")
+    private val steps15Regex = stepsFieldRegex("[Ss]teps15")
+    private val steps30Regex = stepsFieldRegex("[Ss]teps30")
+    private val steps60Regex = stepsFieldRegex("[Ss]teps60")
+    private val steps180Regex = stepsFieldRegex("[Ss]teps180")
+
+    private fun stepsField(reason: String, regex: Regex): Int? {
+        val m = regex.find(reason) ?: return null
+        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+    }
+
+    // Synthetic StepsCount records reconstructed from each APSResult's reason text, one per result,
+    // used only when the local StepsCount table is empty (see stepsCountList above).
+    private fun stepsFromReason(apsResults: List<APSResult>): List<SC> =
+        apsResults.mapNotNull { r ->
+            val steps5min = stepsField(r.reason, steps5Regex) ?: return@mapNotNull null
+            SC(
+                duration = 0,
+                timestamp = r.date,
+                steps5min = steps5min,
+                steps10min = 0,
+                steps15min = stepsField(r.reason, steps15Regex) ?: 0,
+                steps30min = stepsField(r.reason, steps30Regex) ?: 0,
+                steps60min = stepsField(r.reason, steps60Regex) ?: 0,
+                steps180min = stepsField(r.reason, steps180Regex) ?: 0,
+                device = "reason-text"
+            )
+        }
 }
