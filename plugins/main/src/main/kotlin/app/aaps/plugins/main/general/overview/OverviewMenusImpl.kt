@@ -180,7 +180,9 @@ class OverviewMenusImpl @Inject constructor(
             m == CharTypeData.PP_ISF.ordinal    -> masterAutoIsf
             m == CharTypeData.DUR_ISF.ordinal   -> masterAutoIsf
             m == CharTypeData.HR.ordinal        -> !config.AAPSCLIENT
-            m == CharTypeData.STEPS.ordinal     -> !config.AAPSCLIENT
+            // Steps used to be unconditionally hidden on client builds (no local StepsCount sync),
+            // but PrepareBgDataWorker.kt/PrepareTreatmentsDataWorker.kt now fall back to parsing step
+            // counts out of the synced APSResult reason text, so the series has real data there too.
             else                                -> true
         }
         return isSelectable
