@@ -56,6 +56,17 @@ on:
           - pumpcontrolRelease
           - pumpcontrolDebug
 
+  push:
+    branches:
+      - '3.4.0.0+aisf3.2.0'
+      - '**aisf3.2.0'
+      - 'tdd-sensitivity-autosens-off'
+      - 'test-missed-bg-sms*'
+      - '**RJC**'
+      - '**'
+    paths-ignore:
+      - '.github/workflows/**'
+
 jobs:
   build:
     name: Build AAPS
