@@ -103,16 +103,20 @@ class ConfigBuilderFragment : DaggerFragment() {
                 activity = requireActivity(),
                 parent = binding.categories
             )
+        // BGSOURCE (incl. XdripSourcePlugin's Libre calibration/smoothing settings) is available on
+        // aapsclient/aapsclient2 too — BooleanKey.AapsClientXdripSource already assumes a client can
+        // receive xDrip data directly, but without this there was no UI path to ever select/enable
+        // a BG source plugin on those flavors, so its settings could never be reached.
+        configBuilder.createViewsForPlugins(
+            title = R.string.configbuilder_bgsource,
+            description = R.string.configbuilder_bgsource_description,
+            pluginType = PluginType.BGSOURCE,
+            plugins = activePlugin.getSpecificPluginsVisibleInList(PluginType.BGSOURCE),
+            pluginViewHolders = pluginViewHolders,
+            activity = requireActivity(),
+            parent = binding.categories
+        )
         if (!config.AAPSCLIENT) {
-            configBuilder.createViewsForPlugins(
-                title = R.string.configbuilder_bgsource,
-                description = R.string.configbuilder_bgsource_description,
-                pluginType = PluginType.BGSOURCE,
-                plugins = activePlugin.getSpecificPluginsVisibleInList(PluginType.BGSOURCE),
-                pluginViewHolders = pluginViewHolders,
-                activity = requireActivity(),
-                parent = binding.categories
-            )
             configBuilder.createViewsForPlugins(
                 title = R.string.configbuilder_smoothing,
                 description = R.string.configbuilder_smoothing_description,
