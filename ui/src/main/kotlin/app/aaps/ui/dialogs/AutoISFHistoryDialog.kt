@@ -104,10 +104,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("BG", colorGlucose, bold = true),
                 Cell("Final Ratio", colorFinalRatio, bold = true),
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
-                Cell("SMB", colorInsulin, span = 2, bold = true),
+                Cell("SMB", colorInsulin, span = 3, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("BG", colorGlucose, span = 3, bold = true),
-                Cell("Insulin", colorInsulin, span = 2, bold = true),
+                Cell("Insulin", colorInsulin, span = 3, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true)
             )
         )
@@ -124,12 +124,14 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("dura",   colorDuraIsf, bold = true),
                 Cell("SMB",    colorInsulin, bold = true),
                 Cell("FR",     colorInsulin, bold = true),
+                Cell("Ratio",  colorInsulin, bold = true),
                 Cell("iobTH",  colorHeader, bold = true),
                 Cell("acce",   colorGlucose, bold = true),
                 Cell("Δ",      colorGlucose, bold = true),
                 Cell("SΔ",     colorGlucose, bold = true),
                 Cell("Req",    colorInsulin, bold = true),
                 Cell("TBR",    colorInsulin, bold = true),
+                Cell("IOB",    colorInsulin, bold = true),
                 Cell("S5",     colorHeader, bold = true),
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),
@@ -151,12 +153,14 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(adjStr(r.duraIsf),                         colorDuraIsf),
                     Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
                     Cell(exactFastRiseStr(r.timestamp, apsResults), colorInsulin),
+                    Cell(df2.format(r.smbDeliveryRatio),            colorInsulin),
                     Cell(df2.format(r.iobThEffective),              colorHeader),
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df1.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df1.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
+                    Cell(insulinStr(r.iob),                         colorInsulin),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString()     ?: "--", colorHeader),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString()   ?: "--", colorHeader),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString()   ?: "--", colorHeader),
@@ -272,8 +276,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     }
 
     private val exportHeaders = listOf(
-        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "iobTH",
-        "acceBG", "Delta", "SDelta", "Req", "TBR", "S5", "S15", "S30", "S60", "S180"
+        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "iobTH",
+        "acceBG", "Delta", "SDelta", "Req", "TBR", "IOB", "S5", "S15", "S30", "S60", "S180"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -290,12 +294,14 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             df2.format(r.duraIsf),
             df2.format(r.smbDelivered),
             exactFastRiseStr(r.timestamp, apsResults),
+            df2.format(r.smbDeliveryRatio),
             df2.format(r.iobThEffective),
             df2.format(r.bgAcceleration),
             df1.format(r.delta / MGDL_TO_MMOL),
             df1.format(r.shortAvgDelta / MGDL_TO_MMOL),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
+            df2.format(r.iob),
             stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString() ?: "",

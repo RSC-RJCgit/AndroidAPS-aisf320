@@ -26,6 +26,8 @@ fun AutoIsfValues.fromDb(): AIV =
         delta = this.delta,
         shortAvgDelta = this.shortAvgDelta,
         bgAcceleration = this.bgAcceleration,
+        smbDeliveryRatio = this.smbDeliveryRatio,
+        iob = this.iob,
         ids = this.interfaceIDs.fromDb()
     )
 
@@ -52,5 +54,7 @@ fun AIV.toDb(): AutoIsfValues =
         delta = this.delta,
         shortAvgDelta = this.shortAvgDelta,
         bgAcceleration = this.bgAcceleration,
+        smbDeliveryRatio = this.smbDeliveryRatio,
+        iob = this.iob,
         interfaceIDs_backing = this.ids.toDb()
     )

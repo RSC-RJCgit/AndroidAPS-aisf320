@@ -22,6 +22,8 @@ data class AIV(
     var delta: Double = 0.0,
     var shortAvgDelta: Double = 0.0,
     var bgAcceleration: Double = 0.0,
+    var smbDeliveryRatio: Double = 0.0,
+    var iob: Double = 0.0,
     var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,
@@ -48,6 +50,8 @@ data class AIV(
                 tbrRate == other.tbrRate &&
                 smbDelivered == other.smbDelivered &&
                 bgAcceleration == other.bgAcceleration &&
+                smbDeliveryRatio == other.smbDeliveryRatio &&
+                iob == other.iob &&
                 isValid == other.isValid)
     }
 }

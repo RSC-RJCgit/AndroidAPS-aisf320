@@ -449,6 +449,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
     }
 
+    // Not yet called anywhere; ready for later conditions. Mirrors ActionSetSmbDeliveryRatio: same
+    // underlying preference key the smb_delivery_ratio getter above already reads.
+    private fun setSmbDeliveryRatio(ratio: Double) {
+        preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
+    }
+
     // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
     private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
 
@@ -2312,6 +2318,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         autoIsfValues.timestamp = now
+        autoIsfValues.smbDeliveryRatio = smb_delivery_ratio
+        autoIsfValues.iob = iobData.iob
         lastAPSResult?.let { result ->
             autoIsfValues.insulinReq = result.json()?.optDouble("insulinReq", 0.0) ?: 0.0
             autoIsfValues.tbrRate    = if (currentTemp.rate > 0.0 && currentTemp.duration > 0) currentTemp.rate else result.rate

@@ -117,6 +117,7 @@ class TranslatorImpl @Inject internal constructor(
         Action.ACCE_WEIGHT_SET                 -> rh.gs(R.string.uel_acce_weight_set)
         Action.PP_ISF_WEIGHT_SET               -> rh.gs(R.string.uel_pp_isf_weight_set)
         Action.DURA_ISF_WEIGHT_SET             -> rh.gs(R.string.uel_dura_isf_weight_set)
+        Action.SMB_DELIVERY_RATIO_SET          -> rh.gs(R.string.uel_smb_delivery_ratio_set)
         Action.UNKNOWN                         -> rh.gs(R.string.unknown)
     }
 

@@ -125,6 +125,7 @@ data class UserEntry(
         ACCE_WEIGHT_SET,
         PP_ISF_WEIGHT_SET,
         DURA_ISF_WEIGHT_SET,
+        SMB_DELIVERY_RATIO_SET,
         UNKNOWN
         ;
     }
