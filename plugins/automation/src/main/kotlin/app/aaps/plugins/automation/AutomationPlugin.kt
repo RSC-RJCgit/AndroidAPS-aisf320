@@ -55,6 +55,7 @@ import app.aaps.plugins.automation.actions.ActionSetAutomationState
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
 import app.aaps.plugins.automation.actions.ActionSetDuraISFweight
 import app.aaps.plugins.automation.actions.ActionSetIobTH
+import app.aaps.plugins.automation.actions.ActionSetSmbDeliveryRatio
 import app.aaps.plugins.automation.actions.ActionSetPpISFweight
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
@@ -85,6 +86,7 @@ import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerIobTH
+import app.aaps.plugins.automation.triggers.TriggerSmbDeliveryRatio
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
 import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
@@ -485,6 +487,7 @@ class AutomationPlugin @Inject constructor(
             actions.add(ActionSetPpISFweight(injector))
             actions.add(ActionSetDuraISFweight(injector))
             actions.add(ActionSetIobTH(injector))
+            actions.add(ActionSetSmbDeliveryRatio(injector))
         }
         return actions.toList()
     }
@@ -523,6 +526,7 @@ class AutomationPlugin @Inject constructor(
             triggers.add(TriggerBgDuraWeight(injector))
             triggers.add(TriggerBgPpISFweight(injector))
             triggers.add(TriggerIobTH(injector))
+            triggers.add(TriggerSmbDeliveryRatio(injector))
         }
 
         val pump = activePlugin.activePump

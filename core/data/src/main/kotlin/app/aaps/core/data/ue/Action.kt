@@ -97,6 +97,7 @@ enum class Action(val colorGroup: ColorGroup) {
     ACCE_WEIGHT_SET (ColorGroup.Aaps),
     PP_ISF_WEIGHT_SET (ColorGroup.Aaps),
     DURA_ISF_WEIGHT_SET (ColorGroup.Aaps),
+    SMB_DELIVERY_RATIO_SET (ColorGroup.Aaps),
     RUNNING_MODE(ColorGroup.RunningMode),
     RUNNING_MODE_REMOVED(ColorGroup.RunningMode),
     RUNNING_MODE_UPDATED(ColorGroup.RunningMode),
