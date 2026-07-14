@@ -331,10 +331,16 @@ class AutomationPlugin @Inject constructor(
         }
 
         aapsLogger.debug(LTag.AUTOMATION, "processActions")
+        // While the AutoISF ported-automations toggle is on, suppress every native auto-firing
+        // event (userAction/button events are unaffected — they're already excluded by
+        // !event.userAction above). Live check, not a persisted change: nothing here touches
+        // event.isEnabled, so each event's own checkbox state is untouched and instantly resumes
+        // controlling firing the moment the toggle goes back off — no state to save/restore.
+        val portedAutomationsSuppressing = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         while (iterator.hasNext()) {
             val event = iterator.next()
-            if (event.isEnabled && !event.userAction && event.shouldRun())
+            if (event.isEnabled && !event.userAction && event.shouldRun() && !portedAutomationsSuppressing)
                 if (event.systemAction || commonEventsEnabled) {
                     processEvent(event)
                     if (event.hasStopProcessing()) break
