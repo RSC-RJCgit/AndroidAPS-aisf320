@@ -88,6 +88,25 @@ class NSDeviceStatusHandler @Inject constructor(
 ) {
 
     private val disposable = CompositeDisposable()
+
+    // AutoISF-specific reason-text/consoleLog fallback regexes — see updateOpenApsData() for why.
+    private val bgAcceRegex = Regex("""\bbg_acce:\s*(-?[0-9.]+)""")
+    private val deltaRegex = Regex("""\bDelta:\s*(-?[0-9.]+)""")
+    private val sDeltaRegex = Regex("""\bSDelta:\s*(-?[0-9.]+)""")
+    private val smbDeliveryRatioRegex = Regex("""SMB delivery ratio.*?([0-9.]+)""")
+    private val iobThEffectiveRegex = Regex("""\bor\s+([0-9.]+)U""")
+
+    private fun firstMatch(regex: Regex, text: String): Double? =
+        regex.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
+
+    private fun firstMatchInList(regex: Regex, list: List<String>?): Double? {
+        list ?: return null
+        for (line in list) {
+            firstMatch(regex, line)?.let { return it }
+        }
+        return null
+    }
+
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         var configurationDetected = false
         for (i in deviceStatuses.size - 1 downTo 0) {
@@ -170,15 +189,31 @@ class NSDeviceStatusHandler @Inject constructor(
                     }
                     processedDeviceStatusData.openAPSData.suggested?.let { rt ->
                         if (rt.autoIsfFinal != null) {
+                            // Several AIV fields aren't exposed as dedicated RT properties, but the
+                            // text they're embedded in (RT.reason, RT.consoleLog) IS part of this
+                            // same @Serializable RT payload and IS synced to NS — same pattern
+                            // already used for steps counts (see AutoISFHistoryDialog.kt).
+                            val reasonText = rt.reason.toString()
                             val aiv = AIV(
-                                timestamp   = clock,
-                                acceIsf     = rt.autoIsfAcce  ?: 1.0,
-                                bgIsf       = rt.autoIsfBg    ?: 1.0,
-                                ppIsf       = rt.autoIsfPp    ?: 1.0,
-                                driftIsf    = 1.0,
-                                duraIsf     = rt.autoIsfDura  ?: 1.0,
-                                finalIsf    = rt.autoIsfFinal ?: 1.0,
-                                iobThEffective = 0.0
+                                timestamp      = clock,
+                                acceIsf        = rt.autoIsfAcce  ?: 1.0,
+                                bgIsf          = rt.autoIsfBg    ?: 1.0,
+                                ppIsf          = rt.autoIsfPp    ?: 1.0,
+                                driftIsf       = 1.0,
+                                duraIsf        = rt.autoIsfDura  ?: 1.0,
+                                finalIsf       = rt.autoIsfFinal ?: 1.0,
+                                // Only present in reason text when the "modulated" branch fired;
+                                // the "not modulated" branch logs no number, so this stays 0.0 then.
+                                iobThEffective = firstMatchInList(iobThEffectiveRegex, rt.consoleLog) ?: 0.0,
+                                glucose        = rt.bg ?: 0.0,
+                                insulinReq     = rt.insulinReq ?: 0.0,
+                                tbrRate        = processedDeviceStatusData.openAPSData.enacted?.rate ?: 0.0,
+                                smbDelivered   = rt.units ?: 0.0,
+                                delta          = firstMatch(deltaRegex, reasonText) ?: 0.0,
+                                shortAvgDelta  = firstMatch(sDeltaRegex, reasonText) ?: 0.0,
+                                bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
+                                smbDeliveryRatio = firstMatchInList(smbDeliveryRatioRegex, rt.consoleLog) ?: 0.0,
+                                iob            = rt.IOB ?: 0.0
                             )
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }
