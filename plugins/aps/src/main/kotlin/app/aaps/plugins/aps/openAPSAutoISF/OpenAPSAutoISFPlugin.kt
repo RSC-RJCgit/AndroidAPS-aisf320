@@ -2330,6 +2330,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 rt.autoIsfPp    = autoIsfValues.ppIsf
                 rt.autoIsfDura  = autoIsfValues.duraIsf
                 rt.autoIsfFinal = autoIsfValues.finalIsf
+                // Dedicated, unconditional reason lines for the client-sync fallback (see
+                // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
+                // same values (which is conditional on which branch fired, and consoleLog doesn't
+                // reliably survive the NS round-trip anyway), these always append exactly one line
+                // with a fixed format — same reliable pattern already used for bg_acce/Delta/SDelta.
+                rt.reason.append("SMB delivery ratio: ${round(autoIsfValues.smbDeliveryRatio, 2)} ;")
+                rt.reason.append("iobThEffectiveU: ${round(autoIsfValues.iobThEffective, 2)} ;")
             }
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
@@ -3242,5 +3249,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU259
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU260
  */

@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanNonKey
@@ -84,28 +85,24 @@ class NSDeviceStatusHandler @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val persistenceLayer: PersistenceLayer,
     private val overviewData: OverviewData,
-    private val calculationWorkflow: CalculationWorkflow
+    private val calculationWorkflow: CalculationWorkflow,
+    private val profileUtil: ProfileUtil
 ) {
 
     private val disposable = CompositeDisposable()
 
-    // AutoISF-specific reason-text/consoleLog fallback regexes — see updateOpenApsData() for why.
+    // AutoISF-specific reason-text fallback regexes — see updateOpenApsData() for why. All five
+    // target dedicated, unconditional rT.reason.append() lines (OpenAPSAutoISFPlugin.kt), not
+    // consoleLog/consoleError — those are local-debug-only lists that don't reliably survive the
+    // NS round-trip, unlike reason (a plain string, confirmed working for bg_acce/Delta/SDelta).
     private val bgAcceRegex = Regex("""\bbg_acce:\s*(-?[0-9.]+)""")
     private val deltaRegex = Regex("""\bDelta:\s*(-?[0-9.]+)""")
     private val sDeltaRegex = Regex("""\bSDelta:\s*(-?[0-9.]+)""")
-    private val smbDeliveryRatioRegex = Regex("""SMB delivery ratio.*?([0-9.]+)""")
-    private val iobThEffectiveRegex = Regex("""\bor\s+([0-9.]+)U""")
+    private val smbDeliveryRatioRegex = Regex("""SMB delivery ratio:\s*([0-9.]+)""")
+    private val iobThEffectiveRegex = Regex("""iobThEffectiveU:\s*([0-9.]+)""")
 
     private fun firstMatch(regex: Regex, text: String): Double? =
         regex.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
-
-    private fun firstMatchInList(regex: Regex, list: List<String>?): Double? {
-        list ?: return null
-        for (line in list) {
-            firstMatch(regex, line)?.let { return it }
-        }
-        return null
-    }
 
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         var configurationDetected = false
@@ -190,7 +187,7 @@ class NSDeviceStatusHandler @Inject constructor(
                     processedDeviceStatusData.openAPSData.suggested?.let { rt ->
                         if (rt.autoIsfFinal != null) {
                             // Several AIV fields aren't exposed as dedicated RT properties, but the
-                            // text they're embedded in (RT.reason, RT.consoleLog) IS part of this
+                            // text they're embedded in (RT.reason, a plain string) IS part of this
                             // same @Serializable RT payload and IS synced to NS — same pattern
                             // already used for steps counts (see AutoISFHistoryDialog.kt).
                             val reasonText = rt.reason.toString()
@@ -202,17 +199,19 @@ class NSDeviceStatusHandler @Inject constructor(
                                 driftIsf       = 1.0,
                                 duraIsf        = rt.autoIsfDura  ?: 1.0,
                                 finalIsf       = rt.autoIsfFinal ?: 1.0,
-                                // Only present in reason text when the "modulated" branch fired;
-                                // the "not modulated" branch logs no number, so this stays 0.0 then.
-                                iobThEffective = firstMatchInList(iobThEffectiveRegex, rt.consoleLog) ?: 0.0,
+                                iobThEffective = firstMatch(iobThEffectiveRegex, reasonText) ?: 0.0,
                                 glucose        = rt.bg ?: 0.0,
                                 insulinReq     = rt.insulinReq ?: 0.0,
                                 tbrRate        = processedDeviceStatusData.openAPSData.enacted?.rate ?: 0.0,
                                 smbDelivered   = rt.units ?: 0.0,
-                                delta          = firstMatch(deltaRegex, reasonText) ?: 0.0,
-                                shortAvgDelta  = firstMatch(sDeltaRegex, reasonText) ?: 0.0,
+                                // Delta/SDelta text is written via convert_bg2(), which already
+                                // converts mg/dL -> display units (e.g. mmol/L) before formatting —
+                                // unlike bg_acce below, which stays raw mg/dL. Must convert back or
+                                // this collapses to near-zero once the table divides by ~18 again.
+                                delta          = firstMatch(deltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
+                                shortAvgDelta  = firstMatch(sDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
                                 bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
-                                smbDeliveryRatio = firstMatchInList(smbDeliveryRatioRegex, rt.consoleLog) ?: 0.0,
+                                smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
                                 iob            = rt.IOB ?: 0.0
                             )
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
