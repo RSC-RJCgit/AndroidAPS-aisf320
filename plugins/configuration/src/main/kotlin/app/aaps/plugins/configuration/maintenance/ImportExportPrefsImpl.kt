@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.protection.PasswordCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -859,46 +860,53 @@ class ImportExportPrefsImpl @Inject constructor(
                     val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
 
                     // Pump domain: driver selection, driver settings and device session state (e.g. active pod).
-                    // Offer to keep the current pump configuration when this phone has live session state
-                    // that the imported file would overwrite (e.g. importing an old backup on the same phone).
-                    val pumpKeys = pumpKeyMatcher()
+                    // Offer to keep the current pump configuration whenever the import would change anything
+                    // in the pump domain (e.g. importing an old backup on the same phone, or a file from a
+                    // phone with a different pump).
+                    val pumpKeys = pluginDomainKeyMatcher(PluginType.PUMP)
                     val currentSp = sp.getAll()
                     val liveSessionValues = pumpSessionStateKeys()
                         .mapNotNull { key -> (currentSp[key] as? String)?.takeIf { it.isNotEmpty() }?.let { key to it } }
-                    val hasLocalPumpSession = liveSessionValues.isNotEmpty()
                     val importChangesPumpSession = liveSessionValues.any { (key, value) -> prefs.values[key] != value }
-                    // Also offer the choice when the imported file would switch to a different pump driver
-                    // (e.g. Virtual Pump running locally, file contains an Omnipod config)
-                    val enabledPumpKeys = activePlugin.getSpecificPluginsList(PluginType.PUMP).map {
-                        ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(PluginType.PUMP.name + "_" + it.javaClass.simpleName)
-                    }
-                    val currentEnabledPumps = enabledPumpKeys.filter { currentSp[it] == true }.toSet()
-                    val importedEnabledPumps = enabledPumpKeys.filter { prefs.values[it] == "true" }.toSet()
-                    val importChangesPumpDriver = importedEnabledPumps.isNotEmpty() && importedEnabledPumps != currentEnabledPumps
+                    val pumpDomainKeys = (prefs.values.keys + currentSp.keys).filter { pumpKeys.matches(it) }.distinct()
+                    val importChangesPumpDomain = pumpDomainKeys.any { key -> prefs.values[key] != currentSp[key]?.toString() }
+                    // Follower/test phone (Virtual Pump active): offer to also keep local identity and data routes
+                    val isVirtualPumpPhone = activePlugin.activePump is VirtualPump
 
                     PrefImportSummaryDialog.showSummary(
                         activity, importOk, importPossible, prefs,
-                        showKeepPumpConfig = hasLocalPumpSession || importChangesPumpDriver,
+                        showKeepPumpConfig = importChangesPumpDomain,
                         keepPumpConfigDefault = importChangesPumpSession,
-                        ok = { keepPumpConfig ->
+                        showFollowerOptions = isVirtualPumpPhone,
+                        ok = { choices ->
                         if (importPossible) {
                             activePlugin.beforeImport()
                             val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
-                            val preservedPumpConfig: Map<String, Any?> =
-                                if (keepPumpConfig) sp.getAll().filterKeys { pumpKeys.matches(it) } else emptyMap()
-                            if (keepPumpConfig)
-                                aapsLogger.info(LTag.CORE, "Import: keeping current pump configuration, preserving ${preservedPumpConfig.size} keys, ignoring imported pump keys")
+                            val preserveMatchers = mutableListOf<(String) -> Boolean>()
+                            if (choices.keepPumpConfig) preserveMatchers.add { pumpKeys.matches(it) }
+                            if (choices.keepPatientName) preserveMatchers.add { it == StringKey.GeneralPatientName.key }
+                            if (choices.keepBgSource) pluginDomainKeyMatcher(PluginType.BGSOURCE).let { m -> preserveMatchers.add { m.matches(it) } }
+                            if (choices.keepSync) pluginDomainKeyMatcher(PluginType.SYNC).let { m -> preserveMatchers.add { m.matches(it) } }
+                            val shouldPreserve: (String) -> Boolean = { key -> preserveMatchers.any { it(key) } }
+                            val preservedConfig: Map<String, Any?> =
+                                if (preserveMatchers.isNotEmpty()) sp.getAll().filterKeys(shouldPreserve) else emptyMap()
+                            if (preserveMatchers.isNotEmpty())
+                                aapsLogger.info(
+                                    LTag.CORE,
+                                    "Import: preserving ${preservedConfig.size} current keys (pump=${choices.keepPumpConfig}, name=${choices.keepPatientName}, " +
+                                        "bgSource=${choices.keepBgSource}, sync=${choices.keepSync}), ignoring corresponding imported keys"
+                                )
                             sp.clear()
                             for ((key, value) in prefs.values) {
-                                if (keepPumpConfig && pumpKeys.matches(key)) continue
+                                if (shouldPreserve(key)) continue
                                 if (value == "true" || value == "false") {
                                     sp.putBoolean(key, value.toBoolean())
                                 } else {
                                     sp.putString(key, value)
                                 }
                             }
-                            // Restore current pump configuration with original value types
-                            for ((key, value) in preservedPumpConfig) {
+                            // Restore preserved current configuration with original value types
+                            for ((key, value) in preservedConfig) {
                                 when (value) {
                                     is Boolean -> sp.putBoolean(key, value)
                                     is Int     -> sp.putInt(key, value)
@@ -956,21 +964,21 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
     /**
-     * Matcher for all SharedPreferences keys belonging to the "pump domain":
-     * ConfigBuilder selection keys of every PUMP-type plugin plus every key class
-     * declared by pump plugins via [PluginBaseWithPreferences.ownPreferences]
-     * (driver settings and device session state like Omnipod pod_state).
+     * Matcher for all SharedPreferences keys belonging to a plugin-type "domain":
+     * ConfigBuilder selection keys of every plugin of that type plus every key class
+     * declared by those plugins via [PluginBaseWithPreferences.ownPreferences]
+     * (settings and device session state like Omnipod pod_state for PUMP).
      */
-    private class PumpKeyMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
+    private class KeyDomainMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
 
         fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
     }
 
-    private fun pumpKeyMatcher(): PumpKeyMatcher {
+    private fun pluginDomainKeyMatcher(type: PluginType): KeyDomainMatcher {
         val exact = mutableSetOf<String>()
         val prefixes = mutableSetOf<String>()
-        for (plugin in activePlugin.getSpecificPluginsList(PluginType.PUMP)) {
-            val pluginId = PluginType.PUMP.name + "_" + plugin.javaClass.simpleName
+        for (plugin in activePlugin.getSpecificPluginsList(type)) {
+            val pluginId = type.name + "_" + plugin.javaClass.simpleName
             exact.add(ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(pluginId))
             exact.add(ConfigurationBooleanComposedKey.ConfigBuilderVisible.composeKey(pluginId))
             (plugin as? PluginBaseWithPreferences)?.ownPreferences?.forEach { clazz ->
@@ -979,7 +987,7 @@ class ImportExportPrefsImpl @Inject constructor(
                 }
             }
         }
-        return PumpKeyMatcher(exact, prefixes)
+        return KeyDomainMatcher(exact, prefixes)
     }
 
     /**

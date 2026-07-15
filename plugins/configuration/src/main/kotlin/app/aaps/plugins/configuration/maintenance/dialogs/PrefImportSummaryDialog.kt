@@ -27,11 +27,20 @@ import java.util.LinkedList
 
 object PrefImportSummaryDialog {
 
+    /** User selections of current settings groups to preserve across the import */
+    class ImportChoices(
+        val keepPumpConfig: Boolean = false,
+        val keepPatientName: Boolean = false,
+        val keepBgSource: Boolean = false,
+        val keepSync: Boolean = false
+    )
+
     @SuppressLint("InflateParams")
     fun showSummary(
         context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
         showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
-        ok: ((keepPumpConfig: Boolean) -> Unit)?, cancel: (() -> Unit)? = null
+        showFollowerOptions: Boolean = false,
+        ok: ((choices: ImportChoices) -> Unit)?, cancel: (() -> Unit)? = null
     ) {
 
         @StyleRes val theme: Int = if (importOk) app.aaps.core.ui.R.style.DialogTheme else {
@@ -52,11 +61,21 @@ object PrefImportSummaryDialog {
         val table = (innerLayout.findViewById<View>(R.id.summary_table) as TableLayout)
         val detailsBtn = (innerLayout.findViewById<View>(R.id.summary_details_btn) as Button)
         val keepPumpConfigCheckbox = (innerLayout.findViewById<View>(R.id.keep_pump_config) as CheckBox)
+        val keepPatientNameCheckbox = (innerLayout.findViewById<View>(R.id.keep_patient_name) as CheckBox)
+        val keepBgSourceCheckbox = (innerLayout.findViewById<View>(R.id.keep_bg_source) as CheckBox)
+        val keepSyncCheckbox = (innerLayout.findViewById<View>(R.id.keep_sync_config) as CheckBox)
 
         if (showKeepPumpConfig && importPossible) {
             keepPumpConfigCheckbox.visibility = View.VISIBLE
             keepPumpConfigCheckbox.isChecked = keepPumpConfigDefault
         }
+        if (showFollowerOptions && importPossible) {
+            keepPatientNameCheckbox.visibility = View.VISIBLE
+            keepBgSourceCheckbox.visibility = View.VISIBLE
+            keepSyncCheckbox.visibility = View.VISIBLE
+        }
+
+        fun checked(box: CheckBox): Boolean = box.visibility == View.VISIBLE && box.isChecked
 
         var idx = 0
         val details = LinkedList<String>()
@@ -134,10 +153,15 @@ object PrefImportSummaryDialog {
             builder.setPositiveButton(
                 if (importOk) R.string.check_preferences_import_btn else R.string.check_preferences_import_anyway_btn
             ) { dialog: DialogInterface, _: Int ->
-                val keepPumpConfig = keepPumpConfigCheckbox.visibility == View.VISIBLE && keepPumpConfigCheckbox.isChecked
+                val choices = ImportChoices(
+                    keepPumpConfig = checked(keepPumpConfigCheckbox),
+                    keepPatientName = checked(keepPatientNameCheckbox),
+                    keepBgSource = checked(keepBgSourceCheckbox),
+                    keepSync = checked(keepSyncCheckbox)
+                )
                 dialog.dismiss()
                 SystemClock.sleep(100)
-                if (ok != null) runOnUiThread { ok(keepPumpConfig) }
+                if (ok != null) runOnUiThread { ok(choices) }
             }
         }
 
