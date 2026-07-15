@@ -53,7 +53,16 @@ import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.IntentKey
+import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.ComposedKey
 import app.aaps.core.keys.interfaces.PreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -873,6 +882,12 @@ class ImportExportPrefsImpl @Inject constructor(
                     // Follower/test phone (Virtual Pump active): offer to also keep local identity and data routes
                     val isVirtualPumpPhone = activePlugin.activePump is VirtualPump
 
+                    aapsLogger.info(
+                        LTag.CORE,
+                        "Import summary options: importChangesPumpDomain=$importChangesPumpDomain (pumpDomainKeys=${pumpDomainKeys.size}), " +
+                            "importChangesPumpSession=$importChangesPumpSession, isVirtualPumpPhone=$isVirtualPumpPhone, importPossible=$importPossible"
+                    )
+
                     PrefImportSummaryDialog.showSummary(
                         activity, importOk, importPossible, prefs,
                         showKeepPumpConfig = importChangesPumpDomain,
@@ -885,8 +900,18 @@ class ImportExportPrefsImpl @Inject constructor(
                             val preserveMatchers = mutableListOf<(String) -> Boolean>()
                             if (choices.keepPumpConfig) preserveMatchers.add { pumpKeys.matches(it) }
                             if (choices.keepPatientName) preserveMatchers.add { it == StringKey.GeneralPatientName.key }
-                            if (choices.keepBgSource) pluginDomainKeyMatcher(PluginType.BGSOURCE).let { m -> preserveMatchers.add { m.matches(it) } }
-                            if (choices.keepSync) pluginDomainKeyMatcher(PluginType.SYNC).let { m -> preserveMatchers.add { m.matches(it) } }
+                            if (choices.keepBgSource) {
+                                // BG source settings partly live in core keys (BgSource*), not in the source plugins' own keys
+                                val m = pluginDomainKeyMatcher(PluginType.BGSOURCE)
+                                val coreKeys = coreKeysByNamePrefix("BgSource")
+                                preserveMatchers.add { m.matches(it) || it in coreKeys }
+                            }
+                            if (choices.keepSync) {
+                                // NSClient/Tidepool/xDrip-status/OpenHumans settings live in core keys, not in the sync plugins' own keys
+                                val m = pluginDomainKeyMatcher(PluginType.SYNC)
+                                val coreKeys = coreKeysByNamePrefix("NsClient", "Tidepool", "OpenHumans", "Xdrip")
+                                preserveMatchers.add { m.matches(it) || it in coreKeys }
+                            }
                             val shouldPreserve: (String) -> Boolean = { key -> preserveMatchers.any { it(key) } }
                             val preservedConfig: Map<String, Any?> =
                                 if (preserveMatchers.isNotEmpty()) sp.getAll().filterKeys(shouldPreserve) else emptyMap()
@@ -989,6 +1014,20 @@ class ImportExportPrefsImpl @Inject constructor(
         }
         return KeyDomainMatcher(exact, prefixes)
     }
+
+    /**
+     * Core preference keys (defined in core:keys rather than owned by a plugin) selected by
+     * enum-constant name prefix, e.g. "NsClient" -> BooleanKey.NsClientUploadData, StringKey.NsClientUrl, ...
+     */
+    private fun coreKeysByNamePrefix(vararg prefixes: String): Set<String> =
+        listOf<Class<out app.aaps.core.keys.interfaces.NonPreferenceKey>>(
+            BooleanKey::class.java, StringKey::class.java, IntKey::class.java, LongKey::class.java,
+            DoubleKey::class.java, UnitDoubleKey::class.java, IntentKey::class.java,
+            BooleanNonKey::class.java, StringNonKey::class.java, IntNonKey::class.java, LongNonKey::class.java
+        ).flatMap { it.enumConstants?.toList() ?: emptyList() }
+            .filter { k -> k is Enum<*> && prefixes.any { p -> k.name.startsWith(p) } }
+            .map { it.key }
+            .toSet()
 
     /**
      * Keys of pump plugins holding live device session state (pairing, active pod, running bolus)

@@ -454,7 +454,37 @@ unreachable in 3421 (no cloud import entry point there) but now compiles.
 
 ---
 
-## 8. Session tooling notes
+## 8. Round 3 — field-test fixes (AU264 testing)
+
+### 8.1 Checkboxes were hidden inside the scroll pane
+On-phone testing showed no checkboxes: they were placed inside the summary dialog's
+`NestedScrollView` (fixed 210dp) *below* the metadata table — present but clipped, with no
+scroll hint. Fixed by restructuring `dialog_alert_import_summary.xml`: root is now a vertical
+LinearLayout; the scroll pane keeps only the table + details button; the four checkboxes sit
+below the scroll pane, always visible. Also added an INFO log line before the dialog opens:
+`Import summary options: importChangesPumpDomain=… importChangesPumpSession=… isVirtualPumpPhone=… importPossible=…`
+
+### 8.2 Sync option leaked NSClient settings
+Test result with all options ticked: name ✓, pump (virtual) ✓, BG source untestable (identical
+on both phones), but Sync preserved only the NSClient plugin *selection* while NS URL/password
+and sync flags were imported. Cause: NSClient/Tidepool/xDrip-status/OpenHumans settings are
+**core keys** (`core/keys` `BooleanKey.NsClient*`, `StringKey.NsClientUrl/ApiSecret/AccessToken`,
+`LongKey.NsClient*`, …), not declared in any sync plugin's `ownPreferences` — invisible to the
+ownership-based domain matcher. Same latent issue for BG source (`BgSource*` core keys).
+
+Fix: `coreKeysByNamePrefix(vararg prefixes)` walks all core key enums (Boolean/String/Int/Long/
+Double/UnitDouble/Intent + NonKey variants) filtering by enum-constant name prefix. Preserve
+matchers now use:
+- Keep Sync → SYNC domain + `coreKeysByNamePrefix("NsClient", "Tidepool", "OpenHumans", "Xdrip")`
+- Keep BG source → BGSOURCE domain + `coreKeysByNamePrefix("BgSource")`
+
+Both fixes applied to `AaAPS3422a320` and `APS3421a320`; `:plugins:configuration:compileFullDebugKotlin`
+BUILD SUCCESSFUL. Reminder for rebuilds: bump `versionCode` (stuck at 1500 caused a stale-APK
+test earlier) and the version suffix.
+
+---
+
+## 9. Session tooling notes
 
 - PowerShell `>` redirection writes UTF-16 — git can't read such patch files; use
   `git format-patch -o` so git writes the file itself.
