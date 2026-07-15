@@ -27,7 +27,7 @@ different pump driver than the phone (e.g. Virtual Pump phone importing a pod co
 (`plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt`)
 dumps every SharedPreferences entry passing `preferences.isExportableKey(key)`:
 
-```kotlin
+```
 for ((key, value) in sp.getAll()) {
     if (preferences.isExportableKey(key))
         entries[key] = value.toString()
@@ -38,7 +38,7 @@ for ((key, value) in sp.getAll()) {
 `PreferencesImpl.isExportableKey()` (`implementation/src/main/kotlin/app/aaps/implementation/sharedPreferences/PreferencesImpl.kt`)
 checks all registered key enums, matching exact keys and `ComposedKey` prefixes:
 
-```kotlin
+```
 override fun isExportableKey(key: String): Boolean {
     prefsList
         .flatMap { it.enumConstants!!.asIterable() }
@@ -54,7 +54,7 @@ override fun isExportableKey(key: String): Boolean {
 The pod session lives in SharedPreferences as exportable string keys:
 
 - **Dash** — `pump/omnipod/common/src/main/kotlin/app/aaps/pump/omnipod/common/keys/DashStringNonPreferenceKey.kt`:
-  ```kotlin
+  ```
   enum class DashStringNonPreferenceKey(
       override val key: String,
       override val defaultValue: String,
@@ -66,7 +66,7 @@ The pod session lives in SharedPreferences as exportable string keys:
   The pod's unique ID, BLE address, activation state etc. are all inside this one JSON blob.
 
 - **Eros** — `pump/omnipod/eros/src/main/java/app/aaps/pump/omnipod/eros/keys/ErosStringNonPreferenceKey.kt`:
-  ```kotlin
+  ```
   PodState("AAPS.Omnipod.pod_state", ""),
   ActiveBolus("AAPS.Omnipod.current_bolus", ""),
   ```
@@ -74,7 +74,7 @@ The pod session lives in SharedPreferences as exportable string keys:
 ### 2.3 Import wipes everything
 `ImportExportPrefsImpl.doImportSharedPreferences()` did:
 
-```kotlin
+```
 activePlugin.beforeImport()
 val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
 sp.clear()
@@ -91,7 +91,7 @@ Two existing precedents for the mechanic we needed:
 ### 2.4 Per-driver key ownership already exists
 `PluginBaseWithPreferences` (`core/interfaces/src/main/kotlin/app/aaps/core/interfaces/plugin/PluginBaseWithPreferences.kt`):
 
-```kotlin
+```
 abstract class PluginBaseWithPreferences(
     pluginDescription: PluginDescription,
     val ownPreferences: List<Class<out NonPreferenceKey>> = emptyList(),
@@ -116,7 +116,7 @@ Each pump plugin declares its key classes:
 `ConfigBuilderPlugin.savePref()` stores enabled/visible state via composed keys
 (`plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/keys/ConfigurationBooleanComposedKey.kt`):
 
-```kotlin
+```
 ConfigBuilderEnabled(key = "ConfigBuilder_Enabled_", format = "%s", defaultValue = false),
 ConfigBuilderVisible(key = "ConfigBuilder_Visible_", format = "%s", defaultValue = false),
 ```
@@ -183,7 +183,7 @@ Files changed (all in `plugins/configuration`):
 
 ### 4.1 ImportExportPrefsImpl.kt — new imports
 
-```kotlin
+```
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.keys.interfaces.ComposedKey
@@ -193,7 +193,7 @@ import app.aaps.plugins.configuration.keys.ConfigurationBooleanComposedKey
 
 ### 4.2 ImportExportPrefsImpl.kt — helpers (before `checkIfImportIsOk`)
 
-```kotlin
+```
 /**
  * Matcher for all SharedPreferences keys belonging to the "pump domain":
  * ConfigBuilder selection keys of every PUMP-type plugin plus every key class
@@ -238,7 +238,7 @@ private fun pumpSessionStateKeys(): Set<String> =
 
 ### 4.3 ImportExportPrefsImpl.kt — import flow (inside `doImportSharedPreferences`)
 
-```kotlin
+```
 // if at end we allow to import preferences
 val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
 
@@ -297,7 +297,7 @@ PrefImportSummaryDialog.showSummary(
 
 ### 4.4 PrefImportSummaryDialog.kt
 
-```kotlin
+```
 fun showSummary(
     context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
     showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
@@ -322,7 +322,7 @@ fun showSummary(
 
 ### 4.5 dialog_alert_import_summary.xml
 
-```xml
+```
 <com.google.android.material.checkbox.MaterialCheckBox
     android:id="@+id/keep_pump_config"
     android:layout_width="match_parent"
@@ -337,7 +337,7 @@ fun showSummary(
 
 ### 4.6 strings.xml
 
-```xml
+```
 <string name="keep_current_pump_config">Keep current pump configuration (pump driver selection, its settings and active pod/session state will NOT be overwritten by the imported file)</string>
 ```
 
@@ -410,7 +410,7 @@ recognizable pump-enable key in the file, ConfigBuilder falls back to `enableByD
 **Fix:** the visibility rule was replaced with a single broad rule — show the checkbox whenever
 the import would change *anything* in the pump domain:
 
-```kotlin
+```
 val pumpDomainKeys = (prefs.values.keys + currentSp.keys).filter { pumpKeys.matches(it) }.distinct()
 val importChangesPumpDomain = pumpDomainKeys.any { key -> prefs.values[key] != currentSp[key]?.toString() }
 ```
