@@ -484,7 +484,25 @@ test earlier) and the version suffix.
 
 ---
 
-## 9. Session tooling notes
+## 9. Round 4 — confirmed working (on-phone test)
+
+Field test after the round-3 fixes: all four options work. Patient name, virtual pump,
+BG source and Synchronization (NSClient3 website, password/token, secondary website,
+`ns_receive_*` sync toggles) all preserved through import. Checkboxes visible without
+scrolling. Verified against key definitions: every NS-related core key's enum name starts
+with `NsClient` (incl. `NsClient3UseWs`, `NsClientSecondary*`), so the prefix matcher has
+full coverage. Notes:
+- Imported main-NSClient values always come from the exporting phone's *main* config —
+  primary/secondary use distinct preference keys (`nsclientinternal_url` vs
+  `nsclient_secondary_url`), import maps key-to-key.
+- AAPSClient is a separate APK with separate SharedPreferences — an import in AAPS never
+  touches it; the same fix applies when importing inside AAPSClient (same source tree).
+- Scope narrowed: only `AaAPS3422a320` branch `TDDautos2` matters now; the mirrored edits
+  in `APS3421a320`'s working tree are abandoned.
+
+---
+
+## 10. Session tooling notes
 
 - PowerShell `>` redirection writes UTF-16 — git can't read such patch files; use
   `git format-patch -o` so git writes the file itself.

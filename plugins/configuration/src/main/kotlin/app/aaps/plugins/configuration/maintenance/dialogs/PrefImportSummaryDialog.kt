@@ -39,7 +39,6 @@ object PrefImportSummaryDialog {
     fun showSummary(
         context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
         showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
-        showFollowerOptions: Boolean = false,
         ok: ((choices: ImportChoices) -> Unit)?, cancel: (() -> Unit)? = null
     ) {
 
@@ -69,7 +68,7 @@ object PrefImportSummaryDialog {
             keepPumpConfigCheckbox.visibility = View.VISIBLE
             keepPumpConfigCheckbox.isChecked = keepPumpConfigDefault
         }
-        if (showFollowerOptions && importPossible) {
+        if (importPossible) {
             keepPatientNameCheckbox.visibility = View.VISIBLE
             keepBgSourceCheckbox.visibility = View.VISIBLE
             keepSyncCheckbox.visibility = View.VISIBLE

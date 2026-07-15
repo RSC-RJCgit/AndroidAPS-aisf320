@@ -879,7 +879,6 @@ class ImportExportPrefsImpl @Inject constructor(
                     val importChangesPumpSession = liveSessionValues.any { (key, value) -> prefs.values[key] != value }
                     val pumpDomainKeys = (prefs.values.keys + currentSp.keys).filter { pumpKeys.matches(it) }.distinct()
                     val importChangesPumpDomain = pumpDomainKeys.any { key -> prefs.values[key] != currentSp[key]?.toString() }
-                    // Follower/test phone (Virtual Pump active): offer to also keep local identity and data routes
                     val isVirtualPumpPhone = activePlugin.activePump is VirtualPump
 
                     aapsLogger.info(
@@ -892,7 +891,6 @@ class ImportExportPrefsImpl @Inject constructor(
                         activity, importOk, importPossible, prefs,
                         showKeepPumpConfig = importChangesPumpDomain,
                         keepPumpConfigDefault = importChangesPumpSession,
-                        showFollowerOptions = isVirtualPumpPhone,
                         ok = { choices ->
                         if (importPossible) {
                             activePlugin.beforeImport()
