@@ -21,6 +21,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.UE
+import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -36,6 +37,7 @@ import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.protection.PasswordCheck
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -51,6 +53,8 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.ComposedKey
+import app.aaps.core.keys.interfaces.PreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.asSettingsExport
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -61,6 +65,7 @@ import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.plugins.configuration.R
 import app.aaps.plugins.configuration.activities.DaggerAppCompatActivityWithResult
+import app.aaps.plugins.configuration.keys.ConfigurationBooleanComposedKey
 import app.aaps.plugins.configuration.maintenance.data.PrefFileNotFoundError
 import app.aaps.plugins.configuration.maintenance.data.PrefIOError
 import app.aaps.plugins.configuration.maintenance.data.Prefs
@@ -853,16 +858,53 @@ class ImportExportPrefsImpl @Inject constructor(
                     // if at end we allow to import preferences
                     val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
 
-                    PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
+                    // Pump domain: driver selection, driver settings and device session state (e.g. active pod).
+                    // Offer to keep the current pump configuration when this phone has live session state
+                    // that the imported file would overwrite (e.g. importing an old backup on the same phone).
+                    val pumpKeys = pumpKeyMatcher()
+                    val currentSp = sp.getAll()
+                    val liveSessionValues = pumpSessionStateKeys()
+                        .mapNotNull { key -> (currentSp[key] as? String)?.takeIf { it.isNotEmpty() }?.let { key to it } }
+                    val hasLocalPumpSession = liveSessionValues.isNotEmpty()
+                    val importChangesPumpSession = liveSessionValues.any { (key, value) -> prefs.values[key] != value }
+                    // Also offer the choice when the imported file would switch to a different pump driver
+                    // (e.g. Virtual Pump running locally, file contains an Omnipod config)
+                    val enabledPumpKeys = activePlugin.getSpecificPluginsList(PluginType.PUMP).map {
+                        ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(PluginType.PUMP.name + "_" + it.javaClass.simpleName)
+                    }
+                    val currentEnabledPumps = enabledPumpKeys.filter { currentSp[it] == true }.toSet()
+                    val importedEnabledPumps = enabledPumpKeys.filter { prefs.values[it] == "true" }.toSet()
+                    val importChangesPumpDriver = importedEnabledPumps.isNotEmpty() && importedEnabledPumps != currentEnabledPumps
+
+                    PrefImportSummaryDialog.showSummary(
+                        activity, importOk, importPossible, prefs,
+                        showKeepPumpConfig = hasLocalPumpSession || importChangesPumpDriver,
+                        keepPumpConfigDefault = importChangesPumpSession,
+                        ok = { keepPumpConfig ->
                         if (importPossible) {
                             activePlugin.beforeImport()
                             val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
+                            val preservedPumpConfig: Map<String, Any?> =
+                                if (keepPumpConfig) sp.getAll().filterKeys { pumpKeys.matches(it) } else emptyMap()
+                            if (keepPumpConfig)
+                                aapsLogger.info(LTag.CORE, "Import: keeping current pump configuration, preserving ${preservedPumpConfig.size} keys, ignoring imported pump keys")
                             sp.clear()
                             for ((key, value) in prefs.values) {
+                                if (keepPumpConfig && pumpKeys.matches(key)) continue
                                 if (value == "true" || value == "false") {
                                     sp.putBoolean(key, value.toBoolean())
                                 } else {
                                     sp.putString(key, value)
+                                }
+                            }
+                            // Restore current pump configuration with original value types
+                            for ((key, value) in preservedPumpConfig) {
+                                when (value) {
+                                    is Boolean -> sp.putBoolean(key, value)
+                                    is Int     -> sp.putInt(key, value)
+                                    is Long    -> sp.putLong(key, value)
+                                    is Float   -> sp.putDouble(key, value.toDouble())
+                                    is String  -> sp.putString(key, value)
                                 }
                             }
                             // Ensure AutomationStates are off by default after import
@@ -912,6 +954,47 @@ class ImportExportPrefsImpl @Inject constructor(
             }
         }
     }
+
+    /**
+     * Matcher for all SharedPreferences keys belonging to the "pump domain":
+     * ConfigBuilder selection keys of every PUMP-type plugin plus every key class
+     * declared by pump plugins via [PluginBaseWithPreferences.ownPreferences]
+     * (driver settings and device session state like Omnipod pod_state).
+     */
+    private class PumpKeyMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
+
+        fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
+    }
+
+    private fun pumpKeyMatcher(): PumpKeyMatcher {
+        val exact = mutableSetOf<String>()
+        val prefixes = mutableSetOf<String>()
+        for (plugin in activePlugin.getSpecificPluginsList(PluginType.PUMP)) {
+            val pluginId = PluginType.PUMP.name + "_" + plugin.javaClass.simpleName
+            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(pluginId))
+            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderVisible.composeKey(pluginId))
+            (plugin as? PluginBaseWithPreferences)?.ownPreferences?.forEach { clazz ->
+                clazz.enumConstants?.forEach { k ->
+                    if (k is ComposedKey) prefixes.add(k.key) else exact.add(k.key)
+                }
+            }
+        }
+        return PumpKeyMatcher(exact, prefixes)
+    }
+
+    /**
+     * Keys of pump plugins holding live device session state (pairing, active pod, running bolus)
+     * as opposed to user-editable preferences: [app.aaps.core.keys.interfaces.NonPreferenceKey]s
+     * that are not [PreferenceKey]s.
+     */
+    private fun pumpSessionStateKeys(): Set<String> =
+        activePlugin.getSpecificPluginsList(PluginType.PUMP)
+            .filterIsInstance<PluginBaseWithPreferences>()
+            .flatMap { it.ownPreferences }
+            .flatMap { it.enumConstants?.toList() ?: emptyList() }
+            .filter { it !is PreferenceKey && it !is ComposedKey }
+            .map { it.key }
+            .toSet()
 
     private fun checkIfImportIsOk(prefs: Prefs): Boolean {
         var importOk = true

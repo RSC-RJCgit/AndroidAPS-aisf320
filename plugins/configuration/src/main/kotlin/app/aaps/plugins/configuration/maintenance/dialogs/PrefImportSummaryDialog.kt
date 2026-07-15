@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.webkit.WebView
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TableLayout
 import android.widget.TextView
@@ -27,7 +28,11 @@ import java.util.LinkedList
 object PrefImportSummaryDialog {
 
     @SuppressLint("InflateParams")
-    fun showSummary(context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs, ok: (() -> Unit)?, cancel: (() -> Unit)? = null) {
+    fun showSummary(
+        context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
+        showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
+        ok: ((keepPumpConfig: Boolean) -> Unit)?, cancel: (() -> Unit)? = null
+    ) {
 
         @StyleRes val theme: Int = if (importOk) app.aaps.core.ui.R.style.DialogTheme else {
             if (importPossible) app.aaps.core.ui.R.style.AppThemeWarningDialog else app.aaps.core.ui.R.style.AppThemeErrorDialog
@@ -46,6 +51,12 @@ object PrefImportSummaryDialog {
         val innerLayout = LayoutInflater.from(themedCtx).inflate(R.layout.dialog_alert_import_summary, null)
         val table = (innerLayout.findViewById<View>(R.id.summary_table) as TableLayout)
         val detailsBtn = (innerLayout.findViewById<View>(R.id.summary_details_btn) as Button)
+        val keepPumpConfigCheckbox = (innerLayout.findViewById<View>(R.id.keep_pump_config) as CheckBox)
+
+        if (showKeepPumpConfig && importPossible) {
+            keepPumpConfigCheckbox.visibility = View.VISIBLE
+            keepPumpConfigCheckbox.isChecked = keepPumpConfigDefault
+        }
 
         var idx = 0
         val details = LinkedList<String>()
@@ -123,9 +134,10 @@ object PrefImportSummaryDialog {
             builder.setPositiveButton(
                 if (importOk) R.string.check_preferences_import_btn else R.string.check_preferences_import_anyway_btn
             ) { dialog: DialogInterface, _: Int ->
+                val keepPumpConfig = keepPumpConfigCheckbox.visibility == View.VISIBLE && keepPumpConfigCheckbox.isChecked
                 dialog.dismiss()
                 SystemClock.sleep(100)
-                if (ok != null) runOnUiThread { ok() }
+                if (ok != null) runOnUiThread { ok(keepPumpConfig) }
             }
         }
 
