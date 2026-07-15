@@ -252,8 +252,9 @@ class ImportExportPrefsImpl @Inject constructor(
             return // No need to ask.
         }
 
-        // Make sure stored password is properly reset
-        exportPasswordDataStore.clearPasswordDataStore((context))
+        // Note: do NOT clear the stored password here - cancelling the prompt would leave the
+        // store empty and break unattended export. A successful entry overwrites it anyway,
+        // and a truly expired password was already cleared by the datastore itself.
 
         // Ask for entering password and store when successfully entered
         TwoMessagesAlertDialog.showAlert(
@@ -278,7 +279,8 @@ class ImportExportPrefsImpl @Inject constructor(
                 return
             }
         }
-        exportPasswordDataStore.clearPasswordDataStore(context)
+        // Not clearing the stored password here (see askToConfirmExport above): cancel must not
+        // leave the store empty. Successful entry below overwrites it.
 
         TwoMessagesAlertDialog.showAlert(
             activity,
