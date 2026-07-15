@@ -1,0 +1,308 @@
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+index b45f5ace43..e5541f960b 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+@@ -20,6 +20,7 @@ import androidx.work.WorkerParameters
+ import androidx.work.workDataOf
+ import app.aaps.core.data.model.TE
+ import app.aaps.core.data.model.UE
++import app.aaps.core.data.plugin.PluginType
+ import app.aaps.core.data.time.T
+ import app.aaps.core.data.ue.Action
+ import app.aaps.core.data.ue.Sources
+@@ -35,6 +36,8 @@ import app.aaps.core.interfaces.maintenance.PrefMetadata
+ import app.aaps.core.interfaces.maintenance.PrefsFile
+ import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
+ import app.aaps.core.interfaces.plugin.ActivePlugin
++import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
++import app.aaps.core.interfaces.pump.VirtualPump
+ import app.aaps.core.interfaces.protection.ExportPasswordDataStore
+ import app.aaps.core.interfaces.protection.PasswordCheck
+ import app.aaps.core.interfaces.resources.ResourceHelper
+@@ -50,6 +53,8 @@ import app.aaps.core.interfaces.utils.DateUtil
+ import app.aaps.core.interfaces.utils.MidnightTime
+ import app.aaps.core.keys.BooleanKey
+ import app.aaps.core.keys.StringKey
++import app.aaps.core.keys.interfaces.ComposedKey
++import app.aaps.core.keys.interfaces.PreferenceKey
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.objects.extensions.asSettingsExport
+ import app.aaps.core.objects.workflow.LoggingWorker
+@@ -60,6 +65,7 @@ import app.aaps.core.ui.toast.ToastUtils
+ import app.aaps.core.utils.receivers.DataWorkerStorage
+ import app.aaps.plugins.configuration.R
+ import app.aaps.plugins.configuration.activities.DaggerAppCompatActivityWithResult
++import app.aaps.plugins.configuration.keys.ConfigurationBooleanComposedKey
+ import app.aaps.plugins.configuration.maintenance.data.PrefFileNotFoundError
+ import app.aaps.plugins.configuration.maintenance.data.PrefIOError
+ import app.aaps.plugins.configuration.maintenance.data.Prefs
+@@ -103,6 +109,15 @@ class ImportExportPrefsImpl @Inject constructor(
+     private val configBuilder: ConfigBuilder
+ ) : ImportExportPrefs {
+ 
++    companion object {
++        /** Cloud preference files loaded from the active cloud provider for the import list. */
++        var cloudPrefsFiles: List<PrefsFile> = emptyList()
++        /** Pagination token for the next page of cloud files; null when all files are loaded. */
++        var cloudNextPageToken: String? = null
++        /** Total number of files available in the cloud (0 = unknown). */
++        var cloudTotalFilesCount: Int = 0
++    }
++
+     override var selectedImportFile: PrefsFile? = null
+ 
+     override fun prefsFileExists(): Boolean = prefFileList.listPreferenceFiles().isNotEmpty()
+@@ -392,19 +407,63 @@ class ImportExportPrefsImpl @Inject constructor(
+                     // if at end we allow to import preferences
+                     val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
+ 
+-                    PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
++                    // Pump domain: driver selection, driver settings and device session state (e.g. active pod).
++                    // Offer to keep the current pump configuration whenever the import would change anything
++                    // in the pump domain (e.g. importing an old backup on the same phone, or a file from a
++                    // phone with a different pump).
++                    val pumpKeys = pluginDomainKeyMatcher(PluginType.PUMP)
++                    val currentSp = sp.getAll()
++                    val liveSessionValues = pumpSessionStateKeys()
++                        .mapNotNull { key -> (currentSp[key] as? String)?.takeIf { it.isNotEmpty() }?.let { key to it } }
++                    val importChangesPumpSession = liveSessionValues.any { (key, value) -> prefs.values[key] != value }
++                    val pumpDomainKeys = (prefs.values.keys + currentSp.keys).filter { pumpKeys.matches(it) }.distinct()
++                    val importChangesPumpDomain = pumpDomainKeys.any { key -> prefs.values[key] != currentSp[key]?.toString() }
++                    // Follower/test phone (Virtual Pump active): offer to also keep local identity and data routes
++                    val isVirtualPumpPhone = activePlugin.activePump is VirtualPump
++
++                    PrefImportSummaryDialog.showSummary(
++                        activity, importOk, importPossible, prefs,
++                        showKeepPumpConfig = importChangesPumpDomain,
++                        keepPumpConfigDefault = importChangesPumpSession,
++                        showFollowerOptions = isVirtualPumpPhone,
++                        ok = { choices ->
+                         if (importPossible) {
+                             activePlugin.beforeImport()
+                             // Preserve device-specific path — never let an import overwrite it
+                             val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
++                            val preserveMatchers = mutableListOf<(String) -> Boolean>()
++                            if (choices.keepPumpConfig) preserveMatchers.add { pumpKeys.matches(it) }
++                            if (choices.keepPatientName) preserveMatchers.add { it == StringKey.GeneralPatientName.key }
++                            if (choices.keepBgSource) pluginDomainKeyMatcher(PluginType.BGSOURCE).let { m -> preserveMatchers.add { m.matches(it) } }
++                            if (choices.keepSync) pluginDomainKeyMatcher(PluginType.SYNC).let { m -> preserveMatchers.add { m.matches(it) } }
++                            val shouldPreserve: (String) -> Boolean = { key -> preserveMatchers.any { it(key) } }
++                            val preservedConfig: Map<String, Any?> =
++                                if (preserveMatchers.isNotEmpty()) sp.getAll().filterKeys(shouldPreserve) else emptyMap()
++                            if (preserveMatchers.isNotEmpty())
++                                aapsLogger.info(
++                                    LTag.CORE,
++                                    "Import: preserving ${preservedConfig.size} current keys (pump=${choices.keepPumpConfig}, name=${choices.keepPatientName}, " +
++                                        "bgSource=${choices.keepBgSource}, sync=${choices.keepSync}), ignoring corresponding imported keys"
++                                )
+                             sp.clear()
+                             for ((key, value) in prefs.values) {
++                                if (shouldPreserve(key)) continue
+                                 if (value == "true" || value == "false") {
+                                     sp.putBoolean(key, value.toBoolean())
+                                 } else {
+                                     sp.putString(key, value)
+                                 }
+                             }
++                            // Restore preserved current configuration with original value types
++                            for ((key, value) in preservedConfig) {
++                                when (value) {
++                                    is Boolean -> sp.putBoolean(key, value)
++                                    is Int     -> sp.putInt(key, value)
++                                    is Long    -> sp.putLong(key, value)
++                                    is Float   -> sp.putDouble(key, value.toDouble())
++                                    is String  -> sp.putString(key, value)
++                                }
++                            }
+                             // Restore local AAPS directory path so it is never lost on import
+                             if (savedAapsDirectory.isNotEmpty()) {
+                                 sp.putString(StringKey.AapsDirectoryUri.key, savedAapsDirectory)
+@@ -429,6 +488,47 @@ class ImportExportPrefsImpl @Inject constructor(
+         }
+     }
+ 
++    /**
++     * Matcher for all SharedPreferences keys belonging to a plugin-type "domain":
++     * ConfigBuilder selection keys of every plugin of that type plus every key class
++     * declared by those plugins via [PluginBaseWithPreferences.ownPreferences]
++     * (settings and device session state like Omnipod pod_state for PUMP).
++     */
++    private class KeyDomainMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
++
++        fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
++    }
++
++    private fun pluginDomainKeyMatcher(type: PluginType): KeyDomainMatcher {
++        val exact = mutableSetOf<String>()
++        val prefixes = mutableSetOf<String>()
++        for (plugin in activePlugin.getSpecificPluginsList(type)) {
++            val pluginId = type.name + "_" + plugin.javaClass.simpleName
++            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(pluginId))
++            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderVisible.composeKey(pluginId))
++            (plugin as? PluginBaseWithPreferences)?.ownPreferences?.forEach { clazz ->
++                clazz.enumConstants?.forEach { k ->
++                    if (k is ComposedKey) prefixes.add(k.key) else exact.add(k.key)
++                }
++            }
++        }
++        return KeyDomainMatcher(exact, prefixes)
++    }
++
++    /**
++     * Keys of pump plugins holding live device session state (pairing, active pod, running bolus)
++     * as opposed to user-editable preferences: [app.aaps.core.keys.interfaces.NonPreferenceKey]s
++     * that are not [PreferenceKey]s.
++     */
++    private fun pumpSessionStateKeys(): Set<String> =
++        activePlugin.getSpecificPluginsList(PluginType.PUMP)
++            .filterIsInstance<PluginBaseWithPreferences>()
++            .flatMap { it.ownPreferences }
++            .flatMap { it.enumConstants?.toList() ?: emptyList() }
++            .filter { it !is PreferenceKey && it !is ComposedKey }
++            .map { it.key }
++            .toSet()
++
+     private fun checkIfImportIsOk(prefs: Prefs): Boolean {
+         var importOk = true
+ 
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
+index 5fbc1f4d63..d39eb50157 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
+@@ -9,6 +9,7 @@ import android.view.LayoutInflater
+ import android.view.View
+ import android.webkit.WebView
+ import android.widget.Button
++import android.widget.CheckBox
+ import android.widget.ImageView
+ import android.widget.TableLayout
+ import android.widget.TextView
+@@ -26,8 +27,21 @@ import java.util.LinkedList
+ 
+ object PrefImportSummaryDialog {
+ 
++    /** User selections of current settings groups to preserve across the import */
++    class ImportChoices(
++        val keepPumpConfig: Boolean = false,
++        val keepPatientName: Boolean = false,
++        val keepBgSource: Boolean = false,
++        val keepSync: Boolean = false
++    )
++
+     @SuppressLint("InflateParams")
+-    fun showSummary(context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs, ok: (() -> Unit)?, cancel: (() -> Unit)? = null) {
++    fun showSummary(
++        context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
++        showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
++        showFollowerOptions: Boolean = false,
++        ok: ((choices: ImportChoices) -> Unit)?, cancel: (() -> Unit)? = null
++    ) {
+ 
+         @StyleRes val theme: Int = if (importOk) app.aaps.core.ui.R.style.DialogTheme else {
+             if (importPossible) app.aaps.core.ui.R.style.AppThemeWarningDialog else app.aaps.core.ui.R.style.AppThemeErrorDialog
+@@ -46,6 +60,22 @@ object PrefImportSummaryDialog {
+         val innerLayout = LayoutInflater.from(themedCtx).inflate(R.layout.dialog_alert_import_summary, null)
+         val table = (innerLayout.findViewById<View>(R.id.summary_table) as TableLayout)
+         val detailsBtn = (innerLayout.findViewById<View>(R.id.summary_details_btn) as Button)
++        val keepPumpConfigCheckbox = (innerLayout.findViewById<View>(R.id.keep_pump_config) as CheckBox)
++        val keepPatientNameCheckbox = (innerLayout.findViewById<View>(R.id.keep_patient_name) as CheckBox)
++        val keepBgSourceCheckbox = (innerLayout.findViewById<View>(R.id.keep_bg_source) as CheckBox)
++        val keepSyncCheckbox = (innerLayout.findViewById<View>(R.id.keep_sync_config) as CheckBox)
++
++        if (showKeepPumpConfig && importPossible) {
++            keepPumpConfigCheckbox.visibility = View.VISIBLE
++            keepPumpConfigCheckbox.isChecked = keepPumpConfigDefault
++        }
++        if (showFollowerOptions && importPossible) {
++            keepPatientNameCheckbox.visibility = View.VISIBLE
++            keepBgSourceCheckbox.visibility = View.VISIBLE
++            keepSyncCheckbox.visibility = View.VISIBLE
++        }
++
++        fun checked(box: CheckBox): Boolean = box.visibility == View.VISIBLE && box.isChecked
+ 
+         var idx = 0
+         val details = LinkedList<String>()
+@@ -123,9 +153,15 @@ object PrefImportSummaryDialog {
+             builder.setPositiveButton(
+                 if (importOk) R.string.check_preferences_import_btn else R.string.check_preferences_import_anyway_btn
+             ) { dialog: DialogInterface, _: Int ->
++                val choices = ImportChoices(
++                    keepPumpConfig = checked(keepPumpConfigCheckbox),
++                    keepPatientName = checked(keepPatientNameCheckbox),
++                    keepBgSource = checked(keepBgSourceCheckbox),
++                    keepSync = checked(keepSyncCheckbox)
++                )
+                 dialog.dismiss()
+                 SystemClock.sleep(100)
+-                if (ok != null) runOnUiThread { ok() }
++                if (ok != null) runOnUiThread { ok(choices) }
+             }
+         }
+ 
+diff --git a/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml b/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
+index e3b94f19fe..06e4840028 100644
+--- a/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
++++ b/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
+@@ -21,6 +21,47 @@
+                 android:layout_marginEnd="8dp"
+                 android:stretchColumns="2" />
+ 
++            <com.google.android.material.checkbox.MaterialCheckBox
++                android:id="@+id/keep_pump_config"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="10dp"
++                android:layout_marginTop="10dp"
++                android:layout_marginEnd="10dp"
++                android:text="@string/keep_current_pump_config"
++                android:textSize="12sp"
++                android:visibility="gone" />
++
++            <com.google.android.material.checkbox.MaterialCheckBox
++                android:id="@+id/keep_patient_name"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="10dp"
++                android:layout_marginEnd="10dp"
++                android:text="@string/keep_current_patient_name"
++                android:textSize="12sp"
++                android:visibility="gone" />
++
++            <com.google.android.material.checkbox.MaterialCheckBox
++                android:id="@+id/keep_bg_source"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="10dp"
++                android:layout_marginEnd="10dp"
++                android:text="@string/keep_current_bg_source"
++                android:textSize="12sp"
++                android:visibility="gone" />
++
++            <com.google.android.material.checkbox.MaterialCheckBox
++                android:id="@+id/keep_sync_config"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="10dp"
++                android:layout_marginEnd="10dp"
++                android:text="@string/keep_current_sync_config"
++                android:textSize="12sp"
++                android:visibility="gone" />
++
+             <com.google.android.material.button.MaterialButton
+                 style="@style/GrayButton"
+                 android:id="@+id/summary_details_btn"
+diff --git a/plugins/configuration/src/main/res/values/strings.xml b/plugins/configuration/src/main/res/values/strings.xml
+index d90fa03949..6d83a969c1 100644
+--- a/plugins/configuration/src/main/res/values/strings.xml
++++ b/plugins/configuration/src/main/res/values/strings.xml
+@@ -276,4 +276,8 @@
+     <string name="authorization_status">Authorization Status</string>
+     <string name="google_drive_authorized">Google Drive Authorized</string>
+     <string name="google_drive_reauth_required">Please clear settings and re-authorize Google Drive</string>
++    <string name="keep_current_pump_config">Keep current pump configuration (pump driver selection, its settings and active pod/session state will NOT be overwritten by the imported file)</string>
++    <string name="keep_current_patient_name">Keep current patient name</string>
++    <string name="keep_current_bg_source">Keep current BG source configuration (plugin selection and settings)</string>
++    <string name="keep_current_sync_config">Keep current Synchronization configuration (NSClient etc., plugin selection and settings)</string>
+ </resources>
+\ No newline at end of file

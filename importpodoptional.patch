@@ -1,0 +1,240 @@
+From fd85a5fdb475d3cd130f8d5558bfbf9efd5d4d96 Mon Sep 17 00:00:00 2001
+From: RSC-RJCgit <142757046+RSC-RJCgit@users.noreply.github.com>
+Date: Wed, 15 Jul 2026 09:53:48 +0930
+Subject: [PATCH] 320TDD2AU262importpodoptional
+
+---
+ .../maintenance/ImportExportPrefsImpl.kt      | 85 ++++++++++++++++++-
+ .../dialogs/PrefImportSummaryDialog.kt        | 16 +++-
+ .../layout/dialog_alert_import_summary.xml    | 11 +++
+ .../src/main/res/values/strings.xml           |  1 +
+ 4 files changed, 110 insertions(+), 3 deletions(-)
+
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+index ff18ba3961..7f281e1800 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/ImportExportPrefsImpl.kt
+@@ -21,6 +21,7 @@ import androidx.work.WorkerParameters
+ import androidx.work.workDataOf
+ import app.aaps.core.data.model.TE
+ import app.aaps.core.data.model.UE
++import app.aaps.core.data.plugin.PluginType
+ import app.aaps.core.data.time.T
+ import app.aaps.core.data.ue.Action
+ import app.aaps.core.data.ue.Sources
+@@ -36,6 +37,7 @@ import app.aaps.core.interfaces.maintenance.PrefMetadata
+ import app.aaps.core.interfaces.maintenance.PrefsFile
+ import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
+ import app.aaps.core.interfaces.plugin.ActivePlugin
++import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
+ import app.aaps.core.interfaces.protection.ExportPasswordDataStore
+ import app.aaps.core.interfaces.protection.PasswordCheck
+ import app.aaps.core.interfaces.resources.ResourceHelper
+@@ -51,6 +53,8 @@ import app.aaps.core.interfaces.utils.DateUtil
+ import app.aaps.core.interfaces.utils.MidnightTime
+ import app.aaps.core.keys.BooleanKey
+ import app.aaps.core.keys.StringKey
++import app.aaps.core.keys.interfaces.ComposedKey
++import app.aaps.core.keys.interfaces.PreferenceKey
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.objects.extensions.asSettingsExport
+ import app.aaps.core.objects.workflow.LoggingWorker
+@@ -61,6 +65,7 @@ import app.aaps.core.ui.toast.ToastUtils
+ import app.aaps.core.utils.receivers.DataWorkerStorage
+ import app.aaps.plugins.configuration.R
+ import app.aaps.plugins.configuration.activities.DaggerAppCompatActivityWithResult
++import app.aaps.plugins.configuration.keys.ConfigurationBooleanComposedKey
+ import app.aaps.plugins.configuration.maintenance.data.PrefFileNotFoundError
+ import app.aaps.plugins.configuration.maintenance.data.PrefIOError
+ import app.aaps.plugins.configuration.maintenance.data.Prefs
+@@ -853,18 +858,55 @@ class ImportExportPrefsImpl @Inject constructor(
+                     // if at end we allow to import preferences
+                     val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
+ 
+-                    PrefImportSummaryDialog.showSummary(activity, importOk, importPossible, prefs, {
++                    // Pump domain: driver selection, driver settings and device session state (e.g. active pod).
++                    // Offer to keep the current pump configuration when this phone has live session state
++                    // that the imported file would overwrite (e.g. importing an old backup on the same phone).
++                    val pumpKeys = pumpKeyMatcher()
++                    val currentSp = sp.getAll()
++                    val liveSessionValues = pumpSessionStateKeys()
++                        .mapNotNull { key -> (currentSp[key] as? String)?.takeIf { it.isNotEmpty() }?.let { key to it } }
++                    val hasLocalPumpSession = liveSessionValues.isNotEmpty()
++                    val importChangesPumpSession = liveSessionValues.any { (key, value) -> prefs.values[key] != value }
++                    // Also offer the choice when the imported file would switch to a different pump driver
++                    // (e.g. Virtual Pump running locally, file contains an Omnipod config)
++                    val enabledPumpKeys = activePlugin.getSpecificPluginsList(PluginType.PUMP).map {
++                        ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(PluginType.PUMP.name + "_" + it.javaClass.simpleName)
++                    }
++                    val currentEnabledPumps = enabledPumpKeys.filter { currentSp[it] == true }.toSet()
++                    val importedEnabledPumps = enabledPumpKeys.filter { prefs.values[it] == "true" }.toSet()
++                    val importChangesPumpDriver = importedEnabledPumps.isNotEmpty() && importedEnabledPumps != currentEnabledPumps
++
++                    PrefImportSummaryDialog.showSummary(
++                        activity, importOk, importPossible, prefs,
++                        showKeepPumpConfig = hasLocalPumpSession || importChangesPumpDriver,
++                        keepPumpConfigDefault = importChangesPumpSession,
++                        ok = { keepPumpConfig ->
+                         if (importPossible) {
+                             activePlugin.beforeImport()
+                             val savedAapsDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
++                            val preservedPumpConfig: Map<String, Any?> =
++                                if (keepPumpConfig) sp.getAll().filterKeys { pumpKeys.matches(it) } else emptyMap()
++                            if (keepPumpConfig)
++                                aapsLogger.info(LTag.CORE, "Import: keeping current pump configuration, preserving ${preservedPumpConfig.size} keys, ignoring imported pump keys")
+                             sp.clear()
+                             for ((key, value) in prefs.values) {
++                                if (keepPumpConfig && pumpKeys.matches(key)) continue
+                                 if (value == "true" || value == "false") {
+                                     sp.putBoolean(key, value.toBoolean())
+                                 } else {
+                                     sp.putString(key, value)
+                                 }
+                             }
++                            // Restore current pump configuration with original value types
++                            for ((key, value) in preservedPumpConfig) {
++                                when (value) {
++                                    is Boolean -> sp.putBoolean(key, value)
++                                    is Int     -> sp.putInt(key, value)
++                                    is Long    -> sp.putLong(key, value)
++                                    is Float   -> sp.putDouble(key, value.toDouble())
++                                    is String  -> sp.putString(key, value)
++                                }
++                            }
+                             // Ensure AutomationStates are off by default after import
+                             sp.putBoolean(app.aaps.core.keys.BooleanKey.AutomationStatesEnabled.key, false)
+                             if (savedAapsDirectory.isNotEmpty())
+@@ -913,6 +955,47 @@ class ImportExportPrefsImpl @Inject constructor(
+         }
+     }
+ 
++    /**
++     * Matcher for all SharedPreferences keys belonging to the "pump domain":
++     * ConfigBuilder selection keys of every PUMP-type plugin plus every key class
++     * declared by pump plugins via [PluginBaseWithPreferences.ownPreferences]
++     * (driver settings and device session state like Omnipod pod_state).
++     */
++    private class PumpKeyMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
++
++        fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
++    }
++
++    private fun pumpKeyMatcher(): PumpKeyMatcher {
++        val exact = mutableSetOf<String>()
++        val prefixes = mutableSetOf<String>()
++        for (plugin in activePlugin.getSpecificPluginsList(PluginType.PUMP)) {
++            val pluginId = PluginType.PUMP.name + "_" + plugin.javaClass.simpleName
++            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderEnabled.composeKey(pluginId))
++            exact.add(ConfigurationBooleanComposedKey.ConfigBuilderVisible.composeKey(pluginId))
++            (plugin as? PluginBaseWithPreferences)?.ownPreferences?.forEach { clazz ->
++                clazz.enumConstants?.forEach { k ->
++                    if (k is ComposedKey) prefixes.add(k.key) else exact.add(k.key)
++                }
++            }
++        }
++        return PumpKeyMatcher(exact, prefixes)
++    }
++
++    /**
++     * Keys of pump plugins holding live device session state (pairing, active pod, running bolus)
++     * as opposed to user-editable preferences: [app.aaps.core.keys.interfaces.NonPreferenceKey]s
++     * that are not [PreferenceKey]s.
++     */
++    private fun pumpSessionStateKeys(): Set<String> =
++        activePlugin.getSpecificPluginsList(PluginType.PUMP)
++            .filterIsInstance<PluginBaseWithPreferences>()
++            .flatMap { it.ownPreferences }
++            .flatMap { it.enumConstants?.toList() ?: emptyList() }
++            .filter { it !is PreferenceKey && it !is ComposedKey }
++            .map { it.key }
++            .toSet()
++
+     private fun checkIfImportIsOk(prefs: Prefs): Boolean {
+         var importOk = true
+ 
+diff --git a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
+index 5fbc1f4d63..96ba3c9a13 100644
+--- a/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
++++ b/plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/maintenance/dialogs/PrefImportSummaryDialog.kt
+@@ -9,6 +9,7 @@ import android.view.LayoutInflater
+ import android.view.View
+ import android.webkit.WebView
+ import android.widget.Button
++import android.widget.CheckBox
+ import android.widget.ImageView
+ import android.widget.TableLayout
+ import android.widget.TextView
+@@ -27,7 +28,11 @@ import java.util.LinkedList
+ object PrefImportSummaryDialog {
+ 
+     @SuppressLint("InflateParams")
+-    fun showSummary(context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs, ok: (() -> Unit)?, cancel: (() -> Unit)? = null) {
++    fun showSummary(
++        context: Context, importOk: Boolean, importPossible: Boolean, prefs: Prefs,
++        showKeepPumpConfig: Boolean = false, keepPumpConfigDefault: Boolean = false,
++        ok: ((keepPumpConfig: Boolean) -> Unit)?, cancel: (() -> Unit)? = null
++    ) {
+ 
+         @StyleRes val theme: Int = if (importOk) app.aaps.core.ui.R.style.DialogTheme else {
+             if (importPossible) app.aaps.core.ui.R.style.AppThemeWarningDialog else app.aaps.core.ui.R.style.AppThemeErrorDialog
+@@ -46,6 +51,12 @@ object PrefImportSummaryDialog {
+         val innerLayout = LayoutInflater.from(themedCtx).inflate(R.layout.dialog_alert_import_summary, null)
+         val table = (innerLayout.findViewById<View>(R.id.summary_table) as TableLayout)
+         val detailsBtn = (innerLayout.findViewById<View>(R.id.summary_details_btn) as Button)
++        val keepPumpConfigCheckbox = (innerLayout.findViewById<View>(R.id.keep_pump_config) as CheckBox)
++
++        if (showKeepPumpConfig && importPossible) {
++            keepPumpConfigCheckbox.visibility = View.VISIBLE
++            keepPumpConfigCheckbox.isChecked = keepPumpConfigDefault
++        }
+ 
+         var idx = 0
+         val details = LinkedList<String>()
+@@ -123,9 +134,10 @@ object PrefImportSummaryDialog {
+             builder.setPositiveButton(
+                 if (importOk) R.string.check_preferences_import_btn else R.string.check_preferences_import_anyway_btn
+             ) { dialog: DialogInterface, _: Int ->
++                val keepPumpConfig = keepPumpConfigCheckbox.visibility == View.VISIBLE && keepPumpConfigCheckbox.isChecked
+                 dialog.dismiss()
+                 SystemClock.sleep(100)
+-                if (ok != null) runOnUiThread { ok() }
++                if (ok != null) runOnUiThread { ok(keepPumpConfig) }
+             }
+         }
+ 
+diff --git a/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml b/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
+index e3b94f19fe..978f6c2cf5 100644
+--- a/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
++++ b/plugins/configuration/src/main/res/layout/dialog_alert_import_summary.xml
+@@ -21,6 +21,17 @@
+                 android:layout_marginEnd="8dp"
+                 android:stretchColumns="2" />
+ 
++            <com.google.android.material.checkbox.MaterialCheckBox
++                android:id="@+id/keep_pump_config"
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginStart="10dp"
++                android:layout_marginTop="10dp"
++                android:layout_marginEnd="10dp"
++                android:text="@string/keep_current_pump_config"
++                android:textSize="12sp"
++                android:visibility="gone" />
++
+             <com.google.android.material.button.MaterialButton
+                 style="@style/GrayButton"
+                 android:id="@+id/summary_details_btn"
+diff --git a/plugins/configuration/src/main/res/values/strings.xml b/plugins/configuration/src/main/res/values/strings.xml
+index d72a5c2abc..721d9b1e9e 100644
+--- a/plugins/configuration/src/main/res/values/strings.xml
++++ b/plugins/configuration/src/main/res/values/strings.xml
+@@ -281,4 +281,5 @@
+     <string name="automation_states">Automation States</string>
+     <string name="automation_states_imported_warning">Automation States were found in the imported settings. They are DISABLED by default. Review your states in the Automation States tab and enable them in its settings when ready.</string>
+     <string name="automation_states_enable_now">Enable Automation States now</string>
++    <string name="keep_current_pump_config">Keep current pump configuration (pump driver selection, its settings and active pod/session state will NOT be overwritten by the imported file)</string>
+ </resources>
+\ No newline at end of file
+-- 
+2.43.0.windows.1
+
