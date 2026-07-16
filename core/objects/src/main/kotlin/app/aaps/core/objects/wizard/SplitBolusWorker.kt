@@ -11,10 +11,12 @@ import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.queue.Callback
@@ -41,6 +43,26 @@ class SplitBolusWorker(
     @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var uiInteraction: UiInteraction
+    @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var profileFunction: ProfileFunction
+
+    // Careportal marker for each delayed-bolus check: Db10/Db20/Db30 (attempt × 10 min)
+    private fun addCheckNote(text: String) {
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = dateUtil.now(),
+                type = TE.Type.NOTE,
+                glucoseUnit = profileFunction.getUnits()
+            ).also {
+                it.note = text
+                it.duration = T.mins(5).msecs()
+            },
+            action = Action.CAREPORTAL,
+            source = Sources.WizardDialog,
+            note = "Delayed bolus check",
+            listValues = listOf()
+        ).blockingGet()
+    }
 
     companion object {
         const val WORK_NAME = "SplitBolusWork"
@@ -97,10 +119,13 @@ class SplitBolusWorker(
             gs.longAvgDelta > SPLIT_LD_MGDL
         val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
 
+        val dbLabel = "Db${attempt * 10}"
+
         if (criteriaOk && bglFresh) {
             val rawDose = fullRequired - originalDose
             val splitDose = Round.roundTo(max(0.0, rawDose * 0.90), activePlugin.activePump.pumpDescription.bolusStep)
             aapsLogger.info(LTag.CORE, "Split bolus attempt $attempt: criteria met BGL=$bglStr — delivering ${splitDose}U (fullRequired=${fullRequired}U given=${originalDose}U gap=${rawDose}U × 90%)")
+            addCheckNote("$dbLabel ${splitDose}U")
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = splitDose
@@ -127,9 +152,11 @@ class SplitBolusWorker(
             }
             if (attempt < 3) {
                 aapsLogger.info(LTag.CORE, "Split bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in 10 min")
+                addCheckNote("$dbLabel wait")
                 enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime)
             } else {
                 aapsLogger.info(LTag.CORE, "Split bolus: $reason at attempt $attempt — no split dose delivered")
+                addCheckNote("$dbLabel end")
             }
         }
         return Result.success()

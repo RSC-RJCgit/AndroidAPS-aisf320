@@ -580,6 +580,21 @@ class BolusWizard @Inject constructor(
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
                                         aapsLogger.info(LTag.CORE, "Split bolus: scheduling WorkManager — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%)")
                                         SplitBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
+                                        // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/Db30)
+                                        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                                            therapyEvent = TE(
+                                                timestamp = dateUtil.now(),
+                                                type = TE.Type.NOTE,
+                                                glucoseUnit = profileFunction.getUnits()
+                                            ).also {
+                                                it.note = "Db0"
+                                                it.duration = T.mins(5).msecs()
+                                            },
+                                            action = Action.CAREPORTAL,
+                                            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                                            note = "Delayed bolus scheduled",
+                                            listValues = listOf()
+                                        ).blockingGet()
                                     }
                                     // Equal-parts split bolus: no profile % active, total > maxBolus, enabled per-bolus
                                     if (!splitBolusScheduled &&
