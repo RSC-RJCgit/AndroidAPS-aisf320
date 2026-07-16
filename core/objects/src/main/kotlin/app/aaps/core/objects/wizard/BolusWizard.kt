@@ -566,9 +566,11 @@ class BolusWizard @Inject constructor(
                                     if (useAlarm && carbs > 0 && carbTime > 0) {
                                         automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                                     }
-                                    // Schedule split bolus only when enabled, profile is 50% AND SMBs are disabled
+                                    // Schedule split bolus only when enabled, profile is 50% AND SMBs are disabled.
+                                    // Also scheduled when the immediate dose is 0 but carbs were entered (e.g. IOB
+                                    // swallowed the 50% dose): the delayed check then evaluates the full gap later.
                                     val splitProfile = profileFunction.getProfile()
-                                    if (insulinAfterConstraints > 0 &&
+                                    if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardSplitBolusEnabled) &&
                                         splitProfile?.percentage == 50 &&
                                         !preferences.get(BooleanKey.ApsUseSmb)
