@@ -185,6 +185,7 @@ class AutomationPlugin @Inject constructor(
         loadFromSP()
         clearStaleReadOnlyOnSystemPresets()
         addCarbsAgoAlongsideBolusAgo()
+        addAcceUpGuards()
         automationPresets.registerAll(this)
         handler?.postDelayed(refreshLoop, T.mins(1).msecs())
 
@@ -291,6 +292,34 @@ class AutomationPlugin @Inject constructor(
         if (changed) storeToSP()
         preferences.put(AutomationStringKey.CarbsAgoMigrationDone, "done")
         aapsLogger.info(LTag.AUTOMATION, "CarbsAgo migration: wrapped TriggerBolusAgo in OR group with TriggerCarbsAgo (changed=$changed)")
+    }
+
+    // One-time migration: harden the "AcceUp0.5" automation against re-boosting during a
+    // falling-BG back-off (it re-armed after Extra50% at night because accel weight 0.07
+    // satisfies its "acce weight <= 0.5" condition). Adds two guards to its AND group:
+    // "Delta >= 0" and "State LowBG=NO50rec". Only direct children are checked, so the
+    // existing nested OR (MJ/Steroids states) does not block the additions.
+    private fun addAcceUpGuards() {
+        if (preferences.get(AutomationStringKey.AcceUpGuardsMigrationDone).isNotEmpty()) return
+        var changed = false
+        automationEvents.filter { it.title == "AcceUp0.5" }.forEach { event ->
+            val and = event.trigger.list.filterIsInstance<TriggerConnector>().firstOrNull() ?: return@forEach
+            if (and.list.none { it is TriggerDelta }) {
+                and.list.add(TriggerDelta(injector).apply {
+                    fromJSON("""{"value":0.0,"deltaType":"DELTA","comparator":"IS_EQUAL_OR_GREATER","units":"mmol"}""")
+                })
+                changed = true
+            }
+            if (and.list.none { it is TriggerAutomationState }) {
+                and.list.add(TriggerAutomationState(injector).apply {
+                    fromJSON("""{"stateName":"LowBG","stateValue":"NO50rec"}""")
+                })
+                changed = true
+            }
+        }
+        if (changed) storeToSP()
+        preferences.put(AutomationStringKey.AcceUpGuardsMigrationDone, "done")
+        aapsLogger.info(LTag.AUTOMATION, "AcceUp guards migration: Delta>=0 and LowBG=NO50rec added to AcceUp0.5 (changed=$changed)")
     }
 
     private fun storeToSP() {

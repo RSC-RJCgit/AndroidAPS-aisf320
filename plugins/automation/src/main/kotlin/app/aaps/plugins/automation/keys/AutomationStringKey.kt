@@ -10,4 +10,5 @@ enum class AutomationStringKey(
 
     AutomationEvents("AUTOMATION_EVENTS", ""),
     CarbsAgoMigrationDone("automation_carbs_ago_migration_done", ""),
+    AcceUpGuardsMigrationDone("automation_acceup_guards_migration_done", ""),
 }

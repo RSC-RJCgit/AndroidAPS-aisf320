@@ -324,7 +324,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU271")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU272")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -694,7 +694,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD2AU271 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD2AU272 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1535,7 +1535,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             if (currenttemp.duration > 5 &&  (round_basal(rate) <= round_basal(currenttemp.rate))) {
-                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                rT.r    eason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
                 return rT
             }
 
@@ -1546,5 +1546,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD2AU271
+DetermineBasalAutoISF.kt320TDD2AU272
 */
