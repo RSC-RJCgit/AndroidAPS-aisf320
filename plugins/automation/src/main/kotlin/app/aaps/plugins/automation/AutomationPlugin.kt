@@ -184,6 +184,7 @@ class AutomationPlugin @Inject constructor(
         Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
         loadFromSP()
         clearStaleReadOnlyOnSystemPresets()
+        addCarbsAgoAlongsideBolusAgo()
         automationPresets.registerAll(this)
         handler?.postDelayed(refreshLoop, T.mins(1).msecs())
 
@@ -259,6 +260,37 @@ class AutomationPlugin @Inject constructor(
             }
         }
         if (changed) storeToSP()
+    }
+
+    // One-time migration: every "Last bolus ago" trigger is replaced by an OR group of
+    // itself and a "Last carbs" trigger with the same minutes and comparator, so either
+    // bolus or carb recency satisfies the condition. Wrapping in a dedicated OR sub-group
+    // keeps the surrounding AND/OR logic of the automation unchanged. Guarded by
+    // CarbsAgoMigrationDone so a user later deleting the carbs trigger is not overridden.
+    private fun addCarbsAgoAlongsideBolusAgo() {
+        if (preferences.get(AutomationStringKey.CarbsAgoMigrationDone).isNotEmpty()) return
+        var changed = false
+        fun patch(connector: TriggerConnector) {
+            connector.list.filterIsInstance<TriggerConnector>().forEach { patch(it) }
+            // Group already pairs bolus with a carbs trigger (previously migrated or user-built)
+            if (connector.list.any { it is TriggerCarbsAgo }) return
+            for (i in connector.list.indices) {
+                val bolusAgo = connector.list[i] as? TriggerBolusAgo ?: continue
+                connector.list[i] = TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                    list.add(bolusAgo)
+                    list.add(
+                        TriggerCarbsAgo(injector)
+                            .setValue(bolusAgo.minutesAgo.value)
+                            .comparator(bolusAgo.comparator.value)
+                    )
+                }
+                changed = true
+            }
+        }
+        automationEvents.forEach { patch(it.trigger) }
+        if (changed) storeToSP()
+        preferences.put(AutomationStringKey.CarbsAgoMigrationDone, "done")
+        aapsLogger.info(LTag.AUTOMATION, "CarbsAgo migration: wrapped TriggerBolusAgo in OR group with TriggerCarbsAgo (changed=$changed)")
     }
 
     private fun storeToSP() {

@@ -12,6 +12,7 @@ import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+import app.aaps.plugins.automation.triggers.TriggerCarbsAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerConnector
 import app.aaps.plugins.automation.triggers.TriggerDelta
@@ -77,8 +78,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerProfilePercent(injector).apply {
                         fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                     list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.8,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
@@ -135,8 +141,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerProfilePercent(injector).apply {
                         fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                 })
                 // Branch 2: moderate low with significant falling delta + nested COB or bolus age OR
@@ -151,8 +162,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerProfilePercent(injector).apply {
                         fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                     list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.2,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
@@ -165,6 +181,9 @@ class AutomationPresets @Inject constructor(
                             fromJSON("""{"carbs":15.0,"comparator":"IS_EQUAL_OR_LESSER"}""")
                         })
                         list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":60,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
                             fromJSON("""{"minutesAgo":60,"comparator":"IS_EQUAL_OR_GREATER"}""")
                         })
                     })
@@ -224,8 +243,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerProfilePercent(injector).apply {
                         fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                 })
                 // Branch 2: moderate drop with low carbs and significant IOB
@@ -240,8 +264,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerProfilePercent(injector).apply {
                         fromJSON("""{"percentage":65.0,"comparator":"IS_EQUAL_OR_GREATER"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                     list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.4,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
@@ -271,8 +300,13 @@ class AutomationPresets @Inject constructor(
                     list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.4,"deltaType":"SHORT_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")
                     })
-                    list.add(TriggerBolusAgo(injector).apply {
-                        fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                    list.add(TriggerConnector(injector, TriggerConnector.Type.OR).apply {
+                        list.add(TriggerBolusAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
+                        list.add(TriggerCarbsAgo(injector).apply {
+                            fromJSON("""{"minutesAgo":5,"comparator":"IS_EQUAL_OR_GREATER"}""")
+                        })
                     })
                     list.add(TriggerDelta(injector).apply {
                         fromJSON("""{"value":-0.4,"deltaType":"LONG_AVERAGE","comparator":"IS_EQUAL_OR_LESSER","units":"mmol"}""")

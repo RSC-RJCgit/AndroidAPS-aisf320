@@ -9,4 +9,5 @@ enum class AutomationStringKey(
 ) : StringNonPreferenceKey {
 
     AutomationEvents("AUTOMATION_EVENTS", ""),
+    CarbsAgoMigrationDone("automation_carbs_ago_migration_done", ""),
 }
