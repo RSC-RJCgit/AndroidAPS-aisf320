@@ -107,13 +107,14 @@ class PrepareTreatmentsDataWorker(
             }
             filteredTreatments.add(dp)
         }
-        // Delayed-bolus detection: see DelayedBolusWorker.kt, enqueued from BolusWizard.kt
-        // both when the recommended dose exceeds maxBolus and when a bolus is given on a 50% profile.
-        // The delayed portion is delivered 10-30 min later with notes literally containing this marker;
-        // flag both it and the earlier bolus that triggered it so the whole split shows yellow.
-        val splitBolusMarker = "Split bolus attempt"
+        // Delayed-bolus detection: see DelayedBolusWorker.kt, enqueued from BolusWizard.kt.
+        // The delayed portion is delivered 10-30 min later with notes containing this marker;
+        // flag both it and the earlier bolus that triggered it so the pair shows yellow.
+        // The old "Split bolus attempt" marker is still matched for boluses recorded before
+        // the mechanism was renamed to "delayed bolus".
+        val delayedBolusMarkers = listOf("Delayed bolus attempt", "Split bolus attempt")
         bolusDataPoints
-            .filter { it.data.notes?.contains(splitBolusMarker) == true }
+            .filter { dp -> delayedBolusMarkers.any { m -> dp.data.notes?.contains(m) == true } }
             .forEach { splitDp ->
                 splitDp.hasDelayedComponent = true
                 bolusDataPoints
