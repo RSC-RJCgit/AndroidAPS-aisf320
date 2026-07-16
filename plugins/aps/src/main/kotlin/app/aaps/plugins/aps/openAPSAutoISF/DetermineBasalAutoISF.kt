@@ -1535,7 +1535,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             if (currenttemp.duration > 5 &&  (round_basal(rate) <= round_basal(currenttemp.rate))) {
-                rT.r    eason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
                 return rT
             }
 
