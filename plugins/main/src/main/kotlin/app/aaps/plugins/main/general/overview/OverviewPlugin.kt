@@ -315,7 +315,7 @@ class OverviewPlugin @Inject constructor(
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBolusPercentage, dialogMessage = R.string.deliverpartofboluswizard, title = app.aaps.core.ui.R.string.partialboluswizard))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResetBolusPercentageTime, dialogMessage = R.string.deliver_part_of_boluswizard_reset_time, title = app.aaps.core.ui.R.string.partialboluswizard_reset_time))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardSplitBolusEnabled, summary = R.string.wizard_split_bolus_summary, title = R.string.wizard_split_bolus_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDelayedBolusEnabled, summary = R.string.wizard_split_bolus_summary, title = R.string.wizard_split_bolus_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "overview_advanced_settings"

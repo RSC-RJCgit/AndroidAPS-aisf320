@@ -19,7 +19,7 @@ object BolusProgressData {
         delivered = 0.0
         bolusEnded = false
         stopPressed = false
-        splitBolusCancelled = false
+        followUpBolusCancelled = false
         status = ""
         wearStatus = ""
         percent = 0
@@ -61,8 +61,9 @@ object BolusProgressData {
     var stopPressed = false
 
     /**
-     * Set when stop is pressed — prevents scheduled split bolus parts from firing.
+     * Set when stop is pressed — prevents any scheduled follow-up doses from firing
+     * (equal-parts split bolus parts AND delayed-bolus checks alike).
      * Cleared when a new bolus starts via set().
      */
-    var splitBolusCancelled = false
+    var followUpBolusCancelled = false
 }

@@ -25,5 +25,6 @@ enum class LongKey(
     AppStart("app_start_time", 0, defaultedBySM = true),
     NsClientSecondaryLastLoaded("nsclient_secondary_last_loaded", 0, defaultedBySM = true),
     SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
+    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
 
 }

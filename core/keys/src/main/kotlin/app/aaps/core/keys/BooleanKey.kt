@@ -137,7 +137,9 @@ enum class BooleanKey(
     AutomationFuzzyEquals("automation_fuzzy_equals", defaultValue = false),
     WizardCalculationVisible("wizard_calculation_visible", defaultValue = false),
     WizardCorrectionPercent("wizard_correction_percent", defaultValue = false),
-    WizardSplitBolusEnabled("wizard_split_bolus_enabled", defaultValue = false),
+    // Delayed bolus (50%-profile wizard mechanism). Constant renamed from WizardSplitBolusEnabled;
+    // the stored key string is kept so existing users' setting survives the rename.
+    WizardDelayedBolusEnabled("wizard_split_bolus_enabled", defaultValue = false),
     WizardIncludeCob("wizard_include_cob", defaultValue = false),
     WizardIncludeTrend("wizard_include_trend_bg", defaultValue = false),
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false),

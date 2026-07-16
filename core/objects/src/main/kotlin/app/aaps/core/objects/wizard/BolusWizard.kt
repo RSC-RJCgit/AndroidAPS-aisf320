@@ -566,20 +566,25 @@ class BolusWizard @Inject constructor(
                                     if (useAlarm && carbs > 0 && carbTime > 0) {
                                         automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                                     }
-                                    // Schedule split bolus only when enabled, profile is 50% AND SMBs are disabled.
-                                    // Also scheduled when the immediate dose is 0 but carbs were entered (e.g. IOB
-                                    // swallowed the 50% dose): the delayed check then evaluates the full gap later.
-                                    val splitProfile = profileFunction.getProfile()
+                                    // Schedule the DELAYED BOLUS (not the equal-parts split bolus) when enabled and
+                                    // profile is 50%. The SMB preference is deliberately NOT a gate (that was the
+                                    // original spec's error): instead SMBs are actively blocked below for the
+                                    // delayed-check window, so the delayed dose and SMBs can never double-dose.
+                                    // Also scheduled when the immediate dose is 0 but carbs were entered
+                                    // (e.g. IOB swallowed the 50% dose).
+                                    val delayedProfile = profileFunction.getProfile()
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
-                                        preferences.get(BooleanKey.WizardSplitBolusEnabled) &&
-                                        splitProfile?.percentage == 50 &&
-                                        !preferences.get(BooleanKey.ApsUseSmb)
+                                        preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
+                                        delayedProfile?.percentage == 50
                                     ) {
                                         // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
                                         val normalIc = ic / 2.0
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
-                                        aapsLogger.info(LTag.CORE, "Split bolus: scheduling WorkManager — profile=${splitProfile.percentage}% SMBs=off dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%)")
-                                        SplitBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
+                                        // Block SMBs for the whole delayed-check window (3 × 10 min + margin).
+                                        // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
+                                        preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(35).msecs())
+                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfile.percentage}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 35 min")
+                                        DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                         // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/Db30)
                                         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                                             therapyEvent = TE(
@@ -662,7 +667,7 @@ class BolusWizard @Inject constructor(
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         aapsLogger.debug(LTag.CORE, "EqualSplitBolus: scheduling part $partNumber/$totalParts in ${delayMs/1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
-            if (BolusProgressData.splitBolusCancelled) {
+            if (BolusProgressData.followUpBolusCancelled) {
                 preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
                 aapsLogger.info(LTag.CORE, "EqualSplitBolus: bolus was stopped — cancelling part $partNumber/$totalParts, SMBs unblocked")
                 return@postDelayed

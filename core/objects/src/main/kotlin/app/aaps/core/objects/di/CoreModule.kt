@@ -4,7 +4,7 @@ import android.content.Context
 import android.telephony.SmsManager
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
-import app.aaps.core.objects.wizard.SplitBolusWorker
+import app.aaps.core.objects.wizard.DelayedBolusWorker
 import dagger.Module
 import dagger.Provides
 import dagger.android.ContributesAndroidInjector
@@ -23,7 +23,7 @@ open class CoreModule {
 
         @ContributesAndroidInjector fun bolusWizardInjector(): BolusWizard
         @ContributesAndroidInjector fun quickWizardEntryInjector(): QuickWizardEntry
-        @ContributesAndroidInjector fun splitBolusWorkerInjector(): SplitBolusWorker
+        @ContributesAndroidInjector fun delayedBolusWorkerInjector(): DelayedBolusWorker
     }
 
     @Suppress("DEPRECATION")

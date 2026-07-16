@@ -107,7 +107,7 @@ class PrepareTreatmentsDataWorker(
             }
             filteredTreatments.add(dp)
         }
-        // Split-bolus (delayed component) detection: see SplitBolusWorker.kt, enqueued from BolusWizard.kt
+        // Delayed-bolus detection: see DelayedBolusWorker.kt, enqueued from BolusWizard.kt
         // both when the recommended dose exceeds maxBolus and when a bolus is given on a 50% profile.
         // The delayed portion is delivered 10-30 min later with notes literally containing this marker;
         // flag both it and the earlier bolus that triggered it so the whole split shows yellow.
