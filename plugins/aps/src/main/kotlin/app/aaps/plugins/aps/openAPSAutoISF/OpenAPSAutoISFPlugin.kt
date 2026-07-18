@@ -1151,7 +1151,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- 50SetRecent: flags LowBG=50recent whenever profile drops to 50% while in NO50rec state ---
         // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
-        if (readyToRun("50SetRecent", 5) && profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
+        // Hysteresis: also locked out for 15 min after a PP50.Off recovery (readyToRun on the "PP50Off"
+        // timestamp), so it cannot immediately re-flag 50recent for PP50.Off to exit again — this breaks
+        // the observed ~5-min 50Rec<->50ff flap where the two automations toggled the state each cycle.
+        if (readyToRun("50SetRecent", 5) && readyToRun("PP50Off", 15)
+            && profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
             setAutomationState("LowBG", "50recent")
             sendSms("50%Recently")
             addCarePortalNote("50Rec")
@@ -1164,6 +1168,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             setAutomationState("LowBG", "NO50rec")
             addCarePortalNote("No50")
             markRun("Not50Recently")
+        }
+
+        // --- iobTHDaytimeFloor: safety net so iobTH% can't stay stranded at a night/back-off level all
+        // day when no conditional recovery automation happens to fire (as seen: stuck at 18% → SMBs
+        // throttled, low IOB). During the day, in a clearly-normal state, restore iobTH to a 50% floor.
+        // Deliberately conservative so it never overrides an intended low setting:
+        //  - only rescues from < 30% (the night/back-off band 12/15/16/18; leaves intentional 30/40+ alone)
+        //  - requires profile 100%, LowBG=NO50rec (not in a back-off), no active TT, Steroids Off,
+        //    BGL >= 6.5 mmol and not falling. 30-min throttle.
+        if (readyToRun("iobTHDaytimeFloor", 30)
+            && isTimeBetween(6, 0, 22, 0)
+            && profile_percentage == 100
+            && checkAutomationState("LowBG", "NO50rec")
+            && checkAutomationState("Steroids", "Steroids Off")
+            && activeTtMgdl() == null
+            && iobThresholdPercent < 30
+            && glucoseStatus.glucose >= 117.1 /* 6.5 mmol */
+            && glucoseStatus.delta >= 0.0
+        ) {
+            val prevTh = iobThresholdPercent
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+            sendSms("iobTHfloor: iobTH ${prevTh}->50%")
+            addCarePortalNote("THfloor")
+            aapsLogger.debug(LTag.APS, "iobTHDaytimeFloor: restored iobTH $prevTh -> 50 (g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}mmol)")
+            markRun("iobTHDaytimeFloor")
         }
 
         // --- Extra50%: deepens hypo protection (acce→0.07, iobTH→50%) when BGL falling on 100% profile ---
