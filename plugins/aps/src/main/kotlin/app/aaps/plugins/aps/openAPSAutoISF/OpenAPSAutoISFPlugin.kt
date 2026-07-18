@@ -1370,9 +1370,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
-        // 20-min throttle. Two trigger blocks; preconditions: profile=100%, no TT.
+        // 2-min throttle. Two trigger blocks; preconditions: profile=100%, no TT, COB>=9,
+        // acce weight>=0.20, and dura adaptation below acce adaptation.
         if (profile_percentage == 100 && activeTtMgdl() == null
-            && readyToRun("BolusGiven", 20)) {
+            && mealData.mealCOB >= 9
+            && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
+            && autoIsfValues.duraIsf < autoIsfValues.acceIsf
+            && readyToRun("BolusGiven", 2)) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -1911,7 +1915,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "HighPP130Off": exits the 130%/110% boost across 3 exit conditions
         // (stabilised no-TT, falling with TT, or simply no-TT at all while boosted). Note: "or 110%".
-        if (readyToRun("HighPP130Off", 5)) {
+        if (autoIsfValues.bgAcceleration < 0.10 && readyToRun("HighPP130Off", 2)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
