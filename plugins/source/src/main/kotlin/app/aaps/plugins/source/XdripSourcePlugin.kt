@@ -19,6 +19,7 @@ import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -50,7 +51,8 @@ import kotlin.math.pow
 @Singleton
 class XdripSourcePlugin @Inject constructor(
     rh: ResourceHelper,
-    aapsLogger: AAPSLogger
+    aapsLogger: AAPSLogger,
+    private val config: Config
 ) : AbstractBgSourceWithSensorInsertLogPlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -62,6 +64,11 @@ class XdripSourcePlugin @Inject constructor(
         .description(R.string.description_source_xdrip),
     aapsLogger, rh
 ), BgSource, XDripSource {
+
+    // A follower (aapsclient/aapsclient2) takes BG only from Nightscout. Force the xDrip source
+    // permanently disabled there so a stale "xDrip selected" state can never make the worker
+    // ingest broadcasts alongside NS (which caused duplicate BG readings).
+    override fun specialEnableCondition(): Boolean = !config.AAPSCLIENT
 
     @VisibleForTesting
     var advancedFiltering = false
@@ -139,7 +146,7 @@ class XdripSourcePlugin @Inject constructor(
         override suspend fun doWorkAndLog(): Result {
             var ret = Result.success()
 
-            if (!xdripSourcePlugin.isEnabled() && !preferences.get(BooleanKey.AapsClientXdripSource)) return Result.success(workDataOf("Result" to "Plugin not enabled"))
+            if (!xdripSourcePlugin.isEnabled()) return Result.success(workDataOf("Result" to "Plugin not enabled"))
             val bundle = dataWorkerStorage.pickupBundle(inputData.getLong(DataWorkerStorage.STORE_KEY, -1))
                 ?: return Result.failure(workDataOf("Error" to "missing input data"))
 

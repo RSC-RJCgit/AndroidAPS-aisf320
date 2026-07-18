@@ -30,9 +30,7 @@
     <string name="ns_client">NSClient</string>
     <string name="ns_client_short_name">NSv1</string>
     <string name="ns_client_url">URL:</string>
-    <string name="aapsclient_xdrip_source_title">Use xDrip as BG source</string>
-    <string name="aapsclient_xdrip_source_summary">When ON, NS BGL data is ignored — xDrip (e.g. GlucoDataHandler) provides BG readings and raw line. When OFF, NS is the BG source (default).</string>
-    <string name="aapsclient_libre_settings">Libre Special Settings (xDrip source)</string>
+    <string name="aapsclient_libre_settings">Libre Special Settings (NS BGL result)</string>
     <string name="fsl_apply_smoothing_title">Enable Libre calibration + smoothing</string>
     <string name="fsl_apply_smoothing_summary">Apply offset/slope calibration and exponential smoothing to readings from xDrip source</string>
     <string name="fsl_cal_offset_title">Calibration offset</string>

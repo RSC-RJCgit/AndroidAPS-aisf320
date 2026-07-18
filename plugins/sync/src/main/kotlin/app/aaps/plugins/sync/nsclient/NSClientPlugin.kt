@@ -272,9 +272,6 @@ class NSClientPlugin @Inject constructor(
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MIN_LENGTH, minLength = 12)
                 )
             )
-            if (config.AAPSCLIENT) {
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AapsClientXdripSource, title = R.string.aapsclient_xdrip_source_title, summary = R.string.aapsclient_xdrip_source_summary))
-            }
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)
