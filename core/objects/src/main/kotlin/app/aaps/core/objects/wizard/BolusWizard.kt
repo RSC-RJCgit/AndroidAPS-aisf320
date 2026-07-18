@@ -212,8 +212,16 @@ class BolusWizard @Inject constructor(
         this.totalPercentage = totalPercentage
         this.positiveIOBOnly = positiveIOBOnly
 
+        // QuickWizard/wizard correction: when the ACTIVE profile percentage is above 100%, calculate
+        // the bolus on the 100% (base) profile instead of the boosted rates. The profile scales IC and
+        // ISF by 100/percentage, so multiplying both back by percentage/100 recovers the base values.
+        // Below 100% the profile is left as-is (only the boost case is capped, per request). This does
+        // NOT touch the user's manual percentageCorrection from the wizard dialog.
+        val activePct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+        val baseScale = if (activePct > 100) activePct / 100.0 else 1.0
+
         // Insulin from BG
-        sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData))
+        sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData)) * baseScale
         targetBGLow = profileUtil.fromMgdlToUnits(profile.getTargetLowMgdl())
         targetBGHigh = profileUtil.fromMgdlToUnits(profile.getTargetHighMgdl())
         if (useTT && tempTarget != null) {
@@ -238,8 +246,8 @@ class BolusWizard @Inject constructor(
             }
         }
 
-        // Insulin from carbs
-        ic = profile.getIc()
+        // Insulin from carbs — base-100 IC when the active profile is boosted (see baseScale above)
+        ic = profile.getIc() * baseScale
         insulinFromCarbs = carbs / ic
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
