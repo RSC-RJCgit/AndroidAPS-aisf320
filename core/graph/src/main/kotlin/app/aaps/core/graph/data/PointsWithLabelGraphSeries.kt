@@ -382,12 +382,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // on the smaller/original display size, since graphHeight itself varies with it.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.45f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = fixedAnnotationAlign
                         val lines = value.label.split("\n")
-                        val lineHeight = scaledTextSize * 0.5f
+                        val lineHeight = scaledTextSize * 0.55f
                         val bottomLineY = graphTop + graphHeight * 0.94f
                         lines.reversed().forEachIndexed { i, line ->
                             canvas.drawText(line, endX, bottomLineY - i * lineHeight, mPaint)

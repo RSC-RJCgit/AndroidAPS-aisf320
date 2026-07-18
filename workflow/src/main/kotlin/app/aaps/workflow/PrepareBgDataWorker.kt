@@ -15,6 +15,7 @@ import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
@@ -41,6 +42,7 @@ class PrepareBgDataWorker(
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
+    @Inject lateinit var automationStateService: AutomationStateInterface
 
     class PrepareBgData(
         val iobCobCalculator: IobCobCalculator, // cannot be injected : HistoryBrowser uses different instance
@@ -143,7 +145,8 @@ class PrepareBgDataWorker(
                     latestSteps.steps5min
                 )
                 val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
-                val label = "Steps5=${latestSteps.steps5min}/$step5max\nSteps30=${latestSteps.steps30min}/$step30max"
+                val steps60Label = if (automationStateService.inState("stepsHigh", "StepsLow")) "\n${latestSteps.steps60min}" else ""
+                val label = "Steps5=${latestSteps.steps5min}/$step5max\nSteps30=${latestSteps.steps30min}/$step30max$steps60Label"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
