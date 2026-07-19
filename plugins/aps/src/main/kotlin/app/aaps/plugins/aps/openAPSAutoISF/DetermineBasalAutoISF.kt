@@ -324,7 +324,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU290")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU291")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -694,7 +694,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD2AU290 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD2AU291 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1458,12 +1458,12 @@ class DetermineBasalAutoISF @Inject constructor(
                             microBolus = 0.02 * profile.max_iob
                             rT.reason.append("nowHour ${nowHour} ")
                             rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                            rT.reason.append("CHANGED SIZE 0.0211 Twilight fast rise 0.0211 microBolus = 0.02 * profile.max_iob ${microBolus} ")
+                            rT.reason.append("CHANGED SIZE 0.211 Twilight fast rise 0.211 microBolus = 0.2 * [etc]profile.max_iob ${microBolus} ")
                         }
                         if (microBolus + IOB > 0.075 * profile.max_iob) {
                             microBolus = 0.075 * profile.max_iob - IOB
-                            rT.reason.append("microBolus = 0.075 * profile.max_iob - IOB ; 0.075 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
-                            rT.reason.append("CHANGED SIZE 0.07512 fast rise 0.07512 microBolus + IOB ov 0.075 * profile.max_iob microBolus = 0.075 * profile.max_iob - IOB ${microBolus} ")
+                            rT.reason.append("microBolus = 0.75 * profile.max_iob - IOB ; 0.75 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
+                            rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov 0.75 * profile.max_iob microBolus = 0.75 * [etc ]profile.max_iob - IOB ${microBolus} ")
                         }
                         rT.reason.append(" CHANGED SIZE SMB other hours ")
 // =====================================================
@@ -1559,5 +1559,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD2AU290
+DetermineBasalAutoISF.kt320TDD2AU291
 */

@@ -990,8 +990,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val p50b2 = g <= 99.1 /* 5.5 */ && recentSteps30Minutes >= 300 &&
                 cob == 0.0 && iob >= 1.2 && d <= -1.80 /* -0.10 */
 
-            // Block 3 — fallback: any slight fall below 5.0
-            val p50b3 = g < 90.1 /* 5.0 */ && d <= -0.90 /* -0.05 */
+            // Block 3 — fallback: a clear fall below 5.0 (delta ≤ -0.10, was -0.05,
+            // widened to open a deadband against the TToff off3 plateau reversal)
+            val p50b3 = g < 90.1 /* 5.0 */ && d <= -1.80 /* -0.10 */
 
             // Block 4 — pre-sleep: falling into sleep window at higher glucose
             val p50b4 = g <= 126.1 /* 7.0 */ && isTimeBetween(21, 0, 0, 0) &&
@@ -1495,11 +1496,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // TToff2 — loosest: any stabilisation ≥ 6.0 (earliest exit)
             val off2 = g >= 108.1 /* 6.0 */ && d >= -4.50 /* -0.25 */ && sd >= -4.50
 
-            // TToff3 — stagnation plateau: flat BGL, low IOB, trivial COB
+            // TToff3 — plateau-into-rise: same BGL/IOB/COB floor, but now requires an actual
+            // rise (was a flat ±0.10 band). Both the Libre raw 5-min delta and the AAPS delta
+            // must be ≥ +0.10 mmol, so a flat/falling low no longer reverses the TT — this is
+            // what breaks the Set50↔TToff flap at ~4.5–4.7.
             val off3 = cob <= 4.0 && g >= 81.1 /* 4.5 */ && iob <= 0.8 &&
-                d  in -1.80 /* -0.10 */ .. 1.80 /* 0.10 */ &&
-                sd in -1.80 .. 1.80 &&
-                ld in -1.80 .. 1.80
+                (rawDelta5MinMgdl() ?: -9999.0) >= 1.8 /* Libre 5-min ≥ +0.10 */ &&
+                d >= 1.8 /* Delta ≥ +0.10 */
 
             // TToff4 — confident recovery: fast active rise, not exercising
             val off4 = g >= 108.1 /* 6.0 */ && d >= 5.40 /* 0.30 */ && sd >= 3.60 /* 0.20 */ &&
@@ -3319,5 +3322,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU290
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU291
  */
