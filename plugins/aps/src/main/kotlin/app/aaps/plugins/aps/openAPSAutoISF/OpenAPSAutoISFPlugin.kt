@@ -1450,7 +1450,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val bg3 = lastBolusMin >= 120 && lastCarbMin >= 120
+            val bg3 = isTimeBetween(8, 0, 23, 30)
+                && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -3318,5 +3319,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU289
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU290
  */
