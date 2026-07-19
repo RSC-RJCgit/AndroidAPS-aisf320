@@ -1177,28 +1177,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("Not50Recently")
         }
 
-        // --- iobTHDaytimeFloor: safety net so iobTH% can't stay stranded at a night/back-off level all
-        // day when no conditional recovery automation happens to fire (as seen: stuck at 18% → SMBs
-        // throttled, low IOB). During the day, in a clearly-normal state, restore iobTH to a 50% floor.
-        // Deliberately conservative so it never overrides an intended low setting:
-        //  - only rescues from < 30% (the night/back-off band 12/15/16/18; leaves intentional 30/40+ alone)
+        // --- iobTHDaytimeFloor: enforces a daytime iobTH% floor so it can't stay stranded at a
+        // back-off level (as seen: stuck at 18% → SMBs throttled, low IOB). During the day, in a
+        // clearly-normal state, restore iobTH to the usual 70% whenever it has dropped to 50% or below.
+        //  - rescues from <= 50% (bumps 12/15/16/18/…/50 up to 70; leaves intentional 51+ alone)
         //  - requires profile 100%, LowBG=NO50rec (not in a back-off), no active TT, Steroids Off,
         //    BGL >= 6.5 mmol and not falling. 30-min throttle.
         if (readyToRun("iobTHDaytimeFloor", 30)
-            && isTimeBetween(6, 0, 22, 0)
+            && isTimeBetween(8, 0, 22, 0)
             && profile_percentage == 100
             && checkAutomationState("LowBG", "NO50rec")
             && checkAutomationState("Steroids", "Steroids Off")
             && activeTtMgdl() == null
-            && iobThresholdPercent < 30
+            && iobThresholdPercent <= 50
             && glucoseStatus.glucose >= 117.1 /* 6.5 mmol */
             && glucoseStatus.delta >= 0.0
         ) {
             val prevTh = iobThresholdPercent
-            preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-            sendSms("iobTHfloor: iobTH ${prevTh}->50%")
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+            sendSms("iobTHfloor: iobTH ${prevTh}->70%")
             addCarePortalNote("THfloor")
-            aapsLogger.debug(LTag.APS, "iobTHDaytimeFloor: restored iobTH $prevTh -> 50 (g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}mmol)")
+            aapsLogger.debug(LTag.APS, "iobTHDaytimeFloor: restored iobTH $prevTh -> 70 (g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}mmol)")
             markRun("iobTHDaytimeFloor")
         }
 
@@ -1706,7 +1705,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- CarbsTHoff: lowers iobTH to 50% when post-carb BGL is falling or mid-range anomaly ---
+        // --- CarbsTHoff: sets iobTH to 70% when post-carb BGL is falling or mid-range anomaly ---
+        // (was 50%; raised to 70 to match the daytime floor so it isn't just bumped up again).
         // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
         if (readyToRun("CarbsTHoff", 5) && profile_percentage == 100 && activeTtMgdl() == null
             && checkAutomationState("Steroids", "Steroids Off")) {
@@ -1729,7 +1729,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (ctBlock != null) {
                 setBgAccelIsfWeight(0.50)
                 switchProfileIfNeeded("Current ProfileReal", 30)
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
@@ -1991,7 +1991,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "OldPod2": brief 130% profile boost + hypo-safety 5.0mmol TT when BGL is very
         // high and stable/rising with MJ clear. Live-pump-only, matching the original's note.
         // Preconditions: no TT, profile=100%.
-        if (readyToRun("OldPod2", 5) && activePlugin.activePump !is VirtualPump
+        if (readyToRun("OldPod2", 10) && activePlugin.activePump !is VirtualPump
             && activeTtMgdl() == null && profile_percentage == 100) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -3293,5 +3293,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU285
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU286
  */
