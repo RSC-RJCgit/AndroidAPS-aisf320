@@ -450,6 +450,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastBolusTime).toDouble() / (60 * 1000)).toInt()
     }
 
+    private fun minutesSinceLastCarbs(): Int? {
+        val lastCarbTime = persistenceLayer.getNewestCarbs()?.timestamp ?: return null
+        return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
+    }
+
+    // Total IOB (bolus + temp-basal) at a timestamp — matches the loop's IOB and the "IOB change"
+    // trigger. Basal contribution is included deliberately.
+    private fun totalIobAt(time: Long): Double {
+        val profile = profileFunction.getProfile(time) ?: return 0.0
+        return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
+    }
+
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSetAcceWeight: same underlying
     // preference key ("bgAccel_ISF_weight") the DoubleKey.ApsAutoIsfBgAccelWeight getter already reads.
     private fun setBgAccelIsfWeight(weight: Double) {
@@ -1405,33 +1417,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
-        // 2-min throttle. Two trigger blocks; preconditions: profile=100%, no TT, COB>=9,
-        // acce weight>=0.20, and dura adaptation below acce adaptation.
+        // 10-min throttle. Three trigger blocks; only outer precondition is profile=100% + no TT.
+        // COB>=9 / acce>=0.20 / dura<acce are per-block (postBolusGate) for the manual-bolus branches
+        // (bg1/bg2); the SMB-driven branch (bg3) does NOT require them.
         if (profile_percentage == 100 && activeTtMgdl() == null
-            && mealData.mealCOB >= 9
-            && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
-            && autoIsfValues.duraIsf < autoIsfValues.acceIsf
-            && readyToRun("BolusGiven", 2)) {
+            && readyToRun("BolusGiven", 10)) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val iobTH = iobThresholdPercent
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val cob = mealData.mealCOB
+            // per-block gate for the manual-bolus branches (was the global guard)
+            val postBolusGate = cob >= 9
+                && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
+                && autoIsfValues.duraIsf < autoIsfValues.acceIsf
             // Block 1: recent bolus (5–35 min), rising BGL, low steps, iobTH<71, steroids off
             val bgRise1 = g >= 108.1 && sd >= 3.6 && d >= 3.6   // >=6.0 mmol rising
             val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
             val profileName = profileFunction.getProfileName()
             val onNormalProfile = profileName == "Current ProfileReal" || profileName == "Current Profile"
-            val bg1 = (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
+            val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
                 && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
                 && (lastBolusMin <= 120 || cob >= 10)
                 && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile
             // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state
-            val bg2 = g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
+            val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
                 && !checkAutomationState("MJ", "NOMJremains")
-            if (bg1 || bg2) {
-                val bBlock = if (bg1) "1" else "2"
+            // Block 3 (NEW): delivery-driven rise with NO recent manual bolus/carbs (>=120 min for both).
+            // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on both AAPS delta and
+            // the raw Libre 5-min delta.
+            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val bg3 = lastBolusMin >= 120 && lastCarbMin >= 120
+                && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
+            if (bg1 || bg2 || bg3) {
+                val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
                 markRun("BolusGiven")
                 sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 cancelCurrentTempTarget()
@@ -1958,7 +1980,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val boosted = profile_percentage == 130 || profile_percentage == 110
             val off1 = cannulaH <= 78.0 && cannulaH >= 2.0 && g <= 180.2 /* 10.0 mmol */
                 && boosted && activeTtMgdl() == null
-            val off2 = g <= 180.2 /* 10.0 mmol */ && d <= -5.4 /* -0.3 mmol */
+            // off2: with a TT active, exit the boost once BGL is no longer clearly rising — on any of
+            // AAPS delta < +0.1, acce weight < 0.1, or raw Libre 5-min delta < 0.2. (Glucose<=10 dropped.)
+            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val off2 = (d < 1.8 /* 0.1 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 3.6 /* 0.2 mmol */)
                 && boosted && activeTtMgdl() != null
             val off3 = activeTtMgdl() == null && boosted
             if (off1 || off2 || off3) {
@@ -3293,5 +3318,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU287
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU288
  */
