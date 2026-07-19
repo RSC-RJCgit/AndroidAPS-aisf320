@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.FileListProvider
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
@@ -40,6 +41,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var fileListProvider: FileListProvider
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var preferences: Preferences
@@ -74,19 +76,38 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         return binding.root
     }
 
+    // Full data (descending) plus the current SMB-only filter state, so the table can be rebuilt.
+    private var allRecords: List<AIV> = emptyList()
+    private var allApsResults: List<APSResult> = emptyList()
+    private var allStepsCounts: List<SC> = emptyList()
+    private var smbOnly = false
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.closeButton.setOnClickListener { dismiss() }
+        binding.smbOnlyButton.setOnClickListener {
+            smbOnly = !smbOnly
+            binding.smbOnlyButton.text = if (smbOnly) "All" else "SMB only"
+            rebuildTable()
+        }
 
         val now = System.currentTimeMillis()
         val fourHoursAgo = now - TimeUnit.HOURS.toMillis(4)
-        val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(fourHoursAgo, now)
+        allRecords = persistenceLayer.getAutoIsfValuesFromTimeToTime(fourHoursAgo, now)
             .sortedByDescending { it.timestamp }
-        val apsResults = persistenceLayer.getApsResults(fourHoursAgo, now)
-        val stepsCountList = persistenceLayer.getStepsCountFromTimeToTime(fourHoursAgo, now)
+        allApsResults = persistenceLayer.getApsResults(fourHoursAgo, now)
+        allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(fourHoursAgo, now)
 
-        populateTable(records, apsResults, stepsCountList)
-        exportToCsv(records, apsResults, stepsCountList, now)
+        rebuildTable()
+        exportToCsv(allRecords, allApsResults, allStepsCounts, now)
+    }
+
+    // Clears and repopulates the table honouring the SMB-only filter. The IOB-5-min-change column
+    // always looks back in the full record set, so filtering rows never distorts that value.
+    private fun rebuildTable() {
+        binding.historyTable.removeAllViews()
+        val shown = if (smbOnly) allRecords.filter { it.smbDelivered > 0.0 } else allRecords
+        populateTable(shown, allApsResults, allStepsCounts)
     }
 
     private fun populateTable(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>) {
@@ -107,7 +128,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SMB", colorInsulin, span = 3, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("BG", colorGlucose, span = 3, bold = true),
-                Cell("Insulin", colorInsulin, span = 3, bold = true),
+                Cell("Insulin", colorInsulin, span = 5, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true)
             )
         )
@@ -132,6 +153,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("Req",    colorInsulin, bold = true),
                 Cell("TBR",    colorInsulin, bold = true),
                 Cell("IOB",    colorInsulin, bold = true),
+                Cell("IOBΔ5",  colorInsulin, bold = true),
+                Cell("Basal",  colorInsulin, bold = true),
                 Cell("S5",     colorHeader, bold = true),
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),
@@ -161,6 +184,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.iob),                         colorInsulin),
+                    Cell(iob5MinChangeStr(r),                       colorInsulin),
+                    Cell(basalStr(r),                               colorInsulin),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString()     ?: "--", colorHeader),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString()   ?: "--", colorHeader),
                     Cell(stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString()   ?: "--", colorHeader),
@@ -170,6 +195,20 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             )
         }
     }
+
+    // IOB change over the 5 min preceding this record. Looks back in the FULL record set (allRecords),
+    // so the value is correct even when the table is filtered to SMB-only rows. "--" if no record sits
+    // near 5 min before this one.
+    private fun iob5MinChangeStr(r: AIV): String {
+        val target = r.timestamp - 5 * 60_000L
+        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
+        if (kotlin.math.abs(prior.timestamp - target) > 3 * 60_000L) return "--"
+        return df2.format(r.iob - prior.iob)
+    }
+
+    // Scheduled profile basal rate (U/hr) at this record's time, or "--" if the profile can't be resolved.
+    private fun basalStr(r: AIV): String =
+        profileFunction.getProfile(r.timestamp)?.getBasal(r.timestamp)?.let { df2.format(it) } ?: "--"
 
     // Nearest StepsCount record within 15 min of `timestamp`, or null if none close enough.
     private fun stepsAt(timestamp: Long, stepsCountList: List<SC>): SC? {
@@ -277,7 +316,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     private val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "iobTH",
-        "acceBG", "Delta", "SDelta", "Req", "TBR", "IOB", "S5", "S15", "S30", "S60", "S180"
+        "acceBG", "Delta", "SDelta", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -302,6 +341,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
             df2.format(r.iob),
+            iob5MinChangeStr(r),
+            basalStr(r),
             stepsValue(sc, r.timestamp, apsResults, SC::steps5min, steps5Regex)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, SC::steps15min, steps15Regex)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, SC::steps30min, steps30Regex)?.toString() ?: "",

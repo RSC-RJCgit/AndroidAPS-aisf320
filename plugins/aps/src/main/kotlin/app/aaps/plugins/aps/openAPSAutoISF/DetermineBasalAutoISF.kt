@@ -324,7 +324,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU288")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU289")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -694,7 +694,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD2AU288 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD2AU289 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1208,6 +1208,10 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
                 rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
 
+                // Snapshot the full (uncapped) SMB. When the profile is boosted (>100%) all the fast-rise
+                // size-reduction/cap blocks below are undone at the end so a boost delivers full SMBs.
+                val microBolusFullUncapped = microBolus
+
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
 // =====================================================
@@ -1481,6 +1485,15 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${microBolus} ")
                 }
 // =====================================================
+// BOOSTED PROFILE: SKIP ALL FAST-RISE CAPS
+// =====================================================
+                // If the profile is boosted (>100%) restore the full uncapped SMB — none of the fast-rise
+                // reductions above apply when the user has deliberately raised the profile.
+                if (profile_percentage > 100 && microBolus != microBolusFullUncapped) {
+                    rT.reason.append(" fast-rise caps skipped (profile ${profile_percentage}% > 100): microBolus ${microBolus} -> ${microBolusFullUncapped} ")
+                    microBolus = microBolusFullUncapped
+                }
+// =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
                 microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
@@ -1546,5 +1559,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD2AU288
+DetermineBasalAutoISF.kt320TDD2AU289
 */
