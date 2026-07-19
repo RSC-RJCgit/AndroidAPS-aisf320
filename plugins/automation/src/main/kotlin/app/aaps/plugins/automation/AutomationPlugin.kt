@@ -85,6 +85,7 @@ import app.aaps.plugins.automation.triggers.TriggerDelta
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
+import app.aaps.plugins.automation.triggers.TriggerIobDelta
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerSmbDeliveryRatio
 import app.aaps.plugins.automation.triggers.TriggerLocation
@@ -562,6 +563,7 @@ class AutomationPlugin @Inject constructor(
             TriggerBg(injector),
             TriggerDelta(injector),
             TriggerIob(injector),
+            TriggerIobDelta(injector),
             TriggerCOB(injector),
             TriggerProfilePercent(injector),
             TriggerProfile(injector),

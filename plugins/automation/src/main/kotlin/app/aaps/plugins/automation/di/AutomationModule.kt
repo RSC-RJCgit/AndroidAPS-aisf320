@@ -54,6 +54,7 @@ import app.aaps.plugins.automation.triggers.TriggerDummy
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
+import app.aaps.plugins.automation.triggers.TriggerIobDelta
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPhoneBattery
@@ -115,6 +116,7 @@ abstract class AutomationModule {
     @ContributesAndroidInjector abstract fun triggerDummyInjector(): TriggerDummy
     @ContributesAndroidInjector abstract fun triggerHeartRateInjector(): TriggerHeartRate
     @ContributesAndroidInjector abstract fun triggerIobInjector(): TriggerIob
+    @ContributesAndroidInjector abstract fun triggerIobDeltaInjector(): TriggerIobDelta
     @ContributesAndroidInjector abstract fun triggerLocationInjector(): TriggerLocation
     @ContributesAndroidInjector abstract fun triggerProfilePercentInjector(): TriggerProfilePercent
     @ContributesAndroidInjector abstract fun triggerProfileInjector(): TriggerProfile
