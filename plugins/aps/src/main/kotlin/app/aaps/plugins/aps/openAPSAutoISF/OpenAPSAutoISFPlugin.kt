@@ -344,7 +344,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // switchProfileIfNeeded() short-circuits when the name matches; this never short-circuits.
     private fun applyCurrentProfileAt100() {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
-        val profileName = profileFunction.getProfileName()
+        // Use the ORIGINAL (base) profile name, not getProfileName(): the latter returns the
+        // customized/decorated name (e.g. "Current Profile (50%)") when a percentage switch is
+        // active, and createProfileSwitch can't resolve that name in the store — the 100% switch
+        // then gets recorded but never takes effect, leaving the profile stuck at 50% (which made
+        // PP50.Off re-fire endlessly). getOriginalProfileName() gives the undecorated base name.
+        val profileName = profileFunction.getOriginalProfileName()
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = profileName,
@@ -367,7 +372,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // targeted a specific named profile, e.g. HighOldPod/BolusGiven71's "Current ProfileReal").
     // Replaces the former startProfile50For360/180, startProfile110For5/10, startProfile120For5,
     // startProfile130For60 — all identical apart from percentage/duration/profileName.
-    private fun startProfilePercentFor(percentage: Int, durationMinutes: Int, profileName: String = profileFunction.getProfileName()) {
+    // Default to the ORIGINAL (base) profile name, not getProfileName() — see applyCurrentProfileAt100:
+    // the customized/decorated name (e.g. "... (50%)") can't be resolved by createProfileSwitch.
+    private fun startProfilePercentFor(percentage: Int, durationMinutes: Int, profileName: String = profileFunction.getOriginalProfileName()) {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
