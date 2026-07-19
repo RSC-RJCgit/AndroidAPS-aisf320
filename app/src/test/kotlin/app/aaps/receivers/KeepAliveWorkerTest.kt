@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventProfileSwitchChanged
 import app.aaps.core.keys.LongNonKey
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
+import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import app.aaps.plugins.constraints.dstHelper.DstHelperPlugin
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.util.concurrent.ListenableFuture
@@ -44,6 +45,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
     @Mock private lateinit var workManager: WorkManager
     @Mock private lateinit var listenableFuture: ListenableFuture<List<WorkInfo>>
     @Mock private lateinit var mockedRxBus: RxBus
+    @Mock private lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
 
     @BeforeEach
     fun setUp() {
@@ -74,6 +76,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
             it.localAlertUtils = localAlertUtils
             it.workManager = workManager
             it.rh = rh
+            it.autoIsfHistoryExporter = autoIsfHistoryExporter
         }
 
     @Test

@@ -13,5 +13,6 @@ enum class LongNonKey(
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),
     LastCleanupRun("last_cleanup_run", 0L),
     LastCloudLogExport("last_cloud_log_export", 0L),
+    LastAutoIsfHistoryExport("last_autoisf_history_export", 0L),
 }
 

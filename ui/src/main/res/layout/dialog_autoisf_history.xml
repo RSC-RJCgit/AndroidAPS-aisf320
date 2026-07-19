@@ -22,16 +22,30 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <ScrollView
+        <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="300dp">
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
+            <!-- Frozen heading rows: stay visible while the body scrolls vertically, but
+                 share the horizontal scroll so columns track the body. -->
             <TableLayout
-                android:id="@+id/history_table"
+                android:id="@+id/history_header"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
-        </ScrollView>
+            <ScrollView
+                android:layout_width="wrap_content"
+                android:layout_height="300dp">
+
+                <TableLayout
+                    android:id="@+id/history_table"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </ScrollView>
+
+        </LinearLayout>
     </HorizontalScrollView>
 
     <LinearLayout

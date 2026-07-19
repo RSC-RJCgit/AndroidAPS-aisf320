@@ -37,6 +37,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.plugins.constraints.dstHelper.DstHelperPlugin
+import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.TimeUnit
@@ -63,6 +64,7 @@ class KeepAliveWorker(
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dstHelperPlugin: DstHelperPlugin
     @Inject lateinit var workManager: WorkManager
+    @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
 
     companion object {
 
@@ -141,6 +143,7 @@ class KeepAliveWorker(
         workerDbStatus()
         databaseCleanup()
         exportLogsToCloudIfDue()
+        exportAutoIsfHistoryIfDue()
 
         return Result.success()
     }
@@ -152,6 +155,17 @@ class KeepAliveWorker(
         if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
             maintenancePlugin.sendLogs()
             preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
+        }
+    }
+
+    // Automatic AutoISF history export (CSV + text + settings) every 6 hours, so the files land in
+    // aapsLogs alongside the rolling log files without needing to open the history dialog. Same
+    // 6-hour throttle as the cloud log export above.
+    private fun exportAutoIsfHistoryIfDue() {
+        val lastRun = preferences.get(LongNonKey.LastAutoIsfHistoryExport)
+        if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
+            autoIsfHistoryExporter.exportLast6Hours(dateUtil.now())
+            preferences.put(LongNonKey.LastAutoIsfHistoryExport, dateUtil.now())
         }
     }
 
