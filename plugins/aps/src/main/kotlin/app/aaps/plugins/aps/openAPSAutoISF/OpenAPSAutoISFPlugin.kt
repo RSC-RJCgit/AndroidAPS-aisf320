@@ -1518,10 +1518,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ld in 0.90 .. 9.01 /* 0.50 */ &&
                 recentSteps60Minutes <= 500 && recentSteps15Minutes <= 100 && recentSteps30Minutes <= 200
 
-            // TT5.8New1 — falling catch: cancels while BGL is actively dropping, regardless of how
-            // high it still is. Fills the gap the 5 branches above don't cover (they require delta
-            // >= -0.25 or flat/rising).
-            val new1 = g <= 162.1 /* 9.0 */ && d <= -1.8 /* -0.1 */
+            // TT5.8New1 — DISABLED. Was a "falling catch" (g <= 9.0 && d <= -0.1) that cancelled the
+            // 5.7 TT whenever BGL was dropping below 9.0 — but Skittles *sets* that TT precisely when
+            // BGL is low and falling, so new1 cancelled the protective TT the same cycle Skittles set
+            // it, driving the TT3<->COff1 loop and the 50%<->100% profile flap. Removed for now.
 
             // TT5.8New2 — high-G, low-IOB/COB catch: no delta requirement, covers falls steeper than
             // off2's -0.25 floor once insulin/carbs are no longer driving anything.
@@ -1543,7 +1543,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else {
                 // TT5.8New1/2/3's original action lists were just "Send SMS" + "Stop temp target" —
                 // no acce/profile/state reset, no CarePortal note. Kept minimal to match exactly.
-                val whichNew = when { new1 -> "TT5.8New1"; new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; else -> null }
+                val whichNew = when { new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; else -> null }
                 if (whichNew != null) {
                     cancelCurrentTempTarget()
                     sendSms(whichNew)
@@ -3322,5 +3322,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU292
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU293
  */
