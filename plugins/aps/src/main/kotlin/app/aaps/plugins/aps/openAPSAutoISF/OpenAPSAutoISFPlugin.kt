@@ -3236,14 +3236,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             new_SMB = lower_SMB + (higher_SMB - lower_SMB) * (bg - target_bg) / smb_delivery_ratio_bg_range
             new_SMB = max(lower_SMB, min(higher_SMB, new_SMB))   // cap if outside target_bg--higher_bg
         }
+        if (smb_delivery_ratio_bg_range == 0.0) {                     // deactivated in SMB extended menu
+            // Checked before fullLoop: with the BG range at 0 there is no interpolation (new_SMB stays
+            // == fix_SMB), so fullLoop's max(fix, new) would equal fix_SMB anyway — returning the fixed
+            // value here is identical, and logs the accurate "fixed value" message instead of the
+            // misleading "max of fixed and interpolated".
+            consoleLog.add("SMB delivery ratio set to fixed value ${round(fix_SMB, 2)}")
+            return fix_SMB
+        }
         if (loop_wanted_smb == "fullLoop") {                                // go for max impact
             consoleLog.add("SMB delivery ratio set to ${round(max(fix_SMB, new_SMB), 2)} as max of fixed and interpolated values")
             return max(fix_SMB, new_SMB)
-        }
-
-        if (smb_delivery_ratio_bg_range == 0.0) {                     // deactivated in SMB extended menu
-            consoleLog.add("SMB delivery ratio set to fixed value ${round(fix_SMB, 2)}")
-            return fix_SMB
         }
         if (bg <= target_bg) {
             consoleLog.add("SMB delivery ratio limited by minimum value ${round(lower_SMB, 2)}")
