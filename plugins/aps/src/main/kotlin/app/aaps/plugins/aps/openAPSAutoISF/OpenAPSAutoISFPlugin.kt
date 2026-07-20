@@ -1002,8 +1002,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (p50block != null) {
                 setBgAccelIsfWeight(0.07)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                setSmbDeliveryRatio(0.18)   // restore delivery baseline: hypo protection must not
-                                            // keep BolusGiven's strengthened 0.22 SMB delivery
+                setSmbDeliveryRatio(0.17)   // restore delivery baseline: hypo protection must not
+                                            // keep BolusGiven's strengthened 0.20 SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 startProfilePercentFor(50, 360)
                 setAutomationState("LowBG", "50recent")
@@ -1163,7 +1163,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val block = when { blkA -> "A"; blkB -> "B"; blkC -> "C"; blkD -> "D"; blkE -> "E"; blkF -> "F"; blkG -> "G"; else -> null }
             if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
                 setBgAccelIsfWeight(0.02)
-                setSmbDeliveryRatio(0.18)   // restore delivery baseline on hypo-risk protection
+                setSmbDeliveryRatio(0.17)   // restore delivery baseline on hypo-risk protection
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
@@ -1245,7 +1245,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
+        // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.17 / iobTH 18% ---
         // Fires when NOT on "Current Profile" (i.e. on a named high/steroid profile), Steroids Off, no TT.
         // 5-min floor throttle added (see readyToRun() usage note).
         run {
@@ -1429,17 +1429,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- SMB delivery ratio reset: restore the 0.18 baseline once no TT is active. The strengthening
-        // autos (BolusGiven bg3, BolusGivenMild) each set delivery 0.22 alongside a 2-min TT, so "no TT"
-        // means the boost window has ended → restore 0.18. Runs BEFORE the boost blocks below on purpose:
+        // --- SMB delivery ratio reset: restore the 0.17 baseline once no TT is active. The strengthening
+        // autos (BolusGiven bg3, BolusGivenMild) each set delivery 0.20 alongside a 2-min TT, so "no TT"
+        // means the boost window has ended → restore 0.17. Runs BEFORE the boost blocks below on purpose:
         // startTempTargetIfNeeded() inserts the TT asynchronously (not visible until the next loop), so a
-        // reset placed after a boost would see "no TT" and cancel the 0.22 the same loop. Here it only ever
-        // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.22 for the TT's 2 minutes.
-        // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.18.
-        // The recovery/protective autos' own setSmbDeliveryRatio(0.18) calls remain as a backup.
-        if (smb_delivery_ratio > 0.18 && activeTtMgdl() == null) {
-            setSmbDeliveryRatio(0.18)
-            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.22->0.18)
+        // reset placed after a boost would see "no TT" and cancel the 0.20 the same loop. Here it only ever
+        // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.20 for the TT's 2 minutes.
+        // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.17.
+        // The recovery/protective autos' own setSmbDeliveryRatio(0.17) calls remain as a backup.
+        if (smb_delivery_ratio > 0.17 && activeTtMgdl() == null) {
+            setSmbDeliveryRatio(0.17)
+            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.20->0.17)
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
@@ -1491,8 +1491,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Given-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
-                setSmbDeliveryRatio(0.22)   // strengthen SMB delivery during the post-bolus boost;
-                                            // recovery/protective autos restore it to 0.18 (see below)
+                setSmbDeliveryRatio(0.20)   // strengthen SMB delivery during the post-bolus boost;
+                                            // recovery/protective autos restore it to 0.17 (see below)
                 startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
@@ -1501,7 +1501,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- BolusGivenMild: gentle sibling of BolusGiven bg3. Strengthens SMB delivery on a *mild*
         // delivery-driven rise (much lower gates), WITHOUT boosting the profile — it holds the daytime
         // 5.0 target with a 2-min TT (which doubles as the timer for the delivery-ratio reset above) and
-        // raises the SMB delivery ratio to 0.22. Leaves iobTH / acce / ppWeight / profile untouched.
+        // raises the SMB delivery ratio to 0.20. Leaves iobTH / acce / ppWeight / profile untouched.
         // Own 10-min throttle, independent of bg1/2/3. rawDelta5 capped BELOW bg3's 0.8mmol threshold so
         // the two are mutually exclusive (one delta value can't satisfy both), preventing a same-loop
         // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
@@ -1518,7 +1518,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 4.5 /* 0.25 mmol; AAPS smoothed-delta confirmation */
                 && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
             if (fire) {
-                setSmbDeliveryRatio(0.22)                        // stronger SMBs; the no-TT reset restores 0.18
+                setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("GivenMild")
@@ -1782,7 +1782,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (u2block != null) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setBgAccelIsfWeight(0.50)
-                setSmbDeliveryRatio(0.18)   // daytime "back to usual" recovery restores delivery baseline
+                setSmbDeliveryRatio(0.17)   // daytime "back to usual" recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
@@ -1819,7 +1819,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
-                setSmbDeliveryRatio(0.18)   // daytime recovery restores delivery baseline
+                setSmbDeliveryRatio(0.17)   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("COff1-$ctBlock")
@@ -2240,7 +2240,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.35)
                 switchProfileIfNeeded("Current Profile")
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
-                setSmbDeliveryRatio(0.18)   // overnight reset restores delivery baseline
+                setSmbDeliveryRatio(0.17)   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
                 sendSms("NightAcce_0.35TH18")
@@ -2272,7 +2272,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stB1 || stB2 || stB3) {
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
-                setSmbDeliveryRatio(0.18)   // morning recovery restores delivery baseline
+                setSmbDeliveryRatio(0.17)   // morning recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 sendSms("SemiTwilightAcce_0.50TH16")
                 addCarePortalNote("Semi")
