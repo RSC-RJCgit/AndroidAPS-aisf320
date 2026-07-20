@@ -1499,13 +1499,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
         if (profile_percentage == 100 && activeTtMgdl() == null && readyToRun("BolusGivenMild", 10)) {
             val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val fire = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.40
+                && iobChange5 > 0.30
+                && d >= 4.5 /* 0.25 mmol; AAPS smoothed-delta confirmation */
                 && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
             if (fire) {
                 setSmbDeliveryRatio(0.22)                        // stronger SMBs; the no-TT reset restores 0.18
