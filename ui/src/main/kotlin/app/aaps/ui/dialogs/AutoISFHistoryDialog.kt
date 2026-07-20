@@ -79,6 +79,16 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             rebuildTable()
         }
 
+        // Keep the frozen header's horizontal scroll in lock-step with the body's, so the column
+        // titles stay above the right data columns as you scroll sideways. The != guard stops the
+        // two listeners from ping-ponging each other into a feedback loop.
+        binding.headerHscroll.setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            if (binding.bodyHscroll.scrollX != scrollX) binding.bodyHscroll.scrollTo(scrollX, 0)
+        }
+        binding.bodyHscroll.setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            if (binding.headerHscroll.scrollX != scrollX) binding.headerHscroll.scrollTo(scrollX, 0)
+        }
+
         val now = System.currentTimeMillis()
         val sixHoursAgo = now - TimeUnit.HOURS.toMillis(6)
         allRecords = persistenceLayer.getAutoIsfValuesFromTimeToTime(sixHoursAgo, now)
@@ -106,7 +116,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     // Clears and repopulates the table honouring the SMB-only filter. The IOB-5-min-change column
     // always looks back in the full record set, so filtering rows never distorts that value.
     private fun rebuildTable() {
+        binding.historyCorner.removeAllViews()
         binding.historyHeader.removeAllViews()
+        binding.historyTime.removeAllViews()
         binding.historyTable.removeAllViews()
         val shown = if (smbOnly) allRecords.filter { it.smbDelivered > 0.0 } else allRecords
         populateTable(shown, allApsResults, allStepsCounts)
@@ -114,9 +126,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     private fun populateTable(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>) {
         val table = binding.historyTable
-        val header = binding.historyHeader
 
-        addHeaderRows(header)
+        addHeaderRows()
 
         if (records.isEmpty()) {
             addRow(table, cells = listOf(Cell("No AutoISF data in last 6 hours", colorTime)))
@@ -125,8 +136,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
         for (r in records) {
             val sc = autoIsfHistoryExporter.stepsAt(r.timestamp, stepsCountList)
-            addRow(
-                table, cells = listOf(
+            // Cell 0 (Time) goes into the frozen left column; cells 1.. into the scrolling body.
+            addSplitRow(
+                binding.historyTime, table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp),          colorTime),
                     Cell(df1.format(r.glucose / MGDL_TO_MMOL),      colorGlucose),
                     Cell(df2.format(r.finalIsf),                    dominantIsfColor(r, colorFinalRatio)),
@@ -155,9 +167,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             )
         }
 
-        // Header and body are separate TableLayouts (so the header can stay frozen while the body
-        // scrolls), which means they compute column widths independently. Once both are laid out,
-        // widen each column to the max of its header/body width in both tables so they stay aligned.
+        // The four TableLayouts (corner/header/time/body) compute column widths independently. Once
+        // laid out, align the Time column (corner vs time) and the data columns (header vs body) so
+        // the frozen header and frozen Time column line up with the scrolling body.
         table.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
                 table.viewTreeObserver.removeOnGlobalLayoutListener(this)
@@ -166,15 +178,27 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         })
     }
 
-    // Aligns the frozen header's columns to the scrolling body's columns. Reads the final laid-out
-    // column widths (all rows in a TableLayout share per-column widths), then pins both tables to the
-    // per-column max via minimumWidth. One-shot — the listener that calls it removes itself first.
+    /** Adds one row split across two tables: the first cell into [leftTable] (frozen Time column),
+     *  the remaining cells into [rightTable] (the horizontally-scrolling body). Section-header spans
+     *  live entirely in cells 1.. so they stay intact after dropping the Time cell. */
+    private fun addSplitRow(leftTable: android.widget.TableLayout, rightTable: android.widget.TableLayout, cells: List<Cell>) {
+        addRow(leftTable, listOf(cells.first()))
+        addRow(rightTable, cells.drop(1))
+    }
+
+    // Aligns two frozen/scrolling table pairs so their columns line up: the Time column (corner vs
+    // time) and the data columns (header vs body). One-shot — the listener that calls it removes
+    // itself first.
     private fun syncColumnWidths() {
-        val header = binding.historyHeader
-        val table = binding.historyTable
-        // Column-header row is the last (2nd) header row — its cells map 1:1 to body columns.
-        val headerRow = header.getChildAt(header.childCount - 1) as? TableRow ?: return
-        val bodyRow = table.getChildAt(0) as? TableRow ?: return
+        syncTwoTables(binding.historyCorner, binding.historyTime)
+        syncTwoTables(binding.historyHeader, binding.historyTable)
+    }
+
+    // Reads the final laid-out per-column widths of a header table and its body table (all rows in a
+    // TableLayout share per-column widths), then pins both to the per-column max via minimumWidth.
+    private fun syncTwoTables(headerTbl: android.widget.TableLayout, bodyTbl: android.widget.TableLayout) {
+        val headerRow = headerTbl.getChildAt(headerTbl.childCount - 1) as? TableRow ?: return
+        val bodyRow = bodyTbl.getChildAt(0) as? TableRow ?: return
         val n = minOf(headerRow.childCount, bodyRow.childCount)
         if (n == 0) return
         for (i in 0 until n) {
@@ -184,14 +208,14 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             hv.minimumWidth = w
             bv.minimumWidth = w
         }
-        header.requestLayout()
-        table.requestLayout()
+        headerTbl.requestLayout()
+        bodyTbl.requestLayout()
     }
 
-    private fun addHeaderRows(table: android.widget.TableLayout) {
-        // Section header row
-        addRow(
-            table, cells = listOf(
+    private fun addHeaderRows() {
+        // Section header row — Time cell (col 0) to the corner, the spanned groups to the rest.
+        addSplitRow(
+            binding.historyCorner, binding.historyHeader, cells = listOf(
                 Cell("", colorTime),
                 Cell("BG", colorGlucose, bold = true),
                 Cell("Final Ratio", colorFinalRatio, bold = true),
@@ -204,9 +228,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             )
         )
 
-        // Column header row
-        addRow(
-            table, cells = listOf(
+        // Column header row — "Time" to the corner, the rest to the scrolling header.
+        addSplitRow(
+            binding.historyCorner, binding.historyHeader, cells = listOf(
                 Cell("Time",   colorHeader, bold = true),
                 Cell("BGL",    colorGlucose, bold = true),
                 Cell("Final",  colorFinalRatio, bold = true),

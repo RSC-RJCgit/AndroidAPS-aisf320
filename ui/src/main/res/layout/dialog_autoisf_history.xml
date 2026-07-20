@@ -18,29 +18,58 @@
         android:textStyle="bold"
         tools:ignore="HardcodedText" />
 
-    <!-- Weighted so the scroll region flexes to whatever vertical space is left after the title
-         and buttons. In landscape (short screen) it shrinks instead of pushing the button row
-         off the bottom. -->
-    <HorizontalScrollView
+    <!-- Frozen header band: the Time-column corner (frozen in both axes) plus the rest of the
+         header, which scrolls horizontally in sync with the body. This whole band never scrolls
+         vertically, so the column titles stay visible. -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
 
-        <LinearLayout
+        <TableLayout
+            android:id="@+id/history_corner"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:layout_height="wrap_content" />
 
-            <!-- Frozen heading rows: stay visible while the body scrolls vertically, but
-                 share the horizontal scroll so columns track the body. -->
+        <HorizontalScrollView
+            android:id="@+id/header_hscroll"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:scrollbars="none">
+
             <TableLayout
                 android:id="@+id/history_header"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
-            <ScrollView
+        </HorizontalScrollView>
+
+    </LinearLayout>
+
+    <!-- Body band: one vertical scroller wraps the frozen Time column and the horizontally-scrolling
+         rest of the body, so both scroll vertically together while only the right side scrolls
+         horizontally. Weighted so it flexes to the space left after title + buttons (landscape). -->
+    <ScrollView
+        android:id="@+id/body_vscroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TableLayout
+                android:id="@+id/history_time"
                 android:layout_width="wrap_content"
-                android:layout_height="0dp"
+                android:layout_height="wrap_content" />
+
+            <HorizontalScrollView
+                android:id="@+id/body_hscroll"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
                 android:layout_weight="1">
 
                 <TableLayout
@@ -48,10 +77,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content" />
 
-            </ScrollView>
+            </HorizontalScrollView>
 
         </LinearLayout>
-    </HorizontalScrollView>
+    </ScrollView>
 
     <LinearLayout
         android:layout_width="match_parent"
