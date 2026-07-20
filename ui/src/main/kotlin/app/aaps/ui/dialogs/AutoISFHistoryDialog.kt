@@ -38,6 +38,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     companion object {
         private const val MGDL_TO_MMOL = 18.0182
+        private const val KEY_SMB_ONLY = "smbOnly"
     }
 
     // Colors matching Trio TAI history screen
@@ -68,6 +69,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // Restore the SMB-only filter across rotation so it isn't reset to "All" on config change.
+        smbOnly = savedInstanceState?.getBoolean(KEY_SMB_ONLY) ?: false
+        binding.smbOnlyButton.text = if (smbOnly) "All" else "SMB only"
         binding.closeButton.setOnClickListener { dismiss() }
         binding.smbOnlyButton.setOnClickListener {
             smbOnly = !smbOnly
@@ -83,11 +87,20 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
 
         rebuildTable()
-        // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread.
-        // The automatic 6-hourly export runs from KeepAliveWorker via the same AutoIsfHistoryExporter.
-        Executors.newSingleThreadExecutor().execute {
-            autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, now)
+        // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
+        // but only on first creation, not on every rotation (savedInstanceState != null on re-create),
+        // so rotating doesn't spam duplicate export files. The automatic 6-hourly export runs from
+        // KeepAliveWorker via the same AutoIsfHistoryExporter.
+        if (savedInstanceState == null) {
+            Executors.newSingleThreadExecutor().execute {
+                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, now)
+            }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_SMB_ONLY, smbOnly)
     }
 
     // Clears and repopulates the table honouring the SMB-only filter. The IOB-5-min-change column
@@ -279,6 +292,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
 
     override fun onResume() {
         super.onResume()
-        dialog?.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Full height (not WRAP_CONTENT) so the weighted scroll region has a bounded space to flex
+        // within — otherwise in landscape the fixed content grows past the screen and the button row
+        // at the bottom is pushed off. The scroll area shrinks to keep the buttons visible.
+        dialog?.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 }
