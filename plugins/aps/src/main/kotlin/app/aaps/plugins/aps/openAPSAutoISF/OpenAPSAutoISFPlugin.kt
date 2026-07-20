@@ -1453,7 +1453,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val bg3 = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
+                && iobChange5 > 1.00 && d >= 12.6 /* 0.7 mmol */ && rawDelta5 >= 14.4 /* 0.8 mmol */
+            //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
                 markRun("BolusGiven")
@@ -1465,8 +1466,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Given-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
-                startProfilePercentFor(110, 10, "Current ProfileReal")
-                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
+                startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
+                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
         }
 
@@ -1977,7 +1978,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "HighPP130Off": exits the 130%/110% boost across 3 exit conditions
         // (stabilised no-TT, falling with TT, or simply no-TT at all while boosted). Note: "or 110%".
-        if (autoIsfValues.bgAcceleration < 0.10 && readyToRun("HighPP130Off", 2)) {
+        if (autoIsfValues.bgAcceleration < 2.0 && readyToRun("HighPP130Off", 2)) {
+            // WAS if (autoIsfValues.bgAcceleration < 0.10 && readyToRun("HighPP130Off", 2)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
@@ -1987,8 +1989,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // off2: with a TT active, exit the boost once BGL is no longer clearly rising — on any of
             // AAPS delta < +0.1, acce weight < 0.1, or raw Libre 5-min delta < 0.2. (Glucose<=10 dropped.)
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val off2 = (d < 1.8 /* 0.1 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 3.6 /* 0.2 mmol */)
+            val off2 = (d < 12.6 /* 0.7 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 14.4 /* 0.8 mmol */)
                 && boosted && activeTtMgdl() != null
+            //WAS val off2 = (d < 1.8 /* 0.1 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 3.6 /* 0.2 mmol */)
+            //                 && boosted && activeTtMgdl() != null
             val off3 = activeTtMgdl() == null && boosted
             if (off1 || off2 || off3) {
                 sendSms("HighPP130Off")
@@ -3322,5 +3326,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU293
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU294
  */
