@@ -63,7 +63,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "iobTH",
-        "acceBG", "Delta", "SDelta", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
+        "acceBG", "Delta", "SDelta", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -86,6 +86,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
+            rawDeltaStr(r, allRecords, 5),
+            rawDeltaStr(r, allRecords, 15),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
             df2.format(r.iob),
@@ -239,6 +241,19 @@ class AutoIsfHistoryExporter @Inject constructor(
         val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
         if (kotlin.math.abs(prior.timestamp - target) > 3 * 60_000L) return "--"
         return df2.format(r.iob - prior.iob)
+    }
+
+    /** Raw (unsmoothed) glucose change over [minutesBack] minutes, in mmol — this record's glucose
+     *  minus the glucose of the nearest record about [minutesBack] min earlier. This is the signal
+     *  the dosing code's rawDelta5MinMgdl() gate reads, as opposed to the smoothed AAPS delta. Uses
+     *  the full record set so filtering rows never distorts it; "--" if no record sits near the
+     *  look-back point. */
+    fun rawDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String {
+        val target = r.timestamp - minutesBack * 60_000L
+        val tolMs = if (minutesBack >= 15) 4 * 60_000L else 3 * 60_000L
+        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
+        if (kotlin.math.abs(prior.timestamp - target) > tolMs) return "--"
+        return df2.format((r.glucose - prior.glucose) / MGDL_TO_MMOL)
     }
 
     /** Scheduled profile basal rate (U/hr) at this record's time, or "--" if unresolvable. */

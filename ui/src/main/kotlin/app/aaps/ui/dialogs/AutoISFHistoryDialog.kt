@@ -153,6 +153,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df2.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
+                    Cell(autoIsfHistoryExporter.rawDeltaStr(r, allRecords, 5),  colorGlucose),
+                    Cell(autoIsfHistoryExporter.rawDeltaStr(r, allRecords, 15), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.iob),                         colorInsulin),
@@ -222,7 +224,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
                 Cell("SMB", colorInsulin, span = 3, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
-                Cell("BG", colorGlucose, span = 3, bold = true),
+                Cell("BG", colorGlucose, span = 5, bold = true),
                 Cell("Insulin", colorInsulin, span = 5, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true)
             )
@@ -245,6 +247,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("acce",   colorGlucose, bold = true),
                 Cell("Δ",      colorGlucose, bold = true),
                 Cell("SΔ",     colorGlucose, bold = true),
+                Cell("rΔ5",    colorGlucose, bold = true),
+                Cell("rΔ15",   colorGlucose, bold = true),
                 Cell("Req",    colorInsulin, bold = true),
                 Cell("TBR",    colorInsulin, bold = true),
                 Cell("IOB",    colorInsulin, bold = true),
