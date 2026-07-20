@@ -1471,14 +1471,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
                 && !checkAutomationState("MJ", "NOMJremains")
             // Block 3 (NEW): delivery-driven rise with NO recent manual bolus/carbs (>=120 min for both).
-            // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on both AAPS delta and
-            // the raw Libre 5-min delta.
+            // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on the AAPS delta and on
+            // BOTH the raw Libre 5-min AND 1-min deltas at the same >=0.8 mmol threshold. NB: rawDelta1MinMgdl()
+            // normalises the 1-min trend to a per-5-min rate (×5), so it's the same scale as rawDelta5 —
+            // 0.8 here means 0.8 mmol/5min, not 0.8 mmol in one minute.
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
             val bg3 = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 1.00 && d >= 12.6 /* 0.7 mmol */ && rawDelta5 >= 14.4 /* 0.8 mmol */
+                && iobChange5 > 1.00 && d >= 12.6 /* 0.7 mmol */
+                && rawDelta5 >= 14.4 /* 0.8 mmol */ && rawDelta1 >= 14.4 /* 0.8 mmol */
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1512,11 +1516,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
             val fire = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 0.30
                 && d >= 4.5 /* 0.25 mmol; AAPS smoothed-delta confirmation */
                 && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
+                && rawDelta1 >= 4.5 /* 0.25 mmol */ && rawDelta1 < 14.4 /* same band as rawDelta5 */
             if (fire) {
                 setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
