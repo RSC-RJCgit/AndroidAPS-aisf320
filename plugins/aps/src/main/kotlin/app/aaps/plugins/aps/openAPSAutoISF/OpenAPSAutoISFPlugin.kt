@@ -1002,6 +1002,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (p50block != null) {
                 setBgAccelIsfWeight(0.07)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                setSmbDeliveryRatio(0.18)   // restore delivery baseline: hypo protection must not
+                                            // keep BolusGiven's strengthened 0.22 SMB delivery
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 startProfilePercentFor(50, 360)
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
@@ -1160,6 +1163,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val block = when { blkA -> "A"; blkB -> "B"; blkC -> "C"; blkD -> "D"; blkE -> "E"; blkF -> "F"; blkG -> "G"; else -> null }
             if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
                 setBgAccelIsfWeight(0.02)
+                setSmbDeliveryRatio(0.18)   // restore delivery baseline on hypo-risk protection
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
                 sendSms("Skittles $block: hypo risk — TT 5.7 set")
@@ -1466,6 +1471,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Given-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                setSmbDeliveryRatio(0.22)   // strengthen SMB delivery during the post-bolus boost;
+                                            // recovery/protective autos restore it to 0.18 (see below)
                 startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
@@ -1723,6 +1730,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (u2block != null) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setBgAccelIsfWeight(0.50)
+                setSmbDeliveryRatio(0.18)   // daytime "back to usual" recovery restores delivery baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
                 sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
@@ -1758,6 +1767,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
+                setSmbDeliveryRatio(0.18)   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("COff1-$ctBlock")
@@ -2177,6 +2187,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.35)
                 switchProfileIfNeeded("Current Profile")
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                setSmbDeliveryRatio(0.18)   // overnight reset restores delivery baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
                 sendSms("NightAcce_0.35TH18")
                 addCarePortalNote("Night")
@@ -2207,6 +2219,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stB1 || stB2 || stB3) {
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
+                setSmbDeliveryRatio(0.18)   // morning recovery restores delivery baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 sendSms("SemiTwilightAcce_0.50TH16")
                 addCarePortalNote("Semi")
                 markRun("SemiTwilightAcce")
