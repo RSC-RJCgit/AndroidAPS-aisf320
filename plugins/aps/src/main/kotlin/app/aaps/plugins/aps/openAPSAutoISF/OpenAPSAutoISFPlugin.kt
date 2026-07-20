@@ -1292,10 +1292,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BatteryOver1%: when battery recovers above 1%, restore Current ProfileReal ---
-        // Fires when on 50% (Profile50 name or pct=50) and state Profile=Batt1%.
-        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
-        if (readyToRun("BatteryOver1pc", 5) && checkAutomationState("Profile", "Batt1%")
-            && (profile_percentage == 50 || profileFunction.getProfileName() == "Current Profile50")
+        // Keys on being on the named "Current Profile50" (the battery-drop profile) rather than a state
+        // flag: that name uniquely marks the battery state, since a hypo 50% is a *percentage* on
+        // ProfileReal (different name, profile_percentage==50). This replaced the old guard which
+        // required checkAutomationState("Profile","Batt1%") — a flag Battery1pc never set, so recovery
+        // never fired — and a "profile_percentage == 50" branch that would have wrongly matched (and
+        // cancelled) a hypo 50%.
+        // 5-min floor throttle added on top of the profile guard (see readyToRun() usage note).
+        if (readyToRun("BatteryOver1pc", 5)
+            && profileFunction.getProfileName() == "Current Profile50"
             && receiverStatusStore.batteryLevel > 1) {
             switchProfileIfNeeded("Current ProfileReal", 0)
             sendSms("AllOK Batt")
@@ -1345,6 +1350,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (tt == null || tt <= 127.9 /* 7.1 mmol */)) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
                 sendSms("Shower12: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=${iobThresholdPercent}")
+                addCarePortalNote("Shwr12")   // careportal note (SMS-only before, so no careportal trail): logs the iobTH 12 drop
                 markRun("Shower12")
             }
         }
@@ -1418,6 +1424,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 sendSms("Activity 70_0.70 0.35 Acce")
+                addCarePortalNote("ActOff")   // careportal note (SMS-only before, so no careportal trail): logs the Activity 50% exit (TT cancel, profile 100, acce 0.35, iobTH 70)
                 markRun("ActivityOff")
             }
         }
@@ -1432,6 +1439,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // The recovery/protective autos' own setSmbDeliveryRatio(0.18) calls remain as a backup.
         if (smb_delivery_ratio > 0.18 && activeTtMgdl() == null) {
             setSmbDeliveryRatio(0.18)
+            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.22->0.18)
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
@@ -1595,6 +1603,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (whichNew != null) {
                     cancelCurrentTempTarget()
                     sendSms(whichNew)
+                    addCarePortalNote("TToff-${if (new2) "N2" else "N3"}")   // careportal note (SMS-only before, so no careportal trail): logs the 5.7 TT reversal
                     markRun("TT57Reversal")
                 }
             }
@@ -1625,10 +1634,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (new1) {
                 cancelCurrentTempTarget()
                 sendSms("TT6.0New")
+                addCarePortalNote("ActTToff1")   // careportal note (SMS-only before, so no careportal trail): logs the Activity (6.5-7.6) TT reversal
                 markRun("ActivityTTReversal")
             } else if (new2) {
                 cancelCurrentTempTarget()
                 sendSms("TT6.0New2")
+                addCarePortalNote("ActTToff2")   // careportal note (SMS-only before, so no careportal trail): logs the Activity (6.5-7.6) TT reversal
                 markRun("ActivityTTReversal")
             }
         }
@@ -1660,6 +1671,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stepsOk && riseOk) {
                 cancelCurrentTempTarget()
                 sendSms("TT8.0lf")
+                addCarePortalNote("TT8.0off")   // careportal note (SMS-only before, so no careportal trail): logs the 8.0 "hyp" TT reversal
                 markRun("T80Off3ok")
             }
         }
@@ -2135,6 +2147,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(0.95)
                 sendSms("RecentPod Acce")
+                addCarePortalNote("RecPod")   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + acce 0.95 fresh/stale-pod boost
                 markRun("RecentPod")
             }
         }
