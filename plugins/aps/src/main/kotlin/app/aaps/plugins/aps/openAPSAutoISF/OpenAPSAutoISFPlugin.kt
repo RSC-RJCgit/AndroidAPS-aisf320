@@ -1422,6 +1422,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- SMB delivery ratio reset: restore the 0.18 baseline once no TT is active. The strengthening
+        // autos (BolusGiven bg3, BolusGivenMild) each set delivery 0.22 alongside a 2-min TT, so "no TT"
+        // means the boost window has ended → restore 0.18. Runs BEFORE the boost blocks below on purpose:
+        // startTempTargetIfNeeded() inserts the TT asynchronously (not visible until the next loop), so a
+        // reset placed after a boost would see "no TT" and cancel the 0.22 the same loop. Here it only ever
+        // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.22 for the TT's 2 minutes.
+        // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.18.
+        // The recovery/protective autos' own setSmbDeliveryRatio(0.18) calls remain as a backup.
+        if (smb_delivery_ratio > 0.18 && activeTtMgdl() == null) {
+            setSmbDeliveryRatio(0.18)
+        }
+
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
         // 10-min throttle. Three trigger blocks; only outer precondition is profile=100% + no TT.
         // COB>=9 / acce>=0.20 / dura<acce are per-block (postBolusGate) for the manual-bolus branches
@@ -1475,6 +1487,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                                             // recovery/protective autos restore it to 0.18 (see below)
                 startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
+            }
+        }
+
+        // --- BolusGivenMild: gentle sibling of BolusGiven bg3. Strengthens SMB delivery on a *mild*
+        // delivery-driven rise (much lower gates), WITHOUT boosting the profile — it holds the daytime
+        // 5.0 target with a 2-min TT (which doubles as the timer for the delivery-ratio reset above) and
+        // raises the SMB delivery ratio to 0.22. Leaves iobTH / acce / ppWeight / profile untouched.
+        // Own 10-min throttle, independent of bg1/2/3. rawDelta5 capped BELOW bg3's 0.8mmol threshold so
+        // the two are mutually exclusive (one delta value can't satisfy both), preventing a same-loop
+        // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
+        if (profile_percentage == 100 && activeTtMgdl() == null && readyToRun("BolusGivenMild", 10)) {
+            val g = glucoseStatus.glucose
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val fire = isTimeBetween(8, 0, 23, 30)
+                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && iobChange5 > 0.40
+                && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
+            if (fire) {
+                setSmbDeliveryRatio(0.22)                        // stronger SMBs; the no-TT reset restores 0.18
+                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
+                sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
+                addCarePortalNote("GivenMild")
+                markRun("BolusGivenMild")
             }
         }
 
