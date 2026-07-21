@@ -1,6 +1,7 @@
 package app.aaps.ui.dialogs
 
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -22,6 +23,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /**
  * Single source of truth for the AutoISF history CSV / plain-text / settings export and for the
@@ -54,7 +56,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
         val apsResults = persistenceLayer.getApsResults(from, now)
         val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
-        writeExport(records, apsResults, stepsCounts, now)
+        val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
+        writeExport(records, apsResults, stepsCounts, smbBoluses, now)
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -62,14 +65,14 @@ class AutoIsfHistoryExporter @Inject constructor(
     // -----------------------------------------------------------------------------------------------
 
     val exportHeaders = listOf(
-        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "iobTH",
+        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH",
         "acceBG", "Delta", "SDelta", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>): List<String> {
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -82,6 +85,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.smbDelivered),
             exactFastRiseStr(r.timestamp, apsResults),
             df2.format(r.smbDeliveryRatio),
+            smbInterval5SecStr(r.timestamp, smbBoluses),
             df2.format(r.iobThEffective),
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
@@ -104,12 +108,12 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Writes AutoISF_<stamp>.csv, AutoISF_<stamp>.txt and AutoISF_settings_<stamp>.txt into the
      *  aapsLogs directory. `records` is the set to export (also used as the IOB-5-min look-back set),
      *  so callers should pass the full unfiltered window. Runs on the caller's thread. */
-    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, now: Long) {
+    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, now: Long) {
         try {
             fileListProvider.ensureAapsLogsDirExists()
             val dir = fileListProvider.aapsLogsPath
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records) }
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -254,6 +258,17 @@ class AutoIsfHistoryExporter @Inject constructor(
         val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
         if (kotlin.math.abs(prior.timestamp - target) > tolMs) return "--"
         return df2.format((r.glucose - prior.glucose) / MGDL_TO_MMOL)
+    }
+
+    /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —
+     *  the same "SMBint5" the dosing code computes live (for its rapid-stacking guard). "--" if fewer
+     *  than 2 SMBs fell in that window. `smbBoluses` is the full window's SMB list (newest-first). */
+    fun smbInterval5SecStr(timestamp: Long, smbBoluses: List<BS>): String {
+        val windowStart = timestamp - 5 * 60_000L
+        val inWindow = smbBoluses.filter { it.timestamp in windowStart..timestamp }
+        if (inWindow.size < 2) return "--"
+        val spanSec = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }).toDouble() / 1000.0
+        return (spanSec / (inWindow.size - 1)).roundToInt().toString()
     }
 
     /** Scheduled profile basal rate (U/hr) at this record's time, or "--" if unresolvable. */

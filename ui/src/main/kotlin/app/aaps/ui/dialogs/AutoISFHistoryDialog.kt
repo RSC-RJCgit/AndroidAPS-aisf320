@@ -11,6 +11,7 @@ import android.view.ViewTreeObserver
 import android.widget.TableRow
 import android.widget.TextView
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -65,6 +66,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allRecords: List<AIV> = emptyList()
     private var allApsResults: List<APSResult> = emptyList()
     private var allStepsCounts: List<SC> = emptyList()
+    private var allSmbBoluses: List<BS> = emptyList()
     private var smbOnly = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -95,6 +97,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             .sortedByDescending { it.timestamp }
         allApsResults = persistenceLayer.getApsResults(sixHoursAgo, now)
         allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
+        allSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(sixHoursAgo, now, ascending = false).filter { it.type == BS.Type.SMB }
 
         rebuildTable()
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
@@ -103,7 +106,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // KeepAliveWorker via the same AutoIsfHistoryExporter.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
-                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, now)
+                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, now)
             }
         }
     }
@@ -149,6 +152,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
                     Cell(autoIsfHistoryExporter.exactFastRiseStr(r.timestamp, apsResults), colorInsulin),
                     Cell(df2.format(r.smbDeliveryRatio),            colorInsulin),
+                    Cell(autoIsfHistoryExporter.smbInterval5SecStr(r.timestamp, allSmbBoluses), colorInsulin),
                     Cell(df2.format(r.iobThEffective),              colorHeader),
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df2.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
@@ -222,7 +226,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("BG", colorGlucose, bold = true),
                 Cell("Final Ratio", colorFinalRatio, bold = true),
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
-                Cell("SMB", colorInsulin, span = 3, bold = true),
+                Cell("SMB", colorInsulin, span = 4, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("BG", colorGlucose, span = 5, bold = true),
                 Cell("Insulin", colorInsulin, span = 5, bold = true),
@@ -243,6 +247,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SMB",    colorInsulin, bold = true),
                 Cell("FR",     colorInsulin, bold = true),
                 Cell("Ratio",  colorInsulin, bold = true),
+                Cell("SMBi5",  colorInsulin, bold = true),
                 Cell("iobTH",  colorHeader, bold = true),
                 Cell("acce",   colorGlucose, bold = true),
                 Cell("Δ",      colorGlucose, bold = true),
