@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -16,9 +17,11 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
+import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
+import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import kotlin.math.max
@@ -28,6 +31,9 @@ import kotlin.math.max
  * Used when the follower phone sources BGL from a separate NS but needs bolus/carb history
  * from the main phone for accurate IOB/COB calculations.
  * SMBs are always excluded from the secondary download.
+ * Also imports device-lifecycle therapy events (sensor/site/insulin/pump-battery changes), since
+ * those are set on the main phone (and land only on its NS) but the follower's cannula/sensor-age
+ * automations read them from the local TE table — without this they never arrive.
  */
 class LoadSecondaryBolusCarbsWorker(
     context: Context,
@@ -39,6 +45,20 @@ class LoadSecondaryBolusCarbsWorker(
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var storeDataForDb: StoreDataForDb
+
+    companion object {
+
+        // Therapy-event types imported from the secondary NS: the device-lifecycle events the
+        // cannula/sensor-age automations read (TE.Type.CANNULA_CHANGE / SENSOR_CHANGE via
+        // getLastTherapyRecordUpToNow), plus their close siblings so pod/sensor sessions stay complete.
+        private val secondaryTherapyEventTypes = setOf(
+            TE.Type.SENSOR_CHANGE,
+            TE.Type.SENSOR_STARTED,
+            TE.Type.CANNULA_CHANGE,
+            TE.Type.INSULIN_CHANGE,
+            TE.Type.PUMP_BATTERY_CHANGE
+        )
+    }
 
     override suspend fun doWorkAndLog(): Result {
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled))
@@ -73,6 +93,7 @@ class LoadSecondaryBolusCarbsWorker(
             if (treatments.isNotEmpty()) {
                 var bolusCount = 0
                 var carbCount = 0
+                var teCount = 0
                 for (treatment in treatments) {
                     when (treatment) {
                         is NSBolus -> {
@@ -86,10 +107,19 @@ class LoadSecondaryBolusCarbsWorker(
                             storeDataForDb.addToCarbs(treatment.toCarbs())
                             carbCount++
                         }
+                        is NSTherapyEvent -> {
+                            // Device-lifecycle events only — deliberately NOT notes/announcements etc.,
+                            // which the follower generates locally and would duplicate.
+                            val te = treatment.toTherapyEvent()
+                            if (te.type in secondaryTherapyEventTypes) {
+                                storeDataForDb.addToTherapyEvents(te)
+                                teCount++
+                            }
+                        }
                         else -> Unit
                     }
                 }
-                rxBus.send(EventNSClientNewLog("◄ SEC-NS", "${treatments.size} treatments: $bolusCount boluses $carbCount carbs from secondary NS"))
+                rxBus.send(EventNSClientNewLog("◄ SEC-NS", "${treatments.size} treatments: $bolusCount boluses $carbCount carbs $teCount device events from secondary NS"))
                 storeDataForDb.storeTreatmentsToDb(false)
                 preferences.put(LongKey.NsClientSecondaryLastLoaded, dateUtil.now())
             } else {
