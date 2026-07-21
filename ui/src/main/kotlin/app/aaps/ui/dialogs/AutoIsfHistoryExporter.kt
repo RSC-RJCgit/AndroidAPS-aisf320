@@ -69,7 +69,7 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  wrongly fall back to the no-note default. Same 24h lookback as the graph annotation. */
     fun mjNotesFrom(from: Long): List<TE> =
         persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
-            .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t.startsWith("MJoff") }
+            .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff") }
 
     // -----------------------------------------------------------------------------------------------
     // File export
@@ -307,7 +307,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             note == "MJ2" -> "MJ2"
             note == "MJ3" -> "MJ3"
             note == "MoreMJ" -> "MJ3"   // MoreMJ advances NOMJremains -> MJ3 directly
-            else          -> "NOM"   // "A1", "MJoff*", or anything unexpected → not in an MJ state
+            else          -> "NOM"   // "A1", "MJoff*", "NOMJremains" (native), or anything unexpected → not in an MJ state
         }
     }
 

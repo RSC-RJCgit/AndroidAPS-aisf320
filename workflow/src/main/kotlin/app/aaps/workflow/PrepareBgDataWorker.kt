@@ -207,7 +207,7 @@ class PrepareBgDataWorker(
         val notes = persistenceLayer.getTherapyEventDataFromTime(atTime - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
         val note = notes.firstOrNull {
             val t = it.note ?: ""
-            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t.startsWith("MJoff"))
+            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff"))
         } ?: return "NOM"
         return when (note.note) {
             "MJ"     -> "MJa"
