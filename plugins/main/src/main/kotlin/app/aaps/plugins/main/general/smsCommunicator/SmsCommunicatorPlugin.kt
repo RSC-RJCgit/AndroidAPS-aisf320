@@ -1349,6 +1349,30 @@ class SmsCommunicatorPlugin @Inject constructor(
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
                 )
             )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsGentleHypoAlertNumbers, summary = R.string.smscommunicator_gentlehypoalertnumbers_summary, title = R.string.smscommunicator_gentlehypoalertnumbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsAlarmHypo1Numbers, summary = R.string.smscommunicator_alarmhypo1numbers_summary, title = R.string.smscommunicator_alarmhypo1numbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsAlarmHypo2Numbers, summary = R.string.smscommunicator_alarmhypo2numbers_summary, title = R.string.smscommunicator_alarmhypo2numbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsTest3Numbers, summary = R.string.smscommunicator_test3numbers_summary, title = R.string.smscommunicator_test3numbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.SmsAllowRemoteCommands, title = R.string.smscommunicator_remote_commands_allowed))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.SmsRemoteBolusDistance, summary = R.string.smscommunicator_remote_bolus_min_distance_summary, title = R.string.smscommunicator_remote_bolus_min_distance))
             addPreference(

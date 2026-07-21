@@ -556,12 +556,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
     private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)
 
-    // Sends directly to the numbers configured in StringKey.SmsBattAlertNumbers (semicolon-separated,
+    // Sends directly to the numbers configured in the given per-automation StringKey (semicolon-separated,
     // same format as SmsAllowedNumbers), IN ADDITION TO the general broadcast sendSms() already sent —
     // e.g. so a caregiver who is excluded from routine automation SMS (SmsBroadcastExcludeNumbers)
-    // still gets this specific critical alert. No-op if the setting is empty.
-    private fun sendSmsToBattAlertNumbers(text: String) {
-        preferences.get(StringKey.SmsBattAlertNumbers).split(";")
+    // still gets this specific targeted alert. No-op if the setting is empty. One StringKey per
+    // automation that wants its own list (SmsBattAlertNumbers, SmsGentleHypoAlertNumbers, etc.).
+    private fun sendSmsToNumbers(text: String, key: StringKey) {
+        preferences.get(key).split(";")
             .map { it.replace("\\s+".toRegex(), "") }
             .filter { it.isNotEmpty() }
             .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
@@ -959,6 +960,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("Test3", 5) && checkAutomationState("MJ", "MJ6")) {
             uiInteraction.addNotification(id = 9002, text = "_____Test3", level = Notification.URGENT)
             addGraphAnnouncement("_____Test3")
+            // Test3 has no general-broadcast SMS of its own — this call exists purely to test the
+            // targeted-numbers mechanism (SmsTest3Numbers) in isolation.
+            sendSmsToNumbers("Test3", StringKey.SmsTest3Numbers)
             setAutomationState("MJ", "NOMJremains")
             markRun("Test3")
         }
@@ -1080,7 +1084,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (ghBlock != null && ghExtraOk) {
                     setBgAccelIsfWeight(0.02)
                     preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                    sendSms("GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                    val ghSmsText = "GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}"
+                    sendSms(ghSmsText)
+                    sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
                     uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     addGraphAnnouncement("________________Gentle5")
                     setAutomationState("MJstate", "MJon")
@@ -1314,7 +1320,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
             sendSms("LowBattery")
-            sendSmsToBattAlertNumbers("LowBattery")   // additionally targets SmsBattAlertNumbers
+            sendSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)   // additionally targets SmsBattAlertNumbers
             markRun("Battery1pc")
         }
 
@@ -2423,6 +2429,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (ah1b1 || ah1b2 || ah1b3) {
                 setBgAccelIsfWeight(0.10)
                 sendSms("AlarmHypo")
+                sendSmsToNumbers("AlarmHypo", StringKey.SmsAlarmHypo1Numbers)
                 uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("_____H4")
                 setAutomationState("BGLstate", "BGLlastLOW")
@@ -2444,6 +2451,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (isTimeBetween(7, 30, 23, 30) && d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
                 setBgAccelIsfWeight(0.10)
                 sendSms("AlarmHypo")
+                sendSmsToNumbers("AlarmHypo", StringKey.SmsAlarmHypo2Numbers)
                 uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
                 addGraphAnnouncement("__________A4")
                 setAutomationState("LowBG", "50recent")

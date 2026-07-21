@@ -44,6 +44,10 @@ enum class StringKey(
     SmsAllowedNumbers("smscommunicator_allowednumbers", ""),
     SmsBattAlertNumbers("smscommunicator_battalertnumbers", ""),
     SmsBroadcastExcludeNumbers("smscommunicator_broadcastexcludenumbers", ""),
+    SmsGentleHypoAlertNumbers("smscommunicator_gentlehypoalertnumbers", ""),
+    SmsAlarmHypo1Numbers("smscommunicator_alarmhypo1numbers", ""),
+    SmsAlarmHypo2Numbers("smscommunicator_alarmhypo2numbers", ""),
+    SmsTest3Numbers("smscommunicator_test3numbers", ""),
     SmsOtpPassword("smscommunicator_otp_password", "", dependency = BooleanKey.SmsAllowRemoteCommands, isPassword = true),
 
     VirtualPumpType("virtualpump_type", "Generic AAPS"),
