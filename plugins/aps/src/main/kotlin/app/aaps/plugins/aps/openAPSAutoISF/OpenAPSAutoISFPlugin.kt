@@ -1476,17 +1476,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val postBolusGate = cob >= 9
                 && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
                 && autoIsfValues.duraIsf < autoIsfValues.acceIsf
-            // Block 1: recent bolus (5–35 min), rising BGL, low steps, iobTH<71, steroids off
+            // Raw Libre deltas (both normalised to a per-5-min rate) — declared up here so bg1/bg2 can
+            // gate on them too, not just bg3.
+            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // Block 1: recent bolus (5–35 min), rising BGL, low steps, iobTH<71, steroids off.
+            // Raw-Libre confirmation added at the SAME magnitude as each branch's AAPS delta, so a
+            // smoothed-delta blip the sensor doesn't back up can't start the boost.
             val bgRise1 = g >= 108.1 && sd >= 3.6 && d >= 3.6   // >=6.0 mmol rising
+                && rawDelta5 >= 3.6 && rawDelta1 >= 3.6 /* 0.2 mmol raw confirmation */
             val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
+                && rawDelta5 >= 7.2 && rawDelta1 >= 7.2 /* 0.4 mmol raw confirmation */
             val profileName = profileFunction.getProfileName()
             val onNormalProfile = profileName == "Current ProfileReal" || profileName == "Current Profile"
             val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
                 && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
                 && (lastBolusMin <= 120 || cob >= 10)
                 && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile
-            // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state
+            // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state.
+            // Same-magnitude raw-Libre confirmation as its AAPS delta (>0.2 mmol).
             val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
+                && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol raw confirmation */
                 && !checkAutomationState("MJ", "NOMJremains")
             // Block 3 (NEW): delivery-driven rise with NO recent manual bolus/carbs (>=120 min for both).
             // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on the AAPS delta and on
@@ -1495,8 +1505,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 0.8 here means 0.8 mmol/5min, not 0.8 mmol in one minute.
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
