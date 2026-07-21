@@ -2,6 +2,7 @@ package app.aaps.ui.dialogs
 
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
@@ -58,7 +59,9 @@ class AutoIsfHistoryExporter @Inject constructor(
         val apsResults = persistenceLayer.getApsResults(from, now)
         val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
         val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
-        writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), now)
+        // 20-min lead-in so the oldest rows still have their raw-delta look-backs available
+        val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
+        writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), rawReadings, now)
     }
 
     /** MJ-lifecycle careportal notes (newest-first), across ALL sources — native automation, code, or
@@ -83,7 +86,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>): List<String> {
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -101,9 +104,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
-            rawDeltaStr(r, allRecords, 1),
-            rawDeltaStr(r, allRecords, 5),
-            rawDeltaStr(r, allRecords, 15),
+            rawDeltaStr(r.timestamp, rawReadings, 1),
+            rawDeltaStr(r.timestamp, rawReadings, 5),
+            rawDeltaStr(r.timestamp, rawReadings, 15),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
             df2.format(r.iob),
@@ -121,12 +124,12 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Writes AutoISF_<stamp>.csv, AutoISF_<stamp>.txt and AutoISF_settings_<stamp>.txt into the
      *  aapsLogs directory. `records` is the set to export (also used as the IOB-5-min look-back set),
      *  so callers should pass the full unfiltered window. Runs on the caller's thread. */
-    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, now: Long) {
+    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, now: Long) {
         try {
             fileListProvider.ensureAapsLogsDirExists()
             val dir = fileListProvider.aapsLogsPath
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes) }
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes, rawReadings) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -260,27 +263,41 @@ class AutoIsfHistoryExporter @Inject constructor(
         return df2.format(r.iob - prior.iob)
     }
 
-    /** Raw (unsmoothed) glucose delta over the [minutesBack]-min window, expressed as a PER-5-MIN rate
-     *  in mmol — this record's glucose minus the glucose of the nearest record about [minutesBack] min
-     *  earlier, divided by the actual gap and ×5. Same per-5-min normalisation AAPS uses for its own
-     *  deltas (e.g. shortAvgDelta, the ~15-min SΔ) and for rawDelta1MinMgdl()/rawDelta5MinMgdl(), so
-     *  rΔ1/rΔ5/rΔ15 all sit on the same mmol/5min scale as Δ/SΔ and the gate thresholds. (For a 5-min
-     *  window ×5/5 = ×1, so
-     *  rΔ5 is unchanged; rΔ15 becomes ~⅓ of the raw 15-min total it used to show.) Uses the full record
-     *  set so filtering rows never distorts it; "--" if no record sits near the look-back point. */
-    fun rawDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String {
-        val target = r.timestamp - minutesBack * 60_000L
-        val tolMs = when {
-            minutesBack <= 1  -> 90_000L        // 1.5 min for the 1-min look-back
-            minutesBack >= 15 -> 4 * 60_000L
-            else              -> 3 * 60_000L
+    /** Raw Libre delta at [timestamp] over the [minutesBack]-min window, in mmol — computed from the
+     *  BG readings' NOISE field (the raw native Libre signal), NOT the smoothed AIV glucose, so these
+     *  columns show exactly what the dosing gates and the graph "L1=" annotation read. (An earlier
+     *  version differenced the AIV glucose — the smoothed series — which could even disagree in SIGN
+     *  with the gates near a turn; that was wrong and is why this reads raw now.)
+     *  - 1-min mirrors rawDelta1MinMgdl(): the two newest readings at/before the row, scaled to a
+     *    per-5-min rate ((n-p)/gap ×5).
+     *  - 5-min mirrors rawDelta5MinMgdl(): newest minus the reading nearest 5 min back (plain
+     *    difference — a 5-min window IS the per-5-min rate).
+     *  - 15-min follows the same nearest-reference pattern, normalised to a per-5-min rate so it
+     *    stays on the shared mmol/5min scale.
+     *  `rawReadings` must be newest-first. "--" when readings or their noise values are missing. */
+    fun rawDeltaStr(timestamp: Long, rawReadings: List<GV>, minutesBack: Int): String {
+        // Same window sizes as the gate functions: 3 min for the 1-min delta, window+2 otherwise.
+        val inWindow = rawReadings.filter { it.timestamp in (timestamp - (minutesBack + 2) * 60_000L)..timestamp }
+        if (inWindow.size < 2) return "--"
+        val newest = inWindow.first()
+        val n = newest.noise ?: return "--"
+        if (minutesBack <= 1) {
+            val p = inWindow[1].noise ?: return "--"
+            val mins = (newest.timestamp - inWindow[1].timestamp) / 60_000.0
+            if (mins <= 0.0) return "--"
+            return df2.format((n - p) / mins * 5.0 / MGDL_TO_MMOL)
         }
-        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
-        if (kotlin.math.abs(prior.timestamp - target) > tolMs) return "--"
-        val actualMin = (r.timestamp - prior.timestamp) / 60_000.0
-        if (actualMin <= 0.0) return "--"
-        val ratePer5Min = (r.glucose - prior.glucose) / actualMin * 5.0
-        return df2.format(ratePer5Min / MGDL_TO_MMOL)
+        val target = timestamp - minutesBack * 60_000L
+        val ref = inWindow.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
+        if (ref.timestamp == newest.timestamp) return "--"
+        val refNoise = ref.noise ?: return "--"
+        return if (minutesBack <= 5)
+            df2.format((n - refNoise) / MGDL_TO_MMOL)
+        else {
+            val actualMin = (newest.timestamp - ref.timestamp) / 60_000.0
+            if (actualMin <= 0.0) return "--"
+            df2.format((n - refNoise) / actualMin * 5.0 / MGDL_TO_MMOL)
+        }
     }
 
     /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —

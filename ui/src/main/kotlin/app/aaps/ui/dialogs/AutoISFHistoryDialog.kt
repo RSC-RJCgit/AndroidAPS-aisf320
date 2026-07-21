@@ -12,6 +12,7 @@ import android.widget.TableRow
 import android.widget.TextView
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
@@ -69,6 +70,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allStepsCounts: List<SC> = emptyList()
     private var allSmbBoluses: List<BS> = emptyList()
     private var allMjNotes: List<TE> = emptyList()
+    private var allRawReadings: List<GV> = emptyList()
     private var smbOnly = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -101,6 +103,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
         allSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(sixHoursAgo, now, ascending = false).filter { it.type == BS.Type.SMB }
         allMjNotes = autoIsfHistoryExporter.mjNotesFrom(sixHoursAgo)
+        // Raw BG readings (noise = raw Libre) for the rΔ columns; 20-min lead-in for the oldest rows
+        allRawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(sixHoursAgo - 20 * 60_000L, now, ascending = false)
 
         rebuildTable()
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
@@ -109,7 +113,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // KeepAliveWorker via the same AutoIsfHistoryExporter.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
-                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, now)
+                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, allRawReadings, now)
             }
         }
     }
@@ -160,9 +164,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(df2.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r, allRecords, 1),  colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r, allRecords, 5),  colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r, allRecords, 15), colorGlucose),
+                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 1),  colorGlucose),
+                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 5),  colorGlucose),
+                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 15), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.iob),                         colorInsulin),
