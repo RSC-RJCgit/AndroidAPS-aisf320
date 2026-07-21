@@ -1512,6 +1512,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
+                && profileName != "Current Profile"                  // not on the MJ/night profile
+                && checkAutomationState("MJ", "NOMJremains")         // and MJ state must be NOM
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1558,6 +1560,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 4.5 * stackK /* 0.25 mmol; AAPS smoothed-delta confirmation */
                 && rawDelta5 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta1 < 14.4 * stackK /* same band as rawDelta5 */
+                && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
+                && checkAutomationState("MJ", "NOMJremains")               // and MJ state must be NOM
             if (fire) {
                 setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
@@ -3451,5 +3455,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU314
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU315
  */
