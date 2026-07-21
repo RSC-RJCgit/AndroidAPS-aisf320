@@ -1450,10 +1450,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.20 for the TT's 2 minutes.
         // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.17.
         // The recovery/protective autos' own setSmbDeliveryRatio(0.17) calls remain as a backup.
-        // Threshold sits BETWEEN baseline (0.17) and boost (0.20), NOT at 0.17: the pref reads back as a
-        // hair above the 0.17 literal (float rounding), so a ">0.17" guard would be true even at "0.17"
-        // and re-fire DelOff every loop. ">0.18" is unambiguously true only when actually boosted.
-        if (smb_delivery_ratio > 0.18 && activeTtMgdl() == null) {
+        // Guard is "NOT (fuzzily) at the 0.17 baseline" — i.e. boosted — rather than ">0.17": the pref
+        // reads back a hair above the 0.17 literal (float rounding), so a ">0.17" guard would be true
+        // even at "0.17" and re-fire DelOff every loop. fuzzyEquals (±0.001) treats "0.17" as baseline
+        // and only the 0.20 boost as different. NB on retune: update this 0.17 to the new baseline, and
+        // keep baseline/boost more than 0.001 apart.
+        if (!fuzzyEquals(smb_delivery_ratio, 0.17) && activeTtMgdl() == null) {
             setSmbDeliveryRatio(0.17)
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.20->0.17)
         }
@@ -2136,7 +2138,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // the original's Note field was empty.
         if (readyToRun("RecentPodOff", 5)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            if (acceW == 0.95 && activeTtMgdl() == null) {
+            // fuzzyEquals, not ==: acceW is a Double pref set to 0.95 elsewhere, and 0.95 has no exact
+            // float representation, so "acceW == 0.95" could read false after the round-trip and this
+            // recovery would never fire (acce stuck at 0.95). Same float trap as the DelOff reset.
+            if (fuzzyEquals(acceW, 0.95) && activeTtMgdl() == null) {
                 setBgAccelIsfWeight(0.71)
                 switchProfileIfNeeded("Current ProfileReal")
                 sendSms("RecentPodOff Acce")
