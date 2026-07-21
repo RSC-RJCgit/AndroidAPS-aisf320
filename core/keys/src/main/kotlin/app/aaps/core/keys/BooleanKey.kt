@@ -103,6 +103,7 @@ enum class BooleanKey(
     NsClientAcceptInsulin("ns_receive_insulin", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptInsulinExcludeSmb("ns_receive_insulin_exclude_smb", false, showInNsClientMode = false, dependency = NsClientAcceptInsulin),
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false),
+    NsClientSecondaryAcceptTherapyEvent("nsclient_secondary_receive_therapy_events", true, dependency = NsClientSecondaryEnabled),
     NsClientAcceptCarbs("ns_receive_carbs", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptRunningMode("ns_receive_running_mode", false, showInNsClientMode = false, hideParentScreenIfHidden = true),

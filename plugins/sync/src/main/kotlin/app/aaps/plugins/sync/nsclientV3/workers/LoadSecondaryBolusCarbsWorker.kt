@@ -90,6 +90,8 @@ class LoadSecondaryBolusCarbsWorker(
             val response = client.getTreatmentsNewerThan(lastLoadedIso, 500)
             val treatments = response.values
 
+            val acceptTherapyEvents = preferences.get(BooleanKey.NsClientSecondaryAcceptTherapyEvent)
+
             if (treatments.isNotEmpty()) {
                 var bolusCount = 0
                 var carbCount = 0
@@ -108,12 +110,17 @@ class LoadSecondaryBolusCarbsWorker(
                             carbCount++
                         }
                         is NSTherapyEvent -> {
+                            // Gated by its own toggle (NsClientSecondaryAcceptTherapyEvent), separate from
+                            // the bolus/carb import above — a phone that already gets these events from its
+                            // own pump/CGM can turn just this off without losing bolus+carb sync.
                             // Device-lifecycle events only — deliberately NOT notes/announcements etc.,
                             // which the follower generates locally and would duplicate.
-                            val te = treatment.toTherapyEvent()
-                            if (te.type in secondaryTherapyEventTypes) {
-                                storeDataForDb.addToTherapyEvents(te)
-                                teCount++
+                            if (acceptTherapyEvents) {
+                                val te = treatment.toTherapyEvent()
+                                if (te.type in secondaryTherapyEventTypes) {
+                                    storeDataForDb.addToTherapyEvents(te)
+                                    teCount++
+                                }
                             }
                         }
                         else -> Unit

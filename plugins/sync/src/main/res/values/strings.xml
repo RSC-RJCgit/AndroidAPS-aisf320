@@ -79,6 +79,8 @@
     <string name="ns_receive_insulin_exclude_smb_summary">Skip automated micro-boluses (SMB) when downloading insulin — only manual boluses are accepted</string>
     <string name="ns_secondary_enabled">Download bolus+carbs from secondary NS</string>
     <string name="ns_secondary_enabled_summary">Pull manual boluses and carbs from a separate Nightscout site (e.g. main phone\'s NS) while uploading outcomes to the primary NS</string>
+    <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
+    <string name="ns_secondary_receive_therapy_events_summary">Additionally pull sensor/site/insulin/pump-battery-change events from the secondary NS, so cannula- and sensor-age automations work correctly on this phone. Turn off if this phone should not receive those events (e.g. to avoid duplicating entries it already gets from its own pump/CGM)</string>
     <string name="ns_secondary_url">Secondary NS URL</string>
     <string name="ns_secondary_url_summary">Nightscout URL to download bolus and carbs from (e.g. https://mymainns.herokuapp.com)</string>
     <string name="ns_secondary_token">Secondary NS access token</string>
