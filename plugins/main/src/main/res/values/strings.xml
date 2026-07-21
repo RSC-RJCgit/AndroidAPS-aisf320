@@ -34,6 +34,10 @@
     <string name="sms_timeout_while_waiting">Timeout while waiting for finish of previous pump communication</string>
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
+    <string name="smscommunicator_broadcastexcludenumbers">Exclude from general automation SMS</string>
+    <string name="smscommunicator_broadcastexcludenumbers_summary">Numbers listed here (from Allowed phone numbers, semicolon-separated) will NOT receive the general automation broadcast (e.g. sendSms in AutoISF automations), even though they remain authorized to send commands. Use this for numbers that should only get specific targeted alerts, like Battery-alert numbers below.</string>
+    <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
+    <string name="smscommunicator_battalertnumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY — these numbers additionally receive the critical phone-battery (Battery1%) alert, on top of (not instead of) the general automation broadcast</string>
     <string name="smscommunicator_bolus_reply_with_code">To deliver bolus %1$.2fU reply with code %2$s</string>
     <string name="smscommunicator_meal_bolus_reply_with_code">To deliver meal bolus %1$.2fU reply with code %2$s</string>
     <string name="smscommunicator_temptarget_with_code">To set the Temp Target %1$s reply with code %2$s</string>

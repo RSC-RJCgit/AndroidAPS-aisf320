@@ -133,6 +133,11 @@ class SmsCommunicatorPlugin @Inject constructor(
 
     private val disposable = CompositeDisposable()
     var allowedNumbers: MutableList<String> = ArrayList()
+    // Numbers excluded from the general broadcast (sendNotificationToAllNumbers) even though they may
+    // still be in allowedNumbers — e.g. a caregiver who should get specific critical alerts (Battery1%)
+    // but not every routine automation SMS. Does NOT affect isAllowedNumber()/inbound command
+    // authorization — that stays governed by allowedNumbers alone.
+    var broadcastExcludeNumbers: MutableList<String> = ArrayList()
     @Volatile var messageToConfirm: AuthRequest? = null
     @Volatile var lastRemoteBolusTime: Long = 0
     override var messages = ArrayList<Sms>()
@@ -239,6 +244,14 @@ class SmsCommunicatorPlugin @Inject constructor(
                 val cleaned = number.replace("\\s+".toRegex(), "")
                 allowedNumbers.add(cleaned)
                 aapsLogger.debug(LTag.SMS, "Found allowed number: $cleaned")
+            }
+        }
+        if (ev == null || ev.isChanged(StringKey.SmsBroadcastExcludeNumbers.key)) {
+            val settings = preferences.get(StringKey.SmsBroadcastExcludeNumbers)
+            broadcastExcludeNumbers.clear()
+            for (number in settings.split(";")) {
+                val cleaned = number.replace("\\s+".toRegex(), "")
+                if (cleaned.isNotEmpty()) broadcastExcludeNumbers.add(cleaned)
             }
         }
     }
@@ -1237,6 +1250,7 @@ class SmsCommunicatorPlugin @Inject constructor(
     override fun sendNotificationToAllNumbers(text: String): Boolean {
         var result = true
         for (i in allowedNumbers.indices) {
+            if (allowedNumbers[i] in broadcastExcludeNumbers) continue
             val sms = Sms(allowedNumbers[i], text)
             result = result && sendSMS(sms)
         }
@@ -1320,6 +1334,18 @@ class SmsCommunicatorPlugin @Inject constructor(
             addPreference(
                 AdaptiveStringPreference(
                     ctx = context, stringKey = StringKey.SmsAllowedNumbers, summary = R.string.smscommunicator_allowednumbers_summary, title = R.string.smscommunicator_allowednumbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsBroadcastExcludeNumbers, summary = R.string.smscommunicator_broadcastexcludenumbers_summary, title = R.string.smscommunicator_broadcastexcludenumbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsBattAlertNumbers, summary = R.string.smscommunicator_battalertnumbers_summary, title = R.string.smscommunicator_battalertnumbers,
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
                 )
             )

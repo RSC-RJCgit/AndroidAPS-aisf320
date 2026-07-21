@@ -61,6 +61,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
+import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
@@ -70,6 +71,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -553,6 +555,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
     private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)
+
+    // Sends directly to the numbers configured in StringKey.SmsBattAlertNumbers (semicolon-separated,
+    // same format as SmsAllowedNumbers), IN ADDITION TO the general broadcast sendSms() already sent —
+    // e.g. so a caregiver who is excluded from routine automation SMS (SmsBroadcastExcludeNumbers)
+    // still gets this specific critical alert. No-op if the setting is empty.
+    private fun sendSmsToBattAlertNumbers(text: String) {
+        preferences.get(StringKey.SmsBattAlertNumbers).split(";")
+            .map { it.replace("\\s+".toRegex(), "") }
+            .filter { it.isNotEmpty() }
+            .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+    }
 
     // Mirrors ActionCarePortalEvent for a plain note. Default duration is 5 min (not the 30 min the
     // original ported automations used) per explicit preference.
@@ -1301,6 +1314,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
             sendSms("LowBattery")
+            sendSmsToBattAlertNumbers("LowBattery")   // additionally targets SmsBattAlertNumbers
             markRun("Battery1pc")
         }
 
@@ -3462,5 +3476,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU322
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU323
  */
