@@ -176,7 +176,8 @@ class DetermineBasalAutoISF @Inject constructor(
         steps180M: Int,
         steps15M: Int,
         steps5M: Int,
-        smbInt5Sec: Double = 9999.0   // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
+        smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
+        smbBoostRecent: Boolean = false   // BolusGiven bg3 / BolusGivenMild fired within 30 min -> skip fast-rise caps
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -325,7 +326,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU312")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ 320TDD2AU314")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -695,7 +696,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " 320TDD2AU312 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " 320TDD2AU314 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1497,14 +1498,18 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${microBolus} ")
                 }
 // =====================================================
-// BOOSTED PROFILE: SKIP ALL FAST-RISE CAPS
+// RECENT DELIVERY BOOST: SKIP ALL FAST-RISE CAPS
 // =====================================================
-                // If the profile is boosted (>100%) restore the full uncapped SMB — none of the fast-rise
-                // reductions above apply when the user has deliberately raised the profile.
-                /*if (profile_percentage > 100 && microBolus != microBolusFullUncapped) {
-                    rT.reason.append(" fast-rise caps skipped (profile ${profile_percentage}% > 100): microBolus ${microBolus} -> ${microBolusFullUncapped} ")
+                // If BolusGiven bg3 or BolusGivenMild fired within the last 30 min, restore the full
+                // uncapped SMB — an unexpectedly high spike now reverts more readily (the raw-delta-driven
+                // reversal logic), so the fast-rise reductions above aren't needed in that window.
+                // NB: microBolusFullUncapped was snapshotted AFTER the anti-stacking x0.9 trim, so that
+                // trim survives this restore — only the fast-rise caps are undone.
+                // (Earlier profile_percentage>100 variant of this bypass was removed by user choice.)
+                if (smbBoostRecent && microBolus != microBolusFullUncapped) {
+                    rT.reason.append(" fast-rise caps skipped (BolusGiven/Mild boost within 30 min): microBolus ${microBolus} -> ${microBolusFullUncapped} ")
                     microBolus = microBolusFullUncapped
-                }*/
+                }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
@@ -1571,5 +1576,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.kt320TDD2AU312
+DetermineBasalAutoISF.kt320TDD2AU314
 */

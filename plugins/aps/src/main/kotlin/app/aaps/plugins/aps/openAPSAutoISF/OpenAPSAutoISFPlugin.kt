@@ -1508,7 +1508,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
-            val bg3 = isTimeBetween(8, 0, 23, 30)
+            val bg3 = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
@@ -1516,6 +1516,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
                 markRun("BolusGiven")
+                // Extra bg3-only marker (bg1/bg2 share the "BolusGiven" key): the fast-rise-caps bypass
+                // keys on "mild or bg3 fired within 30 min", and must NOT extend to bg1/bg2 fires.
+                if (bBlock == "3") markRun("BolusGivenBg3")
                 sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 cancelCurrentTempTarget()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
@@ -1549,7 +1552,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
             // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
-            val fire = isTimeBetween(8, 0, 23, 30)
+            val fire = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 0.30 * stackK
                 && d >= 4.5 * stackK /* 0.25 mmol; AAPS smoothed-delta confirmation */
@@ -2491,7 +2494,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps180M = steps180,
             steps15M = steps15,
             steps5M = steps5,
-            smbInt5Sec = smbInterval5Sec()   // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
+            smbInt5Sec = smbInterval5Sec(),  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
+            // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg3 or BolusGivenMild)
+            // fired within the last 30 min: an unexpectedly high spike now reverts more readily (the
+            // raw-delta-driven reversals), so the caps' conservatism isn't needed during that window.
+            // readyToRun() is a pure timestamp check (no mutation); true-when-never-run, so !ready =
+            // "fired within the last 30 min".
+            smbBoostRecent = !readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30)
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
@@ -3442,5 +3451,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU312
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU314
  */

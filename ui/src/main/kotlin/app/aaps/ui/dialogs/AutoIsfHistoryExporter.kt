@@ -61,12 +61,14 @@ class AutoIsfHistoryExporter @Inject constructor(
         writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), now)
     }
 
-    /** MJ-lifecycle careportal notes in the window (newest-first), across ALL sources — native
-     *  automation, code, or manual — since they're all TE.Type.NOTE rows. Used to derive the per-row
-     *  MJ state. Filters to just the notes that mark an MJ transition: "MJ"->MJa, "MJ2", "MJ3",
-     *  "MJoff*"/"A1"->NOM. */
+    /** MJ-lifecycle careportal notes (newest-first), across ALL sources — native automation, code, or
+     *  manual — since they're all TE.Type.NOTE rows. Used to derive the per-row MJ state. Filters to
+     *  just the notes that mark an MJ transition: "MJ"->MJa, "MJ2", "MJ3", "MJoff*"/"A1"->NOM.
+     *  Queries 24h BEFORE [from] (not just the display window): the last MJ transition — e.g. the
+     *  midnight MJoff — is often older than the 6h table window, and without it every row would
+     *  wrongly fall back to the no-note default. Same 24h lookback as the graph annotation. */
     fun mjNotesFrom(from: Long): List<TE> =
-        persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, ascending = false)
+        persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
             .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "A1" || t.startsWith("MJoff") }
 
     // -----------------------------------------------------------------------------------------------
@@ -293,17 +295,18 @@ class AutoIsfHistoryExporter @Inject constructor(
     }
 
     /** MJ automation state as of this row, from the most recent MJ-lifecycle note at or before the
-     *  row's timestamp: "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM. "--" if no MJ note has
-     *  occurred yet in the window. `mjNotes` must be pre-filtered (see mjNotesFrom) and newest-first. */
+     *  row's timestamp: "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM. Defaults to "NOM"
+     *  when no MJ note is found in the 24h lookback — the midnight MJoff check resets the state to
+     *  NOMJremains, so a long note-less stretch means NOM, not unknown (matches the graph line).
+     *  `mjNotes` must be pre-filtered (see mjNotesFrom) and newest-first. */
     fun mjStateStr(timestamp: Long, mjNotes: List<TE>): String {
-        val latest = mjNotes.firstOrNull { it.timestamp <= timestamp } ?: return "--"
-        val note = latest.note ?: return "--"
+        val latest = mjNotes.firstOrNull { it.timestamp <= timestamp } ?: return "NOM"
+        val note = latest.note ?: return "NOM"
         return when {
             note == "MJ"  -> "MJa"
             note == "MJ2" -> "MJ2"
             note == "MJ3" -> "MJ3"
-            note == "A1" || note.startsWith("MJoff") -> "NOM"
-            else          -> "--"
+            else          -> "NOM"   // "A1", "MJoff*", or anything unexpected → not in an MJ state
         }
     }
 

@@ -130,7 +130,7 @@ class PrepareBgDataWorker(
                 // careportal note. Uses notes (which sync to the client) rather than automationStateService
                 // (which doesn't sync), so it's correct on both master and client — same source as the
                 // history table's MJ column, so this is just "the latest MJ value".
-                val mjTxt = latestMjState(latest.timestamp)?.let { " $it" } ?: ""
+                val mjTxt = " " + latestMjState(latest.timestamp)
                 val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
                     "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + stepsTxt + mjTxt
                 PointsWithLabelGraphSeries(
@@ -198,22 +198,22 @@ class PrepareBgDataWorker(
         String.format(Locale.US, "%+.2f", profileUtil.fromMgdlToUnits(deltaMgdl))
 
     // Current MJ automation state from the most recent MJ-lifecycle careportal note at/before [atTime]:
-    // "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM; null if none in the last 24h. Notes are
-    // TE.Type.NOTE rows and sync to the client, so this matches the history table's MJ column and shows
-    // correctly on both master and client (unlike automationStateService, which doesn't sync).
-    private fun latestMjState(atTime: Long): String? {
+    // "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM. Defaults to "NOM" when no note exists in
+    // the 24h lookback — the midnight MJoff check resets to NOMJremains, so note-less means NOM, not
+    // unknown (keeps this consistent with the history table's MJ column). Notes are TE.Type.NOTE rows
+    // and sync to the client, so this shows correctly on both master and client (unlike
+    // automationStateService, which doesn't sync).
+    private fun latestMjState(atTime: Long): String {
         val notes = persistenceLayer.getTherapyEventDataFromTime(atTime - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
         val note = notes.firstOrNull {
             val t = it.note ?: ""
             it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "A1" || t.startsWith("MJoff"))
-        } ?: return null
-        val t = note.note ?: return null
-        return when {
-            t == "MJ"  -> "MJa"
-            t == "MJ2" -> "MJ2"
-            t == "MJ3" -> "MJ3"
-            t == "A1" || t.startsWith("MJoff") -> "NOM"
-            else       -> null
+        } ?: return "NOM"
+        return when (note.note) {
+            "MJ"  -> "MJa"
+            "MJ2" -> "MJ2"
+            "MJ3" -> "MJ3"
+            else  -> "NOM"   // "A1", "MJoff*", or anything unexpected → not in an MJ state
         }
     }
 
