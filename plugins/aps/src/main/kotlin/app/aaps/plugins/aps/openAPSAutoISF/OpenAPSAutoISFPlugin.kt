@@ -455,6 +455,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
     }
 
+    // Average gap in seconds between SMBs delivered in the last 5 minutes. Returns a large sentinel
+    // (so any "<= 70s" stacking guard is false) when fewer than 2 SMBs fell in the window — nothing
+    // to measure. Used to block the delivery-ratio boosts while SMBs stack, and (in DetermineBasal)
+    // to trim a rapidly-stacking SMB to 90%.
+    private fun smbInterval5Sec(): Double {
+        val now = dateUtil.now()
+        val smbs = persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+        if (smbs.size < 2) return 9999.0
+        val spanSec = (smbs.first().timestamp - smbs.last().timestamp).toDouble() / 1000.0
+        return spanSec / (smbs.size - 1)
+    }
+
     // Total IOB (bolus + temp-basal) at a timestamp — matches the loop's IOB and the "IOB change"
     // trigger. Basal contribution is included deliberately.
     private fun totalIobAt(time: Long): Double {
@@ -1483,6 +1496,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 1.00 && d >= 12.6 /* 0.7 mmol */
                 && rawDelta5 >= 14.4 /* 0.8 mmol */ && rawDelta1 >= 14.4 /* 0.8 mmol */
+                && smbInterval5Sec() > 70   // don't boost delivery while SMBs are stacking (avg gap <=70s)
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1523,6 +1537,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 4.5 /* 0.25 mmol; AAPS smoothed-delta confirmation */
                 && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
                 && rawDelta1 >= 4.5 /* 0.25 mmol */ && rawDelta1 < 14.4 /* same band as rawDelta5 */
+                && smbInterval5Sec() > 70   // don't boost delivery while SMBs are stacking (avg gap <=70s)
             if (fire) {
                 setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
@@ -2451,7 +2466,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             bg_acce = bgAcce,
             steps180M = steps180,
             steps15M = steps15,
-            steps5M = steps5
+            steps5M = steps5,
+            smbInt5Sec = smbInterval5Sec()   // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
