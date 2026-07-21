@@ -1450,7 +1450,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.20 for the TT's 2 minutes.
         // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.17.
         // The recovery/protective autos' own setSmbDeliveryRatio(0.17) calls remain as a backup.
-        if (smb_delivery_ratio > 0.17 && activeTtMgdl() == null) {
+        // Threshold sits BETWEEN baseline (0.17) and boost (0.20), NOT at 0.17: the pref reads back as a
+        // hair above the 0.17 literal (float rounding), so a ">0.17" guard would be true even at "0.17"
+        // and re-fire DelOff every loop. ">0.18" is unambiguously true only when actually boosted.
+        if (smb_delivery_ratio > 0.18 && activeTtMgdl() == null) {
             setSmbDeliveryRatio(0.17)
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.20->0.17)
         }
@@ -3422,5 +3425,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU307
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU308
  */
