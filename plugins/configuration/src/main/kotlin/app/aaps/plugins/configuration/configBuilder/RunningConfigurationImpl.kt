@@ -84,8 +84,11 @@ class RunningConfigurationImpl @Inject constructor(
 
         configuration.version?.let {
             rxBus.send(EventNSClientNewLog("◄ VERSION", "Received AAPS version  $it"))
-            if (config.VERSION_NAME.startsWith(it).not())
-                uiInteraction.addNotification(Notification.NSCLIENT_VERSION_DOES_NOT_MATCH, rh.gs(R.string.nsclient_version_does_not_match), Notification.NORMAL)
+            // Notification suppressed by user choice: master and client are rebuilt/reinstalled on
+            // different schedules (master isn't always reachable, e.g. overseas without internet), so
+            // a base-appVersion mismatch here is expected and harmless — sync still functions fine.
+            // if (config.VERSION_NAME.startsWith(it).not())
+            //     uiInteraction.addNotification(Notification.NSCLIENT_VERSION_DOES_NOT_MATCH, rh.gs(R.string.nsclient_version_does_not_match), Notification.NORMAL)
         }
         configuration.insulin?.let {
             val insulin = Insulin.InsulinType.fromInt(it)
