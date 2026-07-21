@@ -637,7 +637,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listValues = listOf()
         ).subscribe()
 
-        if (announceAlert && preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
+        /*if (announceAlert && preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
             val alert = "${rh.gs(app.aaps.core.ui.R.string.export_alert)}($label): $exportResultMessage"
             disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                 therapyEvent = TE.asAnnouncement(error = alert),
@@ -647,7 +647,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 note = exportResultMessage,
                 listValues = listOf()
             ).subscribe()
-        }
+        }*/
 
         rxBus.send(EventRefreshOverview("ExportSettingsPodActivation"))
     }
@@ -3462,5 +3462,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU321
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU322
  */
