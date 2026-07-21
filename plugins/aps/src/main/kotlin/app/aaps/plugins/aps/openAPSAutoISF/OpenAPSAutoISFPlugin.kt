@@ -1492,11 +1492,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
+            // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val bg3 = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 1.00 && d >= 12.6 /* 0.7 mmol */
-                && rawDelta5 >= 14.4 /* 0.8 mmol */ && rawDelta1 >= 14.4 /* 0.8 mmol */
-                && smbInterval5Sec() > 70   // don't boost delivery while SMBs are stacking (avg gap <=70s)
+                && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
+                && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1531,13 +1533,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
+            // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val fire = isTimeBetween(8, 0, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.30
-                && d >= 4.5 /* 0.25 mmol; AAPS smoothed-delta confirmation */
-                && rawDelta5 >= 4.5 /* 0.25 mmol */ && rawDelta5 < 14.4 /* < 0.8 mmol; bg3 owns >=0.8 */
-                && rawDelta1 >= 4.5 /* 0.25 mmol */ && rawDelta1 < 14.4 /* same band as rawDelta5 */
-                && smbInterval5Sec() > 70   // don't boost delivery while SMBs are stacking (avg gap <=70s)
+                && iobChange5 > 0.30 * stackK
+                && d >= 4.5 * stackK /* 0.25 mmol; AAPS smoothed-delta confirmation */
+                && rawDelta5 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
+                && rawDelta1 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta1 < 14.4 * stackK /* same band as rawDelta5 */
             if (fire) {
                 setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
