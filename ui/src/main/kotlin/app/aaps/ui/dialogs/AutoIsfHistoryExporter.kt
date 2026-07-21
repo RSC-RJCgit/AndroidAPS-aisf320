@@ -3,6 +3,7 @@ package app.aaps.ui.dialogs
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -57,8 +58,16 @@ class AutoIsfHistoryExporter @Inject constructor(
         val apsResults = persistenceLayer.getApsResults(from, now)
         val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
         val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
-        writeExport(records, apsResults, stepsCounts, smbBoluses, now)
+        writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), now)
     }
+
+    /** MJ-lifecycle careportal notes in the window (newest-first), across ALL sources — native
+     *  automation, code, or manual — since they're all TE.Type.NOTE rows. Used to derive the per-row
+     *  MJ state. Filters to just the notes that mark an MJ transition: "MJ"->MJa, "MJ2", "MJ3",
+     *  "MJoff*"/"A1"->NOM. */
+    fun mjNotesFrom(from: Long): List<TE> =
+        persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, ascending = false)
+            .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "A1" || t.startsWith("MJoff") }
 
     // -----------------------------------------------------------------------------------------------
     // File export
@@ -66,13 +75,13 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH",
-        "acceBG", "Delta", "SDelta", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
+        "acceBG", "Delta", "SDelta", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>): List<String> {
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -102,19 +111,20 @@ class AutoIsfHistoryExporter @Inject constructor(
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 60)?.toString() ?: "",
-            stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: ""
+            stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "",
+            mjStateStr(r.timestamp, mjNotes)
         )
     }
 
     /** Writes AutoISF_<stamp>.csv, AutoISF_<stamp>.txt and AutoISF_settings_<stamp>.txt into the
      *  aapsLogs directory. `records` is the set to export (also used as the IOB-5-min look-back set),
      *  so callers should pass the full unfiltered window. Runs on the caller's thread. */
-    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, now: Long) {
+    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, now: Long) {
         try {
             fileListProvider.ensureAapsLogsDirExists()
             val dir = fileListProvider.aapsLogsPath
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses) }
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -280,6 +290,21 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (inWindow.size < 2) return "--"
         val spanSec = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }).toDouble() / 1000.0
         return (spanSec / (inWindow.size - 1)).roundToInt().toString()
+    }
+
+    /** MJ automation state as of this row, from the most recent MJ-lifecycle note at or before the
+     *  row's timestamp: "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM. "--" if no MJ note has
+     *  occurred yet in the window. `mjNotes` must be pre-filtered (see mjNotesFrom) and newest-first. */
+    fun mjStateStr(timestamp: Long, mjNotes: List<TE>): String {
+        val latest = mjNotes.firstOrNull { it.timestamp <= timestamp } ?: return "--"
+        val note = latest.note ?: return "--"
+        return when {
+            note == "MJ"  -> "MJa"
+            note == "MJ2" -> "MJ2"
+            note == "MJ3" -> "MJ3"
+            note == "A1" || note.startsWith("MJoff") -> "NOM"
+            else          -> "--"
+        }
     }
 
     /** Scheduled profile basal rate (U/hr) at this record's time, or "--" if unresolvable. */

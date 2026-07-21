@@ -13,6 +13,7 @@ import android.widget.TextView
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -67,6 +68,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allApsResults: List<APSResult> = emptyList()
     private var allStepsCounts: List<SC> = emptyList()
     private var allSmbBoluses: List<BS> = emptyList()
+    private var allMjNotes: List<TE> = emptyList()
     private var smbOnly = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -98,6 +100,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allApsResults = persistenceLayer.getApsResults(sixHoursAgo, now)
         allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
         allSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(sixHoursAgo, now, ascending = false).filter { it.type == BS.Type.SMB }
+        allMjNotes = autoIsfHistoryExporter.mjNotesFrom(sixHoursAgo)
 
         rebuildTable()
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
@@ -106,7 +109,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // KeepAliveWorker via the same AutoIsfHistoryExporter.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
-                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, now)
+                autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, now)
             }
         }
     }
@@ -169,7 +172,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 15)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 60)?.toString()  ?: "--", colorHeader),
-                    Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "--", colorHeader)
+                    Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "--", colorHeader),
+                    Cell(autoIsfHistoryExporter.mjStateStr(r.timestamp, allMjNotes), colorTime)
                 )
             )
         }
@@ -231,7 +235,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("BG", colorGlucose, span = 6, bold = true),
                 Cell("Insulin", colorInsulin, span = 5, bold = true),
-                Cell("Steps", colorHeader, span = 5, bold = true)
+                Cell("Steps", colorHeader, span = 5, bold = true),
+                Cell("MJ", colorTime, bold = true)
             )
         )
 
@@ -265,7 +270,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),
                 Cell("S60",    colorHeader, bold = true),
-                Cell("S180",   colorHeader, bold = true)
+                Cell("S180",   colorHeader, bold = true),
+                Cell("MJ",     colorTime, bold = true)
             )
         )
     }

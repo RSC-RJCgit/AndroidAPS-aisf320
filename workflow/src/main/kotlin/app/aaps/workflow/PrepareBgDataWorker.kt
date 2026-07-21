@@ -6,6 +6,7 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
@@ -125,8 +126,13 @@ class PrepareBgDataWorker(
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val stepsTxt = latestSteps?.let { " St15=${it.steps15min} St60=${it.steps60min}" } ?: ""
+                // Current MJ state (value only, no "MJ=" prefix), from the most recent MJ-lifecycle
+                // careportal note. Uses notes (which sync to the client) rather than automationStateService
+                // (which doesn't sync), so it's correct on both master and client — same source as the
+                // history table's MJ column, so this is just "the latest MJ value".
+                val mjTxt = latestMjState(latest.timestamp)?.let { " $it" } ?: ""
                 val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
-                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + stepsTxt
+                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + stepsTxt + mjTxt
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -190,6 +196,26 @@ class PrepareBgDataWorker(
     // deltaMgdl -> signed mmol string, 2 decimal places (e.g. "+0.34", "-0.11").
     private fun formatMmolDelta(deltaMgdl: Double): String =
         String.format(Locale.US, "%+.2f", profileUtil.fromMgdlToUnits(deltaMgdl))
+
+    // Current MJ automation state from the most recent MJ-lifecycle careportal note at/before [atTime]:
+    // "MJ"->MJa, "MJ2"->MJ2, "MJ3"->MJ3, "MJoff*"/"A1"->NOM; null if none in the last 24h. Notes are
+    // TE.Type.NOTE rows and sync to the client, so this matches the history table's MJ column and shows
+    // correctly on both master and client (unlike automationStateService, which doesn't sync).
+    private fun latestMjState(atTime: Long): String? {
+        val notes = persistenceLayer.getTherapyEventDataFromTime(atTime - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
+        val note = notes.firstOrNull {
+            val t = it.note ?: ""
+            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "A1" || t.startsWith("MJoff"))
+        } ?: return null
+        val t = note.note ?: return null
+        return when {
+            t == "MJ"  -> "MJa"
+            t == "MJ2" -> "MJ2"
+            t == "MJ3" -> "MJ3"
+            t == "A1" || t.startsWith("MJoff") -> "NOM"
+            else       -> null
+        }
+    }
 
     // Step counts get written into DetermineBasalAutoISF.kt's reason text as "StepsXM: <value> ;"
     // (also accepts "stepsXmin is <value>", matching a second phrasing observed in synced data).
