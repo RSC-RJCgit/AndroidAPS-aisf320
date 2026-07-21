@@ -2504,7 +2504,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // raw-delta-driven reversals), so the caps' conservatism isn't needed during that window.
             // readyToRun() is a pure timestamp check (no mutation); true-when-never-run, so !ready =
             // "fired within the last 30 min".
-            smbBoostRecent = !readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30)
+            // Self-gating on the RAW deltas: the bypass only takes effect while both the 1-min and 5-min
+            // raw Libre deltas still read >= +0.1 mmol. The raws see a turn before the smoothed AAPS
+            // deltas do, so the moment the rise breaks the caps re-apply on the next 1-min loop (and
+            // resume if the rise resumes within the 30 min). Missing raw data (-9999 fallback) fails
+            // safe: caps apply.
+            smbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
+                && (rawDelta1MinMgdl() ?: -9999.0) >= 1.8 /* +0.1 mmol */
+                && (rawDelta5MinMgdl() ?: -9999.0) >= 1.8 /* +0.1 mmol */
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
