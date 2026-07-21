@@ -66,7 +66,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH",
-        "acceBG", "Delta", "SDelta", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
+        "acceBG", "Delta", "SDelta", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -90,6 +90,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
+            rawDeltaStr(r, allRecords, 1),
             rawDeltaStr(r, allRecords, 5),
             rawDeltaStr(r, allRecords, 15),
             df2.format(r.insulinReq),
@@ -247,17 +248,27 @@ class AutoIsfHistoryExporter @Inject constructor(
         return df2.format(r.iob - prior.iob)
     }
 
-    /** Raw (unsmoothed) glucose change over [minutesBack] minutes, in mmol — this record's glucose
-     *  minus the glucose of the nearest record about [minutesBack] min earlier. This is the signal
-     *  the dosing code's rawDelta5MinMgdl() gate reads, as opposed to the smoothed AAPS delta. Uses
-     *  the full record set so filtering rows never distorts it; "--" if no record sits near the
-     *  look-back point. */
+    /** Raw (unsmoothed) glucose delta over the [minutesBack]-min window, expressed as a PER-5-MIN rate
+     *  in mmol — this record's glucose minus the glucose of the nearest record about [minutesBack] min
+     *  earlier, divided by the actual gap and ×5. Same per-5-min normalisation AAPS uses for its own
+     *  deltas (e.g. shortAvgDelta, the ~15-min SΔ) and for rawDelta1MinMgdl()/rawDelta5MinMgdl(), so
+     *  rΔ1/rΔ5/rΔ15 all sit on the same mmol/5min scale as Δ/SΔ and the gate thresholds. (For a 5-min
+     *  window ×5/5 = ×1, so
+     *  rΔ5 is unchanged; rΔ15 becomes ~⅓ of the raw 15-min total it used to show.) Uses the full record
+     *  set so filtering rows never distorts it; "--" if no record sits near the look-back point. */
     fun rawDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String {
         val target = r.timestamp - minutesBack * 60_000L
-        val tolMs = if (minutesBack >= 15) 4 * 60_000L else 3 * 60_000L
+        val tolMs = when {
+            minutesBack <= 1  -> 90_000L        // 1.5 min for the 1-min look-back
+            minutesBack >= 15 -> 4 * 60_000L
+            else              -> 3 * 60_000L
+        }
         val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
         if (kotlin.math.abs(prior.timestamp - target) > tolMs) return "--"
-        return df2.format((r.glucose - prior.glucose) / MGDL_TO_MMOL)
+        val actualMin = (r.timestamp - prior.timestamp) / 60_000.0
+        if (actualMin <= 0.0) return "--"
+        val ratePer5Min = (r.glucose - prior.glucose) / actualMin * 5.0
+        return df2.format(ratePer5Min / MGDL_TO_MMOL)
     }
 
     /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —
