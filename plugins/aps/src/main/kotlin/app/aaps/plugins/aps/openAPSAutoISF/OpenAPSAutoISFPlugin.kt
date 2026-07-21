@@ -2081,7 +2081,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // off2: with a TT active, exit the boost once BGL is no longer clearly rising — on any of
             // AAPS delta < +0.1, acce weight < 0.1, or raw Libre 5-min delta < 0.2. (Glucose<=10 dropped.)
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val off2 = (d < 12.6 /* 0.7 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 14.4 /* 0.8 mmol */)
+            // acceW < 0.099, not < 0.1: AlarmHypo sets acce to exactly 0.10 and 0.1 has no exact float
+            // representation, so "< 0.1" is float-dependent at that value. 0.099 is deterministic and
+            // mirrors how the native Comparator evaluates "IS_LESSER 0.1" (obj < 0.1 - 0.001 tolerance) —
+            // it excludes the 0.10 AlarmHypo level and still catches the deep-protective 0.02 / 0.07 levels.
+            val off2 = (d < 12.6 /* 0.7 mmol */ || acceW < 0.099 /* i.e. < 0.1, float-safe */ || (rawDelta5MinMgdl() ?: 9999.0) < 14.4 /* 0.8 mmol */)
                 && boosted && activeTtMgdl() != null
             //WAS val off2 = (d < 1.8 /* 0.1 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 3.6 /* 0.2 mmol */)
             //                 && boosted && activeTtMgdl() != null
@@ -3430,5 +3434,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU308
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU309
  */
