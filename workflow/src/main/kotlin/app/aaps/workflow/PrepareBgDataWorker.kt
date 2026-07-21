@@ -207,13 +207,14 @@ class PrepareBgDataWorker(
         val notes = persistenceLayer.getTherapyEventDataFromTime(atTime - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
         val note = notes.firstOrNull {
             val t = it.note ?: ""
-            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "A1" || t.startsWith("MJoff"))
+            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t.startsWith("MJoff"))
         } ?: return "NOM"
         return when (note.note) {
-            "MJ"  -> "MJa"
-            "MJ2" -> "MJ2"
-            "MJ3" -> "MJ3"
-            else  -> "NOM"   // "A1", "MJoff*", or anything unexpected → not in an MJ state
+            "MJ"     -> "MJa"
+            "MJ2"    -> "MJ2"
+            "MJ3"    -> "MJ3"
+            "MoreMJ" -> "MJ3"   // MoreMJ advances NOMJremains -> MJ3 directly
+            else     -> "NOM"   // "A1", "MJoff*", or anything unexpected → not in an MJ state
         }
     }
 
