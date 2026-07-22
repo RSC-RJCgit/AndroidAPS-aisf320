@@ -890,6 +890,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val trendDescription = trendCalculator.getTrendDescription(iobCobCalculator.ads)
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val lastBgDescription = lastBgData.lastBgDescription()
+        // Feed the graph's live-position green-line annotation (see PointsWithLabelGraphSeries):
+        // current BGL and the active profile's target (low==high target, per user's own profile setup),
+        // both in mg/dL. Updated here since updateBg() already runs each refresh cycle with both values
+        // on hand.
+        lastBg?.recalculated?.let { PointsWithLabelGraphSeries.currentBgMgdl = it }
+        profileFunction.getProfile()?.getTargetLowMgdl()?.let { PointsWithLabelGraphSeries.currentTargetMgdl = it }
         runOnUiThread {
             _binding ?: return@runOnUiThread
             binding.infoLayout.bg.text = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)

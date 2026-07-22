@@ -46,7 +46,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
         // Flat color used for all BG dots when uniformGreenBg is active, ignoring per-point ISF-weight overrides.
         val uniformGreenBgColor: Int = android.graphics.Color.argb(140, 0, 200, 0)
-    }
+
+        // Live BGL and active-profile target (mg/dL), refreshed each overview update cycle (see
+        // OverviewFragment.updateBg()) — read at draw time to decide the GENERAL_WITH_DURATION_OFFSET
+        // annotation's vertical position. 0.0 default means "unknown yet" -> stays at the top (the
+        // underTarget checks below are all comparisons that fail at 0.0).
+        var currentBgMgdl: Double = 0.0
+        var currentTargetMgdl: Double = 0.0
 
     // Default spSize
     private var spSize = 18
@@ -353,7 +359,25 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = fixedAnnotationAlign
-                        val py = graphTop + 130
+                        // Live position, re-decided every draw from the current BGL and the SMB-labels
+                        // toggle (long-press on IOB layout — see OverviewFragment). No separate mode flag:
+                        // showSmbLabels IS the mode selector, since its two states already correspond to
+                        // "action1"/"action2" from the user's spec.
+                        //  - labels OFF (showSmbLabels=false): stays at top; drops under the profile
+                        //    target line once BGL > 5.0 mmol.
+                        //  - labels ON (showSmbLabels=true): stays under the target line; rises back to
+                        //    top once BGL < 9.0 mmol.
+                        // Profile's low target == high target for this user, so "under target" and
+                        // "under low"/"under high" are the same line — getTargetLowMgdl() covers it.
+                        val underTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
+                                           else currentBgMgdl >= 162.1 /* 9.0 mmol */
+                        val py = if (underTarget && currentTargetMgdl > 0.0) {
+                            val targetRatY = (currentTargetMgdl - minY) / diffY
+                            val targetY = (graphTop - graphHeight * targetRatY).toFloat() + graphHeight
+                            targetY + 60f // fixed gap below the target line's pixel position
+                        } else {
+                            graphTop + 130
+                        }
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
