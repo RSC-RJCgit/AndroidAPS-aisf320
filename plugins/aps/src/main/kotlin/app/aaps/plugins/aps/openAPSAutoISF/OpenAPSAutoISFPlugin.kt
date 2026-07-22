@@ -1551,6 +1551,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
+                && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
@@ -1593,16 +1594,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
             // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            // rawDelta1's FLOOR is the noisiest single gate here — a single-minute raw sample can dip
+            // negative even mid-genuine-rise (observed: rΔ1 -0.28 while Δ/SΔ/rΔ5/IOBΔ5 all confirmed a
+            // rise), vetoing an otherwise well-confirmed fire. Below 9.0 mmol that floor is dropped
+            // entirely; the UPPER cap (< 14.4*stackK, keeping mild out of bg3's territory) still always
+            // applies, so mutual exclusivity with bg3 is preserved either way.
+            val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val fire = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.30 * stackK
-                && d >= 4.5 * stackK /* 0.25 mmol; AAPS smoothed-delta confirmation */
-                && rawDelta5 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
-                && rawDelta1 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta1 < 14.4 * stackK /* same band as rawDelta5 */
+                && iobChange5 > 0.40 * stackK
+                && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */
+                && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
+                && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
             if (fire) {
-                setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
+                // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
+                // response; at/above 9.0 mmol, unchanged original 0.20.
+                val deliveryRatio = when {
+                    g < 135.1 /* 7.5 mmol */ -> 0.25
+                    g < 162.1 /* 9.0 mmol */ -> 0.22
+                    else                     -> 0.20
+                }
+                setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("GivenMild")
