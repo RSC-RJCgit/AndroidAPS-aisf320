@@ -236,6 +236,10 @@
     <string name="split_bolus_enabled_summary">When no profile% is active and SMB hits maxBolus, allow the second part to deliver after the split interval instead of the full SMB interval</string>
     <string name="split_bolus_interval_title">Split Bolus Interval (min)</string>
     <string name="split_bolus_interval_summary">Minutes between first and second part of a split bolus (1–10). Only active when Split Bolus is enabled, profile% = 100%, and SMB = maxBolus.</string>
+    <string name="autoisf_smb_offset_override_enabled_title">Simple SMB offset override</string>
+    <string name="autoisf_smb_offset_override_enabled_summary">When enabled, ignores SMB delivery ratio max, carbsReqThreshold-based offset flags, and the hour-of-day/acceleration adjustments entirely — SMB is zeroed whenever BG is below (target + the fixed offset below), full stop. Simpler and easier to reason about than tuning the pieces above.</string>
+    <string name="autoisf_smb_offset_override_title">SMB offset (mmol/L above target)</string>
+    <string name="autoisf_smb_offset_override_summary">Default 0.5. SMB is blocked entirely whenever BG is below target + this value. Only used when \"Simple SMB offset override\" is enabled above. Max 2.0 mmol/L.</string>
 
     <!--    Activity Monitor -->
     <string name="activity_monitor_title">Activity modifies sensitivity</string>

@@ -51,6 +51,11 @@ enum class DoubleKey(
     ApsAutoIsfSmbDeliveryRatioMin("openapsama_smb_delivery_ratio_min", 0.5, 0.1, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbDeliveryRatioMax("openapsama_smb_delivery_ratio_max", 0.5, 0.5, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbMaxRangeExtension("openapsama_smb_max_range_extension", 1.0, 1.0, 5.0, defaultedBySM = true),
+    // Simple flat BG-above-target offset (mmol/L) that fully replaces the complex varOffset derivation
+    // when ApsAutoIsfSmbOffsetOverrideEnabled is on. Max 2.0 mmol (36 mg/dL) matches the original
+    // varOffset hard clamp (min(36.0, varOffset)) in DetermineBasalAutoISF.kt, so this can never exceed
+    // what the old mechanism itself was capable of.
+    ApsAutoIsfSmbOffsetOverride("autoisf_smb_offset_override", 0.5, 0.0, 2.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled),
     FslCalOffset("fslCal_Offset", 0.0, -50.0, 50.0, defaultedBySM = true),      //dependency = BooleanKey.ApsCalibrationTrigger),
     FslCalSlope("fslCal_Slope", 1.0, 0.5, 1.5, defaultedBySM = true),           //dependency = BooleanKey.ApsCalibrationTrigger),
     FslSmoothAlpha("fsl_exp1_factor", 0.3, 0.1, 1.0, defaultedBySM = true),

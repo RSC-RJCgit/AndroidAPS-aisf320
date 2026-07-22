@@ -782,7 +782,12 @@ class DetermineBasalAutoISF @Inject constructor(
         var CarbAge = lastCarbAge
 
         val high_SMB = profile.smb_delivery_ratio_max
-        var varOffset: Double = high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
+        // Simple override: a single fixed mmol value (GUI setting) replaces the entire complex varOffset
+        // derivation below — smb_delivery_ratio_max as a base, carbsReqThreshold-encoded offset1/2/3
+        // flags, and hour-of-day/delta_accl adjustments are all skipped when this is on.
+        val useSimpleOffsetOverride = preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled)
+        var varOffset: Double = if (useSimpleOffsetOverride) preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) * 18.0
+                                 else high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
 
         val hour = LocalDateTime.now().hour
 
@@ -822,29 +827,31 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var profileSwitch = 100
 
-        if (carbsSugg == 1) {
-            offset1 = true
-        } else if (carbsSugg == 9) {
-            varOffset -= 9
-        } else if (carbsSugg == 10) {
-            varOffset += 9
-        } else if (carbsSugg == 2) {
-            offset2 = true
-        } else if (carbsSugg == 3) {
-            offset3 = true
-        } else if (carbsSugg == 8) {
-            offset2 = true
-            offset3 = true
-        } else if (carbsSugg == 7) {
-            offset1 = true
-            offset3 = true
-        } else if (carbsSugg == 6) {
-            offset1 = true
-            offset2 = true
-        } else if (carbsSugg == 4) {
-            offset1 = true
-            offset2 = true
-            offset3 = true
+        if (!useSimpleOffsetOverride) {
+            if (carbsSugg == 1) {
+                offset1 = true
+            } else if (carbsSugg == 9) {
+                varOffset -= 9
+            } else if (carbsSugg == 10) {
+                varOffset += 9
+            } else if (carbsSugg == 2) {
+                offset2 = true
+            } else if (carbsSugg == 3) {
+                offset3 = true
+            } else if (carbsSugg == 8) {
+                offset2 = true
+                offset3 = true
+            } else if (carbsSugg == 7) {
+                offset1 = true
+                offset3 = true
+            } else if (carbsSugg == 6) {
+                offset1 = true
+                offset2 = true
+            } else if (carbsSugg == 4) {
+                offset1 = true
+                offset2 = true
+                offset3 = true
+            }
         }
         var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
 
@@ -857,19 +864,23 @@ class DetermineBasalAutoISF @Inject constructor(
         // Omnipod Dash requires durationInMinutes divisible by 30; 15-min temps are rejected.
         val standardTempDuration = 30
 
-        if (enableButton && nowHour >= 1 && nowHour <= 7 && offset1) {
-            varOffset = varOffset - 9
-            rT.reason.append("offset1 ${offset1} ;")
-            rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
-        } else if (nowHour >= 8 && nowHour < 10 && offset2) {
-            varOffset = varOffset - 9
-            rT.reason.append("offset2 ${offset2} ;")
-            rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
-        }
-        if ((enableButton && delta_accl < -10) || (nowHour >= 20 && offset3)) {
-            varOffset = varOffset + 9
-            rT.reason.append("offset3 ${offset3} ;")
-            rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset)} ;")
+        if (!useSimpleOffsetOverride) {
+            if (enableButton && nowHour >= 1 && nowHour <= 7 && offset1) {
+                varOffset = varOffset - 9
+                rT.reason.append("offset1 ${offset1} ;")
+                rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
+            } else if (nowHour >= 8 && nowHour < 10 && offset2) {
+                varOffset = varOffset - 9
+                rT.reason.append("offset2 ${offset2} ;")
+                rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
+            }
+            if ((enableButton && delta_accl < -10) || (nowHour >= 20 && offset3)) {
+                varOffset = varOffset + 9
+                rT.reason.append("offset3 ${offset3} ;")
+                rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset)} ;")
+            }
+        } else {
+            rT.reason.append("useSimpleOffsetOverride: varOffset fixed at ${convert_bg(varOffset)} ;")
         }
 
         var offsetSoZeroSMB = false

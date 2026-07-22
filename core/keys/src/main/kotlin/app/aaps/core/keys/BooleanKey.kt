@@ -68,6 +68,10 @@ enum class BooleanKey(
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),
+    // When enabled, bypasses the entire varOffset/targetBgOffset derivation (smb_delivery_ratio_max as a
+    // base, carbsReqThreshold-encoded offset1/2/3 flags, hour-of-day and delta_accl adjustments) in favor
+    // of a single fixed mmol value (DoubleKey.ApsAutoIsfSmbOffsetOverride) — see DetermineBasalAutoISF.kt.
+    ApsAutoIsfSmbOffsetOverrideEnabled("autoisf_smb_offset_override_enabled", false, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
