@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -605,6 +606,24 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     @SuppressLint("SetTextI18n")
     private fun processButtonsVisibility() {
+        // Landscape: hide the whole buttons row (quick-wizard, treatment/wizard/carbs/insulin/etc.,
+        // and the automation "user action" buttons in userButtonsLayout) rather than evaluating each
+        // one's own visibility rule — screen space is tight sideways and none of them are needed to
+        // just view the graph/status. Portrait falls through to the normal per-button logic below,
+        // which restores each button to whatever its own condition dictates.
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            runOnUiThread {
+                _binding ?: return@runOnUiThread
+                binding.buttonsLayout.root.visibility = View.GONE
+            }
+            return
+        } else {
+            runOnUiThread {
+                _binding ?: return@runOnUiThread
+                binding.buttonsLayout.root.visibility = View.VISIBLE
+            }
+        }
+
         val lastBG = iobCobCalculator.ads.lastBg()
         val pump = activePlugin.activePump
         val profile = profileFunction.getProfile()
