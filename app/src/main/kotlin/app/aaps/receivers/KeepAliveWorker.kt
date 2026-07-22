@@ -36,6 +36,8 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
+import app.aaps.plugins.configuration.maintenance.cloud.CloudConstants
+import app.aaps.plugins.configuration.maintenance.cloud.CloudStorageManager
 import app.aaps.plugins.constraints.dstHelper.DstHelperPlugin
 import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import com.google.common.util.concurrent.ListenableFuture
@@ -65,6 +67,7 @@ class KeepAliveWorker(
     @Inject lateinit var dstHelperPlugin: DstHelperPlugin
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
+    @Inject lateinit var cloudStorageManager: CloudStorageManager
 
     companion object {
 
@@ -160,12 +163,34 @@ class KeepAliveWorker(
 
     // Automatic AutoISF history export (CSV + text + settings) every 6 hours, so the files land in
     // aapsLogs alongside the rolling log files without needing to open the history dialog. Same
-    // 6-hour throttle as the cloud log export above.
-    private fun exportAutoIsfHistoryIfDue() {
+    // 6-hour throttle as the cloud log export above. Also uploads the same files to cloud storage
+    // (CloudConstants.CLOUD_PATH_AIV — same "/AAPS/export/<name>" convention as logs/preferences),
+    // in addition to (not instead of) the local aapsLogs write, whenever cloud storage is configured.
+    // No progress/success toasts here — this already runs silently in the background like the log
+    // export above; failures are logged only, matching the "no popup for cloud export" request.
+    private suspend fun exportAutoIsfHistoryIfDue() {
         val lastRun = preferences.get(LongNonKey.LastAutoIsfHistoryExport)
         if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
-            autoIsfHistoryExporter.exportLast6Hours(dateUtil.now())
+            val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(dateUtil.now())
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, dateUtil.now())
+            uploadAivFilesToCloud(writtenFiles)
+        }
+    }
+
+    private suspend fun uploadAivFilesToCloud(files: List<java.io.File>) {
+        if (files.isEmpty() || !cloudStorageManager.isCloudStorageActive()) return
+        try {
+            val provider = cloudStorageManager.getActiveProvider() ?: return
+            provider.getOrCreateFolderPath(CloudConstants.CLOUD_PATH_AIV)?.let { provider.setSelectedFolderId(it) }
+            for (file in files) {
+                val mimeType = if (file.name.endsWith(".csv")) "text/csv" else "text/plain"
+                val bytes = file.readBytes()
+                var uploadedFileId = provider.uploadFileToPath(file.name, bytes, mimeType, CloudConstants.CLOUD_PATH_AIV)
+                if (uploadedFileId == null) uploadedFileId = provider.uploadFile(file.name, bytes, mimeType)
+                if (uploadedFileId == null) aapsLogger.error(LTag.CORE, "AIV cloud upload failed for ${file.name}")
+            }
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "AIV cloud upload error", e)
         }
     }
 

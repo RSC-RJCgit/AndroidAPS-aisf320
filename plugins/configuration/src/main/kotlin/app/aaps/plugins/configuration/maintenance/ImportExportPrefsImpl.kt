@@ -537,8 +537,8 @@ class ImportExportPrefsImpl @Inject constructor(
                     provider.setSelectedFolderId(it)
                 }
 
-                ToastUtils.longInfoToast(context, rh.gs(R.string.uploading_to_cloud))
-
+                // No "uploading..." toast by user request — routine cloud export progress isn't
+                // user-actionable. The failure toast below (via exportResultMessage) is kept.
                 var uploadedFileId = provider.uploadFileToPath(
                     exportFileName, bytes, "application/json", CloudConstants.CLOUD_PATH_SETTINGS
                 )
@@ -571,7 +571,8 @@ class ImportExportPrefsImpl @Inject constructor(
                     rh.gs(R.string.export_to_cloud_failed)
                 }
 
-                ToastUtils.infoToast(activity, exportResultMessage)
+                // Success toast removed by user request; failure still surfaces so a real problem isn't silent.
+                if (uploadedFileId == null) ToastUtils.errorToast(activity, exportResultMessage)
 
                 disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                     therapyEvent = TE.asSettingsExport(error = exportResultMessage),
@@ -1150,7 +1151,7 @@ class ImportExportPrefsImpl @Inject constructor(
                 aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD folderId=$folderId")
                 folderId?.let { provider.setSelectedFolderId(it) }
 
-                ToastUtils.longInfoToast(context, rh.gs(R.string.uploading_to_cloud))
+                // No "uploading..." toast by user request — routine cloud export progress isn't user-actionable.
                 aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD uploading...")
 
                 var uploadedFileId = provider.uploadFileToPath(
@@ -1169,7 +1170,7 @@ class ImportExportPrefsImpl @Inject constructor(
 
                 if (uploadedFileId != null) {
                     aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD SUCCESS")
-                    ToastUtils.okToast(context, rh.gs(R.string.csv_uploaded_to_cloud) + "\n" + rh.gs(R.string.cloud_directory_path, CloudConstants.CLOUD_PATH_USER_ENTRIES), isShort = false)
+                    // Success toast removed by user request.
                     return Result.success()
                 } else {
                     aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD FAILED - uploadedFileId is null")

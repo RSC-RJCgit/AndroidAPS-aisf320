@@ -51,9 +51,11 @@ class AutoIsfHistoryExporter @Inject constructor(
         const val WINDOW_HOURS = 6L
     }
 
-    /** Queries the last [WINDOW_HOURS] hours and writes the CSV + text + settings files. Used by the
+    /** Queries the last [WINDOW_HOURS] hours and writes the CSV + text + settings files, returning
+     *  them so callers with cloud access (e.g. KeepAliveWorker, in the app module — this ui-module
+     *  class has no CloudStorageManager dependency) can additionally upload them. Used by the
      *  background worker; the dialog uses [writeExport] directly with data it has already loaded. */
-    fun exportLast6Hours(now: Long) {
+    fun exportLast6Hours(now: Long): List<File> {
         val from = now - TimeUnit.HOURS.toMillis(WINDOW_HOURS)
         val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
         val apsResults = persistenceLayer.getApsResults(from, now)
@@ -61,7 +63,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
         // 20-min lead-in so the oldest rows still have their raw-delta look-backs available
         val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
-        writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), rawReadings, now)
+        return writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), rawReadings, now)
     }
 
     /** MJ-lifecycle careportal notes (newest-first), across ALL sources — native automation, code, or
@@ -122,9 +124,11 @@ class AutoIsfHistoryExporter @Inject constructor(
     }
 
     /** Writes AutoISF_<stamp>.csv, AutoISF_<stamp>.txt and AutoISF_settings_<stamp>.txt into the
-     *  aapsLogs directory. `records` is the set to export (also used as the IOB-5-min look-back set),
-     *  so callers should pass the full unfiltered window. Runs on the caller's thread. */
-    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, now: Long) {
+     *  aapsLogs directory, returning whichever of the three were written successfully (empty list on
+     *  total failure). `records` is the set to export (also used as the IOB-5-min look-back set), so
+     *  callers should pass the full unfiltered window. Runs on the caller's thread. */
+    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, now: Long): List<File> {
+        val written = mutableListOf<File>()
         try {
             fileListProvider.ensureAapsLogsDirExists()
             val dir = fileListProvider.aapsLogsPath
@@ -137,18 +141,21 @@ class AutoIsfHistoryExporter @Inject constructor(
                 for (row in rows) writer.write(row.joinToString(",") + "\n")
             }
             aapsLogger.debug(LTag.UI, "AutoISF history exported to ${csvFile.absolutePath}")
+            written.add(csvFile)
 
-            exportTableAsText(dir, stamp, rows)
-            exportSettingsText(dir, stamp)
+            exportTableAsText(dir, stamp, rows)?.let { written.add(it) }
+            exportSettingsText(dir, stamp)?.let { written.add(it) }
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
+        return written
     }
 
     /** Same table data as the CSV, in a human-readable, column-aligned plain-text file — for
-     *  viewing directly on a phone/PC without needing a spreadsheet app. */
-    private fun exportTableAsText(dir: File, stamp: String, rows: List<List<String>>) {
-        try {
+     *  viewing directly on a phone/PC without needing a spreadsheet app. Returns the file on success,
+     *  null on failure. */
+    private fun exportTableAsText(dir: File, stamp: String, rows: List<List<String>>): File? {
+        return try {
             val file = File(dir, "AutoISF_$stamp.txt")
             val widths = exportHeaders.indices.map { i ->
                 maxOf(exportHeaders[i].length, rows.maxOfOrNull { it[i].length } ?: 0)
@@ -160,16 +167,18 @@ class AutoIsfHistoryExporter @Inject constructor(
                 }
             }
             aapsLogger.debug(LTag.UI, "AutoISF history text export to ${file.absolutePath}")
+            file
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF text export failed", e)
+            null
         }
     }
 
     /** Plain-text dump of just the AutoISF-specific preference values (not the full app settings
      *  list), sorted by name, written alongside the CSV so a reviewer knows what AutoISF settings
-     *  were in effect for that export. */
-    private fun exportSettingsText(dir: File, stamp: String) {
-        try {
+     *  were in effect for that export. Returns the file on success, null on failure. */
+    private fun exportSettingsText(dir: File, stamp: String): File? {
+        return try {
             val file = File(dir, "AutoISF_settings_$stamp.txt")
             val lines = mutableListOf<String>()
             BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
@@ -181,8 +190,10 @@ class AutoIsfHistoryExporter @Inject constructor(
                 for (line in lines.sorted()) writer.write("$line\n")
             }
             aapsLogger.debug(LTag.UI, "AutoISF settings exported to ${file.absolutePath}")
+            file
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF settings export failed", e)
+            null
         }
     }
 

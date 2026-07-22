@@ -282,8 +282,8 @@ class MaintenancePlugin @Inject constructor(
                             provider.setSelectedFolderId(it)
                         }
 
-                        ToastUtils.longInfoToast(context, rh.gs(R.string.uploading_to_cloud))
-
+                        // No "uploading..."/"success" toasts by user request — routine cloud export
+                        // progress isn't user-actionable. Failure toasts below are kept.
                         var uploadedFileId = provider.uploadFileToPath(
                             zipFile.name ?: "logs.zip",
                             bytes,
@@ -296,7 +296,6 @@ class MaintenancePlugin @Inject constructor(
 
                         if (uploadedFileId != null) {
                             aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
-                            ToastUtils.infoToast(context, rh.gs(R.string.logs_uploaded_to_cloud) + "\n" + rh.gs(R.string.cloud_directory_path, logsPath))
                         } else {
                             aapsLogger.error("Failed to upload logs to cloud storage")
                             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
