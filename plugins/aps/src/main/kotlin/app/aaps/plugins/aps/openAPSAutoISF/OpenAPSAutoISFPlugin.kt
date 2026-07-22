@@ -1959,6 +1959,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("Profile", "PP130")
                 switchProfileIfNeeded("Current ProfileReal")
                 sendSms("POD 78 hours")
+                sendSmsToNumbers("POD 78 hours", StringKey.SmsPod2Numbers)
                 markRun("Pod2")
             }
         }
@@ -2377,6 +2378,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && isTimeBetween(8, 0, 23, 0)
                 && cannulaH <= 80.0) {
                 sendSms("ConnectPod")
+                sendSmsToNumbers("ConnectPod", StringKey.SmsConnectPodNumbers)
                 markRun("ConnectPod")
             }
         }
@@ -3512,5 +3514,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU327
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU328
  */

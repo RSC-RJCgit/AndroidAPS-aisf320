@@ -48,6 +48,8 @@ enum class StringKey(
     SmsAlarmHypo1Numbers("smscommunicator_alarmhypo1numbers", ""),
     SmsAlarmHypo2Numbers("smscommunicator_alarmhypo2numbers", ""),
     SmsTest3Numbers("smscommunicator_test3numbers", ""),
+    SmsPod2Numbers("smscommunicator_pod2numbers", ""),
+    SmsConnectPodNumbers("smscommunicator_connectpodnumbers", ""),
     SmsOtpPassword("smscommunicator_otp_password", "", dependency = BooleanKey.SmsAllowRemoteCommands, isPassword = true),
 
     VirtualPumpType("virtualpump_type", "Generic AAPS"),
