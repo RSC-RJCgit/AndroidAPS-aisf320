@@ -688,6 +688,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return automationStateService.inState(stateName, stateValue)
     }
 
+    // True only when MJ is literally the "MJ active" state — the state right after the native button
+    // press, before the timed native automations advance it to MJ2/MJ3. Deliberately narrower than
+    // "any non-NOMJremains value": MJ2/MJ3 do NOT block here, only "MJ active" does.
+    private fun mjActive(): Boolean = checkAutomationState("MJ", "MJ active")
+
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSetAutomationState: no-ops (rather
     // than throwing) when states are disabled or stateValue isn't a valid value for stateName — setState()
     // itself throws IllegalStateException for an unknown stateName/stateValue, same as the automation action.
@@ -1547,7 +1552,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
-                && checkAutomationState("MJ", "NOMJremains")         // and MJ state must be NOM
+                && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1595,7 +1600,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta5 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1 >= 4.5 * stackK /* 0.25 mmol */ && rawDelta1 < 14.4 * stackK /* same band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
-                && checkAutomationState("MJ", "NOMJremains")               // and MJ state must be NOM
+                && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
             if (fire) {
                 setSmbDeliveryRatio(0.20)                        // stronger SMBs; the no-TT reset restores 0.17
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
