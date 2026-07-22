@@ -1062,6 +1062,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
                 // the other display settings, independent of the SMB-label state.
                 PointsWithLabelGraphSeries.basalToggleIndex = 0
+                // Re-decide the green-line annotation's top/under-target position from the current BGL,
+                // right now — this is the only place that decision gets refreshed (see
+                // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
+                PointsWithLabelGraphSeries.refreshAnnotationPosition()
                 rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
                 true
             }

@@ -61,6 +61,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // entirely — hence the unit-explicit rename.
         var currentBgMgdl: Double = 0.0
         var currentTargetInDisplayUnits: Double = 0.0
+
+        // Cached decision for the GENERAL_WITH_DURATION_OFFSET annotation (top vs. under-target-line).
+        // Previously this was recomputed from currentBgMgdl/showSmbLabels on every single draw() call,
+        // which fires far more often than the BGL actually changes (any scroll/zoom/invalidate) and was
+        // measurably slowing graph redraws. Now it's only refreshed by refreshAnnotationPosition(), which
+        // OverviewFragment calls from the IOB long-press handler — draw() just reads the cached value.
+        // The pixel geometry itself (dependent on the live viewport) still has to be computed in draw().
+        var annotationUnderTarget: Boolean = false
+
+        fun refreshAnnotationPosition() {
+            annotationUnderTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
+                                     else currentBgMgdl >= 162.1 /* 9.0 mmol */
+        }
     }
 
     // Default spSize
@@ -368,20 +381,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = fixedAnnotationAlign
-                        // Live position, re-decided every draw from the current BGL and the SMB-labels
-                        // toggle (long-press on IOB layout — see OverviewFragment). No separate mode flag:
-                        // showSmbLabels IS the mode selector, since its two states already correspond to
-                        // "action1"/"action2" from the user's spec.
+                        // Position decision (top vs. under-target-line) is a CACHED value, refreshed only
+                        // by the IOB long-press handler in OverviewFragment (see
+                        // refreshAnnotationPosition()) — not recomputed here on every draw. Only the pixel
+                        // geometry below (dependent on the live, scrollable/zoomable viewport) still runs
+                        // per draw call.
                         //  - labels OFF (showSmbLabels=false): stays at top; drops under the profile
-                        //    target line once BGL > 5.0 mmol.
+                        //    target line once BGL was > 5.0 mmol at the last long-press.
                         //  - labels ON (showSmbLabels=true): stays under the target line; rises back to
-                        //    top once BGL < 9.0 mmol.
+                        //    top once BGL was < 9.0 mmol at the last long-press.
                         // Profile's low target == high target for this user, so "under target" and
                         // "under low"/"under high" are the same line — getTargetLowMgdl() covers it.
-                        val underTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
-                                           else currentBgMgdl >= 162.1 /* 9.0 mmol */
                         val topPy = graphTop + 130
-                        val py = if (underTarget && currentTargetInDisplayUnits > 0.0) {
+                        val py = if (annotationUnderTarget && currentTargetInDisplayUnits > 0.0) {
                             val targetRatY = (currentTargetInDisplayUnits - minY) / diffY
                             val targetY = (graphTop - graphHeight * targetRatY).toFloat() + graphHeight
                             val underPy = targetY + 60f // fixed gap below the target line's pixel position
