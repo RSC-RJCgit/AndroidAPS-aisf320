@@ -53,6 +53,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // underTarget checks below are all comparisons that fail at 0.0).
         var currentBgMgdl: Double = 0.0
         var currentTargetMgdl: Double = 0.0
+    }
 
     // Default spSize
     private var spSize = 18
