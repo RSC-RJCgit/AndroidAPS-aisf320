@@ -420,6 +420,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return newest - (ref.noise ?: return null)
     }
 
+    // AAPS-processed (gv.value, NOT raw noise) 1-min delta — mirrors PrepareBgDataWorker's
+    // aapsOneMinuteDelta() (feeds the graph's "A1=" label). Distinct from rawDelta1MinMgdl(): .value
+    // already has per-reading sensor-level processing applied (calibration/filtering), unlike .noise
+    // (the raw native signal) — the two can genuinely disagree even at this short a window, not just
+    // at the longer 5/15/40-min AAPS-average level. .value is non-nullable, unlike .noise.
+    private fun aapsDelta1MinMgdl(): Double? {
+        val now = dateUtil.now()
+        val r = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 3 * 60 * 1000L, now, ascending = false)
+        if (r.size < 2) return null
+        val mins = (r[0].timestamp - r[1].timestamp) / 60_000.0
+        if (mins <= 0) return null
+        return (r[0].value - r[1].value) / mins * 5.0
+    }
+
     // True when the local clock is inside [startH:startM, endH:endM). Handles overnight ranges
     // (e.g. 22:00–01:00) by checking the complement and inverting.
     private fun isTimeBetween(startH: Int, startM: Int, endH: Int, endM: Int): Boolean {
@@ -2497,6 +2511,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "flatBGsDetected:    $flatBGsDetected")
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
+        // Computed once (nullable) and reused below for BOTH smbBoostRecent and the fast-rise-capping
+        // confirmation params, to avoid querying the raw BG readings table twice per loop. The two uses
+        // apply OPPOSITE fallbacks on purpose: smbBoostRecent's raw checks must FAIL-safe when data is
+        // missing (-9999 -> don't bypass/relax capping), whereas the new capping-confirmation params
+        // must PASS-safe when missing (+9999 -> don't let absent confirmation block a cap the original
+        // Delta/SDelta logic would already have applied).
+        val rawDelta1Raw = rawDelta1MinMgdl()
+        val rawDelta5Raw = rawDelta5MinMgdl()
+        val aapsDelta1Raw = aapsDelta1MinMgdl()
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -2532,8 +2555,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // resume if the rise resumes within the 30 min). Missing raw data (-9999 fallback) fails
             // safe: caps apply.
             smbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
-                && (rawDelta1MinMgdl() ?: -9999.0) >= 1.8 /* +0.1 mmol */
-                && (rawDelta5MinMgdl() ?: -9999.0) >= 1.8 /* +0.1 mmol */
+                && (rawDelta1Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */
+                && (rawDelta5Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */,
+            // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
+            // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
+            rawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
+            rawDelta1Mgdl = rawDelta1Raw ?: 9999.0,
+            aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

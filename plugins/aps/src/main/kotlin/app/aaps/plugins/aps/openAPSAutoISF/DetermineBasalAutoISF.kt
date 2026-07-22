@@ -177,7 +177,15 @@ class DetermineBasalAutoISF @Inject constructor(
         steps15M: Int,
         steps5M: Int,
         smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
-        smbBoostRecent: Boolean = false   // BolusGiven bg3 / BolusGivenMild fired within 30 min -> skip fast-rise caps
+        smbBoostRecent: Boolean = false,   // BolusGiven bg3 / BolusGivenMild fired within 30 min -> skip fast-rise caps
+        // Raw/AAPS-processed 1-min and raw 5-min deltas (mg/dL, already per-5-min-rate normalised), used
+        // as extra AND confirmations on the fast-rise capping blocks' own Delta gate (entry point only —
+        // not the nested severity tiers). Default 9999.0 = "no data supplied" -> the AND-term is trivially
+        // satisfied, so a caller that doesn't pass these (tests, replay) sees unchanged behaviour, and a
+        // momentary sensor gap can't itself block a cap the original Delta/SDelta logic would have applied.
+        rawDelta5Mgdl: Double = 9999.0,
+        rawDelta1Mgdl: Double = 9999.0,
+        aapsDelta1Mgdl: Double = 9999.0
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1235,7 +1243,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     !profile.temptargetSet &&
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.1 * 18 &&
-                    iobThUser < 71
+                    iobThUser < 71 &&
+                    rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
@@ -1255,7 +1264,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     !profile.temptargetSet &&
                     Delta >= 0.35 * 18 &&
                     SDelta >= 0.15 * 18 &&
-                    iobThUser < 71
+                    iobThUser < 71 &&
+                    rawDelta5Mgdl >= 0.35 * 18 && rawDelta1Mgdl >= 0.35 * 18 && aapsDelta1Mgdl >= 0.35 * 18
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
@@ -1322,7 +1332,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     SDelta >= 0.20 * 18 &&
                     bg < 10.0 * 18 &&
                     profile.temptargetSet &&
-                    target_bg <= 4.1 * 18
+                    target_bg <= 4.1 * 18 &&
+                    rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
                     microBolus = microBolus * 0.5
                     rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
@@ -1360,7 +1371,8 @@ class DetermineBasalAutoISF @Inject constructor(
                         Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         ((IOB > 0.10 * profile.max_iob)
-                            || (nowHour >= 22 || nowHour <= 5))
+                            || (nowHour >= 22 || nowHour <= 5)) &&
+                        rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                     ) {
                         if (Delta >= 1.0 * 18 &&
                             SDelta >= 1.0 * 18 &&
@@ -1418,7 +1430,8 @@ class DetermineBasalAutoISF @Inject constructor(
                         }
                     } else if (Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
-                        Delta < 0.35 * 18
+                        Delta < 0.35 * 18 &&
+                        rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                     ) {
                         if (microBolus > ThresholForFastRise ||
                             nowHour <= 8
@@ -1437,7 +1450,8 @@ class DetermineBasalAutoISF @Inject constructor(
                         bg > 11.5 * 18 &&
                         bg < 13.5 * 18 &&
                         IOB > ThresholForFastRise * profile.max_iob &&
-                        COB <= 25
+                        COB <= 25 &&
+                        rawDelta5Mgdl >= 0.9 * 18 && rawDelta1Mgdl >= 0.9 * 18 && aapsDelta1Mgdl >= 0.9 * 18
                     ) {
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
