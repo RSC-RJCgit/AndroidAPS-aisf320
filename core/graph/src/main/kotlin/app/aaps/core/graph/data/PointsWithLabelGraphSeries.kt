@@ -47,12 +47,20 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Flat color used for all BG dots when uniformGreenBg is active, ignoring per-point ISF-weight overrides.
         val uniformGreenBgColor: Int = android.graphics.Color.argb(140, 0, 200, 0)
 
-        // Live BGL and active-profile target (mg/dL), refreshed each overview update cycle (see
+        // Live BGL (mg/dL) and active-profile target, refreshed each overview update cycle (see
         // OverviewFragment.updateBg()) — read at draw time to decide the GENERAL_WITH_DURATION_OFFSET
         // annotation's vertical position. 0.0 default means "unknown yet" -> stays at the top (the
         // underTarget checks below are all comparisons that fail at 0.0).
+        // currentBgMgdl stays raw mg/dL (only ever compared against the mg/dL literal thresholds below).
+        // currentTargetInDisplayUnits, despite the name difference, must be in the SAME units as the
+        // graph's own Y-axis/viewport (minY/maxY below) to compute a valid pixel position — and this
+        // graph's data points (e.g. NoisyBgDeltaDataPoint's own yValue) are built via
+        // profileUtil.fromMgdlToUnits(), i.e. the user's DISPLAY units (mmol here), not raw mg/dL. A
+        // previous version of this field held raw mg/dL and got compared directly against the
+        // mmol-scaled viewport, producing a wildly out-of-range ratio that pushed the label off-canvas
+        // entirely — hence the unit-explicit rename.
         var currentBgMgdl: Double = 0.0
-        var currentTargetMgdl: Double = 0.0
+        var currentTargetInDisplayUnits: Double = 0.0
     }
 
     // Default spSize
@@ -372,12 +380,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // "under low"/"under high" are the same line — getTargetLowMgdl() covers it.
                         val underTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
                                            else currentBgMgdl >= 162.1 /* 9.0 mmol */
-                        val py = if (underTarget && currentTargetMgdl > 0.0) {
-                            val targetRatY = (currentTargetMgdl - minY) / diffY
+                        val topPy = graphTop + 130
+                        val py = if (underTarget && currentTargetInDisplayUnits > 0.0) {
+                            val targetRatY = (currentTargetInDisplayUnits - minY) / diffY
                             val targetY = (graphTop - graphHeight * targetRatY).toFloat() + graphHeight
-                            targetY + 60f // fixed gap below the target line's pixel position
+                            val underPy = targetY + 60f // fixed gap below the target line's pixel position
+                            // Safety clamp: if the computed position falls outside the visible graph
+                            // (e.g. a units mismatch, or the target sitting outside the current BG
+                            // range), fall back to the always-on-screen top position rather than
+                            // drawing off-canvas — the annotation must never simply vanish.
+                            if (underPy in graphTop..(graphTop + graphHeight)) underPy else topPy
                         } else {
-                            graphTop + 130
+                            topPy
                         }
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT

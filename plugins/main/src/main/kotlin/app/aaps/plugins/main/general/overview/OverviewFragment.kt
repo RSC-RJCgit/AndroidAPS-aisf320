@@ -891,11 +891,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val lastBgDescription = lastBgData.lastBgDescription()
         // Feed the graph's live-position green-line annotation (see PointsWithLabelGraphSeries):
-        // current BGL and the active profile's target (low==high target, per user's own profile setup),
-        // both in mg/dL. Updated here since updateBg() already runs each refresh cycle with both values
-        // on hand.
+        // current BGL (raw mg/dL — only ever compared against mg/dL literal thresholds there) and the
+        // active profile's target (low==high target, per user's own profile setup). The target MUST be
+        // converted to the user's display units here, via the same profileUtil.fromMgdlToUnits() the
+        // graph's own data points use for their Y value — the target is compared against the graph's
+        // Y-axis/viewport, which is scaled in display units, not mg/dL. (A prior version stored raw
+        // mg/dL there and the label rendered off-canvas as a result — this fixes that.)
         lastBg?.recalculated?.let { PointsWithLabelGraphSeries.currentBgMgdl = it }
-        profileFunction.getProfile()?.getTargetLowMgdl()?.let { PointsWithLabelGraphSeries.currentTargetMgdl = it }
+        profileFunction.getProfile()?.getTargetLowMgdl()?.let {
+            PointsWithLabelGraphSeries.currentTargetInDisplayUnits = profileUtil.fromMgdlToUnits(it)
+        }
         runOnUiThread {
             _binding ?: return@runOnUiThread
             binding.infoLayout.bg.text = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)
