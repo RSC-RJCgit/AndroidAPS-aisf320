@@ -1230,7 +1230,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val block = when { blkA -> "A"; blkB -> "B"; blkC -> "C"; blkD -> "D"; blkE -> "E"; blkF -> "F"; blkG -> "G"; else -> null }
             if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
                 setBgAccelIsfWeight(0.02)
-                setSmbDeliveryRatio(0.17)   // restore delivery baseline on hypo-risk protection
+                setSmbDeliveryRatio(0.14)   // restore delivery baseline on hypo-risk protection
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
@@ -1312,7 +1312,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.17 / iobTH 18% ---
+        // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
         // Fires when NOT on "Current Profile" (i.e. on a named high/steroid profile), Steroids Off, no TT.
         // 5-min floor throttle added (see readyToRun() usage note).
         run {
