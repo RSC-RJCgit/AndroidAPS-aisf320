@@ -420,6 +420,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return newest - (ref.noise ?: return null)
     }
 
+    // Raw 15-min delta (.noise), normalised down to a per-5-min rate (÷3) so it stays on the same
+    // mmol/5min scale as rawDelta5MinMgdl/rawDelta1MinMgdl — matches AutoIsfHistoryExporter's rΔ15
+    // table column convention exactly, so a live gate reading this lines up with what's shown in the
+    // AIV history table. Feeds the early-AM raw-rise guard's corroboration/divergence check.
+    private fun rawDelta15MinMgdl(): Double? {
+        val now = dateUtil.now()
+        val r = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 17 * 60 * 1000L, now, ascending = false)
+        if (r.size < 2) return null
+        val newest = r[0].noise ?: return null
+        val fifteenMinAgo = now - 15 * 60 * 1000L
+        val ref = r.minByOrNull { kotlin.math.abs(it.timestamp - fifteenMinAgo) } ?: return null
+        if (ref.timestamp == r[0].timestamp) return null
+        val diff = newest - (ref.noise ?: return null)
+        return diff / 3.0
+    }
+
     // AAPS-processed (gv.value, NOT raw noise) 1-min delta — mirrors PrepareBgDataWorker's
     // aapsOneMinuteDelta() (feeds the graph's "A1=" label). Distinct from rawDelta1MinMgdl(): .value
     // already has per-reading sensor-level processing applied (calibration/filtering), unlike .noise
@@ -2541,6 +2557,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val rawDelta1Raw = rawDelta1MinMgdl()
         val rawDelta5Raw = rawDelta5MinMgdl()
         val aapsDelta1Raw = aapsDelta1MinMgdl()
+        val rawDelta15Raw = rawDelta15MinMgdl()
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -2582,7 +2599,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
             rawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
             rawDelta1Mgdl = rawDelta1Raw ?: 9999.0,
-            aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0
+            aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0,
+            rawDelta15Mgdl = rawDelta15Raw ?: 9999.0
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

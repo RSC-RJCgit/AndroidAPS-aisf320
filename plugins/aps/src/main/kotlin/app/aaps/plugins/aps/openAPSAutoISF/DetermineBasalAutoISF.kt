@@ -185,7 +185,12 @@ class DetermineBasalAutoISF @Inject constructor(
         // momentary sensor gap can't itself block a cap the original Delta/SDelta logic would have applied.
         rawDelta5Mgdl: Double = 9999.0,
         rawDelta1Mgdl: Double = 9999.0,
-        aapsDelta1Mgdl: Double = 9999.0
+        aapsDelta1Mgdl: Double = 9999.0,
+        // Raw 15-min delta (mg/dL, normalised to a per-5-min rate to match rawDelta5Mgdl's scale — same
+        // /3 convention AutoIsfHistoryExporter's rΔ15 table column uses). Default 9999.0 = "no data" —
+        // only consumed by the early-AM raw-rise guard below, whose own check treats this sentinel as
+        // "skip the rΔ15 corroboration, fall back to rΔ5 alone" rather than "fail the whole condition".
+        rawDelta15Mgdl: Double = 9999.0
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1467,21 +1472,40 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
                         rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
-/*/ =====================================================
-// EARLY MORNING EXTRA FAST RISE GUARD
 // =====================================================
-                    } else if ((Delta >= 0.3 * 18 &&
-                            SDelta >= 0.1 * 18 &&
-                            nowHour < 10 &&
-                            IOB > 0.075 * profile.max_iob &&
-                            COB <= 25) ||
-                        (nowHour < 4 &&
-                            IOB > 0.10 * profile.max_iob)
+// EARLY MORNING EXTRA FAST RISE GUARD (rev 2 — raw-delta based)
+// =====================================================
+                    // Original (smoothed-Delta-based, plus an unconditional nowHour<4 IOB-only branch)
+                    // was disabled: the nowHour<4 branch capped SMB overnight on IOB alone, no rise
+                    // required at all — much blunter than intended, hence the original comment-out.
+                    // This revival drops that branch entirely and keeps only the rise-gated one, but
+                    // swaps the trigger from smoothed Delta to raw rΔ5: a same-day incident (7/22, ~9:41am)
+                    // showed smoothed Delta peaking at just 0.26mmol (never enough to fire the old 0.3
+                    // trigger) while raw rΔ5 hit 0.83mmol and rΔ1 hit 1.69mmol in the same window —
+                    // smoothed Delta was structurally too damped to catch a brief, real bump.
+                    // rawDelta15Mgdl >= 0.2mmol is corroboration (confirms a sustained move, not a single
+                    // noisy raw reading); rawDelta5 > rawDelta15*1.5 confirms the short-term rate is
+                    // running well ahead of the medium-term one — the signature of a fresh reversal
+                    // (e.g. off a preceding fall) rather than an already-established, longer rise.
+                    // Window widened to 6-9am (was 8-9am first draft): the Shower/Twilight block covering
+                    // 5-9am requires Steps60M < 10/100, and everyday movement around a real shower can
+                    // exceed that — this guard has no step gate, so it backstops Shower's own blind spot
+                    // across most of its window rather than just the incident's exact hour.
+                    // rawDelta15Mgdl's own corroboration/divergence checks are skipped (not failed) at
+                    // its 9999.0 sentinel — a comparison against that sentinel would near-never pass,
+                    // silently defeating the cap on missing data, the opposite of this file's "still cap
+                    // if unsure" convention for these blocks. Missing rΔ15 falls back to rΔ5 alone.
+                    } else if (
+                        nowHour >= 6 && nowHour < 10 &&
+                        IOB > 0.075 * profile.max_iob &&
+                        COB <= 25 &&
+                        rawDelta5Mgdl >= 0.5 * 18 &&
+                        (rawDelta15Mgdl >= 9999.0 ||
+                            (rawDelta15Mgdl >= 0.2 * 18 && rawDelta5Mgdl > rawDelta15Mgdl * 1.5))
                     ) {
                         microBolus = microBolus * 0.8
                         rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.810 for fast rise 0.810 smb ")
-*/
+                        rT.reason.append(" CHANGED SIZE 0.810b early-AM raw-rise guard: rawD5 ${rawDelta5Mgdl / 18.0} rawD15 ${rawDelta15Mgdl / 18.0} ")
 //=====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // =====================================================
