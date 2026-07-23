@@ -82,7 +82,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH",
-        "acceBG", "Delta", "SDelta", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -106,6 +106,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
+            rawBglStr(r.timestamp, rawReadings),
             rawDeltaStr(r.timestamp, rawReadings, 1),
             rawDeltaStr(r.timestamp, rawReadings, 5),
             rawDeltaStr(r.timestamp, rawReadings, 15),
@@ -309,6 +310,18 @@ class AutoIsfHistoryExporter @Inject constructor(
             if (actualMin <= 0.0) return "--"
             df2.format((n - refNoise) / actualMin * 5.0 / MGDL_TO_MMOL)
         }
+    }
+
+    /** Raw Libre BGL (mmol) at [timestamp] — the raw NOISE field itself, i.e. the same underlying
+     *  reading rΔ1/5/15 are differenced from. Lets the raw value be eyeballed directly (e.g. "raw was
+     *  6.1 five min ago, now 6.4") instead of only inferred from its deltas. Same 3-min window/newest
+     *  lookup as rawDeltaStr's 1-min case. "--" if no reading in range or its noise value is missing.
+     *  `rawReadings` must be newest-first. */
+    fun rawBglStr(timestamp: Long, rawReadings: List<GV>): String {
+        val inWindow = rawReadings.filter { it.timestamp in (timestamp - 3 * 60_000L)..timestamp }
+        val newest = inWindow.firstOrNull() ?: return "--"
+        val n = newest.noise ?: return "--"
+        return df1.format(n / MGDL_TO_MMOL)
     }
 
     /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —
