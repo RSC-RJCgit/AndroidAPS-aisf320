@@ -123,7 +123,7 @@ class BolusWizard @Inject constructor(
 
     // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
     var manualSplitBolusEnabled: Boolean = false
-    var manualSplitBolusIntervalMins: Int = 3
+    var manualSplitBolusIntervalMins: Int = 7
     private var splitBolusScheduled = false  // guard against double-callback
 
     // Result
