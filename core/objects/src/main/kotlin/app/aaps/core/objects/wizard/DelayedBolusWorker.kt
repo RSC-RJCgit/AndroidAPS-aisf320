@@ -35,8 +35,13 @@ import kotlin.math.max
 
 /**
  * Delayed bolus (50%-profile wizard mechanism — NOT the equal-parts split bolus):
- * after a wizard bolus on the 50% profile, re-checks BG at 10/20/30 minutes and
- * delivers the remaining gap × 90% once glucose criteria confirm a rise.
+ * after a wizard bolus on the 50% profile, re-checks BG every 10 min from 10 through 80
+ * minutes and delivers the remaining gap once glucose criteria confirm a rise — × 90% if
+ * confirmed within 20 min, × 50% if confirmation only comes later (deliberately blunt:
+ * fullRequired's IOB deduction is a frozen snapshot from the original wizard calculation,
+ * not re-read live, so the later confirmation lands the less that deduction still reflects
+ * actual current IOB — the reduced multiplier is a flat safety margin for that staleness,
+ * not a recalculation).
  * Formerly named SplitBolusWorker; renamed to keep the two mechanisms unmistakable.
  */
 class DelayedBolusWorker(
@@ -93,7 +98,7 @@ class DelayedBolusWorker(
         private val DELAYED_BGL_AGE_MS = T.mins(5).msecs()
 
         // Flat 10-minute poll: each call (first attempt or retry) waits 10 min from whenever it's made,
-        // for up to 3 attempts total, then gives up. originalTime is just carried along for logging
+        // for up to 8 attempts total (10 through 80 min), then gives up. originalTime is just carried along for logging
         // (total elapsed time since the original bolus), it doesn't affect the delay.
         fun enqueue(context: Context, originalDose: Double, fullRequired: Double, attempt: Int, originalTime: Long = System.currentTimeMillis()) {
             WorkManager.getInstance(context)
@@ -139,8 +144,13 @@ class DelayedBolusWorker(
 
         if (criteriaOk && bglFresh) {
             val rawDose = fullRequired - originalDose
-            val delayedDose = Round.roundTo(max(0.0, rawDose * 0.90), activePlugin.activePump.pumpDescription.bolusStep)
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U gap=${rawDose}U × 90%)")
+            // Flat time-based cut, not a live recalculation (see class doc): confirmation within
+            // 20 min uses the normal 90%; later confirmation — where fullRequired's frozen IOB
+            // deduction has had longer to go stale — drops to a more conservative 50%.
+            val elapsedMin = attempt * 10
+            val multiplier = if (elapsedMin > 20) 0.50 else 0.90
+            val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U gap=${rawDose}U × ${(multiplier*100).toInt()}%)")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {
@@ -167,7 +177,7 @@ class DelayedBolusWorker(
                 !criteriaOk  -> "glucose criteria not met (BGL=$bglStr)"
                 else         -> "unknown"
             }
-            if (attempt < 3) {
+            if (attempt < 8) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in 10 min")
                 addCheckNote("$dbLabel wait")
                 enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime)

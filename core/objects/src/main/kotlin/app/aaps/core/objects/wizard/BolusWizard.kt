@@ -588,12 +588,15 @@ class BolusWizard @Inject constructor(
                                         // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
                                         val normalIc = ic / 2.0
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
-                                        // Block SMBs for the whole delayed-check window (3 × 10 min + margin).
+                                        // Block SMBs for the whole delayed-check window (8 × 10 min + margin).
                                         // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
-                                        preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(35).msecs())
-                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfile.percentage}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 35 min")
+                                        // Must stay in lock-step with DelayedBolusWorker's own max-attempts (8):
+                                        // if this were shorter, SMBs would resume mid-window while the delayed
+                                        // dose could still land later, risking a double-dose neither side accounts for.
+                                        preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
+                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfile.percentage}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
-                                        // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/Db30)
+                                        // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)
                                         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                                             therapyEvent = TE(
                                                 timestamp = dateUtil.now(),
@@ -609,10 +612,15 @@ class BolusWizard @Inject constructor(
                                             listValues = listOf()
                                         ).blockingGet()
                                     }
-                                    // Equal-parts split bolus: no profile % active, total > maxBolus, enabled per-bolus
+                                    // Equal-parts split bolus: profile% at or above 100 (a boosted profile still
+                                    // needs its correctly-scaled, larger recalculated dose split if it exceeds
+                                    // maxBolus — excluding >100 was a bug, not intentional; only a REDUCED
+                                    // profile, where the assumptions this recalculation relies on don't hold,
+                                    // should be excluded), total > maxBolus, enabled per-bolus.
+                                    val schedulingPct = activeProfileSwitchPct()
                                     if (!splitBolusScheduled &&
                                         manualSplitBolusEnabled &&
-                                        activeProfileSwitchPct() == 100 &&
+                                        schedulingPct >= 100 &&
                                         calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
                                     ) {
                                         splitBolusScheduled = true
@@ -628,7 +636,7 @@ class BolusWizard @Inject constructor(
                                             else
                                                 "${numParts}×${maxPart}U"
                                             aapsLogger.info(LTag.CORE, "EqualSplitBolus: scheduled $splitDesc every ${intervalMins}min, SMBs blocked ${(numParts-1)*intervalMins}min")
-                                            scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts)
+                                            scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts, schedulingPct)
                                         }
                                     }
                                 }
@@ -663,7 +671,7 @@ class BolusWizard @Inject constructor(
         return pct
     }
 
-    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
+    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, schedulingPct: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
         if (partNumber > totalParts) return
         val partDose = Round.roundTo(
             min(maxPart, totalDose - (partNumber - 1) * maxPart),
@@ -681,15 +689,20 @@ class BolusWizard @Inject constructor(
                 return@postDelayed
             }
             val pct = activeProfileSwitchPct()
-            aapsLogger.info(LTag.CORE, "EqualSplitBolus: poll for part $partNumber/$totalParts — profileSwitch%=$pct, deliverAt=${dateUtil.timeString(deliverAt)}, now=${dateUtil.timeString(dateUtil.now())}")
-            if (pct != 100) {
+            aapsLogger.info(LTag.CORE, "EqualSplitBolus: poll for part $partNumber/$totalParts — profileSwitch%=$pct, scheduledAt=$schedulingPct%, deliverAt=${dateUtil.timeString(deliverAt)}, now=${dateUtil.timeString(dateUtil.now())}")
+            // Absolute, not relative to schedulingPct: only cancel on a drop into genuinely reduced
+            // (sub-100%) territory — e.g. a hypo-driven switch to 50% — which is a real safety concern.
+            // A drop from a boosted percentage (say 110%) back down to plain 100% is NOT a risk state;
+            // 100% is normal baseline, not "reduced", so it shouldn't abort an in-flight residual.
+            // schedulingPct is kept only for the log line above, not for this comparison.
+            if (pct < 100) {
                 preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
-                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile switch at $pct% — cancelling part $partNumber/$totalParts, SMBs unblocked")
+                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling part $partNumber/$totalParts, SMBs unblocked")
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
                 // Interval not elapsed yet — poll again
-                scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber, totalParts, deliverAt)
+                scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber, totalParts, schedulingPct, deliverAt)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
@@ -707,7 +720,7 @@ class BolusWizard @Inject constructor(
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                         else
-                            scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber + 1, totalParts)
+                            scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber + 1, totalParts, schedulingPct)
                     }
                 })
             }
