@@ -1617,9 +1617,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (4.5*stackK) at/above it — same threshold values as mild's, since it's the identical
             // underlying noise problem, not a new one needing separate justification.
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            // Delivery-suppressed bypass: if a fast-rise cap has throttled SMB to ~zero (0-1 delivered
+            // in the last 5 min) while raw signals are unambiguously still confirming a rise, don't let
+            // the resulting stalled/negative iobChange5 — an artifact of the suppression itself, not
+            // evidence the rise resolved — block the boost. Raw-only, no `d`: `d` is itself downstream
+            // of how much insulin has actually been delivered, so requiring it here just re-imports the
+            // same lag this bypass exists to route around. Direct numbers, not stackK-scaled: stackK is
+            // provably always 1.0 whenever smbCount5Min() <= 1 (smbInterval5Sec() can't compute an
+            // interval — and so can't detect stacking — with fewer than 2 SMBs in the window), so
+            // scaling by it here would be dead weight implying a scaling that can never actually apply.
+            val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
             val bg3 = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.85 * stackK && d >= 10.8 * stackK /* 0.60 mmol */
+                && ((iobChange5 > 0.85 * stackK && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
@@ -1686,10 +1696,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // entirely; the UPPER cap (< 14.4*stackK, keeping mild out of bg3's territory) still always
             // applies, so mutual exclusivity with bg3 is preserved either way.
             val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            // Delivery-suppressed bypass — same reasoning as bg3's mirror above: raw-only (no `d`,
+            // which lags behind suppressed delivery itself), direct numbers (not stackK-scaled, since
+            // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
+            // (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
+            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val fire = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 0.40 * stackK
-                && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */
+                && ((iobChange5 > 0.40 * stackK && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
                 && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
