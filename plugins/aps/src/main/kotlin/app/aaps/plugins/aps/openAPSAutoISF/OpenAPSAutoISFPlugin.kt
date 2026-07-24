@@ -2367,7 +2367,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (podActivatedSinceExport) {
                 sendSms("ExportSettingsPodActivation")
                 exportSettingsFor("NewPod")
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded("Current Profile")
                 cancelCurrentTempTarget()
                 setAutomationState("Profile", "PP130")
                 markRun("ExportSettingsPodActivation")
