@@ -500,6 +500,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return spanSec / (smbs.size - 1)
     }
 
+    // Count of SMBs delivered in the last 5 minutes — same query as smbInterval5Sec(), just the raw
+    // count instead of the derived average gap. Used alongside it for the hard-stacking delivery-ratio
+    // reversion below (gap alone can be misleadingly low with only 2-3 SMBs; requiring a minimum count
+    // too confirms genuinely sustained rapid delivery, not a coincidental close pair).
+    private fun smbCount5Min(): Int {
+        val now = dateUtil.now()
+        return persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
+            .count { it.type == BS.Type.SMB }
+    }
+
     // Total IOB (bolus + temp-basal) at a timestamp — matches the loop's IOB and the "IOB change"
     // trigger. Basal contribution is included deliberately.
     private fun totalIobAt(time: Long): Double {
@@ -1515,6 +1525,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline) && activeTtMgdl() == null) {
             setSmbDeliveryRatio(deliveryBaseline)
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
+        }
+
+        // --- HardStackDelOff: forced delivery-ratio reversion on genuine SMB stacking, independent of
+        // TT state. DelOff above only reverts when NO TT is active — it correctly defers while bg3/mild's
+        // own short 2-min TT is running, but ALSO defers for any other reason a TT happens to be active
+        // (e.g. the 5.7mmol hypo-protection TT can run 180 min), which could leave an elevated ratio
+        // stuck well beyond its intended window. This checks the actual stacking pattern instead: gap
+        // AND count both required (gap alone can look artificially low off just 2-3 close SMBs; count
+        // alone doesn't confirm they're rapid) so both must agree stacking is genuinely happening.
+        // Excludes only the boost's OWN brief TT (75.7=4.2mmol bg3, 90.1=5.0mmol mild) — bg3/mild
+        // successfully delivering back-to-back during their own intended 2-min window looks identical to
+        // "stacking" by this same measure, and this must not cut that window short. Any OTHER active TT
+        // (or none) is fair game. No readyToRun throttle — deliberately checked every iteration, same as
+        // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
+        val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
+        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline)
+            && smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
+            && !onOwnBoostTt) {
+            setSmbDeliveryRatio(deliveryBaseline)
+            addCarePortalNote("HardStackDelOff")
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
