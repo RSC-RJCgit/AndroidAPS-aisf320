@@ -1129,7 +1129,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (ghBlock != null && ghExtraOk) {
                     setBgAccelIsfWeight(0.02)
                     preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                    val ghSmsText = "GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}"
+                    val ghSmsText = "GentleHypoRisk [b$ghBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
+                        " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
+                        " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                        " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                        " iob=${String.format("%.2f", iobData.iob)}"
                     sendSms(ghSmsText)
                     sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
                     uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
@@ -2555,8 +2559,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes >= 102 && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
             if (ah1b1 || ah1b2 || ah1b3) {
                 setBgAccelIsfWeight(0.10)
-                sendSms("AlarmHypo")
-                sendSmsToNumbers("AlarmHypo", StringKey.SmsAlarmHypo1Numbers)
+                val rawG = rawGlucoseMgdl()
+                val rawD1 = rawDelta1MinMgdl()
+                val rawD5 = rawDelta5MinMgdl()
+                val ah1SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
+                    " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
+                    " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " iob=${String.format("%.2f", iobData.iob)}"
+                sendSms(ah1SmsText)
+                sendSmsToNumbers(ah1SmsText, StringKey.SmsAlarmHypo1Numbers)
                 uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("_____H4")
                 setAutomationState("BGLstate", "BGLlastLOW")
@@ -2577,8 +2589,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lowOk = g <= 77.5 /* 4.3 mmol */ || (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000)
             if (isTimeBetween(7, 30, 23, 30) && d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
                 setBgAccelIsfWeight(0.10)
-                sendSms("AlarmHypo")
-                sendSmsToNumbers("AlarmHypo", StringKey.SmsAlarmHypo2Numbers)
+                val rawG = rawGlucoseMgdl()
+                val rawD1 = rawDelta1MinMgdl()
+                val rawD5 = rawDelta5MinMgdl()
+                val ah2SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
+                    " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
+                    " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " iob=${String.format("%.2f", iobData.iob)}"
+                sendSms(ah2SmsText)
+                sendSmsToNumbers(ah2SmsText, StringKey.SmsAlarmHypo2Numbers)
                 uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
                 addGraphAnnouncement("__________A4")
                 setAutomationState("LowBG", "50recent")
