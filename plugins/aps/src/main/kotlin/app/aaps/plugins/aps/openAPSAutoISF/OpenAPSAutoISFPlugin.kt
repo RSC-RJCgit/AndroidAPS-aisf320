@@ -1568,10 +1568,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            // d/iobChange5 loosened from 0.7mmol/1.00 to 0.60mmol/0.85 (2026-07-24): an incident showed
+            // rawDelta5 already unambiguously in bg3's territory (1.17-1.89mmol, well above the 0.8mmol
+            // floor) for several straight minutes while d (peaked 0.69mmol) and iobChange5 (peaked 0.93)
+            // sat just under the old bar the whole time — bg3 never fired, fast-rise caps kept cutting
+            // delivery with nothing to counteract them, and mild only caught it minutes later once
+            // rawDelta5 had settled back under its own upper cap. rawDelta5's own >=0.8mmol floor is
+            // unchanged — this only closes the gap on bg3's smoothed-signal confirmation.
+            // Same incident also showed rawDelta1 (the noisiest single-point signal — see mild's own
+            // rawDelta1FloorOk comment) declining through the window (1.94->1.39->0.54->0.28mmol) even
+            // while d/iobChange5/rawDelta5 all confirmed a genuine rise, so bg3's own unconditional
+            // >=0.8mmol rawDelta1 floor would STILL have blocked it even after the d/iobChange5 fix
+            // above. Mirrors mild's exact exception: fully dropped below 9.0mmol, reduced to >=0.25mmol
+            // (4.5*stackK) at/above it — same threshold values as mild's, since it's the identical
+            // underlying noise problem, not a new one needing separate justification.
+            val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val bg3 = isTimeBetween(8, 30, 23, 30)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && iobChange5 > 1.00 * stackK && d >= 12.6 * stackK /* 0.7 mmol */
-                && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1 >= 14.4 * stackK /* 0.8 mmol */
+                && iobChange5 > 0.85 * stackK && d >= 10.8 * stackK /* 0.60 mmol */
+                && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
@@ -1581,6 +1596,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // 5-min iobChange5 window and look like fresh evidence for a second (redundant) boost.
                 // Matches mild's own 10-min self-throttle, so both blocks reason about the same window.
                 && readyToRun("BolusGivenMild", 10)
+                // Movement guard: don't boost while actively walking/exercising — both a sensor-artifact
+                // risk (movement can distort readings) and a hypo-risk multiplier (activity raises
+                // insulin sensitivity), so a big boost is specifically the wrong response right then.
+                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1646,6 +1665,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // IOB bump could sit inside mild's iobChange5 window and look like a fresh rise. 10 min
                 // matches bg3's own self-throttle.
                 && readyToRun("BolusGivenBg3", 10)
+                // Movement guard: same reasoning as bg3's mirror check above.
+                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             if (fire) {
                 // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
                 // response; at/above 9.0 mmol, the unadjusted base. Tiers are relative bumps on top of
