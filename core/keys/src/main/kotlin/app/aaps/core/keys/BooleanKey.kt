@@ -72,6 +72,9 @@ enum class BooleanKey(
     // base, carbsReqThreshold-encoded offset1/2/3 flags, hour-of-day and delta_accl adjustments) in favor
     // of a single fixed mmol value (DoubleKey.ApsAutoIsfSmbOffsetOverride) — see DetermineBasalAutoISF.kt.
     ApsAutoIsfSmbOffsetOverrideEnabled("autoisf_smb_offset_override_enabled", false, defaultedBySM = true),
+    // Single master switch for BOTH BolusGiven (bg1/bg2/bg3) and BolusGivenMild — turning this off
+    // disables both boost automations together, not just one.
+    ApsAutoIsfBoostAutomationsEnabled("autoisf_boost_automations_enabled", true, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),

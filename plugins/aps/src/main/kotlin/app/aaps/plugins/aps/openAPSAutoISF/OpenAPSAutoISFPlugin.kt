@@ -1067,8 +1067,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (p50block != null) {
                 setBgAccelIsfWeight(0.07)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                setSmbDeliveryRatio(0.14)   // restore delivery baseline: hypo protection must not
-                                            // keep BolusGiven's strengthened 0.20 SMB delivery
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline: hypo protection must not
+                                            // keep BolusGiven's strengthened SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 startProfilePercentFor(50, 360)
                 setAutomationState("LowBG", "50recent")
@@ -1230,7 +1230,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val block = when { blkA -> "A"; blkB -> "B"; blkC -> "C"; blkD -> "D"; blkE -> "E"; blkF -> "F"; blkG -> "G"; else -> null }
             if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
                 setBgAccelIsfWeight(0.02)
-                setSmbDeliveryRatio(0.14)   // restore delivery baseline on hypo-risk protection
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline on hypo-risk protection
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
@@ -1497,29 +1497,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- SMB delivery ratio reset: restore the 0.14 baseline once no TT is active. The strengthening
-        // autos (BolusGiven bg3, BolusGivenMild) each set delivery 0.20 alongside a 2-min TT, so "no TT"
-        // means the boost window has ended → restore 0.14. Runs BEFORE the boost blocks below on purpose:
-        // startTempTargetIfNeeded() inserts the TT asynchronously (not visible until the next loop), so a
-        // reset placed after a boost would see "no TT" and cancel the 0.20 the same loop. Here it only ever
-        // sees a TT that was set on a PREVIOUS loop, so it correctly holds 0.20 for the TT's 2 minutes.
-        // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set 0.14.
-        // The recovery/protective autos' own setSmbDeliveryRatio(0.14) calls remain as a backup.
-        // Guard is "NOT (fuzzily) at the 0.14 baseline" — i.e. boosted — rather than ">0.14": the pref
-        // reads back a hair above the 0.14 literal (float rounding), so a ">0.14" guard would be true
-        // even at "0.14" and re-fire DelOff every loop. fuzzyEquals (±0.001) treats "0.14" as baseline
-        // and only the 0.20 boost as different. NB on retune: update this 0.14 to the new baseline, and
-        // keep baseline/boost more than 0.001 apart.
-        if (!fuzzyEquals(smb_delivery_ratio, 0.14) && activeTtMgdl() == null) {
-            setSmbDeliveryRatio(0.14)
-            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops 0.20->0.14)
+        // --- SMB delivery ratio reset: restore the resting baseline (ApsAutoIsfSmbDeliveryBaseline,
+        // default 0.14) once no TT is active. The strengthening autos (BolusGiven bg3, BolusGivenMild)
+        // each set a boosted delivery alongside a 2-min TT, so "no TT" means the boost window has ended
+        // → restore baseline. Runs BEFORE the boost blocks below on purpose: startTempTargetIfNeeded()
+        // inserts the TT asynchronously (not visible until the next loop), so a reset placed after a
+        // boost would see "no TT" and cancel the boost the same loop. Here it only ever sees a TT that
+        // was set on a PREVIOUS loop, so it correctly holds the boosted ratio for the TT's 2 minutes.
+        // While a Skittles 5.7 / manual TT is active the reset defers, and those paths already set baseline.
+        // The recovery/protective autos' own setSmbDeliveryRatio(baseline) calls remain as a backup.
+        // Guard is "NOT (fuzzily) at baseline" — i.e. boosted — rather than ">baseline": the pref reads
+        // back a hair above the literal (float rounding), so a ">" guard would be true even AT baseline
+        // and re-fire DelOff every loop. fuzzyEquals (±0.001) treats baseline as baseline and only an
+        // actual boost as different. Baseline is now a live preference (no more manual retune needed
+        // here) — just keep it more than 0.001 apart from whatever boost ratios are in use.
+        val deliveryBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline) && activeTtMgdl() == null) {
+            setSmbDeliveryRatio(deliveryBaseline)
+            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
         // 10-min throttle. Three trigger blocks; only outer precondition is profile=100% + no TT.
         // COB>=9 / acce>=0.20 / dura<acce are per-block (postBolusGate) for the manual-bolus branches
         // (bg1/bg2); the SMB-driven branch (bg3) does NOT require them.
+        // ApsAutoIsfBoostAutomationsEnabled is the combined master switch for this WHOLE block (bg1/2/3)
+        // and BolusGivenMild below — one toggle disables both, per user request.
         if (profile_percentage == 100 && activeTtMgdl() == null
+            && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             && readyToRun("BolusGiven", 10)) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
@@ -1591,8 +1596,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Given-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
-                setSmbDeliveryRatio(0.20)   // strengthen SMB delivery during the post-bolus boost;
-                                            // recovery/protective autos restore it to 0.14 (see below)
+                // "Strong" boost ratio is derived from the mild-boost base, not set independently —
+                // see ApsAutoIsfMildBoostRatio's doc comment.
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.03)
+                                            // strengthen SMB delivery during the post-bolus boost;
+                                            // recovery/protective autos restore it to baseline (see below)
                 startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
@@ -1601,11 +1609,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- BolusGivenMild: gentle sibling of BolusGiven bg3. Strengthens SMB delivery on a *mild*
         // delivery-driven rise (much lower gates), WITHOUT boosting the profile — it holds the daytime
         // 5.0 target with a 2-min TT (which doubles as the timer for the delivery-ratio reset above) and
-        // raises the SMB delivery ratio to 0.20. Leaves iobTH / acce / ppWeight / profile untouched.
+        // raises the SMB delivery ratio to the configurable mild-boost base. Leaves iobTH / acce / ppWeight / profile untouched.
         // Own 10-min throttle, independent of bg1/2/3. rawDelta5 capped BELOW bg3's 0.8mmol threshold so
         // the two are mutually exclusive (one delta value can't satisfy both), preventing a same-loop
         // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
-        if (profile_percentage == 100 && activeTtMgdl() == null && readyToRun("BolusGivenMild", 10)) {
+        // ApsAutoIsfBoostAutomationsEnabled: same combined master switch as BolusGiven bg1/2/3 above.
+        if (profile_percentage == 100 && activeTtMgdl() == null
+            && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+            && readyToRun("BolusGivenMild", 10)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
@@ -1637,13 +1648,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && readyToRun("BolusGivenBg3", 10)
             if (fire) {
                 // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
-                // response; at/above 9.0 mmol, unchanged original 0.20.
+                // response; at/above 9.0 mmol, the unadjusted base. Tiers are relative bumps on top of
+                // the configurable base (ApsAutoIsfMildBoostRatio), not independent absolutes — raising
+                // or lowering the base shifts all three together.
+                val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
                 val deliveryRatio = when {
-                    g < 135.1 /* 7.5 mmol */ -> 0.25
-                    g < 162.1 /* 9.0 mmol */ -> 0.22
-                    else                     -> 0.20
+                    g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
+                    g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
+                    else                     -> mildBase
                 }
-                setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores 0.14
+                setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores baseline
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("GivenMild")
@@ -1907,7 +1921,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (u2block != null) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setBgAccelIsfWeight(0.50)
-                setSmbDeliveryRatio(0.14)   // daytime "back to usual" recovery restores delivery baseline
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime "back to usual" recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
@@ -1944,7 +1958,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
-                setSmbDeliveryRatio(0.14)   // daytime recovery restores delivery baseline
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("COff1-$ctBlock")
@@ -2373,7 +2387,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.35)
                 switchProfileIfNeeded("Current Profile")
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
-                setSmbDeliveryRatio(0.14)   // overnight reset restores delivery baseline
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
                 sendSms("NightAcce_0.35TH18")
@@ -2405,7 +2419,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stB1 || stB2 || stB3) {
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
-                setSmbDeliveryRatio(0.14)   // morning recovery restores delivery baseline
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // morning recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
                 sendSms("SemiTwilightAcce_0.50TH16")
                 addCarePortalNote("Semi")
@@ -3562,6 +3576,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled, summary = R.string.autoisf_smb_offset_override_enabled_summary, title = R.string.autoisf_smb_offset_override_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbOffsetOverride, dialogMessage = R.string.autoisf_smb_offset_override_summary, title = R.string.autoisf_smb_offset_override_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryBaseline, dialogMessage = R.string.autoisf_smb_delivery_baseline_summary, title = R.string.autoisf_smb_delivery_baseline_title))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfBoostAutomationsEnabled, summary = R.string.autoisf_boost_automations_enabled_summary, title = R.string.autoisf_boost_automations_enabled_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMildBoostRatio, dialogMessage = R.string.autoisf_mild_boost_ratio_summary, title = R.string.autoisf_mild_boost_ratio_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSplitBolusEnabled, summary = R.string.split_bolus_enabled_summary, title = R.string.split_bolus_enabled_title))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfSplitBolusInterval, dialogMessage = R.string.split_bolus_interval_summary, title = R.string.split_bolus_interval_title))
@@ -3574,5 +3591,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU341
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU342
  */

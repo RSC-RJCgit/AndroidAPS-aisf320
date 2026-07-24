@@ -56,6 +56,17 @@ enum class DoubleKey(
     // varOffset hard clamp (min(36.0, varOffset)) in DetermineBasalAutoISF.kt, so this can never exceed
     // what the old mechanism itself was capable of.
     ApsAutoIsfSmbOffsetOverride("autoisf_smb_offset_override", 0.5, 0.0, 2.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled),
+    // Resting SMB delivery ratio the custom automations (DelOff and the recovery/protective autos)
+    // restore to once a boost window ends. Deliberately separate from ApsAutoIsfSmbDeliveryRatio, which
+    // those same autos also write into transiently while a boost is active (bg3/mild write boosted
+    // values there, then read this key back to know what to restore to) — reusing one preference for
+    // both would lose the user's configured baseline the moment any boost overwrote it.
+    ApsAutoIsfSmbDeliveryBaseline("autoisf_smb_delivery_baseline", 0.14, 0.1, 0.5, defaultedBySM = true),
+    // Base ratio for BolusGivenMild's boost — its BGL tiers (<7.5mmol / <9.0mmol / else) apply as
+    // relative bumps (+0.05 / +0.02 / +0) on top of this value, so raising or lowering it shifts all
+    // three tiers together. BolusGiven bg3's own ("strong") boost ratio is derived from this value
+    // + 0.03, not set independently — see ApsAutoIsfBoostAutomationsEnabled for the on/off toggle.
+    ApsAutoIsfMildBoostRatio("autoisf_mild_boost_ratio", 0.20, 0.1, 0.5, defaultedBySM = true),
     FslCalOffset("fslCal_Offset", 0.0, -50.0, 50.0, defaultedBySM = true),      //dependency = BooleanKey.ApsCalibrationTrigger),
     FslCalSlope("fslCal_Slope", 1.0, 0.5, 1.5, defaultedBySM = true),           //dependency = BooleanKey.ApsCalibrationTrigger),
     FslSmoothAlpha("fsl_exp1_factor", 0.3, 0.1, 1.0, defaultedBySM = true),
