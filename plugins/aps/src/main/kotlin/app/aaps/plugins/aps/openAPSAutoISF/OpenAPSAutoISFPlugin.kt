@@ -1570,6 +1570,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
+                // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses (BS.Type.NORMAL),
+                // never SMB — so mild firing doesn't touch that gate and couldn't otherwise block bg3 here.
+                // Without this, bg3's own IOB bump from a mild fire ~minutes ago could sit inside bg3's next
+                // 5-min iobChange5 window and look like fresh evidence for a second (redundant) boost.
+                // Matches mild's own 10-min self-throttle, so both blocks reason about the same window.
+                && readyToRun("BolusGivenMild", 10)
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -1624,6 +1630,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
+                // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
+                // lastCarbMin don't see either automation's own SMB delivery, so without this a bg3 fire's
+                // IOB bump could sit inside mild's iobChange5 window and look like a fresh rise. 10 min
+                // matches bg3's own self-throttle.
+                && readyToRun("BolusGivenBg3", 10)
             if (fire) {
                 // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
                 // response; at/above 9.0 mmol, unchanged original 0.20.
@@ -2592,9 +2603,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // deltas do, so the moment the rise breaks the caps re-apply on the next 1-min loop (and
             // resume if the rise resumes within the 30 min). Missing raw data (-9999 fallback) fails
             // safe: caps apply.
+            // Reversion/high-IOB guard: the raw-delta self-gate above only sees the SHORT-term trend, so
+            // a brief renewed uptick right after a boost could pass it even while the LONGER trend is
+            // still net-negative (recovering from an overshoot the boost itself likely caused) and IOB is
+            // already elevated from that same recent boost — exactly when the caps' conservatism is
+            // still warranted, not when it should be waived. 0.33 * max_iob (not a flat unit count) sits
+            // above typical daytime IOB but below the ~3.3-3.6U peaks actually observed during genuine
+            // sustained rises, so the bypass stays available through those, only cutting out right at the
+            // observed high-IOB tail.
             smbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
                 && (rawDelta1Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */
-                && (rawDelta5Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */,
+                && (rawDelta5Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */
+                && glucoseStatus.longAvgDelta > -1.8 /* -0.1 mmol: longer trend not still reverting */
+                && iobData.iob < 0.33 * oapsProfile.max_iob,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
             rawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
