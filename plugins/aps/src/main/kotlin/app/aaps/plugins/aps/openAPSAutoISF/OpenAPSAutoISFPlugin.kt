@@ -1580,14 +1580,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- HardStackDelOff: forced delivery-ratio REDUCTION (not a full revert) on genuine SMB
-        // stacking OR overnight (2300-0100), independent of TT state. DelOff above only reverts when NO
-        // TT is active — it correctly defers while bg3/mild's own short 2-min TT is running, but ALSO
-        // defers for any other reason a TT happens to be active (e.g. the 5.7mmol hypo-protection TT can
-        // run 180 min), which could leave an elevated ratio stuck well beyond its intended window. This
-        // checks the actual stacking pattern instead: gap AND count both required (gap alone can look
-        // artificially low off just 2-3 close SMBs; count alone doesn't confirm they're rapid) so both
-        // must agree stacking is genuinely happening. Overnight is a separate, unconditional OR — not
-        // gated on stacking at all, just a flat "be a little more conservative 2300-0100" step.
+        // stacking, independent of TT state. DelOff above only reverts when NO TT is active — it
+        // correctly defers while bg3/mild's own short 2-min TT is running, but ALSO defers for any other
+        // reason a TT happens to be active (e.g. the 5.7mmol hypo-protection TT can run 180 min), which
+        // could leave an elevated ratio stuck well beyond its intended window. This checks the actual
+        // stacking pattern instead: gap AND count both required (gap alone can look artificially low off
+        // just 2-3 close SMBs; count alone doesn't confirm they're rapid) so both must agree stacking is
+        // genuinely happening. No overnight/time-of-night trigger — an earlier unconditional 2300-0100
+        // OR-branch was tried and reverted (2026-07-26): the -0.03 nudge it produced (0.11 from a 0.14
+        // baseline) was judged too weak to be worth keeping as a separate, stacking-independent trigger.
         // Target is baseline MINUS 0.03 (was: reset straight to baseline) — a smaller nudge down rather
         // than a full snap-back. Computed from the constant baseline, not by re-reading the current
         // (possibly already-reduced) ratio, so repeated cycles while the condition holds can't compound
@@ -1602,10 +1603,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
         val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
         val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
-        val overnightWindow = isTimeBetween(23, 0, 1, 0)
         val hardStackTarget = deliveryBaseline - 0.03
         if (!fuzzyEquals(smb_delivery_ratio, hardStackTarget)
-            && (smbStacking || overnightWindow)
+            && smbStacking
             && !onOwnBoostTt) {
             setSmbDeliveryRatio(hardStackTarget)
             addCarePortalNote("HardStackDelOff")
@@ -1851,7 +1851,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else                     -> mildBase
             }
             consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 3)} mildBase=${round(mildBase, 3)} hardStackTarget=${round(hardStackTarget, 3)} currentRatio=${round(smb_delivery_ratio, 3)} thresholdScale=${round(thresholdScale, 3)} ;;")
-            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking overnightWindow=$overnightWindow smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
+            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
             consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
             consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 3)} wouldFire=$mildWould ;;")
