@@ -1,6 +1,7 @@
 package app.aaps.core.graph.data
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Paint
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
@@ -52,14 +53,8 @@ class TherapyEventDataPoint(
     override val paintStyle: Paint.Style = Paint.Style.FILL // not used
 
     override val size get() = if (rh.gb(app.aaps.core.ui.R.bool.isTablet)) 12.0f else 10.0f
-    override fun color(context: Context?): Int {
-        return when (data.type) {
-            TE.Type.ANNOUNCEMENT          -> rh.gac(context, app.aaps.core.ui.R.attr.notificationAnnouncement)
-            TE.Type.SETTINGS_EXPORT       -> rh.gac(context, app.aaps.core.ui.R.attr.notificationSettingsExport)
-            TE.Type.NS_MBG                -> rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_NS_MBG)
-            TE.Type.FINGER_STICK_BG_VALUE -> rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_FINGER_STICK_BG_VALUE)
-            TE.Type.EXERCISE              -> rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_EXERCISE)
-            else                          -> rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_Default)
-        }
-    }
+    // Flat white for all types, matching StepsStackedDataPoint (the stacked step labels at the bottom
+    // of the graph) — was previously a different theme-attribute color per TE.Type; unified per user
+    // request so top (careportal notes) and bottom (steps) labels read consistently.
+    override fun color(context: Context?): Int = Color.WHITE
 }
