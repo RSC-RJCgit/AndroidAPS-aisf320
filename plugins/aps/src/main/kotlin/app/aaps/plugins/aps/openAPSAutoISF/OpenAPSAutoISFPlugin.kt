@@ -2161,7 +2161,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "PreSoakSENSOR24hrs": reminds to pre-soak a new sensor ~14.0 or ~14.5 days into
         // the current sensor's life. Two narrow ~0.1h match windows, each gated on cannula age <=80h
         // (skip if the pod is also near end of life). Live-pump-only, matching the original's note.
-        if (readyToRun("PreSoakSensor24hrs", 5) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("PreSoakSensor24hrs", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val soakB1 = sensorH >= 336.0 && sensorH <= 336.1 && cannulaH <= 80.0
