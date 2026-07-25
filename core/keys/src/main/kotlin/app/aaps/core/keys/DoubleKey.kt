@@ -73,6 +73,13 @@ enum class DoubleKey(
     //FslSmoothCorrection("fsl_exp1_correction", 0.0, 0.0, 1.0, defaultedBySM = true),
     FslLastRaw("fsl_last_raw", -1.0, 40.0, 400.0, defaultedBySM = true),
     FslLastSmooth("fsl_last_smooth", -1.0, 40.0, 400.0, defaultedBySM = true),
+    // Internal-only snapshot of the user's own FslCalSlope/FslCalOffset, taken the moment
+    // OldSensorAdj first overrides them (12-15 day aging-sensor compensation) so they can be restored
+    // exactly afterwards — same reasoning as ApsAutoIsfSmbDeliveryBaseline above: the live keys get
+    // overwritten transiently, so the "what to revert to" value has to live somewhere else. Not shown
+    // in any preference screen; defaults just mirror FslCalSlope/FslCalOffset's own defaults.
+    ApsAutoIsfFslCalSlopeNormal("autoisf_fslcal_slope_normal", 1.0, 0.5, 1.5, defaultedBySM = true, exportable = false),
+    ApsAutoIsfFslCalOffsetNormal("autoisf_fslcal_offset_normal", 0.0, -50.0, 50.0, defaultedBySM = true, exportable = false),
 
     ActivityMonitorRatio("activity_ratio", 1.0, 0.0, 2.0, defaultedBySM = true),
     ActivityScaleFactor("activity_scale_factor", 1.0, 0.0, 1.5, defaultedBySM = true, dependency = BooleanKey.ActivityMonitorDetection),

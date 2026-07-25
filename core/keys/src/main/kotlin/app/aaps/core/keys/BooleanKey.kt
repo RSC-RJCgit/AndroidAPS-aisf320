@@ -78,6 +78,10 @@ enum class BooleanKey(
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
+    // Internal-only: tracks whether OldSensorAdj currently has FslCalSlope/FslCalOffset overridden, so
+    // it knows whether to snapshot (first activation) or restore (once the 12-15 day window or MJ
+    // condition ends). Not shown in any preference screen.
+    ApsAutoIsfOldSensorAdjActive("autoisf_old_sensor_adj_active", false, defaultedBySM = true, exportable = false),
 
 
     ActivityMonitorDetection("activity_detection", false, defaultedBySM=true),

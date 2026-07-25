@@ -1089,6 +1089,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- OldSensorAdj: Libre special settings for an aging sensor (12-15 days) — swings high/low
+        // too easily and isn't compensated by the usual slope/offset calibration. Tiered FslCalSlope/
+        // FslCalOffset override while MJ state remains active — MJ only sets a non-"NOMJremains" state
+        // during hypo warnings, so no hypo warning means no sensor adjustment (per user confirmation).
+        // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
+        // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
+        // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 12-15 day
+        // window or MJ drops to NOMJremains — there's no fixed fallback value, since the user's actual
+        // normal calibration isn't known to this code otherwise (same reasoning as
+        // ApsAutoIsfSmbDeliveryBaseline for SMB delivery ratio). No readyToRun throttle — deliberately
+        // checked every cycle like DelOff, so day/MJ transitions revert promptly; both branches are
+        // idempotent so re-checking is harmless.
+        run {
+            val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
+            val mjRemains = !checkAutomationState("MJ", "NOMJremains")
+            val oldSensorTier = when {
+                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.72, 1.5)
+                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.69, 1.65)
+                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.65, 1.8)
+                else -> null
+            }
+            val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
+            if (mjRemains && oldSensorTier != null) {
+                if (!oldSensorActive) {
+                    preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
+                    preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
+                    preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, true)
+                }
+                val (tierLabel, slope, offset) = oldSensorTier
+                if (!fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), slope) || !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), offset)) {
+                    preferences.put(DoubleKey.FslCalSlope, slope)
+                    preferences.put(DoubleKey.FslCalOffset, offset)
+                    addCarePortalNote("OldSensor$tierLabel")
+                }
+            } else if (oldSensorActive) {
+                preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfFslCalSlopeNormal))
+                preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfFslCalOffsetNormal))
+                preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
+                addCarePortalNote("OldSensorOff")
+            }
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
