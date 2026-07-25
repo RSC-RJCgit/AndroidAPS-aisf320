@@ -1531,23 +1531,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
         }
 
-        // --- HardStackDelOff: forced delivery-ratio reversion on genuine SMB stacking, independent of
-        // TT state. DelOff above only reverts when NO TT is active — it correctly defers while bg3/mild's
-        // own short 2-min TT is running, but ALSO defers for any other reason a TT happens to be active
-        // (e.g. the 5.7mmol hypo-protection TT can run 180 min), which could leave an elevated ratio
-        // stuck well beyond its intended window. This checks the actual stacking pattern instead: gap
-        // AND count both required (gap alone can look artificially low off just 2-3 close SMBs; count
-        // alone doesn't confirm they're rapid) so both must agree stacking is genuinely happening.
+        // --- HardStackDelOff: forced delivery-ratio REDUCTION (not a full revert) on genuine SMB
+        // stacking OR overnight (2300-0100), independent of TT state. DelOff above only reverts when NO
+        // TT is active — it correctly defers while bg3/mild's own short 2-min TT is running, but ALSO
+        // defers for any other reason a TT happens to be active (e.g. the 5.7mmol hypo-protection TT can
+        // run 180 min), which could leave an elevated ratio stuck well beyond its intended window. This
+        // checks the actual stacking pattern instead: gap AND count both required (gap alone can look
+        // artificially low off just 2-3 close SMBs; count alone doesn't confirm they're rapid) so both
+        // must agree stacking is genuinely happening. Overnight is a separate, unconditional OR — not
+        // gated on stacking at all, just a flat "be a little more conservative 2300-0100" step.
+        // Target is baseline MINUS 0.03 (was: reset straight to baseline) — a smaller nudge down rather
+        // than a full snap-back. Computed from the constant baseline, not by re-reading the current
+        // (possibly already-reduced) ratio, so repeated cycles while the condition holds can't compound
+        // into a runaway decrease. Reversion once neither condition holds isn't handled here at all — it
+        // falls out of DelOff above for free: DelOff always tries to restore the constant baseline
+        // whenever the ratio isn't there and no TT is active, so the next cycle where this condition is
+        // false, DelOff's own check (which runs first) puts it straight back.
         // Excludes only the boost's OWN brief TT (75.7=4.2mmol bg3, 90.1=5.0mmol mild) — bg3/mild
         // successfully delivering back-to-back during their own intended 2-min window looks identical to
         // "stacking" by this same measure, and this must not cut that window short. Any OTHER active TT
         // (or none) is fair game. No readyToRun throttle — deliberately checked every iteration, same as
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
         val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
-        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline)
-            && smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
+        val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
+        val overnightWindow = isTimeBetween(23, 0, 1, 0)
+        val hardStackTarget = deliveryBaseline - 0.03
+        if (!fuzzyEquals(smb_delivery_ratio, hardStackTarget)
+            && (smbStacking || overnightWindow)
             && !onOwnBoostTt) {
-            setSmbDeliveryRatio(deliveryBaseline)
+            setSmbDeliveryRatio(hardStackTarget)
             addCarePortalNote("HardStackDelOff")
         }
 
@@ -1627,7 +1639,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // interval — and so can't detect stacking — with fewer than 2 SMBs in the window), so
             // scaling by it here would be dead weight implying a scaling that can never actually apply.
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val bg3 = isTimeBetween(8, 30, 23, 30)
+            val bg3 = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.85 * stackK && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
@@ -1701,7 +1713,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
             // (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            val fire = isTimeBetween(8, 30, 23, 30)
+            val fire = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
                 && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
@@ -3676,5 +3688,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU348
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU349
  */
