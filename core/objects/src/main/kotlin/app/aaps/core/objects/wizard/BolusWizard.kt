@@ -580,10 +580,17 @@ class BolusWizard @Inject constructor(
                                     // delayed-check window, so the delayed dose and SMBs can never double-dose.
                                     // Also scheduled when the immediate dose is 0 but carbs were entered
                                     // (e.g. IOB swallowed the 50% dose).
-                                    val delayedProfile = profileFunction.getProfile()
+                                    // Must use activeProfileSwitchPct(), not profile?.percentage directly:
+                                    // when the active profile is a ProfileSealed.EPS, .percentage is always
+                                    // 100 (baked into the rates) — see activeProfileSwitchPct()'s own comment
+                                    // below. Using the raw property here silently missed every EPS-backed 50%
+                                    // switch (confirmed via log: a 2026-07-25 delayed bolus never scheduled
+                                    // because of exactly this — the adjacent EqualSplitBolus log line in the
+                                    // same callback correctly read profilePct=50/type=EPS at the same instant).
+                                    val delayedProfilePct = activeProfileSwitchPct()
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-                                        delayedProfile?.percentage == 50
+                                        delayedProfilePct == 50
                                     ) {
                                         // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
                                         val normalIc = ic / 2.0
@@ -594,7 +601,7 @@ class BolusWizard @Inject constructor(
                                         // if this were shorter, SMBs would resume mid-window while the delayed
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
-                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfile.percentage}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
+                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfilePct}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                         // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)
                                         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(

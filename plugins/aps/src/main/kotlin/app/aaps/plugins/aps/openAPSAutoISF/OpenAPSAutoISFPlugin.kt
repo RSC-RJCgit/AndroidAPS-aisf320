@@ -1496,10 +1496,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val tt = activeTtMgdl()
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val delayedBolusPending = preferences.get(LongKey.DelayedBolusBlockSmbUntil) > dateUtil.now()
             val aoB1 = tt != null && fuzzyEquals(tt, mmolToMgdl(6.8)) && g >= 171.2 /* 9.5 mmol */
             val aoB2 = tt == null && g <= 153.1 /* 8.5 mmol */ && d >= 1.8 /* 0.1 mmol */
                 && g >= 108.1 /* 6.0 mmol */ && cannulaH >= 3.0
-            val aoB3 = lastBolusMin <= 10
+            // Suppressed while a delayed-bolus window is pending: a bolus alone (the original, or a
+            // later correction/meal bolus during the wait) isn't evidence of recovery here — it's
+            // specifically what started the wait. aoB1/aoB2 (real BG-based recovery) stay active; only
+            // the "a bolus was just given" heuristic is disabled for these 85 min, otherwise almost any
+            // bolus during the window reverts the profile and the delayed-bolus wait becomes pointless.
+            val aoB3 = lastBolusMin <= 10 && !delayedBolusPending
             if (aoB1 || aoB2 || aoB3) {
                 cancelCurrentTempTarget()
                 switchProfileIfNeeded("Current ProfileReal")
@@ -3751,5 +3757,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU351
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU352
  */
