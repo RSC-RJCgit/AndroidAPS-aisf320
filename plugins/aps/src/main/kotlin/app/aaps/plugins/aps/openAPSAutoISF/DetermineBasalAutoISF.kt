@@ -176,7 +176,7 @@ class DetermineBasalAutoISF @Inject constructor(
         steps180M: Int,
         steps15M: Int,
         steps5M: Int,
-        smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
+        bgInt5Sec: Double = 9999.0,  // avg secs between BG/sensor readings over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
         smbBoostRecent: Boolean = false,   // BolusGiven bg3 / BolusGivenMild fired within 30 min -> skip fast-rise caps
         // Raw/AAPS-processed 1-min and raw 5-min deltas (mg/dL, already per-5-min-rate normalised), used
         // as extra AND confirmations on the fast-rise capping blocks' own Delta gate (entry point only —
@@ -1234,15 +1234,15 @@ class DetermineBasalAutoISF @Inject constructor(
                 consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
                 rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
 
-                // Anti-stacking: if SMBs have averaged <=70s apart over the last 5 min, trim the SMB to
-                // 90% BEFORE the fast-rise caps below. Deliberately before the caps: the x0.9 may drop
-                // microBolus under ThresholForFastRise so only the 0.9 bites; but if it's still above the
-                // threshold ("still high") the fast-rise multiplier also fires — so the extra shrink only
-                // compounds when still high. Default smbInt5Sec (9999) = no stacking → no-op.
-                if (smbInt5Sec <= 70.0 && microBolus > 0.0) {
+                // Anti-stacking: if BG/sensor readings have averaged <=70s apart over the last 5 min, trim
+                // the SMB to 90% BEFORE the fast-rise caps below. Deliberately before the caps: the x0.9
+                // may drop microBolus under ThresholForFastRise so only the 0.9 bites; but if it's still
+                // above the threshold ("still high") the fast-rise multiplier also fires — so the extra
+                // shrink only compounds when still high. Default bgInt5Sec (9999) = no stacking → no-op.
+                if (bgInt5Sec <= 70.0 && microBolus > 0.0) {
                     microBolus *= 0.9
-                    consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x0.9 = ${microBolus} ")
-                    rT.reason.append("SMB stacking <=70s: microBolus x0.9 = ${microBolus} ")
+                    consoleError.add("Rapid BG readings: avg gap ${round(bgInt5Sec, 0)}s <=70 -> microBolus x0.9 = ${microBolus} ")
+                    rT.reason.append("Rapid BG readings <=70s: microBolus x0.9 = ${microBolus} ")
                 }
 
                 // Snapshot the full (uncapped) SMB. When the profile is boosted (>100%) all the fast-rise
