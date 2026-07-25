@@ -487,23 +487,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
     }
 
-    // Average gap in seconds between BG/sensor readings in the last 5 minutes. Returns a large
-    // sentinel (so any "<= 70s" stacking guard is false) when fewer than 2 readings fell in the
-    // window — nothing to measure. Replaces the former SMB-interval basis for the anti-stacking
-    // checks below (per user: sensor-reading interval, not SMB-delivery interval, is the intended
-    // dosing-assessment signal) — used to block the delivery-ratio boosts while readings arrive
-    // rapidly, and (in DetermineBasal) to trim a rapidly-stacking SMB to 90%. smbCount5Min() (the SMB
-    // count) is unrelated and still reads actual delivered SMBs, unchanged, wherever it's checked
-    // alongside this.
-    private fun bgInterval5Sec(): Double {
+    // Average gap in seconds between SMBs delivered in the last 5 minutes. Returns a large sentinel
+    // (so any "<= 70s" stacking guard is false) when fewer than 2 SMBs fell in the window — nothing
+    // to measure. Used to block the delivery-ratio boosts while SMBs stack, and (in DetermineBasal)
+    // to trim a rapidly-stacking SMB to 90%.
+    private fun smbInterval5Sec(): Double {
         val now = dateUtil.now()
-        val gvs = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
-        if (gvs.size < 2) return 9999.0
-        val spanSec = (gvs.first().timestamp - gvs.last().timestamp).toDouble() / 1000.0
-        return spanSec / (gvs.size - 1)
+        val smbs = persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+        if (smbs.size < 2) return 9999.0
+        val spanSec = (smbs.first().timestamp - smbs.last().timestamp).toDouble() / 1000.0
+        return spanSec / (smbs.size - 1)
     }
 
-    // Count of SMBs delivered in the last 5 minutes. Used alongside bgInterval5Sec() for the hard-stacking delivery-ratio
+    // Count of SMBs delivered in the last 5 minutes — same query as smbInterval5Sec(), just the raw
+    // count instead of the derived average gap. Used alongside it for the hard-stacking delivery-ratio
     // reversion below (gap alone can be misleadingly low with only 2-3 SMBs; requiring a minimum count
     // too confirms genuinely sustained rapid delivery, not a coincidental close pair).
     private fun smbCount5Min(): Int {
@@ -1603,7 +1601,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (or none) is fair game. No readyToRun throttle — deliberately checked every iteration, same as
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
         val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
-        val smbStacking = bgInterval5Sec() < 65.0 && smbCount5Min() >= 4
+        val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
         val overnightWindow = isTimeBetween(23, 0, 1, 0)
         val hardStackTarget = deliveryBaseline - 0.03
         if (!fuzzyEquals(smb_delivery_ratio, hardStackTarget)
@@ -1663,7 +1661,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
-            val stackK = if (bgInterval5Sec() <= 70) 1.10 else 1.0
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             // Keeps the iobChange5 U-thresholds calibrated in real terms as ApsAutoIsfSmbDeliveryBaseline
             // moves. 0.17 is the reference point: the device was actually delivering at 0.17 on
             // 2026-07-22, the data the 0.85/0.40 thresholds below were tuned from (commit
@@ -1696,10 +1694,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // evidence the rise resolved — block the boost. Raw-only, no `d`: `d` is itself downstream
             // of how much insulin has actually been delivered, so requiring it here just re-imports the
             // same lag this bypass exists to route around. Direct numbers, not stackK-scaled: stackK is
-            // now derived from bgInterval5Sec() (sensor-reading cadence), a signal about connectivity,
-            // not about SMB delivery — this bypass exists specifically for the "SMB delivery suppressed"
-            // case, so scaling its raw-signal confirmation by a sensor-cadence factor would be a
-            // conceptual mismatch, not just redundant the way it was when both were SMB-based.
+            // provably always 1.0 whenever smbCount5Min() <= 1 (smbInterval5Sec() can't compute an
+            // interval — and so can't detect stacking — with fewer than 2 SMBs in the window), so
+            // scaling by it here would be dead weight implying a scaling that can never actually apply.
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
             val bg3 = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
@@ -1763,7 +1760,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
             // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
             // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
-            val stackK = if (bgInterval5Sec() <= 70) 1.10 else 1.0
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             // See bg3's identical thresholdScale comment above — same reasoning (0.17 reference point),
             // applied to mild's own 0.40 iobChange5 threshold below.
             val thresholdScale = deliveryBaseline / 0.17
@@ -1774,10 +1771,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // applies, so mutual exclusivity with bg3 is preserved either way.
             val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             // Delivery-suppressed bypass — same reasoning as bg3's mirror above: raw-only (no `d`,
-            // which lags behind suppressed delivery itself), direct numbers (not stackK-scaled — stackK
-            // is now a sensor-cadence signal, not an SMB-delivery one, so it's a conceptual mismatch for
-            // this SMB-delivery-suppression bypass, same as bg3's mirror comment above). Keeps mild's own
-            // lower floor (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
+            // which lags behind suppressed delivery itself), direct numbers (not stackK-scaled, since
+            // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
+            // (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val fire = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
@@ -1823,7 +1819,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            val stackK = if (bgInterval5Sec() <= 70) 1.10 else 1.0
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val thresholdScale = deliveryBaseline / 0.17
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
@@ -1855,7 +1851,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else                     -> mildBase
             }
             consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 3)} mildBase=${round(mildBase, 3)} hardStackTarget=${round(hardStackTarget, 3)} currentRatio=${round(smb_delivery_ratio, 3)} thresholdScale=${round(thresholdScale, 3)} ;;")
-            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking overnightWindow=$overnightWindow bgInterval5Sec=${round(bgInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
+            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking overnightWindow=$overnightWindow smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
             consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
             consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 3)} wouldFire=$mildWould ;;")
@@ -2818,7 +2814,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps180M = steps180,
             steps15M = steps15,
             steps5M = steps5,
-            bgInt5Sec = bgInterval5Sec(),  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
+            smbInt5Sec = smbInterval5Sec(),  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg3 or BolusGivenMild)
             // fired within the last 30 min: an unexpectedly high spike now reverts more readily (the
             // raw-delta-driven reversals), so the caps' conservatism isn't needed during that window.
