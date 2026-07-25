@@ -67,6 +67,7 @@ class NSClientSourcePlugin @Inject constructor(
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.FslMaxSmoothGap, title = R.string.fsl_max_smooth_gap_title, summary = R.string.fsl_max_smooth_gap_summary))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationTrigger, title = R.string.fsl_calibration_trigger_title, summary = R.string.fsl_calibration_trigger_summary))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslCalibrationEnd, title = R.string.fsl_calibration_end_title, summary = R.string.fsl_calibration_end_summary))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfOldSensorAdjEnabled, title = R.string.old_sensor_adj_enabled_title, summary = R.string.old_sensor_adj_enabled_summary))
         }
     }
 

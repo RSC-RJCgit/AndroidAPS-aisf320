@@ -1104,6 +1104,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         run {
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
             val mjRemains = !checkAutomationState("MJ", "NOMJremains")
+            val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
                 sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.72, 1.5)
                 sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.69, 1.65)
@@ -1111,7 +1112,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
-            if (mjRemains && oldSensorTier != null) {
+            if (oldSensorEnabled && mjRemains && oldSensorTier != null) {
                 if (!oldSensorActive) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
