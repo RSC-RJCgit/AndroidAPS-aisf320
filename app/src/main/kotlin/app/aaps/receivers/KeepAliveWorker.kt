@@ -32,6 +32,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -181,11 +182,18 @@ class KeepAliveWorker(
         if (files.isEmpty() || !cloudStorageManager.isCloudStorageActive()) return
         try {
             val provider = cloudStorageManager.getActiveProvider() ?: return
-            provider.getOrCreateFolderPath(CloudConstants.CLOUD_PATH_AIV)?.let { provider.setSelectedFolderId(it) }
+            // Same GeneralPatientName scoping the logs cloud export already uses (sendLogsToCloudDrive
+            // in MaintenancePlugin.kt) — without this, two devices uploading to the same cloud account
+            // land in one shared, identically-named "/AAPS/export/aiv" folder with no way to tell which
+            // device an export came from. Empty (default) falls back to the original unscoped path,
+            // unchanged.
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val aivPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_AIV}_$patientName" else CloudConstants.CLOUD_PATH_AIV
+            provider.getOrCreateFolderPath(aivPath)?.let { provider.setSelectedFolderId(it) }
             for (file in files) {
                 val mimeType = if (file.name.endsWith(".csv")) "text/csv" else "text/plain"
                 val bytes = file.readBytes()
-                var uploadedFileId = provider.uploadFileToPath(file.name, bytes, mimeType, CloudConstants.CLOUD_PATH_AIV)
+                var uploadedFileId = provider.uploadFileToPath(file.name, bytes, mimeType, aivPath)
                 if (uploadedFileId == null) uploadedFileId = provider.uploadFile(file.name, bytes, mimeType)
                 if (uploadedFileId == null) aapsLogger.error(LTag.CORE, "AIV cloud upload failed for ${file.name}")
             }

@@ -132,8 +132,19 @@ class AutoIsfHistoryExporter @Inject constructor(
         val written = mutableListOf<File>()
         try {
             fileListProvider.ensureAapsLogsDirExists()
-            val dir = fileListProvider.aapsLogsPath
-            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
+            // Reuses GeneralPatientName (same value the logs cloud export already scopes by) rather
+            // than a separate new setting — if you've already set different patient names per device to
+            // distinguish the logs cloud folder, this scopes AIV exports the same way for free, both
+            // the folder and the filename. Empty (default) falls back to the original unscoped
+            // folder/filename, unchanged.
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val dir = if (patientName.isNotEmpty()) {
+                File(fileListProvider.aapsLogsPath, patientName).also { it.mkdirs() }
+            } else {
+                fileListProvider.aapsLogsPath
+            }
+            val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
+            val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes, rawReadings) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
