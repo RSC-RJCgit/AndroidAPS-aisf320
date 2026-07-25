@@ -1614,6 +1614,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            // Keeps the iobChange5 U-thresholds calibrated in real terms as ApsAutoIsfSmbDeliveryBaseline
+            // moves. 0.17 is the reference point: the device was actually delivering at 0.17 on
+            // 2026-07-22, the data the 0.85/0.40 thresholds below were tuned from (commit
+            // 347smbcriteriaFixed) — baseline has since dropped to 0.14 via the DelOff/baseline-preference
+            // work, so the same real-world rise now delivers proportionally less insulin per SMB
+            // (~x0.82 at 0.14) and would produce a smaller iobChange5 than the tuning assumed, making
+            // these thresholds harder to clear than intended for identical underlying urgency. Only
+            // applied to the IOB-quantity thresholds (0.85/0.40 here, 0.40 in Mild below); the rawDelta/d
+            // mmol thresholds measure glucose movement, not insulin delivered, so scaling them by a
+            // delivery ratio wouldn't be meaningful.
+            val thresholdScale = deliveryBaseline / 0.17
             // d/iobChange5 loosened from 0.7mmol/1.00 to 0.60mmol/0.85 (2026-07-24): an incident showed
             // rawDelta5 already unambiguously in bg3's territory (1.17-1.89mmol, well above the 0.8mmol
             // floor) for several straight minutes while d (peaked 0.69mmol) and iobChange5 (peaked 0.93)
@@ -1641,7 +1652,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
             val bg3 = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && ((iobChange5 > 0.85 * stackK && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
+                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
                 && profileName != "Current Profile"                  // not on the MJ/night profile
@@ -1702,6 +1713,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
             // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            // See bg3's identical thresholdScale comment above — same reasoning (0.17 reference point),
+            // applied to mild's own 0.40 iobChange5 threshold below.
+            val thresholdScale = deliveryBaseline / 0.17
             // rawDelta1's FLOOR is the noisiest single gate here — a single-minute raw sample can dip
             // negative even mid-genuine-rise (observed: rΔ1 -0.28 while Δ/SΔ/rΔ5/IOBΔ5 all confirmed a
             // rise), vetoing an otherwise well-confirmed fire. Below 9.0 mmol that floor is dropped
@@ -1715,7 +1729,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val fire = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && ((iobChange5 > 0.40 * stackK && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
+                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
                 && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
@@ -1744,6 +1758,55 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("GivenMild")
                 markRun("BolusGivenMild")
             }
+        }
+
+        // --- Boost-trigger debug telemetry: read-only mirror of the bg3/mild fire conditions above,
+        // logged every cycle regardless of whether their own guards/throttles would actually let them
+        // run — so a near-miss (and which specific sub-condition blocked it) is visible in AutoISF script
+        // debug, not just an actual fire. Recomputes everything itself from scratch; shares no state with
+        // the real guarded blocks and cannot affect dosing.
+        run {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            val thresholdScale = deliveryBaseline / 0.17
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val profileName = profileFunction.getProfileName()
+            val outerGuardOk = profile_percentage == 100 && activeTtMgdl() == null
+                && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+            val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+            val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
+            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 22, 0)
+                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
+                && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
+                && g <= 171.2 && profileName != "Current Profile" && !mjActive()
+                && readyToRun("BolusGivenMild", 10) && movementOk
+            val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 22, 0)
+                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 6.3 * stackK) || deliverySuppressedMild)
+                && rawDelta5 >= 6.3 * stackK && rawDelta5 < 14.4 * stackK
+                && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
+                && profileName != "Current Profile" && !mjActive()
+                && readyToRun("BolusGivenBg3", 10) && movementOk
+            val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+            val mildDeliveryRatioWould = when {
+                g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
+                g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
+                else                     -> mildBase
+            }
+            consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 3)} mildBase=${round(mildBase, 3)} hardStackTarget=${round(hardStackTarget, 3)} currentRatio=${round(smb_delivery_ratio, 3)} thresholdScale=${round(thresholdScale, 3)} ;;")
+            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking overnightWindow=$overnightWindow smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
+            consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin ;;")
+            consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
+            consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 3)} wouldFire=$mildWould ;;")
         }
 
         // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations, plus
