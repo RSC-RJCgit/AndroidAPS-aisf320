@@ -39,6 +39,7 @@ class NSClientSourcePlugin @Inject constructor(
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .description(R.string.description_source_ns_client)
         .alwaysEnabled(config.AAPSCLIENT)
+        .alwaysVisible(config.AAPSCLIENT)
         .setDefault(config.AAPSCLIENT),
     aapsLogger, rh
 ), BgSource, NSClientSource {
