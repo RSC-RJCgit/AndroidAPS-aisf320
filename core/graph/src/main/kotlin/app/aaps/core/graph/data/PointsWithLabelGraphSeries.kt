@@ -154,7 +154,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
-        val noteStack = HashMap<Long, Int>() // bucket (15-min) -> count of CarePortal notes drawn at this height
+        val noteStack = HashMap<Long, Int>() // bucket (5-min) -> count of CarePortal notes drawn at this height
+        val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (5-min) -> HardStackDelOff/DelOff labels already drawn there, so a throttle-less repeat doesn't flood the stack
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -360,14 +361,22 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawRect(endX, graphTop, xPlusLength, graphTop + 4, mPaint)
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
-                    if (value.label.isNotEmpty()) {
+                    val bucketMs = 5 * 60_000L
+                    val rawBucket = value.getX().toLong() / bucketMs
+                    // HardStackDelOff/DelOff have no readyToRun throttle and re-check every loop cycle,
+                    // so while their trigger condition holds they can repeat many times in a row and
+                    // flood a bucket's stack with duplicates of themselves. Only the first occurrence of
+                    // either per 5-min bucket gets drawn; other note types are unaffected and still stack
+                    // normally (each is a genuinely distinct event, not a throttle-less repeat).
+                    val isDedupNote = value.label == "HardStackDelOff" || value.label == "DelOff"
+                    val alreadyDrawnThisBucket = isDedupNote && !noteDedupSeen.getOrPut(rawBucket) { mutableSetOf() }.add(value.label)
+                    if (value.label.isNotEmpty() && !alreadyDrawnThisBucket) {
                         // Stacked by 5-min bucket, max 4 per bucket, so notes landing close together in
                         // time offset downward instead of overlapping at the same fixed height. Nothing
                         // is ever dropped: once a bucket already has 4, the note spills into the next
                         // 5-min bucket's stack instead (rather than the old behaviour of simply not
                         // drawing the 5th+ note in an overfull bucket).
-                        val bucketMs = 5 * 60_000L
-                        var noteBucket = value.getX().toLong() / bucketMs
+                        var noteBucket = rawBucket
                         while (noteStack.getOrDefault(noteBucket, 0) >= 4) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
