@@ -361,19 +361,27 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        // Stacked by 30-min bucket so notes landing close together in time offset
-                        // downward instead of overlapping at the same fixed height.
-                        val noteBucket = value.getX().toLong() / (15 * 60_000L)
+                        // Stacked by 5-min bucket, max 4 per bucket, so notes landing close together in
+                        // time offset downward instead of overlapping at the same fixed height. Nothing
+                        // is ever dropped: once a bucket already has 4, the note spills into the next
+                        // 5-min bucket's stack instead (rather than the old behaviour of simply not
+                        // drawing the 5th+ note in an overfull bucket).
+                        val bucketMs = 5 * 60_000L
+                        var noteBucket = value.getX().toLong() / bucketMs
+                        while (noteStack.getOrDefault(noteBucket, 0) >= 4) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
+                        // Truncated to 5 characters for display only — the full note text is unaffected
+                        // in the database/NS, this only shortens what's drawn on the graph.
+                        val displayLabel = value.label.take(5)
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.4f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         val bounds = Rect()
-                        mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
+                        mPaint.getTextBounds(displayLabel, 0, displayLabel.length, bounds)
                         mPaint.style = Paint.Style.FILL
-                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.6f)
-                        canvas.drawText(value.label, endX, py, mPaint)
+                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.4f)
+                        canvas.drawText(displayLabel, endX, py, mPaint)
                         mPaint.strokeWidth = 5f
                         canvas.drawRect(endX - 3, bounds.top + py - 3, xPlusLength + 3, bounds.bottom + py + 3, mPaint)
                     }

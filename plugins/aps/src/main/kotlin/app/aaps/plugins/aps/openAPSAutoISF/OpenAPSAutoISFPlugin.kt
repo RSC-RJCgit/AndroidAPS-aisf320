@@ -610,7 +610,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Mirrors ActionCarePortalEvent for a plain note. Default duration is 5 min (not the 30 min the
     // original ported automations used) per explicit preference.
-    private fun addCarePortalNote(note: String, durationInMinutes: Int = 5) {
+    private fun addCarePortalNote(note: String, durationInMinutes: Int = 1) {
         val therapyEvent = TE(
             timestamp = dateUtil.now(),
             type = TE.Type.NOTE,
