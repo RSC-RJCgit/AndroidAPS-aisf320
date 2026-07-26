@@ -154,6 +154,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
+        val noteStack = HashMap<Long, Int>() // bucket (15-min) -> count of CarePortal notes drawn at this height
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -360,13 +361,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
+                        // Stacked by 30-min bucket so notes landing close together in time offset
+                        // downward instead of overlapping at the same fixed height.
+                        val noteBucket = value.getX().toLong() / (15 * 60_000L)
+                        val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
+                        noteStack[noteBucket] = noteStackIndex + 1
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         val bounds = Rect()
                         mPaint.getTextBounds(value.label, 0, value.label.length, bounds)
                         mPaint.style = Paint.Style.FILL
-                        val py = graphTop + 80
+                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.6f)
                         canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.strokeWidth = 5f
                         canvas.drawRect(endX - 3, bounds.top + py - 3, xPlusLength + 3, bounds.bottom + py + 3, mPaint)
@@ -393,7 +399,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // Profile's low target == high target for this user, so "under target" and
                         // "under low"/"under high" are the same line — getTargetLowMgdl() covers it.
                         val topPy = graphTop + 130
-                        val py = if (annotationUnderTarget && currentTargetInDisplayUnits > 0.0) {
+                        // Always try the lower (under-target-line) position now, freeing up the top of the
+                        // graph for the (now-stacked) CarePortal notes — no longer gated on the cached
+                        // annotationUnderTarget BGL/showSmbLabels toggle. Still falls back to top via the
+                        // off-screen safety clamp below if there's no valid target to position against.
+                        val py = if (currentTargetInDisplayUnits > 0.0) {
                             val targetRatY = (currentTargetInDisplayUnits - minY) / diffY
                             val targetY = (graphTop - graphHeight * targetRatY).toFloat() + graphHeight
                             val underPy = targetY + 60f // fixed gap below the target line's pixel position
