@@ -1090,9 +1090,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- OldSensorAdj: Libre special settings for an aging sensor (12-15 days) — swings high/low
-        // too easily and isn't compensated by the usual slope/offset calibration. Tiered FslCalSlope/
-        // FslCalOffset override while MJ state remains active — MJ only sets a non-"NOMJremains" state
-        // during hypo warnings, so no hypo warning means no sensor adjustment (per user confirmation).
+        // too easily and isn't compensated by the usual slope/offset calibration. Also applies to a
+        // brand-new sensor (<6 hours), which has its own settling/compression-artifact inaccuracy —
+        // reuses the same 12-13 day tier's slope/offset (0.72/1.5), just under a distinct "New" label
+        // so the two triggers stay distinguishable in CarePortal notes despite sharing values. Tiered
+        // FslCalSlope/FslCalOffset override while MJ state remains active — MJ only sets a non-
+        // "NOMJremains" state during hypo warnings, so no hypo warning means no sensor adjustment (per
+        // user confirmation).
         // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
         // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
         // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 12-15 day
@@ -1106,6 +1110,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mjRemains = !checkAutomationState("MJ", "NOMJremains")
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
+                sensorAgeDays < (6.0 / 24.0)                  -> Triple("New", 0.72, 1.5)
                 sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.72, 1.5)
                 sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.69, 1.65)
                 sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.65, 1.8)

@@ -387,7 +387,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textSize = (scaledTextSize * 0.4f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.4f)
+                        // Line spacing is deliberately wider (0.6f) than the font size (0.4f) — matching
+                        // it 1:1 to font size left too little clearance for ascenders/descenders, so
+                        // adjacent stacked notes could visually overlap despite being at different py.
+                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.6f)
                         canvas.drawText(displayLabel, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
