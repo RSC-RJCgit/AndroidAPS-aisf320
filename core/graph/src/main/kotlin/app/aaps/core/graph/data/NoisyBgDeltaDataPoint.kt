@@ -1,6 +1,7 @@
 package app.aaps.core.graph.data
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Paint
 import app.aaps.core.interfaces.resources.ResourceHelper
 
@@ -27,5 +28,5 @@ class NoisyBgDeltaDataPoint(
     override val shape = Shape.GENERAL_WITH_DURATION_OFFSET
     override val size get() = if (rh.gb(app.aaps.core.ui.R.bool.isTablet)) 12.0f else 10.0f
     override val paintStyle: Paint.Style = Paint.Style.FILL
-    override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.ppIsfColor)
+    override fun color(context: Context?): Int = Color.YELLOW
 }

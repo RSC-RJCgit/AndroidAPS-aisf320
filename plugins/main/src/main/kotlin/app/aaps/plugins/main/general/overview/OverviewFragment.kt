@@ -1196,8 +1196,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
-        graphData.addNoisyBgDeltaAnnotation()
-        graphData.addStepsStackedAnnotation()
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
@@ -1311,8 +1309,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            // SMB stacked labels: back on graph1 (g==0), their original placement.
-            if (g == 0) secondGraphData.addSmbLabels()
+            // SMB stacked labels: graph1 -> graph3 (g==2), to make room for the green line/steps row below.
+            if (g == 2) secondGraphData.addSmbLabels()
+            // Green line (raw BG/delta annotation) and steps row: main graph -> graph1 (g==0), taking
+            // over the slot SMB labels used to occupy there.
+            if (g == 0) {
+                secondGraphData.addNoisyBgDeltaAnnotation()
+                secondGraphData.addStepsStackedAnnotation()
+            }
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

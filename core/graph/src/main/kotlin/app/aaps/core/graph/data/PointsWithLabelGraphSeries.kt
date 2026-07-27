@@ -160,24 +160,22 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
         // Shared position for the green line (GENERAL_WITH_DURATION_OFFSET) and the steps row right
-        // below it (green line always one line-height above), so both move together.
+        // below it (green line always one line-height above), so both move together. Both now render
+        // on graph1 (moved off the main glucose graph), which may not be glucose-scaled at all, so
+        // HIGH/LOW are plain top-area/bottom-area positions on THIS graph's own viewport rather than
+        // pinned to a glucose value (the old BGL=10.0mmol marker made no sense once off the glucose
+        // graph, so it's gone — this graph's Y-axis has no fixed relationship to glucose any more).
         // annotationUnderTarget is refreshed on the IOB long-press (see refreshAnnotationPosition()):
         // moves to the LOW position once Libre raw BGL > 11.0 mmol, back to the HIGH position once AAPS
         // BGL < 7.5 mmol — hysteresis, holds wherever it currently is outside both thresholds.
-        // HIGH: steps sits just above the pixel height of BGL 10.0 mmol on this graph's own Y-axis/
-        // viewport — falls back to a fixed near-top position if that would land off-screen (e.g. the
-        // Y-axis doesn't extend to 10.0 here), same "must never simply vanish" reasoning as before. That
-        // fallback also clears Shape.PROFILE (the profile percentage-switch ribbon/label), which renders
-        // at the plain graphTop+80 base level via its own percentage-based scale (addEps).
-        val bgl10RatY = (10.0 - minY) / diffY
-        val bgl10Y = (graphTop - graphHeight * bgl10RatY).toFloat() + graphHeight
-        val highFallbackPy = graphTop + 80 + scaledTextSize * 1.4f
-        val highStepsPy = if (bgl10Y in graphTop..(graphTop + graphHeight)) bgl10Y - scaledTextSize * 0.3f else highFallbackPy
+        val highStepsPy = graphTop + 80 + scaledTextSize * 1.4f
         // LOW: steps at its original near-bottom position, in the Basal-trace column area of the graph —
         // a fixed fraction of graphHeight, so (unlike HIGH) it's always on-screen by construction.
         val lowStepsPy = graphTop + graphHeight * 0.94f
         val stepsLinePy = if (annotationUnderTarget) lowStepsPy else highStepsPy
-        val greenLinePy = stepsLinePy - scaledTextSize * 0.8f
+        // Gap tightened along with matching the green line's font size down to the steps line's (both
+        // now 0.5f) — 0.8f left a visibly wider gap than the two same-sized lines needed.
+        val greenLinePy = stepsLinePy - scaledTextSize * 0.5f
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -443,7 +441,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        // Matches the steps line's font size below (both 0.5f) now that they sit together
+                        // on graph1.
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
