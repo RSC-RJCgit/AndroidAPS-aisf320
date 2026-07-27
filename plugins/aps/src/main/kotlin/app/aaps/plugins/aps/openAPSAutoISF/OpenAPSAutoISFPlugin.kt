@@ -1137,6 +1137,41 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- OldPod: notify (graph announcement + SMS) once a pod is over 60h old AND BGL has been
+        // continuously over 10.0 mmol for 2h+ — a sustained-high stretch this far into a pod's life
+        // reads as the pod itself failing, not a dosing problem, so this only ever notifies, never
+        // touches dosing. Uses addGraphAnnouncement() (TE.asAnnouncement), not addCarePortalNote() —
+        // that's the same "notifications" mechanism used elsewhere (settings-export alerts etc.),
+        // which renders on the MAIN graph rather than graph2 (where plain TE.Type.NOTE notes went).
+        // Fires once per pod (ApsAutoIsfOldPodNotified latch), re-arming only once cannula age drops
+        // back under 60h (i.e. a new pod was actually inserted). No readyToRun throttle — checked
+        // every cycle like DelOff/OldSensorAdj above, so the "since" timestamp and the latch both
+        // react/reset promptly.
+        run {
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podOld = cannulaH > 60.0
+            val g = glucoseStatus.glucose
+            var highSinceTs = preferences.get(LongKey.ApsAutoIsfOldPodHighSinceTs)
+            if (g > 180.2 /* 10.0 mmol */) {
+                if (highSinceTs == 0L) {
+                    highSinceTs = dateUtil.now()
+                    preferences.put(LongKey.ApsAutoIsfOldPodHighSinceTs, highSinceTs)
+                }
+            } else if (highSinceTs != 0L) {
+                highSinceTs = 0L
+                preferences.put(LongKey.ApsAutoIsfOldPodHighSinceTs, 0L)
+            }
+            val highSustained = highSinceTs != 0L && (dateUtil.now() - highSinceTs) >= T.hours(2).msecs()
+            val notified = preferences.get(BooleanKey.ApsAutoIsfOldPodNotified)
+            if (podOld && highSustained && !notified) {
+                addGraphAnnouncement("______deadpod2hrs?")
+                sendSms("OldPod: pod >60h, BGL >10.0 for 2h+ - change pod")
+                preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, true)
+            } else if (!podOld && notified) {
+                preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, false)
+            }
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
@@ -3826,5 +3861,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU376
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU377
 */

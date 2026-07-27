@@ -26,5 +26,9 @@ enum class LongKey(
     NsClientSecondaryLastLoaded("nsclient_secondary_last_loaded", 0, defaultedBySM = true),
     SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
     DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
+    // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for
+    // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
+    // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.
+    ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0, defaultedBySM = true),
 
 }

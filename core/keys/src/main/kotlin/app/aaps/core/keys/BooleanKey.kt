@@ -86,6 +86,11 @@ enum class BooleanKey(
     // condition ends, or the toggle above is turned off). Not shown in any preference screen.
     ApsAutoIsfOldSensorAdjActive("autoisf_old_sensor_adj_active", false, defaultedBySM = true, exportable = false),
 
+    // Internal-only: "OldPod" notify-once latch — true once the pod>60h + BGL>10.0mmol-for-2h+ notice
+    // (CarePortal note + SMS) has fired for the CURRENT pod, so it isn't repeated every cycle. Resets to
+    // false once cannula age drops back under 60h (i.e. a new pod was actually inserted), re-arming it
+    // for the next old pod. Not shown in any preference screen.
+    ApsAutoIsfOldPodNotified("autoisf_old_pod_notified", false, defaultedBySM = true, exportable = false),
 
     ActivityMonitorDetection("activity_detection", false, defaultedBySM=true),
     ActivityMonitorOvernight("ignore_inactivity_overnight", true, defaultedBySM=true, dependency = ActivityMonitorDetection),
