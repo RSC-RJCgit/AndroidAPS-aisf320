@@ -36,6 +36,8 @@ data class AutoIsfValues(
     var bgAcceleration: Double = 0.0,
     var smbDeliveryRatio: Double = 0.0,
     var iob: Double = 0.0,
+    var acceIsfWeight: Double = 0.0,
+    var fslCalSlope: Double = 0.0,
     override var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,

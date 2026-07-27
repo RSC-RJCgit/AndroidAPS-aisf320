@@ -24,6 +24,8 @@ data class AIV(
     var bgAcceleration: Double = 0.0,
     var smbDeliveryRatio: Double = 0.0,
     var iob: Double = 0.0,
+    var acceIsfWeight: Double = 0.0,
+    var fslCalSlope: Double = 0.0,
     var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,
@@ -52,6 +54,8 @@ data class AIV(
                 bgAcceleration == other.bgAcceleration &&
                 smbDeliveryRatio == other.smbDeliveryRatio &&
                 iob == other.iob &&
+                acceIsfWeight == other.acceIsfWeight &&
+                fslCalSlope == other.fslCalSlope &&
                 isValid == other.isValid)
     }
 }

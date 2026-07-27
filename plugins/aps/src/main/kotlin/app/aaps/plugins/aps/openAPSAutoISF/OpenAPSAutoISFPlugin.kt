@@ -2880,6 +2880,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         autoIsfValues.timestamp = now
         autoIsfValues.smbDeliveryRatio = smb_delivery_ratio
         autoIsfValues.iob = iobData.iob
+        // Read directly from local prefs here — this whole function only ever runs on the device
+        // actually executing AutoISF (the master), never on an AAPSClient follower, so there's no
+        // sync concern on this side. NSDeviceStatusHandler.kt reconstructs these two fields from the
+        // AcceIsfWeight:/FslCalSlope: reason-text lines above when building the client's own AIV row.
+        autoIsfValues.acceIsfWeight = bgAccel_ISF_weight
+        autoIsfValues.fslCalSlope = preferences.get(DoubleKey.FslCalSlope)
         lastAPSResult?.let { result ->
             autoIsfValues.insulinReq = result.json()?.optDouble("insulinReq", 0.0) ?: 0.0
             autoIsfValues.tbrRate    = if (currentTemp.rate > 0.0 && currentTemp.duration > 0) currentTemp.rate else result.rate
@@ -3820,5 +3826,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU372
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU374
 */

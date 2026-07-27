@@ -81,7 +81,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     // -----------------------------------------------------------------------------------------------
 
     val exportHeaders = listOf(
-        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH",
+        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "Lslope",
         "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
@@ -103,6 +103,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.smbDeliveryRatio),
             smbInterval5SecStr(r.timestamp, smbBoluses),
             df2.format(r.iobThEffective),
+            df2.format(r.acceIsfWeight),
+            df2.format(r.fslCalSlope),
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),

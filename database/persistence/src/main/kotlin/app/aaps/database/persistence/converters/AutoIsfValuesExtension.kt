@@ -28,6 +28,8 @@ fun AutoIsfValues.fromDb(): AIV =
         bgAcceleration = this.bgAcceleration,
         smbDeliveryRatio = this.smbDeliveryRatio,
         iob = this.iob,
+        acceIsfWeight = this.acceIsfWeight,
+        fslCalSlope = this.fslCalSlope,
         ids = this.interfaceIDs.fromDb()
     )
 
@@ -56,5 +58,7 @@ fun AIV.toDb(): AutoIsfValues =
         bgAcceleration = this.bgAcceleration,
         smbDeliveryRatio = this.smbDeliveryRatio,
         iob = this.iob,
+        acceIsfWeight = this.acceIsfWeight,
+        fslCalSlope = this.fslCalSlope,
         interfaceIDs_backing = this.ids.toDb()
     )

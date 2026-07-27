@@ -100,6 +100,8 @@ class NSDeviceStatusHandler @Inject constructor(
     private val sDeltaRegex = Regex("""\bSDelta:\s*(-?[0-9.]+)""")
     private val smbDeliveryRatioRegex = Regex("""SMB delivery ratio:\s*([0-9.]+)""")
     private val iobThEffectiveRegex = Regex("""iobThEffectiveU:\s*([0-9.]+)""")
+    private val acceIsfWeightRegex = Regex("""AcceIsfWeight:\s*([0-9.]+)""")
+    private val fslCalSlopeRegex = Regex("""FslCalSlope:\s*([0-9.]+)""")
 
     private fun firstMatch(regex: Regex, text: String): Double? =
         regex.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
@@ -212,7 +214,9 @@ class NSDeviceStatusHandler @Inject constructor(
                                 shortAvgDelta  = firstMatch(sDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
                                 bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
                                 smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
-                                iob            = rt.IOB ?: 0.0
+                                iob            = rt.IOB ?: 0.0,
+                                acceIsfWeight  = firstMatch(acceIsfWeightRegex, reasonText) ?: 0.0,
+                                fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0
                             )
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }
