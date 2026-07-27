@@ -1094,8 +1094,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // end of the sensor's life too (0-3 days): a brand-new sensor has its own settling/compression-
         // artifact inaccuracy, easing back toward normal as it moves away from insertion, same as it
         // eases away from the 12-15 day window as it ages — day 0 (<1 day, the WHOLE first day, no
-        // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.65/1.8), day 1 mirrors 13-14
-        // (0.69/1.65), day 2 mirrors 12-13 (0.72/1.5). Tiered FslCalSlope/FslCalOffset override applies
+        // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.55/1.8), day 1 mirrors 13-14
+        // (0.60/1.65), day 2 mirrors 12-13 (0.65/1.5). Tiered FslCalSlope/FslCalOffset override applies
         // purely by sensor age, unconditionally (no MJ/hypo-state gating).
         // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
         // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
@@ -1108,12 +1108,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("D0", 0.65, 1.8)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.69, 1.65)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.72, 1.5)
-                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.72, 1.5)
-                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.69, 1.65)
-                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.65, 1.8)
+                sensorAgeDays < 1.0                            -> Triple("D0", 0.55, 1.8)
+                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.60, 1.65)
+                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.65, 1.5)
+                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.65, 1.5)
+                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.60, 1.65)
+                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.55, 1.8)
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
