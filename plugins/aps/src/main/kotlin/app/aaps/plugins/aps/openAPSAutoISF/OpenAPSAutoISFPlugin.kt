@@ -1138,21 +1138,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- OldPod: notify (graph announcement + SMS) once a pod is over 60h old AND BGL has been
-        // continuously over 10.0 mmol for 2h+ — a sustained-high stretch this far into a pod's life
+        // continuously over threshold for 2h+ — a sustained-high stretch this far into a pod's life
         // reads as the pod itself failing, not a dosing problem, so this only ever notifies, never
-        // touches dosing. Uses addGraphAnnouncement() (TE.asAnnouncement), not addCarePortalNote() —
-        // that's the same "notifications" mechanism used elsewhere (settings-export alerts etc.),
-        // which renders on the MAIN graph rather than graph2 (where plain TE.Type.NOTE notes went).
-        // Fires once per pod (ApsAutoIsfOldPodNotified latch), re-arming only once cannula age drops
-        // back under 60h (i.e. a new pod was actually inserted). No readyToRun throttle — checked
-        // every cycle like DelOff/OldSensorAdj above, so the "since" timestamp and the latch both
-        // react/reset promptly.
+        // touches dosing. "High" is rBGL (raw Libre) > 11.0 mmol OR the AAPS-filtered BGL > 10.0 mmol —
+        // an OR so either signal alone can start/hold the sustained-high episode; missing raw data just
+        // falls back to the AAPS BGL leg rather than blocking the check. Because "high" is an OR, the
+        // episode only RESETS once BOTH legs are simultaneously back at/below their own threshold
+        // (De Morgan's law: !(A || B) == !A && !B) — one leg dropping alone isn't enough to clear it.
+        // Uses addGraphAnnouncement()
+        // (TE.asAnnouncement), not addCarePortalNote() — that's the same "notifications" mechanism used
+        // elsewhere (settings-export alerts etc.), which renders on the MAIN graph rather than graph2
+        // (where plain TE.Type.NOTE notes went). Fires once per pod (ApsAutoIsfOldPodNotified latch),
+        // re-arming only once cannula age drops back under 60h (i.e. a new pod was actually inserted).
+        // No readyToRun throttle — checked every cycle like DelOff/OldSensorAdj above, so the "since"
+        // timestamp and the latch both react/reset promptly.
         run {
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val podOld = cannulaH > 60.0
             val g = glucoseStatus.glucose
+            val rawG = rawGlucoseMgdl()
+            val highNow = (rawG != null && rawG > 198.2 /* 11.0 mmol raw */) || g > 180.2 /* 10.0 mmol */
             var highSinceTs = preferences.get(LongKey.ApsAutoIsfOldPodHighSinceTs)
-            if (g > 180.2 /* 10.0 mmol */) {
+            if (highNow) {
                 if (highSinceTs == 0L) {
                     highSinceTs = dateUtil.now()
                     preferences.put(LongKey.ApsAutoIsfOldPodHighSinceTs, highSinceTs)
