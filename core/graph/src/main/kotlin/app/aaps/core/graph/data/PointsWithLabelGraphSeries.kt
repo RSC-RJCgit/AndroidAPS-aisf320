@@ -51,7 +51,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // OverviewFragment.updateBg()) — read at draw time to decide the GENERAL_WITH_DURATION_OFFSET
         // annotation's vertical position. 0.0 default means "unknown yet" -> stays at the top (the
         // underTarget checks below are all comparisons that fail at 0.0).
-        // currentBgMgdl stays raw mg/dL (only ever compared against the mg/dL literal thresholds below).
+        // currentBgMgdl (AAPS/recalculated) and currentRawBgMgdl (Libre/noise) stay raw mg/dL — only
+        // ever compared against the mg/dL literal thresholds below, two different BG sources for the
+        // two different trigger directions (see refreshAnnotationPosition()).
         // currentTargetInDisplayUnits, despite the name difference, must be in the SAME units as the
         // graph's own Y-axis/viewport (minY/maxY below) to compute a valid pixel position — and this
         // graph's data points (e.g. NoisyBgDeltaDataPoint's own yValue) are built via
@@ -60,6 +62,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // mmol-scaled viewport, producing a wildly out-of-range ratio that pushed the label off-canvas
         // entirely — hence the unit-explicit rename.
         var currentBgMgdl: Double = 0.0
+        var currentRawBgMgdl: Double = 0.0
         var currentTargetInDisplayUnits: Double = 0.0
 
         // Cached decision for the GENERAL_WITH_DURATION_OFFSET annotation (top vs. under-target-line).
@@ -70,9 +73,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // The pixel geometry itself (dependent on the live viewport) still has to be computed in draw().
         var annotationUnderTarget: Boolean = false
 
+        // Hysteresis, not a stateless recompute: only these two crossings flip the state, so it holds
+        // wherever it currently is outside both thresholds rather than resetting every long-press.
         fun refreshAnnotationPosition() {
-            annotationUnderTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
-                                     else currentBgMgdl >= 162.1 /* 9.0 mmol */
+            if (currentRawBgMgdl > 198.2 /* 11.0 mmol, Libre raw */) annotationUnderTarget = true
+            else if (currentBgMgdl < 135.1 /* 7.5 mmol, AAPS */) annotationUnderTarget = false
         }
     }
 
@@ -156,6 +161,25 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
+        // Shared position for the green line (GENERAL_WITH_DURATION_OFFSET) and the steps row right
+        // below it (green line always one line-height above), so both move together.
+        // annotationUnderTarget is refreshed on the IOB long-press (see refreshAnnotationPosition()):
+        // moves to the LOW position once Libre raw BGL > 11.0 mmol, back to the HIGH position once AAPS
+        // BGL < 7.5 mmol — hysteresis, holds wherever it currently is outside both thresholds.
+        // HIGH: steps sits just above the pixel height of BGL 10.0 mmol on this graph's own Y-axis/
+        // viewport — falls back to a fixed near-top position if that would land off-screen (e.g. the
+        // Y-axis doesn't extend to 10.0 here), same "must never simply vanish" reasoning as before. That
+        // fallback also clears Shape.PROFILE (the profile percentage-switch ribbon/label), which renders
+        // at the plain graphTop+80 base level via its own percentage-based scale (addEps).
+        val bgl10RatY = (10.0 - minY) / diffY
+        val bgl10Y = (graphTop - graphHeight * bgl10RatY).toFloat() + graphHeight
+        val highFallbackPy = graphTop + 80 + scaledTextSize * 1.4f
+        val highStepsPy = if (bgl10Y in graphTop..(graphTop + graphHeight)) bgl10Y - scaledTextSize * 0.3f else highFallbackPy
+        // LOW: steps at its original near-bottom position, in the Basal-trace column area of the graph —
+        // a fixed fraction of graphHeight, so (unlike HIGH) it's always on-screen by construction.
+        val lowStepsPy = graphTop + graphHeight * 0.94f
+        val stepsLinePy = if (annotationUnderTarget) lowStepsPy else highStepsPy
+        val greenLinePy = stepsLinePy - scaledTextSize * 0.8f
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -340,6 +364,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
+                } else if (value.shape == Shape.ACTIVITY_PEAK) {
+                    // Same style as GENERAL's drawLabel45Right, but below the peak point instead of above.
+                    mPaint.style = Paint.Style.FILL_AND_STROKE
+                    mPaint.strokeWidth = 0f
+                    canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
+                    if (value.label.isNotEmpty()) drawLabel45RightBelow(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
                 } else if (value.shape == Shape.EXERCISE) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
@@ -395,16 +425,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(displayLabel, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
-                    // Raw-BG/delta ("green line") annotation — at the top of the graph, the position
-                    // CarePortal notes used to occupy before they moved to graph1. No bounding box — just
-                    // the text. Left-justified to the graph's own left edge (graphLeft), not to endX (the
-                    // data point's own timestamp position, which for this "live" single-point annotation
-                    // sits at the current-time/"now" position — anchoring there instead of the graph's
-                    // left edge was pushing the text off toward/past the right side of the visible graph).
-                    // Shifted one line below the graphTop+80 base level — Shape.PROFILE (the profile
-                    // percentage-switch ribbon/label) renders at that same base level via its own
-                    // percentage-based scale (addEps), so this needs the extra clearance to avoid
-                    // overlapping it, same reasoning as the original pre-move position.
+                    // Raw-BG/delta ("green line") annotation. No bounding box — just the text.
+                    // Left-justified to the graph's own left edge (graphLeft), not to endX (the data
+                    // point's own timestamp position, which for this "live" single-point annotation sits
+                    // at the current-time/"now" position — anchoring there instead of the graph's left
+                    // edge was pushing the text off toward/past the right side of the visible graph).
+                    // Position (greenLinePy, computed once above the loop) toggles top vs. under-target —
+                    // see its own comment for the trigger thresholds/hysteresis.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
@@ -412,8 +439,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        val py = graphTop + 80 + scaledTextSize * 0.6f
-                        canvas.drawText(value.label, graphLeft + 10f, py, mPaint)
+                        canvas.drawText(value.label, graphLeft + 10f, greenLinePy, mPaint)
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
@@ -433,9 +459,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
-                    // Single row ("Steps5=.../... Steps30=.../..."), now near the top of the graph, just
-                    // under the green raw-BG/delta line (which sits at graphTop + 80 + scaledTextSize*0.6f) —
-                    // moved up from the original fixed-near-bottom position.
+                    // Single row ("St5=... St30=..."), always drawn at stepsLinePy (computed once above
+                    // the loop, with the green line one line-height above it) — tracks the shared HIGH/
+                    // LOW toggle so the two move together.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
@@ -444,8 +470,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // Same left-justification as the green line above — anchored to the graph's own
                         // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
-                        val py = graphTop + 80 + scaledTextSize * 0.6f + scaledTextSize * 0.8f
-                        canvas.drawText(value.label, graphLeft + 10f, py, mPaint)
+                        canvas.drawText(value.label, graphLeft + 10f, stepsLinePy, mPaint)
                     }
                 }
                 // set values above point
@@ -508,6 +533,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
     private fun drawLabel45Right(endX: Float, endY: Float, value: E, canvas: Canvas, scaledPxSize: Float, scaledTextSize: Float) {
         val py = endY - scaledPxSize
+        canvas.withRotation(-45f, endX, py) {
+            mPaint.textSize = (scaledTextSize * 0.8).toFloat()
+            mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
+            mPaint.isFakeBoldText = true
+            drawText(value.label, endX + scaledPxSize, py, mPaint)
+        }
+    }
+
+    // Same as drawLabel45Right, but below the point (py = endY + scaledPxSize) instead of above —
+    // used for the peak insulin activity label.
+    private fun drawLabel45RightBelow(endX: Float, endY: Float, value: E, canvas: Canvas, scaledPxSize: Float, scaledTextSize: Float) {
+        val py = endY + scaledPxSize
         canvas.withRotation(-45f, endX, py) {
             mPaint.textSize = (scaledTextSize * 0.8).toFloat()
             mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))

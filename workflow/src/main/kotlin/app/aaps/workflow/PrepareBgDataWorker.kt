@@ -145,21 +145,14 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Single row, near the top (just under the green raw-BG/delta line):
-        // "St5=<5min>/<max 5min over last 30min>  St30=<30min>/<max 30min over last 2h>  S15=<15min>
-        //  St60=<60min>  DR=<SMB delivery ratio>  acWt=<acce ISF weight>  Lslope=<Libre cal slope>".
+        // "St5=<5min>  St30=<30min>  S15=<15min>  St60=<60min>  DR=<SMB delivery ratio>
+        //  acWt=<acce ISF weight>  Lslope=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                // maxOf(..., latestSteps.stepsXmin) so the max always includes the current reading even if
-                // it falls outside the lookback window (e.g. a data gap leaves the latest record >30min old).
-                val step5max = maxOf(
-                    stepsCountList.filter { it.timestamp >= toTime - T.mins(30).msecs() }.maxOfOrNull { it.steps5min } ?: 0,
-                    latestSteps.steps5min
-                )
-                val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
                 val drLabel = "  DR=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatio))}"
                 val acWtLabel = "  acWt=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight))}"
                 val lSlopeLabel = "  Lslope=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.FslCalSlope))}"
-                val label = "St5=${latestSteps.steps5min}/$step5max  St30=${latestSteps.steps30min}/$step30max" +
+                val label = "St5=${latestSteps.steps5min}  St30=${latestSteps.steps30min}" +
                     "  S15=${latestSteps.steps15min}  St60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(

@@ -23,6 +23,7 @@ enum class Shape {
     RUNNING_MODE,
     EXERCISE,
     GENERAL,
+    ACTIVITY_PEAK, // peak insulin activity label — same 45°-rotated style as GENERAL's drawLabel45Right, but below the point instead of above
     GENERAL_WITH_DURATION,
     GENERAL_WITH_DURATION_OFFSET, // same fixed-top-of-graph style as GENERAL_WITH_DURATION, drawn lower to avoid overlapping CarePortal notes
     COB_FAIL_OVER,

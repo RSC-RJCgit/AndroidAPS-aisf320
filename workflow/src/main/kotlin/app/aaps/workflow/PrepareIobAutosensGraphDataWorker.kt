@@ -120,7 +120,7 @@ class PrepareIobAutosensGraphDataWorker(
         override fun setY(y: Double) {}
         override val label: String = labelText
         override val duration = 0L
-        override val shape = Shape.GENERAL
+        override val shape = Shape.ACTIVITY_PEAK
         override val size = 0f
         override val paintStyle: Paint.Style = Paint.Style.FILL
         override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.activityColor)
