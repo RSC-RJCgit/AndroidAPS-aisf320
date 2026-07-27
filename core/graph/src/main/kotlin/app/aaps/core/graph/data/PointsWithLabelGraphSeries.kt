@@ -394,45 +394,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(displayLabel, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
-                    // Same as GENERAL_WITH_DURATION, drawn further down so it doesn't overlap CarePortal notes.
-                    // No bounding box (unlike GENERAL_WITH_DURATION) — just the text.
+                    // Raw-BG/delta ("green line") annotation — now at the top of the graph, the position
+                    // CarePortal notes used to occupy before they moved to graph1. No bounding box — just
+                    // the text. Left-justified rather than the fixedAnnotationAlign center/right choice.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textAlign = fixedAnnotationAlign
-                        // Position decision (top vs. under-target-line) is a CACHED value, refreshed only
-                        // by the IOB long-press handler in OverviewFragment (see
-                        // refreshAnnotationPosition()) — not recomputed here on every draw. Only the pixel
-                        // geometry below (dependent on the live, scrollable/zoomable viewport) still runs
-                        // per draw call.
-                        //  - labels OFF (showSmbLabels=false): stays at top; drops under the profile
-                        //    target line once BGL was > 5.0 mmol at the last long-press.
-                        //  - labels ON (showSmbLabels=true): stays under the target line; rises back to
-                        //    top once BGL was < 9.0 mmol at the last long-press.
-                        // Profile's low target == high target for this user, so "under target" and
-                        // "under low"/"under high" are the same line — getTargetLowMgdl() covers it.
-                        val topPy = graphTop + 130
-                        // Always try the lower (under-target-line) position now, freeing up the top of the
-                        // graph for the (now-stacked) CarePortal notes — no longer gated on the cached
-                        // annotationUnderTarget BGL/showSmbLabels toggle. Still falls back to top via the
-                        // off-screen safety clamp below if there's no valid target to position against.
-                        val py = if (currentTargetInDisplayUnits > 0.0) {
-                            val targetRatY = (currentTargetInDisplayUnits - minY) / diffY
-                            val targetY = (graphTop - graphHeight * targetRatY).toFloat() + graphHeight
-                            val underPy = targetY + 60f // fixed gap below the target line's pixel position
-                            // Safety clamp: if the computed position falls outside the visible graph
-                            // (e.g. a units mismatch, or the target sitting outside the current BG
-                            // range), fall back to the always-on-screen top position rather than
-                            // drawing off-canvas — the annotation must never simply vanish.
-                            if (underPy in graphTop..(graphTop + graphHeight)) underPy else topPy
-                        } else {
-                            topPy
-                        }
-                        canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
+                        val py = graphTop + 80
+                        canvas.drawText(value.label, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
@@ -452,23 +425,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
-                    // Two lines ("Steps5=.../..." then "Steps30=.../...") fixed near the bottom of the
-                    // graph, below the SMB baseline triangles (Shape.SMB's baseTriBase/shaft). Positioned
-                    // as a fraction of graphHeight (not a fixed pixel offset) so it stays below the SMB
-                    // row across display sizes — a fixed px offset was landing above the SMB triangles
-                    // on the smaller/original display size, since graphHeight itself varies with it.
+                    // Single row ("Steps5=.../... Steps30=.../..."), now near the top of the graph, just
+                    // under the green raw-BG/delta line (which sits at graphTop + 80, textSize 0.6f) —
+                    // moved up from the original fixed-near-bottom position.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = fixedAnnotationAlign
-                        val lines = value.label.split("\n")
-                        val lineHeight = scaledTextSize * 0.55f
-                        val bottomLineY = graphTop + graphHeight * 0.94f
-                        lines.reversed().forEachIndexed { i, line ->
-                            canvas.drawText(line, endX, bottomLineY - i * lineHeight, mPaint)
-                        }
+                        val py = graphTop + 80 + scaledTextSize * 0.8f
+                        canvas.drawText(value.label, endX, py, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 }

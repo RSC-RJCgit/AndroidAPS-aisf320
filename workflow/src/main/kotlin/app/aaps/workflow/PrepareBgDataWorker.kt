@@ -140,8 +140,8 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // Two stacked rows near the bottom, above the SMB baseline triangles:
-        // "Steps5=<current 5min>/<max 5min over last 30min>" and "Steps30=<current 30min>/<max 30min over last 2h>".
+        // Single row, near the top (just under the green raw-BG/delta line):
+        // "Steps5=<current 5min>/<max 5min over last 30min>  Steps30=<current 30min>/<max 30min over last 2h>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 // maxOf(..., latestSteps.stepsXmin) so the max always includes the current reading even if
@@ -151,8 +151,8 @@ class PrepareBgDataWorker(
                     latestSteps.steps5min
                 )
                 val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
-                val steps60Label = if (automationStateService.inState("stepsHigh", "StepsLow")) "\n${latestSteps.steps60min}" else ""
-                val label = "Steps5=${latestSteps.steps5min}/$step5max\nSteps30=${latestSteps.steps30min}/$step30max$steps60Label"
+                val steps60Label = if (automationStateService.inState("stepsHigh", "StepsLow")) "  ${latestSteps.steps60min}" else ""
+                val label = "Steps5=${latestSteps.steps5min}/$step5max  Steps30=${latestSteps.steps30min}/$step30max$steps60Label"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)

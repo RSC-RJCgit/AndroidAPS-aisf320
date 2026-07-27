@@ -1176,8 +1176,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addBucketedData()
         graphData.addTreatments(context)
         graphData.addEps(context, 0.95)
-        if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
-            graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
@@ -1298,7 +1296,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
-            if (g == 0) secondGraphData.addSmbLabels()
+            // CarePortal notes moved here from the main graph (graph1 = g==0) — same TREAT toggle
+            // source as before, just a different graph to render on.
+            if (g == 0 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addTherapyEvents()
+            // SMB stacked labels moved from graph1 (g==0) to graph2 (g==1)
+            if (g == 1) secondGraphData.addSmbLabels()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)
