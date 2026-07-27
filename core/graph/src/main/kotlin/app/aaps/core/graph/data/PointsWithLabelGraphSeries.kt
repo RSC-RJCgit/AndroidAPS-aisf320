@@ -154,8 +154,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
-        val noteStack = HashMap<Long, Int>() // bucket (15-min) -> count of CarePortal notes drawn at this height
-        val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (15-min) -> HardStackDelOff/DelOff labels already drawn there, so a throttle-less repeat doesn't flood the stack
+        val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
+        val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -361,23 +361,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawRect(endX, graphTop, xPlusLength, graphTop + 4, mPaint)
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
-                    val bucketMs = 15 * 60_000L
+                    val bucketMs = 20 * 60_000L
                     val rawBucket = value.getX().toLong() / bucketMs
-                    // HardStackDelOff/DelOff have no readyToRun throttle and re-check every loop cycle,
-                    // so while their trigger condition holds they can repeat many times in a row and
-                    // flood a bucket's stack with duplicates of themselves. Only the first occurrence of
-                    // either per 15-min bucket gets drawn; other note types are unaffected and still stack
-                    // normally (each is a genuinely distinct event, not a throttle-less repeat).
-                    val isDedupNote = value.label == "HardStackDelOff" || value.label == "DelOff"
-                    val alreadyDrawnThisBucket = isDedupNote && !noteDedupSeen.getOrPut(rawBucket) { mutableSetOf() }.add(value.label)
+                    // No note ever repeats within a bucket, regardless of type — throttle-less repeats
+                    // (e.g. HardStackDelOff/DelOff, which re-check every loop cycle with no readyToRun)
+                    // would otherwise flood a bucket with duplicates of themselves, but any exact label
+                    // showing up twice in the same 20-min bucket is deduped to its first occurrence.
+                    val alreadyDrawnThisBucket = !noteDedupSeen.getOrPut(rawBucket) { mutableSetOf() }.add(value.label)
                     if (value.label.isNotEmpty() && !alreadyDrawnThisBucket) {
-                        // Stacked by 15-min bucket, max 4 per bucket, so notes landing close together in
+                        // Stacked by 20-min bucket, max 5 per bucket, so notes landing close together in
                         // time offset downward instead of overlapping at the same fixed height. Nothing
-                        // is ever dropped: once a bucket already has 4, the note spills into the next
-                        // 15-min bucket's stack instead (rather than the old behaviour of simply not
-                        // drawing the 5th+ note in an overfull bucket).
+                        // is ever dropped: once a bucket already has 5, the note spills into the next
+                        // 20-min bucket's stack instead (rather than simply not drawing the 6th+ note in
+                        // an overfull bucket).
                         var noteBucket = rawBucket
-                        while (noteStack.getOrDefault(noteBucket, 0) >= 4) noteBucket++
+                        while (noteStack.getOrDefault(noteBucket, 0) >= 5) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
                         // Truncated to 5 characters for display only — the full note text is unaffected
