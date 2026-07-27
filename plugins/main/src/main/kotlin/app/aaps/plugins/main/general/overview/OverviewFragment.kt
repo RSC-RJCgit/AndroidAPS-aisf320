@@ -918,7 +918,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // (A prior version stored raw mg/dL there and the label rendered off-canvas as a result — this
         // fixes that.)
         lastBg?.recalculated?.let { PointsWithLabelGraphSeries.currentBgMgdl = it }
-        lastBg?.noise?.let { PointsWithLabelGraphSeries.currentRawBgMgdl = it }
+        // lastBg (InMemoryGlucoseValue) doesn't carry the raw Libre/noise signal — that's only on the
+        // stored GV records, so read it from overviewData.bgReadingsArray (newest-first) instead.
+        overviewData.bgReadingsArray.firstOrNull()?.noise?.let { PointsWithLabelGraphSeries.currentRawBgMgdl = it }
         profileFunction.getProfile()?.getTargetLowMgdl()?.let {
             PointsWithLabelGraphSeries.currentTargetInDisplayUnits = profileUtil.fromMgdlToUnits(it)
         }
