@@ -388,13 +388,23 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // Line spacing is deliberately wider (0.6f) than the font size (0.4f) — matching
                         // it 1:1 to font size left too little clearance for ascenders/descenders, so
                         // adjacent stacked notes could visually overlap despite being at different py.
-                        val py = graphTop + 80 + noteStackIndex * (scaledTextSize * 0.6f)
+                        // Bottom-anchored, stacking upward — this series now only ever renders on graph1
+                        // (moved off the main graph), taking over the SMB_GRAPH2 label's old bottom-half
+                        // position/stacking direction there instead of the main graph's old top-down one.
+                        val py = graphTop + graphHeight - 20f - noteStackIndex * (scaledTextSize * 0.6f)
                         canvas.drawText(displayLabel, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {
-                    // Raw-BG/delta ("green line") annotation — now at the top of the graph, the position
+                    // Raw-BG/delta ("green line") annotation — at the top of the graph, the position
                     // CarePortal notes used to occupy before they moved to graph1. No bounding box — just
-                    // the text. Left-justified rather than the fixedAnnotationAlign center/right choice.
+                    // the text. Left-justified to the graph's own left edge (graphLeft), not to endX (the
+                    // data point's own timestamp position, which for this "live" single-point annotation
+                    // sits at the current-time/"now" position — anchoring there instead of the graph's
+                    // left edge was pushing the text off toward/past the right side of the visible graph).
+                    // Shifted one line below the graphTop+80 base level — Shape.PROFILE (the profile
+                    // percentage-switch ribbon/label) renders at that same base level via its own
+                    // percentage-based scale (addEps), so this needs the extra clearance to avoid
+                    // overlapping it, same reasoning as the original pre-move position.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
@@ -402,8 +412,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        val py = graphTop + 80
-                        canvas.drawText(value.label, endX, py, mPaint)
+                        val py = graphTop + 80 + scaledTextSize * 0.6f
+                        canvas.drawText(value.label, graphLeft + 10f, py, mPaint)
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
@@ -424,17 +434,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
                     // Single row ("Steps5=.../... Steps30=.../..."), now near the top of the graph, just
-                    // under the green raw-BG/delta line (which sits at graphTop + 80, textSize 0.6f) —
+                    // under the green raw-BG/delta line (which sits at graphTop + 80 + scaledTextSize*0.6f) —
                     // moved up from the original fixed-near-bottom position.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textAlign = fixedAnnotationAlign
-                        val py = graphTop + 80 + scaledTextSize * 0.8f
-                        canvas.drawText(value.label, endX, py, mPaint)
+                        // Same left-justification as the green line above — anchored to the graph's own
+                        // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
+                        val py = graphTop + 80 + scaledTextSize * 0.6f + scaledTextSize * 0.8f
+                        canvas.drawText(value.label, graphLeft + 10f, py, mPaint)
                     }
                 }
                 // set values above point
