@@ -31,9 +31,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Basal long-press cycles through 3 display presets (0→1→2→0...). IOB long-press always resets
         // this back to 0 in addition to its own showSmbLabels toggle, regardless of which direction that
         // toggle goes, so the "reset to normal" gesture is independent of the SMB-label state.
-        //   0: near-BGL arrowheads on,  normal per-point ISF colors, noisy/raw BG line transparent
-        //   1: near-BGL arrowheads off, normal per-point ISF colors, noisy/raw BG line opaque
-        //   2: near-BGL arrowheads off, uniform transparent green BG dots, noisy/raw BG line opaque
+        //   0: near-BGL arrowheads on,  normal per-point ISF colors
+        //   1: near-BGL arrowheads off, normal per-point ISF colors
+        //   2: near-BGL arrowheads off, uniform transparent green BG dots
         var basalToggleIndex: Int = 0
             set(value) { field = ((value % 3) + 3) % 3 }
 
@@ -42,7 +42,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // baseline triangle at the bottom of the graph always draws regardless too.
         val showBglArrowheads: Boolean get() = basalToggleIndex == 0
         val uniformGreenBg: Boolean get() = basalToggleIndex == 2
-        val noisyLineTransparent: Boolean get() = basalToggleIndex == 0
 
         // Flat color used for all BG dots when uniformGreenBg is active, ignoring per-point ISF-weight overrides.
         val uniformGreenBgColor: Int = android.graphics.Color.argb(140, 0, 200, 0)
@@ -71,11 +70,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // computed in draw().
         var annotationUnderTarget: Boolean = false
 
-        // Matches the original TDDautos2 logic exactly: stateless recompute (not hysteresis) off
-        // currentBgMgdl alone, with the threshold itself depending on showSmbLabels's current direction.
+        // Hysteresis around 7.5mmol: BGL alone decides outside the 7.0-8.0mmol band (>=8.0 always LOW,
+        // <7.0 always HIGH). Inside that ambiguous band, lean by showSmbLabels — ON prefers LOW (avoids
+        // a HIGH-position conflict while labels are on), OFF prefers HIGH (avoids a LOW-position
+        // legibility issue while labels are off). Outside the band this is BGL-only, same as before.
         fun refreshAnnotationPosition() {
-            annotationUnderTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
-                                     else currentBgMgdl >= 162.1 /* 9.0 mmol */
+            annotationUnderTarget = when {
+                currentBgMgdl >= 144.1 /* 8.0 mmol */ -> true
+                currentBgMgdl < 126.1 /* 7.0 mmol */  -> false
+                else                                   -> showSmbLabels
+            }
         }
     }
 

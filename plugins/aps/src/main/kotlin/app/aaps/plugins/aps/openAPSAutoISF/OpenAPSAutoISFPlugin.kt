@@ -1450,8 +1450,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // identifies it elsewhere, e.g. TriggerPumpBatteryLevelTest).
         // No cannula-age gate — that threshold (80h) was pod-specific and doesn't generalize to tubed
         // pumps with independent infusion-set lifespans; critical phone battery should react regardless.
-        // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
-        if (readyToRun("Battery1pc", 5) && profile_percentage == 100
+        // 20-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        if (readyToRun("Battery1pc", 20) && profile_percentage == 100
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
             && receiverStatusStore.batteryLevel <= 1
             && activePlugin.activePump !is VirtualPump) {
