@@ -178,9 +178,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val nearBottomPy = graphTop + graphHeight * 0.94f
         val greenLowPy = if (bgl2Y in graphTop..(graphTop + graphHeight)) bgl2Y - scaledTextSize * 0.3f else nearBottomPy
         val greenLinePy = if (annotationUnderTarget) greenLowPy else greenHighPy
-        // Steps row — graph1 only, never the main graph. Fixed near the bottom always, independent of
-        // the yellow line's own HIGH/LOW toggle (they no longer move together).
-        val stepsRowPy = nearBottomPy
+        // Steps row — main graph only now (moved off graph1), pinned just above BGL 4.0. Completely
+        // static: no HIGH/LOW toggle, no dependency on annotationUnderTarget/long-press/BGL state at
+        // all — always this one fixed glucose-pinned spot, falling back to a fixed offset only if 4.0
+        // isn't in the currently displayed range.
+        val bgl4RatY = (4.0 - minY) / diffY
+        val bgl4Y = (graphTop - graphHeight * bgl4RatY).toFloat() + graphHeight
+        val stepsRowPy = if (bgl4Y in graphTop..(graphTop + graphHeight)) bgl4Y - scaledTextSize * 0.3f else nearBottomPy
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -423,10 +427,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // in the database/NS, this only shortens what's drawn on the graph.
                         val displayLabel = value.label.take(5)
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.4f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        // Line spacing is deliberately wider (0.6f) than the font size (0.4f) — matching
+                        // Line spacing is deliberately wider (0.6f) than the font size (0.5f) — matching
                         // it 1:1 to font size left too little clearance for ascenders/descenders, so
                         // adjacent stacked notes could visually overlap despite being at different py.
                         // Bottom-anchored, stacking upward — this series now only ever renders on graph1
@@ -473,9 +477,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
                     // Single row ("S5=... S30=..."), always drawn at stepsRowPy — this series only ever
-                    // renders on graph1 (never the main graph), fixed at the bottom regardless of the
-                    // yellow line's own HIGH/LOW toggle (they've moved independently since the yellow
-                    // line went main-graph-only).
+                    // renders on the main graph (never graph1), pinned just above BGL 4.0, completely
+                    // independent of the yellow line's own HIGH/LOW toggle.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
