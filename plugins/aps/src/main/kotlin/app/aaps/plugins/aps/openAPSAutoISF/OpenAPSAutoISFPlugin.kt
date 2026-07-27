@@ -1184,6 +1184,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- SensorAgeToggleTT: manually setting a TT of 5.4 mmol is used as a remote toggle for the
+        // OldSensorAdj enable switch (ApsAutoIsfOldSensorAdjEnabled) — not a real target. Flips the
+        // switch, then immediately cancels the TT so it never actually affects dosing. activeTtNear()
+        // (not a hand-rolled mg/dL literal) is deliberate here — see its own doc comment on why the
+        // exact mmol->mg/dL conversion constant matters for matching a manually-set TT. Tight 0.02mmol
+        // tolerance to stay clearly clear of the nearby 5.7mmol reversal marker (0.1mmol away). Small
+        // throttle purely as a defense against double-toggling if the cancel hasn't fully propagated by
+        // the next cycle — the cancel itself is what actually prevents re-firing in normal operation.
+        if (readyToRun("SensorAgeToggleTT", 2) && activeTtNear(5.4, 0.02)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("SensorAgeTgl${if (newState) "On" else "Off"}")
+            markRun("SensorAgeToggleTT")
+        }
+
+        // --- BoostToggleTT: manually setting a TT of 5.6 mmol is used as a remote toggle for
+        // ApsAutoIsfBoostAutomationsEnabled (the combined master switch for BolusGiven bg1/2/3 and
+        // BolusGivenMild) — not a real target. Same pattern as SensorAgeToggleTT above.
+        if (readyToRun("BoostToggleTT", 2) && activeTtNear(5.6, 0.02)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("BoostToggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("BoostTgl${if (newState) "On" else "Off"}")
+            markRun("BoostToggleTT")
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
