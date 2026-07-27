@@ -1197,7 +1197,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjEnabled, newState)
             cancelCurrentTempTarget()
             sendSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("SensorAgeTgl${if (newState) "On" else "Off"}")
+            addCarePortalNote("STg${if (newState) "On" else "Off"}")
             markRun("SensorAgeToggleTT")
         }
 
@@ -1209,7 +1209,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
             cancelCurrentTempTarget()
             sendSms("BoostToggle: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("BoostTgl${if (newState) "On" else "Off"}")
+            addCarePortalNote("BTg${if (newState) "On" else "Off"}")
             markRun("BoostToggleTT")
         }
 
