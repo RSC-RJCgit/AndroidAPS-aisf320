@@ -106,11 +106,14 @@ class PrepareBgDataWorker(
             it.thickness = 4
         }
 
-        // Live "L=<noisy bgl> A1=<aaps delta> L1=<libre delta> St15=<steps> St60=<steps>" annotation at the current reading.
+        // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
+        // L5=<libre 5-min delta>" annotation at the current reading.
         val latest = data.overviewData.bgReadingsArray.firstOrNull()
         val noisyBg = currentNoisyBg(data.overviewData.bgReadingsArray)
         val aapsDelta = aapsOneMinuteDelta(data.overviewData.bgReadingsArray)
         val libreDelta = libreOneMinuteDelta(data.overviewData.bgReadingsArray)
+        val aapsDelta5 = aapsFiveMinuteDelta(data.overviewData.bgReadingsArray)
+        val libreDelta5 = libreFiveMinuteDelta(data.overviewData.bgReadingsArray)
         // Fixed 2h lookback independent of the graph's own display range, so Step30max always has its full window.
         val stepsWindowFrom = toTime - T.hours(2).msecs()
         val rawStepsCountList = persistenceLayer.getStepsCountFromTimeToTime(stepsWindowFrom, toTime)
@@ -126,14 +129,14 @@ class PrepareBgDataWorker(
         val latestSteps = stepsCountList.maxByOrNull { it.timestamp }
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
-                val stepsTxt = latestSteps?.let { " St15=${it.steps15min} St60=${it.steps60min}" } ?: ""
+                val delta5Txt = " A5=${aapsDelta5?.let { formatMmolDelta(it) } ?: "--"} L5=${libreDelta5?.let { formatMmolDelta(it) } ?: "--"}"
                 // Current MJ state (value only, no "MJ=" prefix), from the most recent MJ-lifecycle
                 // careportal note. Uses notes (which sync to the client) rather than automationStateService
                 // (which doesn't sync), so it's correct on both master and client — same source as the
                 // history table's MJ column, so this is just "the latest MJ value".
                 val mjTxt = " " + latestMjState(latest.timestamp)
                 val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
-                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + stepsTxt + mjTxt
+                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + delta5Txt + mjTxt
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -142,7 +145,8 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Single row, near the top (just under the green raw-BG/delta line):
-        // "Steps5=<current 5min>/<max 5min over last 30min>  Steps30=<current 30min>/<max 30min over last 2h>".
+        // "St5=<5min>/<max 5min over last 30min>  St30=<30min>/<max 30min over last 2h>  S15=<15min>
+        //  St60=<60min>  DR=<SMB delivery ratio>  acWt=<acce ISF weight>  Lslope=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 // maxOf(..., latestSteps.stepsXmin) so the max always includes the current reading even if
@@ -152,9 +156,11 @@ class PrepareBgDataWorker(
                     latestSteps.steps5min
                 )
                 val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
-                val steps60Label = if (automationStateService.inState("stepsHigh", "StepsLow")) "  ${latestSteps.steps60min}" else ""
+                val drLabel = "  DR=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatio))}"
+                val acWtLabel = "  acWt=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight))}"
                 val lSlopeLabel = "  Lslope=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.FslCalSlope))}"
-                val label = "Steps5=${latestSteps.steps5min}/$step5max  Steps30=${latestSteps.steps30min}/$step30max$steps60Label$lSlopeLabel"
+                val label = "St5=${latestSteps.steps5min}/$step5max  St30=${latestSteps.steps30min}/$step30max" +
+                    "  S15=${latestSteps.steps15min}  St60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -193,6 +199,26 @@ class PrepareBgDataWorker(
         val minutesAgo = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
         if (minutesAgo <= 0.0) return null
         return (newest - previous) / minutesAgo * 5
+    }
+
+    // gv.value delta against the reading nearest 5 minutes before the newest one — an actual 5-minute
+    // delta (unscaled), not the 1-min-sample-rescaled-to-a-5-min-rate the *OneMinuteDelta functions
+    // above compute. Null if there's no reading at least 5 minutes old to compare against.
+    private fun aapsFiveMinuteDelta(readings: List<GV>): Double? {
+        val newest = readings.firstOrNull() ?: return null
+        val target = newest.timestamp - 5 * 60_000L
+        val prior = readings.filter { it.timestamp <= target }.maxByOrNull { it.timestamp } ?: return null
+        return newest.value - prior.value
+    }
+
+    // gv.noise equivalent of aapsFiveMinuteDelta above (Libre/xDrip raw native signal, not gv.value).
+    private fun libreFiveMinuteDelta(readings: List<GV>): Double? {
+        val newest = readings.firstOrNull() ?: return null
+        val newestNoise = newest.noise ?: return null
+        val target = newest.timestamp - 5 * 60_000L
+        val prior = readings.filter { it.timestamp <= target && it.noise != null }.maxByOrNull { it.timestamp } ?: return null
+        val priorNoise = prior.noise ?: return null
+        return newestNoise - priorNoise
     }
 
     // deltaMgdl -> signed mmol string, 2 decimal places (e.g. "+0.34", "-0.11").
