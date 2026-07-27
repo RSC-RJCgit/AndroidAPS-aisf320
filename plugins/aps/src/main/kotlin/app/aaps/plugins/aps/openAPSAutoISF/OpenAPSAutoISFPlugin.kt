@@ -1815,7 +1815,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 setBgAccelIsfWeight(0.70)
-                addCarePortalNote("Given-$bBlock")
+                addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 // "Strong" boost ratio is derived from the mild-boost base, not set independently —
@@ -1891,7 +1891,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores baseline
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
-                addCarePortalNote("GivenMild")
+                addCarePortalNote("BMild")
                 markRun("BolusGivenMild")
             }
         }
