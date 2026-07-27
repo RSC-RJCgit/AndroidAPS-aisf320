@@ -1094,9 +1094,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // end of the sensor's life too (0-3 days): a brand-new sensor has its own settling/compression-
         // artifact inaccuracy, easing back toward normal as it moves away from insertion, same as it
         // eases away from the 12-15 day window as it ages — day 0 (<1 day, the WHOLE first day, no
-        // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.55/1.8), day 1 mirrors 13-14
-        // (0.60/1.65), day 2 mirrors 12-13 (0.65/1.5). Tiered FslCalSlope/FslCalOffset override applies
-        // purely by sensor age, unconditionally (no MJ/hypo-state gating).
+        // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.65/1.6), day 1 mirrors 13-14
+        // (0.68/1.5), day 2 mirrors 12-13 (0.70/1.45). Tiered FslCalSlope/FslCalOffset override applies
+        // by sensor age (no MJ/hypo-state gating), but ONLY while cannula age is 6-72h (see the
+        // cannulaH check below) — skipped during the very early unsettled or very late unreliable pod
+        // states.
         // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
         // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
         // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 0-3/12-15
@@ -1106,18 +1108,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
+            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("D0", 0.55, 2.0)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.60, 1.8)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.65, 1.6)
-                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.65, 1.6)
-                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.60, 1.8)
-                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.55, 2.0)
+                sensorAgeDays < 1.0                            -> Triple("D0", 0.65, 1.6)
+                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.68, 1.5)
+                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.70, 1.45)
+                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.70, 1.45)
+                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.68, 1.5)
+                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.65, 1.6)
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
-            if (oldSensorEnabled && oldSensorTier != null) {
+            // Only active while the pod/cannula is 6-72h old — avoids applying this alongside the very
+            // early (<=6h, not yet settled) or very late (>=72h, unreliable delivery) pod states.
+            if (oldSensorEnabled && oldSensorTier != null && cannulaH > 6.0 && cannulaH < 72.0) {
                 if (!oldSensorActive) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
@@ -3870,5 +3875,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU386
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU387
 */
