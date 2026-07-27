@@ -169,10 +169,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // HIGH/LOW are plain top-area/bottom-area positions on THIS graph's own viewport rather than
         // pinned to a glucose value (the old BGL=10.0mmol marker made no sense once off the glucose
         // graph, so it's gone — this graph's Y-axis has no fixed relationship to glucose any more).
-        // annotationUnderTarget is refreshed on the IOB long-press (see refreshAnnotationPosition()):
-        // moves to the LOW position once Libre raw BGL > 11.0 mmol, back to the HIGH position once AAPS
-        // BGL < 7.5 mmol — hysteresis, holds wherever it currently is outside both thresholds.
-        val highStepsPy = graphTop + 80 + scaledTextSize * 1.4f
+        // annotationUnderTarget is refreshed on the IOB long-press and the 15-min auto-refresh (see
+        // refreshAnnotationPosition() for the exact BGL/labels hysteresis).
+        // HIGH: just above the graph area itself (not inside it), so it doesn't sit over the plotted
+        // data at all.
+        val highStepsPy = graphTop - 10f
         // LOW: steps at its original near-bottom position, in the Basal-trace column area of the graph —
         // a fixed fraction of graphHeight, so (unlike HIGH) it's always on-screen by construction.
         val lowStepsPy = graphTop + graphHeight * 0.94f
