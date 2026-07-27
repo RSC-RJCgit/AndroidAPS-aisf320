@@ -473,18 +473,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
-                    // Single row ("St5=... St30=..."), always drawn at stepsLinePy (computed once above
-                    // the loop, with the green line one line-height above it) — tracks the shared HIGH/
-                    // LOW toggle so the two move together.
+                    // Single row ("S5=... S30=..."), always drawn at lowStepsPy — this series now only
+                    // ever renders on graph1 (never the main graph), fixed at the bottom regardless of
+                    // the yellow line's own HIGH/LOW toggle, so it doesn't inherit highStepsPy's
+                    // glucose-graph-specific BGL=10.0 pin when it's actually sitting on graph1.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         // Same left-justification as the green line above — anchored to the graph's own
                         // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(value.label, graphLeft + 10f, stepsLinePy, mPaint)
+                        canvas.drawText(value.label, graphLeft + 10f, lowStepsPy, mPaint)
                     }
                 }
                 // set values above point

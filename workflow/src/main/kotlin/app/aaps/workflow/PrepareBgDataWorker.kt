@@ -148,18 +148,18 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Single row, near the top (just under the green raw-BG/delta line):
-        // "St5=<5min>  St30=<30min>  S15=<15min>  St60=<60min>  DR=<SMB delivery ratio>
-        //  acWt=<acce ISF weight>  Lslope=<Libre cal slope>".
+        // "S5=<5min>  S30=<30min>  S15=<15min>  S60=<60min>  DR=<SMB delivery ratio>
+        //  AW=<acce ISF weight>  LS=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 val drVal = latestApsReason?.let { doubleFromReason(it, smbRatioRegex) }
                 val acWtVal = latestApsReason?.let { doubleFromReason(it, acceWeightRegex) }
                 val lSlopeVal = latestApsReason?.let { doubleFromReason(it, fslSlopeRegex) }
                 val drLabel = "  DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val acWtLabel = "  acWt=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val lSlopeLabel = "  Lslope=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val label = "St5=${latestSteps.steps5min}  St30=${latestSteps.steps30min}" +
-                    "  S15=${latestSteps.steps15min}  St60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
+                val acWtLabel = "  AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val lSlopeLabel = "  LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val label = "S5=${latestSteps.steps5min}  S30=${latestSteps.steps30min}" +
+                    "  S15=${latestSteps.steps15min}  S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
