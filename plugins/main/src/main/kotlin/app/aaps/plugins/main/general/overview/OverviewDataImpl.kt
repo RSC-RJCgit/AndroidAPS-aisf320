@@ -109,6 +109,7 @@ class OverviewDataImpl @Inject constructor(
         epsSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxTherapyEventValue = 0.0
         therapyEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        noteEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         rawBgSeries = LineGraphSeries<ScaledDataPoint>()
         noisyBgDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsStackedSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -258,6 +259,7 @@ class OverviewDataImpl @Inject constructor(
     override var smbLabelSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var maxTherapyEventValue = 0.0
     override var therapyEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var noteEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
     override var maxIobThValueFound = Double.MIN_VALUE
     override var minIobThValueFound = 0.0

@@ -51,9 +51,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // OverviewFragment.updateBg()) — read at draw time to decide the GENERAL_WITH_DURATION_OFFSET
         // annotation's vertical position. 0.0 default means "unknown yet" -> stays at the top (the
         // underTarget checks below are all comparisons that fail at 0.0).
-        // currentBgMgdl (AAPS/recalculated) and currentRawBgMgdl (Libre/noise) stay raw mg/dL — only
-        // ever compared against the mg/dL literal thresholds below, two different BG sources for the
-        // two different trigger directions (see refreshAnnotationPosition()).
+        // currentBgMgdl stays raw mg/dL (only ever compared against the mg/dL literal thresholds below).
         // currentTargetInDisplayUnits, despite the name difference, must be in the SAME units as the
         // graph's own Y-axis/viewport (minY/maxY below) to compute a valid pixel position — and this
         // graph's data points (e.g. NoisyBgDeltaDataPoint's own yValue) are built via
@@ -62,22 +60,22 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // mmol-scaled viewport, producing a wildly out-of-range ratio that pushed the label off-canvas
         // entirely — hence the unit-explicit rename.
         var currentBgMgdl: Double = 0.0
-        var currentRawBgMgdl: Double = 0.0
         var currentTargetInDisplayUnits: Double = 0.0
 
         // Cached decision for the GENERAL_WITH_DURATION_OFFSET annotation (top vs. under-target-line).
         // Previously this was recomputed from currentBgMgdl/showSmbLabels on every single draw() call,
         // which fires far more often than the BGL actually changes (any scroll/zoom/invalidate) and was
-        // measurably slowing graph redraws. Now it's only refreshed by refreshAnnotationPosition(), which
-        // OverviewFragment calls from the IOB long-press handler — draw() just reads the cached value.
-        // The pixel geometry itself (dependent on the live viewport) still has to be computed in draw().
+        // measurably slowing graph redraws. Refreshed by refreshAnnotationPosition(), called from the IOB
+        // long-press AND a 15-min auto-refresh in OverviewFragment.updateBg() — draw() just reads the
+        // cached value. The pixel geometry itself (dependent on the live viewport) still has to be
+        // computed in draw().
         var annotationUnderTarget: Boolean = false
 
-        // Hysteresis, not a stateless recompute: only these two crossings flip the state, so it holds
-        // wherever it currently is outside both thresholds rather than resetting every long-press.
+        // Matches the original TDDautos2 logic exactly: stateless recompute (not hysteresis) off
+        // currentBgMgdl alone, with the threshold itself depending on showSmbLabels's current direction.
         fun refreshAnnotationPosition() {
-            if (currentRawBgMgdl > 198.2 /* 11.0 mmol, Libre raw */) annotationUnderTarget = true
-            else if (currentBgMgdl < 135.1 /* 7.5 mmol, AAPS */) annotationUnderTarget = false
+            annotationUnderTarget = if (!showSmbLabels) currentBgMgdl > 90.1 /* 5.0 mmol */
+                                     else currentBgMgdl >= 162.1 /* 9.0 mmol */
         }
     }
 
@@ -193,11 +191,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // overdraw
             var overdraw = x > graphWidth
             // end right
-            if (y < 0) { // end bottom
-                overdraw = true
-            }
-            if (y > graphHeight) { // end top
-                overdraw = true
+            // Y-independent shapes (fixed pixel position, never actually use the data point's Y value
+            // for on-screen placement) skip the Y-range culling below entirely — GENERAL_WITH_DURATION
+            // notes were being silently dropped whenever their Y (tied to an actual glucose value for
+            // some TE types, or a 0.0 default for plain notes) fell outside whichever graph the series
+            // is attached to, e.g. graph2's own IOB/percentage-scaled range having nothing to do with
+            // glucose values.
+            val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
+                value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2
+            if (!yIndependentShape) {
+                if (y < 0) { // end bottom
+                    overdraw = true
+                }
+                if (y > graphHeight) { // end top
+                    overdraw = true
+                }
             }
             val duration = value.duration
             val endWithDuration = (x + duration * scaleX + graphLeft + 1).toFloat()

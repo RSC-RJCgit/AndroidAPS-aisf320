@@ -141,6 +141,12 @@ class GraphData @Inject constructor(
         addSeries(overviewData.therapyEventSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    // Plain TE.Type.NOTE events (split out of therapyEventSeries — see OverviewData.kt's noteEventSeries
+    // comment). Pixel-positioned like the SMB labels below, not tied to Y-scale, so never expands maxY.
+    fun addNoteEvents() {
+        addSeries(overviewData.noteEventSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addNoisyBgDeltaAnnotation() {
         addSeries(overviewData.noisyBgDeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }

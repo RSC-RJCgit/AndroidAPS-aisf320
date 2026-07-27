@@ -1632,6 +1632,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobTH = iobThresholdPercent
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val cob = mealData.mealCOB
+            // Safety cap: within the first 30 min post-bolus, don't let bg1/bg2/bg3 fire if delta is
+            // already >=0.6 mmol — an early, already-large delta this soon after a bolus reads as a
+            // stacking risk, not clearer evidence of need. No effect past 30 min (bg1/bg2's own windows
+            // extend well beyond it), and bg3 requires lastBolusMin>=120 so this can never bind there —
+            // included anyway for consistency across all three, even though it's a no-op for bg3.
+            val recentBolusDeltaCapOk = !(lastBolusMin < 30 && d >= 10.8 /* 0.6 mmol */)
             // per-block gate for the manual-bolus branches (was the global guard)
             val postBolusGate = cob >= 9
                 && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
@@ -1652,11 +1658,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
                 && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
                 && (lastBolusMin <= 120 || cob >= 10)
-                && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile
+                && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile && recentBolusDeltaCapOk
             // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state.
             // Same-magnitude raw-Libre confirmation as its AAPS delta (>0.2 mmol).
             val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
-                && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol raw confirmation */
+                && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol raw confirmation */ && recentBolusDeltaCapOk
                 && !checkAutomationState("MJ", "NOMJremains")
             // Block 3 (NEW): delivery-driven rise with NO recent manual bolus/carbs (>=120 min for both).
             // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on the AAPS delta and on
@@ -1709,6 +1715,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
+                && recentBolusDeltaCapOk
                 && profileName != "Current Profile"                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses (BS.Type.NORMAL),
@@ -1781,11 +1788,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
             // (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            // Same safety cap as BolusGiven bg1/2/3 (see recentBolusDeltaCapOk there): don't fire if an
+            // early, already-large delta shows up within 30 min of a bolus. Included for consistency
+            // across all the boost automations even though it's a no-op here too — lastBolusMin>=120 below.
+            val recentBolusDeltaCapOk = !(lastBolusMin < 30 && d >= 10.8 /* 0.6 mmol */)
             val fire = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
                 && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
+                && recentBolusDeltaCapOk
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
@@ -2885,6 +2897,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // with a fixed format — same reliable pattern already used for bg_acce/Delta/SDelta.
                 rt.reason.append("SMB delivery ratio: ${round(autoIsfValues.smbDeliveryRatio, 2)} ;")
                 rt.reason.append("iobThEffectiveU: ${round(autoIsfValues.iobThEffective, 2)} ;")
+                rt.reason.append("FslCalSlope: ${round(preferences.get(DoubleKey.FslCalSlope), 2)} ;")
+                rt.reason.append("AcceIsfWeight: ${round(bgAccel_ISF_weight, 2)} ;")
             }
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()

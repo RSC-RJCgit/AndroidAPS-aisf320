@@ -24,7 +24,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
-import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -123,10 +122,16 @@ class PrepareBgDataWorker(
         // just embedded as text in APSResult.reason rather than a structured field. Same fallback as
         // AutoISFHistoryDialog.kt's stepsValue()/stepsFromReason(), reconstructed per-result here since
         // this needs a max-over-window rather than a single nearest-timestamp lookup.
+        val recentApsResults = persistenceLayer.getApsResults(stepsWindowFrom, toTime)
         val stepsCountList = rawStepsCountList.ifEmpty {
-            stepsFromReason(persistenceLayer.getApsResults(stepsWindowFrom, toTime))
+            stepsFromReason(recentApsResults)
         }
         val latestSteps = stepsCountList.maxByOrNull { it.timestamp }
+        // Same client-sync-fallback pattern as steps above: DR=/acWt=/Lslope= must come from the synced
+        // APSResult.reason text (see the dedicated reason lines in OpenAPSAutoISFPlugin.kt), not from
+        // local preferences — preferences never sync via NS, so reading them directly would show the
+        // client's OWN (irrelevant) local values instead of the master's, on an AAPSClient build.
+        val latestApsReason = recentApsResults.maxByOrNull { it.date }?.reason
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val delta5Txt = " A5=${aapsDelta5?.let { formatMmolDelta(it) } ?: "--"} L5=${libreDelta5?.let { formatMmolDelta(it) } ?: "--"}"
@@ -149,9 +154,12 @@ class PrepareBgDataWorker(
         //  acWt=<acce ISF weight>  Lslope=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                val drLabel = "  DR=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatio))}"
-                val acWtLabel = "  acWt=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight))}"
-                val lSlopeLabel = "  Lslope=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.FslCalSlope))}"
+                val drVal = latestApsReason?.let { doubleFromReason(it, smbRatioRegex) }
+                val acWtVal = latestApsReason?.let { doubleFromReason(it, acceWeightRegex) }
+                val lSlopeVal = latestApsReason?.let { doubleFromReason(it, fslSlopeRegex) }
+                val drLabel = "  DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val acWtLabel = "  acWt=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val lSlopeLabel = "  Lslope=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val label = "St5=${latestSteps.steps5min}  St30=${latestSteps.steps30min}" +
                     "  S15=${latestSteps.steps15min}  St60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
@@ -252,6 +260,16 @@ class PrepareBgDataWorker(
         val m = regex.find(reason) ?: return null
         return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
     }
+
+    // DR=/acWt=/Lslope= client-sync fallback: these match the dedicated, unconditional reason lines
+    // OpenAPSAutoISFPlugin.kt appends every cycle ("SMB delivery ratio: X.XX ;", "AcceIsfWeight: X.XX ;",
+    // "FslCalSlope: X.XX ;") — see its own comment on that block for why those lines exist.
+    private val smbRatioRegex = Regex("""SMB delivery ratio:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
+    private val acceWeightRegex = Regex("""AcceIsfWeight:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
+    private val fslSlopeRegex = Regex("""FslCalSlope:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
+
+    private fun doubleFromReason(reason: String, regex: Regex): Double? =
+        regex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
 
     // Synthetic StepsCount records reconstructed from each APSResult's reason text, one per result,
     // used only when the local StepsCount table is empty (see stepsCountList above).

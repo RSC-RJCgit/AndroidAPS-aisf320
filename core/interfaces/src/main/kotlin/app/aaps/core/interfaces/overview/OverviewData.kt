@@ -85,6 +85,9 @@ interface OverviewData {
     var smbLabelSeries: SeriesData
     var maxTherapyEventValue: Double
     var therapyEventSeries: SeriesData
+    // Plain TE.Type.NOTE events only (split out from therapyEventSeries) — renders on graph2, while
+    // therapyEventSeries (Announcements/MBG/finger-stick/settings-export/exercise) stays on the main graph.
+    var noteEventSeries: SeriesData
 
     var maxIobValueFound: Double
     val iobScale: Scale

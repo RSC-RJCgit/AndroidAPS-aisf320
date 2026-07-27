@@ -5,6 +5,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.CarbsDataPoint
@@ -64,6 +65,11 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.maxEpsValue = 0.0
         val filteredTreatments: MutableList<DataPointWithLabelInterface> = ArrayList()
         val filteredTherapyEvents: MutableList<DataPointWithLabelInterface> = ArrayList()
+        // Plain TE.Type.NOTE events only (our custom automation notes) — kept separate from
+        // filteredTherapyEvents (Announcements/MBG/finger-stick/settings-export/exercise) so the two can
+        // render on different graphs: notes on graph2, everything else stays on the main graph, which is
+        // where it was before notes got their own dedicated home.
+        val filteredNotes: MutableList<DataPointWithLabelInterface> = ArrayList()
         val filteredEps: MutableList<DataPointWithLabelInterface> = ArrayList()
 
         val aivList = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
@@ -148,13 +154,13 @@ class PrepareTreatmentsDataWorker(
                 }
         }
 
-        // Careportal
+        // Careportal — split plain notes (graph2) from everything else (main graph, unchanged).
         persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), endTime).blockingGet()
             .map { TherapyEventDataPoint(it, rh, profileUtil, translator) }
             .filterTimeframe(fromTime, endTime)
             .forEach {
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
-                filteredTherapyEvents.add(it)
+                if (it.data.type == TE.Type.NOTE) filteredNotes.add(it) else filteredTherapyEvents.add(it)
             }
 
         // increase maxY if a treatment forces it's own height that's higher than a BG value
@@ -186,6 +192,7 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
+        data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 
         data.overviewData.heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(

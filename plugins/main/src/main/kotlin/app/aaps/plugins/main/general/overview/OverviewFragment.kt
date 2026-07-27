@@ -900,6 +900,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         task?.let { handler.postDelayed(it, 500) }
     }
 
+    // Throttle for the green-line/steps-row position auto-refresh below — independent of the IOB
+    // long-press, which still refreshes it immediately/unthrottled on demand.
+    private var lastAnnotationPositionAutoRefresh = 0L
+
     @SuppressLint("SetTextI18n")
     fun updateBg() {
         val lastBg = lastBgData.lastBg()
@@ -910,19 +914,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val lastBgDescription = lastBgData.lastBgDescription()
         // Feed the graph's live-position green-line annotation (see PointsWithLabelGraphSeries):
-        // current AAPS BGL and raw Libre BGL (both raw mg/dL — only ever compared against mg/dL literal
-        // thresholds there) and the active profile's target (low==high target, per user's own profile
-        // setup). The target MUST be converted to the user's display units here, via the same
-        // profileUtil.fromMgdlToUnits() the graph's own data points use for their Y value — the target
-        // is compared against the graph's Y-axis/viewport, which is scaled in display units, not mg/dL.
-        // (A prior version stored raw mg/dL there and the label rendered off-canvas as a result — this
-        // fixes that.)
+        // current BGL (raw mg/dL — only ever compared against mg/dL literal thresholds there) and the
+        // active profile's target (low==high target, per user's own profile setup). The target MUST be
+        // converted to the user's display units here, via the same profileUtil.fromMgdlToUnits() the
+        // graph's own data points use for their Y value — the target is compared against the graph's
+        // Y-axis/viewport, which is scaled in display units, not mg/dL. (A prior version stored raw
+        // mg/dL there and the label rendered off-canvas as a result — this fixes that.)
         lastBg?.recalculated?.let { PointsWithLabelGraphSeries.currentBgMgdl = it }
-        // lastBg (InMemoryGlucoseValue) doesn't carry the raw Libre/noise signal — that's only on the
-        // stored GV records, so read it from overviewData.bgReadingsArray (newest-first) instead.
-        overviewData.bgReadingsArray.firstOrNull()?.noise?.let { PointsWithLabelGraphSeries.currentRawBgMgdl = it }
         profileFunction.getProfile()?.getTargetLowMgdl()?.let {
             PointsWithLabelGraphSeries.currentTargetInDisplayUnits = profileUtil.fromMgdlToUnits(it)
+        }
+        // Also re-check the green-line/steps-row HIGH/LOW position every 15 min on its own, not just on
+        // the IOB long-press — same refreshAnnotationPosition() the long-press calls.
+        if (dateUtil.now() - lastAnnotationPositionAutoRefresh >= 15 * 60_000L) {
+            PointsWithLabelGraphSeries.refreshAnnotationPosition()
+            lastAnnotationPositionAutoRefresh = dateUtil.now()
         }
         runOnUiThread {
             _binding ?: return@runOnUiThread
@@ -1180,6 +1186,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addBucketedData()
         graphData.addTreatments(context)
         graphData.addEps(context, 0.95)
+        if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
+            graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
@@ -1302,7 +1310,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
-            if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addTherapyEvents(expandYRange = false)
+            if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
             // SMB stacked labels: back on graph1 (g==0), their original placement.
             if (g == 0) secondGraphData.addSmbLabels()
 
