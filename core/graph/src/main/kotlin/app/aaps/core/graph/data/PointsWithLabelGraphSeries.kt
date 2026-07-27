@@ -164,16 +164,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
         // Shared position for the green line (GENERAL_WITH_DURATION_OFFSET) and the steps row right
-        // below it (green line always one line-height above), so both move together. Both now render
-        // on graph1 (moved off the main glucose graph), which may not be glucose-scaled at all, so
-        // HIGH/LOW are plain top-area/bottom-area positions on THIS graph's own viewport rather than
-        // pinned to a glucose value (the old BGL=10.0mmol marker made no sense once off the glucose
-        // graph, so it's gone — this graph's Y-axis has no fixed relationship to glucose any more).
+        // below it (green line always one line-height above), so both move together.
         // annotationUnderTarget is refreshed on the IOB long-press and the 15-min auto-refresh (see
         // refreshAnnotationPosition() for the exact BGL/labels hysteresis).
-        // HIGH: just above the graph area itself (not inside it), so it doesn't sit over the plotted
-        // data at all.
-        val highStepsPy = graphTop - 10f
+        // HIGH now only ever renders on the main (glucose) graph (see OverviewFragment.updateGraph()),
+        // so it's meaningful again to pin it to just above the pixel height of BGL 10.0 on THIS graph's
+        // own Y-axis/viewport — falls back to a fixed near-top position if that would land off-screen
+        // (e.g. the displayed range doesn't extend to 10.0).
+        val bgl10RatY = (10.0 - minY) / diffY
+        val bgl10Y = (graphTop - graphHeight * bgl10RatY).toFloat() + graphHeight
+        val highFallbackPy = graphTop + 80 + scaledTextSize * 1.4f
+        val highStepsPy = if (bgl10Y in graphTop..(graphTop + graphHeight)) bgl10Y - scaledTextSize * 0.3f else highFallbackPy
         // LOW: steps at its original near-bottom position, in the Basal-trace column area of the graph —
         // a fixed fraction of graphHeight, so (unlike HIGH) it's always on-screen by construction.
         val lowStepsPy = graphTop + graphHeight * 0.94f

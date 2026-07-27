@@ -1529,8 +1529,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- HighNight00AM: overnight high BGL (>=9.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
         // Fires 01:00–05:45 when glucose elevated and gently rising/flat, iobTH<=50 OR old cannula + MJ state.
-        // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
-        if (readyToRun("HighNight00AM", 5) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
+        // 60-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        if (readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
             val g       = glucoseStatus.glucose
             val d       = glucoseStatus.delta
             val sd      = glucoseStatus.shortAvgDelta
@@ -1548,7 +1548,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setAutomationState("Profile", "C100")
                 sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
-                addCarePortalNote("HOff")
+                addCarePortalNote("HnAM")
                 markRun("HighNight00AM")
             }
         }
@@ -2369,8 +2369,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "High6PP": brief 120% profile boost across 3 condition blocks when BGL is high
         // with controlled delta and a low/no temp target tolerance. Note: "TT now <=4.2 tolerant".
-        // Precondition: profile=100%.
-        if (readyToRun("High6PP", 5) && profile_percentage == 100) {
+        // Precondition: profile=100%. Daytime-only outer gate (09:00-21:00) — each branch below still
+        // has its own (narrower or equal) window, so this just bounds all three to the same daytime
+        // range without changing their individual per-branch windows. 30-min floor throttle.
+        if (readyToRun("High6PP", 30) && profile_percentage == 100 && isTimeBetween(9, 0, 21, 0)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
