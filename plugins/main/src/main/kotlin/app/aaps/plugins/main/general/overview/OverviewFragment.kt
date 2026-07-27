@@ -1196,12 +1196,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
-        // Green line HIGH state: back on the main graph, its original home (old fixed top position,
-        // pinned to just above BGL 10.0) — steps row stays on graph1 always (see g==0 below), it never
-        // follows the green line here.
-        if (!PointsWithLabelGraphSeries.annotationUnderTarget) {
-            graphData.addNoisyBgDeltaAnnotation()
-        }
+        // Yellow line: always the main graph, never graph1 — toggles internally between just-above-
+        // BGL-10.0 (HIGH) and just-above-BGL-2.0 (LOW). Steps row stays on graph1 always (see g==0
+        // below), it never follows the yellow line here.
+        graphData.addNoisyBgDeltaAnnotation()
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
@@ -1315,17 +1313,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            // SMB stacked labels: graph1 -> graph3 (g==2), to make room for the green line/steps row below.
+            // SMB stacked labels: graph1 -> graph3 (g==2), to make room for the steps row below.
             if (g == 2) secondGraphData.addSmbLabels()
-            // Steps row: always on graph1 (g==0), fixed at the bottom — unlike the green line, it never
-            // moves to the main graph in the HIGH state.
+            // Steps row: always on graph1 (g==0), fixed at the bottom. The yellow line no longer moves
+            // here at all — it now lives permanently on the main graph (see updateGraph() above).
             if (g == 0) secondGraphData.addStepsStackedAnnotation()
-            // Green line (raw BG/delta annotation) LOW state only: takes over SMB's old bottom-area spot
-            // on graph1 (g==0) while LOW; the HIGH state stays on the main graph above (its original
-            // home) rather than moving here too.
-            if (g == 0 && PointsWithLabelGraphSeries.annotationUnderTarget) {
-                secondGraphData.addNoisyBgDeltaAnnotation()
-            }
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

@@ -163,25 +163,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
-        // Shared position for the green line (GENERAL_WITH_DURATION_OFFSET) and the steps row right
-        // below it (green line always one line-height above), so both move together.
+        // Yellow line (GENERAL_WITH_DURATION_OFFSET) — main graph only, never graph1. Toggles between
+        // two glucose-pinned positions on THIS graph's own Y-axis/viewport: just above BGL 10.0 (HIGH)
+        // or just above BGL 2.0 (LOW, the old "basal column" zone where the original 2-row steps line
+        // used to sit) — each falls back to a fixed offset if that value isn't in the displayed range.
         // annotationUnderTarget is refreshed on the IOB long-press and the 15-min auto-refresh (see
         // refreshAnnotationPosition() for the exact BGL/labels hysteresis).
-        // HIGH now only ever renders on the main (glucose) graph (see OverviewFragment.updateGraph()),
-        // so it's meaningful again to pin it to just above the pixel height of BGL 10.0 on THIS graph's
-        // own Y-axis/viewport — falls back to a fixed near-top position if that would land off-screen
-        // (e.g. the displayed range doesn't extend to 10.0).
         val bgl10RatY = (10.0 - minY) / diffY
         val bgl10Y = (graphTop - graphHeight * bgl10RatY).toFloat() + graphHeight
-        val highFallbackPy = graphTop + 80 + scaledTextSize * 1.4f
-        val highStepsPy = if (bgl10Y in graphTop..(graphTop + graphHeight)) bgl10Y - scaledTextSize * 0.3f else highFallbackPy
-        // LOW: steps at its original near-bottom position, in the Basal-trace column area of the graph —
-        // a fixed fraction of graphHeight, so (unlike HIGH) it's always on-screen by construction.
-        val lowStepsPy = graphTop + graphHeight * 0.94f
-        val stepsLinePy = if (annotationUnderTarget) lowStepsPy else highStepsPy
-        // Gap tightened along with matching the green line's font size down to the steps line's (both
-        // now 0.5f) — 0.8f left a visibly wider gap than the two same-sized lines needed.
-        val greenLinePy = stepsLinePy - scaledTextSize * 0.5f
+        val greenHighFallbackPy = graphTop + 80 + scaledTextSize * 1.4f
+        val greenHighPy = if (bgl10Y in graphTop..(graphTop + graphHeight)) bgl10Y - scaledTextSize * 0.3f else greenHighFallbackPy
+        val bgl2RatY = (2.0 - minY) / diffY
+        val bgl2Y = (graphTop - graphHeight * bgl2RatY).toFloat() + graphHeight
+        val nearBottomPy = graphTop + graphHeight * 0.94f
+        val greenLowPy = if (bgl2Y in graphTop..(graphTop + graphHeight)) bgl2Y - scaledTextSize * 0.3f else nearBottomPy
+        val greenLinePy = if (annotationUnderTarget) greenLowPy else greenHighPy
+        // Steps row — graph1 only, never the main graph. Fixed near the bottom always, independent of
+        // the yellow line's own HIGH/LOW toggle (they no longer move together).
+        val stepsRowPy = nearBottomPy
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -473,10 +472,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
-                    // Single row ("S5=... S30=..."), always drawn at lowStepsPy — this series now only
-                    // ever renders on graph1 (never the main graph), fixed at the bottom regardless of
-                    // the yellow line's own HIGH/LOW toggle, so it doesn't inherit highStepsPy's
-                    // glucose-graph-specific BGL=10.0 pin when it's actually sitting on graph1.
+                    // Single row ("S5=... S30=..."), always drawn at stepsRowPy — this series only ever
+                    // renders on graph1 (never the main graph), fixed at the bottom regardless of the
+                    // yellow line's own HIGH/LOW toggle (they've moved independently since the yellow
+                    // line went main-graph-only).
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
@@ -485,7 +484,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // Same left-justification as the green line above — anchored to the graph's own
                         // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(value.label, graphLeft + 10f, lowStepsPy, mPaint)
+                        canvas.drawText(value.label, graphLeft + 10f, stepsRowPy, mPaint)
                     }
                 }
                 // set values above point
