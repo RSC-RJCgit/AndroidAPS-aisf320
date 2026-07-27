@@ -1095,20 +1095,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // artifact inaccuracy, easing back toward normal as it moves away from insertion, same as it
         // eases away from the 12-15 day window as it ages — day 0 (<1 day, the WHOLE first day, no
         // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.65/1.8), day 1 mirrors 13-14
-        // (0.69/1.65), day 2 mirrors 12-13 (0.72/1.5). Tiered FslCalSlope/FslCalOffset override while MJ
-        // state remains active — MJ only sets a non-"NOMJremains" state during hypo warnings, so no hypo
-        // warning means no sensor adjustment (per user confirmation).
+        // (0.69/1.65), day 2 mirrors 12-13 (0.72/1.5). Tiered FslCalSlope/FslCalOffset override applies
+        // purely by sensor age, unconditionally (no MJ/hypo-state gating).
         // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
         // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
-        // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 12-15 day
-        // window or MJ drops to NOMJremains — there's no fixed fallback value, since the user's actual
-        // normal calibration isn't known to this code otherwise (same reasoning as
-        // ApsAutoIsfSmbDeliveryBaseline for SMB delivery ratio). No readyToRun throttle — deliberately
-        // checked every cycle like DelOff, so day/MJ transitions revert promptly; both branches are
-        // idempotent so re-checking is harmless.
+        // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 0-3/12-15
+        // day windows — there's no fixed fallback value, since the user's actual normal calibration
+        // isn't known to this code otherwise (same reasoning as ApsAutoIsfSmbDeliveryBaseline for SMB
+        // delivery ratio). No readyToRun throttle — deliberately checked every cycle like DelOff, so day
+        // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
-            val mjRemains = !checkAutomationState("MJ", "NOMJremains")
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
                 sensorAgeDays < 1.0                            -> Triple("D0", 0.65, 1.8)
@@ -1120,7 +1117,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
-            if (oldSensorEnabled && mjRemains && oldSensorTier != null) {
+            if (oldSensorEnabled && oldSensorTier != null) {
                 if (!oldSensorActive) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
