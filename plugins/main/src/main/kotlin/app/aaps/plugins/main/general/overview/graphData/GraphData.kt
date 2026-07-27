@@ -130,8 +130,14 @@ class GraphData @Inject constructor(
         overviewData.epsScale.multiplier = maxY * scale / overviewData.maxEpsValue
     }
 
-    fun addTherapyEvents() {
-        maxY = maxOf(maxY, overviewData.maxTherapyEventValue)
+    // expandYRange: pulls maxY up to the highest glucose value among therapy events (e.g. a finger-stick
+    // or MBG check) — correct on the main (glucose-scaled) graph so those points never get clipped, but
+    // wrong on a secondary graph (e.g. an IOB/percentage-scaled one), where a glucose-scale value would
+    // badly distort that graph's own intended Y range. Notes' own on-screen position is pixel-based
+    // (see PointsWithLabelGraphSeries.GENERAL_WITH_DURATION), not tied to this Y-scale at all, so
+    // secondary-graph callers can safely skip the expansion entirely.
+    fun addTherapyEvents(expandYRange: Boolean = true) {
+        if (expandYRange) maxY = maxOf(maxY, overviewData.maxTherapyEventValue)
         addSeries(overviewData.therapyEventSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 

@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -152,7 +153,8 @@ class PrepareBgDataWorker(
                 )
                 val step30max = maxOf(stepsCountList.maxOfOrNull { it.steps30min } ?: 0, latestSteps.steps30min)
                 val steps60Label = if (automationStateService.inState("stepsHigh", "StepsLow")) "  ${latestSteps.steps60min}" else ""
-                val label = "Steps5=${latestSteps.steps5min}/$step5max  Steps30=${latestSteps.steps30min}/$step30max$steps60Label"
+                val lSlopeLabel = "  Lslope=${String.format(Locale.getDefault(), "%.2f", preferences.get(DoubleKey.FslCalSlope))}"
+                val label = "Steps5=${latestSteps.steps5min}/$step5max  Steps30=${latestSteps.steps30min}/$step30max$steps60Label$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
