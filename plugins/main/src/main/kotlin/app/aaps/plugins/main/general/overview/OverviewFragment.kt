@@ -1196,6 +1196,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
+        // Green line/steps row HIGH state: back on the main graph, its original home (old fixed top
+        // position) — only graph1's LOW state (see g==0 below) moved to make room for SMB labels there.
+        if (!PointsWithLabelGraphSeries.annotationUnderTarget) {
+            graphData.addNoisyBgDeltaAnnotation()
+            graphData.addStepsStackedAnnotation()
+        }
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
@@ -1311,9 +1317,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
             // SMB stacked labels: graph1 -> graph3 (g==2), to make room for the green line/steps row below.
             if (g == 2) secondGraphData.addSmbLabels()
-            // Green line (raw BG/delta annotation) and steps row: main graph -> graph1 (g==0), taking
-            // over the slot SMB labels used to occupy there.
-            if (g == 0) {
+            // Green line (raw BG/delta annotation) and steps row LOW state only: takes over SMB's old
+            // bottom-area spot on graph1 (g==0) while LOW; the HIGH state stays on the main graph above
+            // (its original home) rather than moving here too.
+            if (g == 0 && PointsWithLabelGraphSeries.annotationUnderTarget) {
                 secondGraphData.addNoisyBgDeltaAnnotation()
                 secondGraphData.addStepsStackedAnnotation()
             }
