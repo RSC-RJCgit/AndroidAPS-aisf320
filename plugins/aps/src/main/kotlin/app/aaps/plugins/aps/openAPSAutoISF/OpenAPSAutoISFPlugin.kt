@@ -1108,12 +1108,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("D0", 0.55, 1.8)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.60, 1.65)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.65, 1.5)
-                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.65, 1.5)
-                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.60, 1.65)
-                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.55, 1.8)
+                sensorAgeDays < 1.0                            -> Triple("D0", 0.55, 2.0)
+                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.60, 1.8)
+                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.65, 1.6)
+                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.65, 1.6)
+                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.60, 1.8)
+                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.55, 2.0)
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
