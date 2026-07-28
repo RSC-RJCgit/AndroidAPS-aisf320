@@ -177,8 +177,8 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "f=<final> ac=<acce> bg=<bg> pp=<pp> du=<dura> g=<glucose> smb=<delivered>" row for graph3,
-        // one color per field — matching AutoISFHistoryDialog's own column colors exactly, INCLUDING
+        // "f=<final> ac=<acce> bg=<bg> pp=<pp> du=<dura> smb=<delivered>" row for graph3, one color
+        // per field — matching AutoISFHistoryDialog's own column colors exactly, INCLUDING
         // its dynamic ones: f= and smb= are colored by whichever of acce/bg/pp/dura deviates most from
         // 1.0 (dominantIsfColor()/smbIsfColor() there), falling back to red/blue respectively only when
         // nothing dominates (or, for smb=, when nothing was delivered) — not flat colors. Same
@@ -195,7 +195,6 @@ class PrepareBgDataWorker(
                 fun adjStr(v: Double) = if (v == 1.0) "--" else String.format(Locale.getDefault(), "%.2f", v)
                 fun insulinStr(v: Double) = if (v == 0.0) "--" else String.format(Locale.getDefault(), "%.2f", v)
                 val colorFinal = android.graphics.Color.parseColor("#FF6060")
-                val colorGlucose = android.graphics.Color.parseColor("#60C060")
                 val colorInsulin = android.graphics.Color.parseColor("#4A9EFF")
                 val colorAcce = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
                 val colorBg = rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
@@ -225,7 +224,6 @@ class PrepareBgDataWorker(
                     "bg=${adjStr(latestAiv.bgIsf)}" to colorBg,
                     "pp=${adjStr(latestAiv.ppIsf)}" to colorPp,
                     "du=${adjStr(latestAiv.duraIsf)}" to colorDura,
-                    "g=${profileUtil.fromMgdlToStringInUnits(latestAiv.glucose)}" to colorGlucose,
                     "smb=${insulinStr(latestAiv.smbDelivered)}" to colorSmbDominant
                 )
                 PointsWithLabelGraphSeries(

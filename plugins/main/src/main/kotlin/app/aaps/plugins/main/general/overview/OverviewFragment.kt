@@ -1309,15 +1309,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            // Steps row + yellow/white line: main graph -> graph2 (g==1) too, fixed near the bottom,
-            // alongside the notes above.
-            if (g == 1) {
+            // Steps row + yellow/white line: main graph -> graph1 (g==0), fixed near the bottom.
+            if (g == 0) {
                 secondGraphData.addStepsStackedAnnotation()
                 secondGraphData.addNoisyBgDeltaAnnotation()
             }
-            // ISF adaptation indices + SMB row ("f= ac= bg= pp= du= g= smb="): graph3 (g==2).
+            // ISF adaptation indices + SMB row ("f= ac= bg= pp= du= smb="): graph3 (g==2).
             if (g == 2) secondGraphData.addIsfIndices()
-            // SMB stacked labels: graph1 -> graph4 (g==3).
+            // SMB stacked labels: graph4 (g==3).
             if (g == 3) secondGraphData.addSmbLabels()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)

@@ -26,5 +26,5 @@ class StepsStackedDataPoint(
     override val shape = Shape.STEPS_STACKED_BOTTOM
     override val size get() = if (rh.gb(app.aaps.core.ui.R.bool.isTablet)) 12.0f else 10.0f
     override val paintStyle: Paint.Style = Paint.Style.FILL
-    override fun color(context: Context?): Int = Color.WHITE
+    override fun color(context: Context?): Int = Color.GREEN
 }
