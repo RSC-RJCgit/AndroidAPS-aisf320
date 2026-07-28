@@ -1196,12 +1196,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
-        // Yellow line: always the main graph, never graph1 — toggles internally between just-above-
-        // BGL-10.0 (HIGH) and just-above-BGL-2.0 (LOW).
-        graphData.addNoisyBgDeltaAnnotation()
-        // Steps row: always the main graph too now (moved off graph1), pinned just above BGL 4.0,
-        // completely static — no HIGH/LOW toggle at all, unlike the yellow line above.
-        graphData.addStepsStackedAnnotation()
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
@@ -1315,11 +1309,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            // SMB stacked labels: back on graph1 (g==0) — the steps row moved off to the main graph,
-            // freeing this spot again.
-            if (g == 0) secondGraphData.addSmbLabels()
-            // ISF adaptation indices + SMB row ("f= a= b= d= g= smb="): graph3 (g==2).
+            // Steps row + yellow/white line: main graph -> graph2 (g==1) too, fixed near the bottom,
+            // alongside the notes above.
+            if (g == 1) {
+                secondGraphData.addStepsStackedAnnotation()
+                secondGraphData.addNoisyBgDeltaAnnotation()
+            }
+            // ISF adaptation indices + SMB row ("f= ac= bg= pp= du= g= smb="): graph3 (g==2).
             if (g == 2) secondGraphData.addIsfIndices()
+            // SMB stacked labels: graph1 -> graph4 (g==3).
+            if (g == 3) secondGraphData.addSmbLabels()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

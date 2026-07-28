@@ -157,19 +157,19 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // Single row, near the top (just under the green raw-BG/delta line):
-        // "S5=<5min>  S15=<15min>  S30=<30min>  S60=<60min>  DR=<SMB delivery ratio>
-        //  AW=<acce ISF weight>  LS=<Libre cal slope>".
+        // Single row, near the top (just under the green raw-BG/delta line), no spaces between fields
+        // (else it doesn't fit): "S5=<5min>S15=<15min>S30=<30min>S60=<60min>DR=<SMB delivery ratio>
+        // AW=<acce ISF weight>LS=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 val drVal = latestApsReason?.let { doubleFromReason(it, smbRatioRegex) }
                 val acWtVal = latestApsReason?.let { doubleFromReason(it, acceWeightRegex) }
                 val lSlopeVal = latestApsReason?.let { doubleFromReason(it, fslSlopeRegex) }
-                val drLabel = "  DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val acWtLabel = "  AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val lSlopeLabel = "  LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val label = "S5=${latestSteps.steps5min}  S15=${latestSteps.steps15min}" +
-                    "  S30=${latestSteps.steps30min}  S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
+                val drLabel = "DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val acWtLabel = "AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val lSlopeLabel = "LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
+                val label = "S5=${latestSteps.steps5min}S15=${latestSteps.steps15min}" +
+                    "S30=${latestSteps.steps30min}S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -177,11 +177,14 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "f=<final> a=<acce> b=<bg> d=<dura> g=<glucose> smb=<delivered>" row for graph3, one color
-        // per field — matching AutoISFHistoryDialog's own column colors exactly (same underlying AIV
-        // table it reads from, so this is correct on both master and client: NSDeviceStatusHandler
-        // reconstructs a client's local AIV row from synced RT fields every cycle, same as the master
-        // writes it directly).
+        // "f=<final> ac=<acce> bg=<bg> pp=<pp> du=<dura> g=<glucose> smb=<delivered>" row for graph3,
+        // one color per field — matching AutoISFHistoryDialog's own column colors exactly, INCLUDING
+        // its dynamic ones: f= and smb= are colored by whichever of acce/bg/pp/dura deviates most from
+        // 1.0 (dominantIsfColor()/smbIsfColor() there), falling back to red/blue respectively only when
+        // nothing dominates (or, for smb=, when nothing was delivered) — not flat colors. Same
+        // underlying AIV table the dialog reads from, so this is correct on both master and client:
+        // NSDeviceStatusHandler reconstructs a client's local AIV row from synced RT fields every
+        // cycle, same as the master writes it directly.
         // toTime is "now rounded UP to the next hour" (see OverviewData.toTime), so it can sit up to
         // ~59 min ahead of the actual current time — a narrow lookback from it can miss all real data
         // entirely. 2h mirrors stepsWindowFrom above, comfortably absorbing that rounding margin.
@@ -196,14 +199,34 @@ class PrepareBgDataWorker(
                 val colorInsulin = android.graphics.Color.parseColor("#4A9EFF")
                 val colorAcce = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
                 val colorBg = rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
+                val colorPp = rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
                 val colorDura = rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
+                // Mirrors AutoISFHistoryDialog's dominantIsfColor(): whichever of acce/bg/pp/dura is
+                // furthest from 1.0 wins; ties (all within 0.01 of neutral) fall back to [fallback].
+                fun dominantIsfColor(fallback: Int): Int {
+                    val acceDev = kotlin.math.abs(latestAiv.acceIsf - 1.0)
+                    val bgDev = kotlin.math.abs(latestAiv.bgIsf - 1.0)
+                    val ppDev = kotlin.math.abs(latestAiv.ppIsf - 1.0)
+                    val duraDev = kotlin.math.abs(latestAiv.duraIsf - 1.0)
+                    val maxDev = maxOf(acceDev, bgDev, ppDev, duraDev)
+                    return when {
+                        maxDev <= 0.01 -> fallback
+                        acceDev >= maxDev -> colorAcce
+                        bgDev >= maxDev -> colorBg
+                        ppDev >= maxDev -> colorPp
+                        else -> colorDura
+                    }
+                }
+                val colorFinalDominant = dominantIsfColor(colorFinal)
+                val colorSmbDominant = if (latestAiv.smbDelivered == 0.0) colorInsulin else dominantIsfColor(colorInsulin)
                 val segments = listOf(
-                    "f=${String.format(Locale.getDefault(), "%.2f", latestAiv.finalIsf)}" to colorFinal,
-                    "a=${adjStr(latestAiv.acceIsf)}" to colorAcce,
-                    "b=${adjStr(latestAiv.bgIsf)}" to colorBg,
-                    "d=${adjStr(latestAiv.duraIsf)}" to colorDura,
+                    "f=${String.format(Locale.getDefault(), "%.2f", latestAiv.finalIsf)}" to colorFinalDominant,
+                    "ac=${adjStr(latestAiv.acceIsf)}" to colorAcce,
+                    "bg=${adjStr(latestAiv.bgIsf)}" to colorBg,
+                    "pp=${adjStr(latestAiv.ppIsf)}" to colorPp,
+                    "du=${adjStr(latestAiv.duraIsf)}" to colorDura,
                     "g=${profileUtil.fromMgdlToStringInUnits(latestAiv.glucose)}" to colorGlucose,
-                    "smb=${insulinStr(latestAiv.smbDelivered)}" to colorInsulin
+                    "smb=${insulinStr(latestAiv.smbDelivered)}" to colorSmbDominant
                 )
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(

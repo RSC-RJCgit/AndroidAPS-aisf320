@@ -163,17 +163,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
-        // Steps row — main graph only, pinned just above BGL 2.0 (the basal-trace column area/"basal
-        // area" — the original 2-row steps line's own old spot). Completely static: no toggle, no
-        // dependency on BGL state/long-press at all — always this one fixed glucose-pinned spot,
-        // falling back to a fixed near-bottom offset only if 2.0 isn't in the currently displayed range.
-        val bgl2RatY = (2.0 - minY) / diffY
-        val bgl2Y = (graphTop - graphHeight * bgl2RatY).toFloat() + graphHeight
-        val nearBottomPy = graphTop + graphHeight * 0.94f
-        val stepsRowPy = if (bgl2Y in graphTop..(graphTop + graphHeight)) bgl2Y - scaledTextSize * 0.3f else nearBottomPy
-        // Yellow/white line (GENERAL_WITH_DURATION_OFFSET) — main graph only, also static: just below
-        // the steps row (stepsRowPy + a small gap), same basal-area zone. No more HIGH/LOW toggle
-        // (annotationUnderTarget is no longer read here — see its own declaration if reviving later).
+        // Steps row — graph2 now (moved off the main graph, alongside CarePortal notes there), fixed
+        // near the bottom of THIS graph's own viewport. No longer glucose-pinned — graph2 isn't
+        // necessarily glucose-scaled, same reasoning as when these lines briefly lived on graph1
+        // earlier. Completely static: no toggle, no dependency on BGL state/long-press at all.
+        // Anchored at 0.88 (not right at the very bottom) so the yellow line below it (stepsRowPy +
+        // gap) still has room and doesn't clip past graphHeight.
+        val nearBottomPy = graphTop + graphHeight * 0.88f
+        val stepsRowPy = nearBottomPy
+        // Yellow/white line (GENERAL_WITH_DURATION_OFFSET) — graph2 too, just below the steps row
+        // (stepsRowPy + a small gap). No more HIGH/LOW toggle (annotationUnderTarget is no longer read
+        // here — see its own declaration if reviving later).
         val greenLinePy = stepsRowPy + scaledTextSize * 0.5f
         while (values.hasNext()) {
             val value = values.next() ?: break
@@ -432,11 +432,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // at the current-time/"now" position — anchoring there instead of the graph's left
                     // edge was pushing the text off toward/past the right side of the visible graph).
                     // Position (greenLinePy, computed once above the loop) is fixed, just below the
-                    // steps row (stepsRowPy, pinned near BGL 2.0) — see that computation's own comment.
+                    // steps row (stepsRowPy) on graph2 — see that computation's own comment.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
@@ -460,12 +460,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
-                    // Single row ("S5=... S30=..."), always drawn at stepsRowPy — this series only ever
-                    // renders on the main graph (never graph1), pinned just above BGL 2.0. The yellow
-                    // line sits just below this, at greenLinePy.
+                    // Single row ("S5=... S15=..."), always drawn at stepsRowPy — this series now
+                    // renders on graph2, fixed near its bottom. The yellow line sits just below this,
+                    // at greenLinePy.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         // Same left-justification as the green line above — anchored to the graph's own
@@ -474,12 +474,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(value.label, graphLeft + 10f, stepsRowPy, mPaint)
                     }
                 } else if (value.shape == Shape.ISF_INDICES) {
-                    // "f= a= b= d= g= smb=" row, one color per field (matching AutoISFHistoryDialog's
-                    // own column colors), fixed in the bottom area of graph3 — SMB labels are back on
-                    // graph1 now, so nothing else shares this graph's bottom to avoid colliding with.
+                    // "f= ac= bg= pp= du= g= smb=" row, one color per field (matching
+                    // AutoISFHistoryDialog's own column colors), fixed in the bottom area of graph3.
                     if (value is IsfIndicesDataPoint && value.segments.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
