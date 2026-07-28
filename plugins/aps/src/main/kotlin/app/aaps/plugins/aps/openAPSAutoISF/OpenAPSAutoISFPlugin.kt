@@ -1224,7 +1224,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("SDdn")
+            addCarePortalNote("SDd${round(newBaseline, 2).toString().takeLast(2)}")
+            addCarePortalNote("SDd${round(newMildBoost, 2).toString().takeLast(2)}")
             markRun("SmbDeliveryDownTT")
         }
 
@@ -1238,7 +1239,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("SDup")
+            addCarePortalNote("SDu${round(newBaseline, 2).toString().takeLast(2)}")
+            addCarePortalNote("SDu${round(newMildBoost, 2).toString().takeLast(2)}")
             markRun("SmbDeliveryUpTT")
         }
 
