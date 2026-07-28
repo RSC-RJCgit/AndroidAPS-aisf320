@@ -33,5 +33,6 @@ enum class Shape {
     STEPS,
     STEPS_STACKED_BOTTOM, // two stacked lines fixed near the bottom of the graph, above the SMB baseline triangles
     SMB_GRAPH2, // SMB dose label fixed near top of graph 2 (IOB graph), always visible
-    ISF_INDICES // multi-color "f= a= b= d= g= smb=" row fixed near the bottom of graph3, one color per field
+    ISF_INDICES, // multi-color "f= a= b= d= g= smb=" row fixed near the bottom of graph3, one color per field
+    STEPS_EXTRA_ROW // "DR=/AW=/LS=" row, fixed one line-height above the steps row (Shape.STEPS_STACKED_BOTTOM)
 }

@@ -14,6 +14,7 @@ import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
@@ -157,22 +158,32 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // Single row, near the top (just under the green raw-BG/delta line), no spaces between fields
-        // (else it doesn't fit): "S5=<5min>S15=<15min>S30=<30min>S60=<60min>DR=<SMB delivery ratio>
-        // AW=<acce ISF weight>LS=<Libre cal slope>".
+        // Two rows near the top (just under the green raw-BG/delta line), no spaces between fields
+        // (else it doesn't fit) — split so the steps row is just steps:
+        // "S5=<5min>S15=<15min>S30=<30min>S60=<60min>" (steps row)
+        // "DR=<SMB delivery ratio>AW=<acce ISF weight>LS=<Libre cal slope>" (extra row, just above it)
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
+                val label = "S5=${latestSteps.steps5min}S15=${latestSteps.steps15min}" +
+                    "S30=${latestSteps.steps30min}S60=${latestSteps.steps60min}"
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+        data.overviewData.stepsExtraSeries =
+            if (latest != null) {
                 val drVal = latestApsReason?.let { doubleFromReason(it, smbRatioRegex) }
                 val acWtVal = latestApsReason?.let { doubleFromReason(it, acceWeightRegex) }
                 val lSlopeVal = latestApsReason?.let { doubleFromReason(it, fslSlopeRegex) }
                 val drLabel = "DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val acWtLabel = "AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val lSlopeLabel = "LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val label = "S5=${latestSteps.steps5min}S15=${latestSteps.steps15min}" +
-                    "S30=${latestSteps.steps30min}S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                        StepsExtraDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), "$drLabel$acWtLabel$lSlopeLabel", rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

@@ -128,7 +128,9 @@ interface OverviewData {
     var rawBgSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
     var stepsStackedSeries: SeriesData
-    // "f= a= b= d= g= smb=" multi-color row on graph3 — see IsfIndicesDataPoint/Shape.ISF_INDICES.
+    // "DR=/AW=/LS=" row, split out of stepsStackedSeries — see StepsExtraDataPoint/Shape.STEPS_EXTRA_ROW.
+    var stepsExtraSeries: SeriesData
+    // "f= ac= bg= pp= du= smb=" multi-color row on graph3 — see IsfIndicesDataPoint/Shape.ISF_INDICES.
     var isfIndicesSeries: SeriesData
     var heartRateScale: Scale
     var heartRateGraphSeries: SeriesData

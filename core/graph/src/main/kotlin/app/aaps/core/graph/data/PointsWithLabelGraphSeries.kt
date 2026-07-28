@@ -170,6 +170,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // gap) still has room and doesn't clip past graphHeight.
         val nearBottomPy = graphTop + graphHeight * 0.88f
         val stepsRowPy = nearBottomPy
+        // DR=/AW=/LS= row (Shape.STEPS_EXTRA_ROW) — split out of the steps row, fixed one line-height
+        // above it (graph1, same static positioning as the steps row itself).
+        val stepsExtraRowPy = stepsRowPy - scaledTextSize * 0.6f
         // Yellow/white line (GENERAL_WITH_DURATION_OFFSET) — graph1 too, just below the steps row
         // (stepsRowPy + a small gap). No more HIGH/LOW toggle (annotationUnderTarget is no longer read
         // here — see its own declaration if reviving later).
@@ -194,7 +197,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // is attached to, e.g. graph2's own IOB/percentage-scaled range having nothing to do with
             // glucose values.
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
-                value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES
+                value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
+                value.shape == Shape.STEPS_EXTRA_ROW
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -395,21 +399,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawRect(endX, graphTop, xPlusLength, graphTop + 4, mPaint)
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
-                    val bucketMs = 20 * 60_000L
+                    val bucketMs = 25 * 60_000L
                     val rawBucket = value.getX().toLong() / bucketMs
                     // No note ever repeats within a bucket, regardless of type — throttle-less repeats
                     // (e.g. HardStackDelOff/DelOff, which re-check every loop cycle with no readyToRun)
                     // would otherwise flood a bucket with duplicates of themselves, but any exact label
-                    // showing up twice in the same 20-min bucket is deduped to its first occurrence.
+                    // showing up twice in the same 25-min bucket is deduped to its first occurrence.
                     val alreadyDrawnThisBucket = !noteDedupSeen.getOrPut(rawBucket) { mutableSetOf() }.add(value.label)
                     if (value.label.isNotEmpty() && !alreadyDrawnThisBucket) {
-                        // Stacked by 20-min bucket, max 5 per bucket, so notes landing close together in
+                        // Stacked by 25-min bucket, max 6 per bucket, so notes landing close together in
                         // time offset downward instead of overlapping at the same fixed height. Nothing
-                        // is ever dropped: once a bucket already has 5, the note spills into the next
-                        // 20-min bucket's stack instead (rather than simply not drawing the 6th+ note in
+                        // is ever dropped: once a bucket already has 6, the note spills into the next
+                        // 25-min bucket's stack instead (rather than simply not drawing the 7th+ note in
                         // an overfull bucket).
                         var noteBucket = rawBucket
-                        while (noteStack.getOrDefault(noteBucket, 0) >= 5) noteBucket++
+                        while (noteStack.getOrDefault(noteBucket, 0) >= 6) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
                         // Truncated to 5 characters for display only — the full note text is unaffected
@@ -435,7 +439,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
@@ -464,13 +468,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // at greenLinePy.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         // Same left-justification as the green line above — anchored to the graph's own
                         // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsRowPy, mPaint)
+                    }
+                } else if (value.shape == Shape.STEPS_EXTRA_ROW) {
+                    // "DR=.../AW=.../LS=..." row, split out of the steps row above — fixed at
+                    // stepsExtraRowPy (one line-height above stepsRowPy), same graph1, same styling.
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(value.label, graphLeft + 10f, stepsExtraRowPy, mPaint)
                     }
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
