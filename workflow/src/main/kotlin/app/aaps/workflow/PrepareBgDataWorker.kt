@@ -182,7 +182,10 @@ class PrepareBgDataWorker(
         // table it reads from, so this is correct on both master and client: NSDeviceStatusHandler
         // reconstructs a client's local AIV row from synced RT fields every cycle, same as the master
         // writes it directly).
-        val latestAiv = persistenceLayer.getAutoIsfValuesFromTimeToTime(toTime - T.mins(30).msecs(), toTime).maxByOrNull { it.timestamp }
+        // toTime is "now rounded UP to the next hour" (see OverviewData.toTime), so it can sit up to
+        // ~59 min ahead of the actual current time — a narrow lookback from it can miss all real data
+        // entirely. 2h mirrors stepsWindowFrom above, comfortably absorbing that rounding margin.
+        val latestAiv = persistenceLayer.getAutoIsfValuesFromTimeToTime(toTime - T.hours(2).msecs(), toTime).maxByOrNull { it.timestamp }
         data.overviewData.isfIndicesSeries =
             if (latestAiv != null) {
                 // "--" for neutral (1.0) adjustment values, matching AutoISFHistoryDialog's adjStr().
