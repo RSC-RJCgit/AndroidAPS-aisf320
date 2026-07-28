@@ -158,7 +158,7 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Single row, near the top (just under the green raw-BG/delta line):
-        // "S5=<5min>  S30=<30min>  S15=<15min>  S60=<60min>  DR=<SMB delivery ratio>
+        // "S5=<5min>  S15=<15min>  S30=<30min>  S60=<60min>  DR=<SMB delivery ratio>
         //  AW=<acce ISF weight>  LS=<Libre cal slope>".
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
@@ -168,8 +168,8 @@ class PrepareBgDataWorker(
                 val drLabel = "  DR=${drVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val acWtLabel = "  AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val lSlopeLabel = "  LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
-                val label = "S5=${latestSteps.steps5min}  S30=${latestSteps.steps30min}" +
-                    "  S15=${latestSteps.steps15min}  S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
+                val label = "S5=${latestSteps.steps5min}  S15=${latestSteps.steps15min}" +
+                    "  S30=${latestSteps.steps30min}  S60=${latestSteps.steps60min}$drLabel$acWtLabel$lSlopeLabel"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)

@@ -436,7 +436,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
@@ -465,7 +465,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // line sits just below this, at greenLinePy.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         // Same left-justification as the green line above — anchored to the graph's own
