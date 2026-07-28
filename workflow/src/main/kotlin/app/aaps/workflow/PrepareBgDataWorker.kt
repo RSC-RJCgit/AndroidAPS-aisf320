@@ -10,6 +10,7 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
+import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
@@ -44,6 +45,15 @@ class PrepareBgDataWorker(
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var automationStateService: AutomationStateInterface
+
+    // Themed context for rh.gac() theme-attribute color lookups (acce/bg/dura ISF colors in
+    // isfIndicesSeries below) — applicationContext alone doesn't carry the app's light/dark theme,
+    // same reasoning as PrepareIobAutosensGraphDataWorker's own ctx.
+    private var ctx: Context
+
+    init {
+        ctx = rh.getThemedCtx(context)
+    }
 
     class PrepareBgData(
         val iobCobCalculator: IobCobCalculator, // cannot be injected : HistoryBrowser uses different instance
@@ -163,6 +173,38 @@ class PrepareBgDataWorker(
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+        // "f=<final> a=<acce> b=<bg> d=<dura> g=<glucose> smb=<delivered>" row for graph3, one color
+        // per field — matching AutoISFHistoryDialog's own column colors exactly (same underlying AIV
+        // table it reads from, so this is correct on both master and client: NSDeviceStatusHandler
+        // reconstructs a client's local AIV row from synced RT fields every cycle, same as the master
+        // writes it directly).
+        val latestAiv = persistenceLayer.getAutoIsfValuesFromTimeToTime(toTime - T.mins(30).msecs(), toTime).maxByOrNull { it.timestamp }
+        data.overviewData.isfIndicesSeries =
+            if (latestAiv != null) {
+                // "--" for neutral (1.0) adjustment values, matching AutoISFHistoryDialog's adjStr().
+                fun adjStr(v: Double) = if (v == 1.0) "--" else String.format(Locale.getDefault(), "%.2f", v)
+                fun insulinStr(v: Double) = if (v == 0.0) "--" else String.format(Locale.getDefault(), "%.2f", v)
+                val colorFinal = android.graphics.Color.parseColor("#FF6060")
+                val colorGlucose = android.graphics.Color.parseColor("#60C060")
+                val colorInsulin = android.graphics.Color.parseColor("#4A9EFF")
+                val colorAcce = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
+                val colorBg = rh.gac(ctx, app.aaps.core.ui.R.attr.bgIsfColor)
+                val colorDura = rh.gac(ctx, app.aaps.core.ui.R.attr.duraIsfColor)
+                val segments = listOf(
+                    "f=${String.format(Locale.getDefault(), "%.2f", latestAiv.finalIsf)}" to colorFinal,
+                    "a=${adjStr(latestAiv.acceIsf)}" to colorAcce,
+                    "b=${adjStr(latestAiv.bgIsf)}" to colorBg,
+                    "d=${adjStr(latestAiv.duraIsf)}" to colorDura,
+                    "g=${profileUtil.fromMgdlToStringInUnits(latestAiv.glucose)}" to colorGlucose,
+                    "smb=${insulinStr(latestAiv.smbDelivered)}" to colorInsulin
+                )
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        IsfIndicesDataPoint(latestAiv.timestamp, segments, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

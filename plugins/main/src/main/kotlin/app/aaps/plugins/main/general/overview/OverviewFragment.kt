@@ -1318,6 +1318,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB stacked labels: back on graph1 (g==0) — the steps row moved off to the main graph,
             // freeing this spot again.
             if (g == 0) secondGraphData.addSmbLabels()
+            // ISF adaptation indices + SMB row ("f= a= b= d= g= smb="): graph3 (g==2).
+            if (g == 2) secondGraphData.addIsfIndices()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

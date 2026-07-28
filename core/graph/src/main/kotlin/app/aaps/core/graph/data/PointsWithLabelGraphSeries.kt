@@ -195,7 +195,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // is attached to, e.g. graph2's own IOB/percentage-scaled range having nothing to do with
             // glucose values.
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
-                value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2
+                value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -472,6 +472,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // left edge (graphLeft), not to endX/fixedAnnotationAlign.
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsRowPy, mPaint)
+                    }
+                } else if (value.shape == Shape.ISF_INDICES) {
+                    // "f= a= b= d= g= smb=" row, one color per field (matching AutoISFHistoryDialog's
+                    // own column colors), fixed in the bottom area of graph3 — SMB labels are back on
+                    // graph1 now, so nothing else shares this graph's bottom to avoid colliding with.
+                    if (value is IsfIndicesDataPoint && value.segments.isNotEmpty()) {
+                        mPaint.strokeWidth = 0f
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        val py = graphTop + graphHeight * 0.94f
+                        var xCursor = graphLeft + 10f
+                        for ((text, color) in value.segments) {
+                            mPaint.color = color
+                            canvas.drawText(text, xCursor, py, mPaint)
+                            xCursor += mPaint.measureText(text) + 12f
+                        }
                     }
                 }
                 // set values above point

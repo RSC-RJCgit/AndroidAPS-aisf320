@@ -113,6 +113,7 @@ class OverviewDataImpl @Inject constructor(
         rawBgSeries = LineGraphSeries<ScaledDataPoint>()
         noisyBgDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsStackedSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        isfIndicesSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsCountGraphSeries = PointsWithLabelGraphSeries<StepsDataPoint>()
         maxVarSensValueFound = 200.0
@@ -300,6 +301,7 @@ class OverviewDataImpl @Inject constructor(
     override var rawBgSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
     override var noisyBgDeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsStackedSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var isfIndicesSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var heartRateScale = Scale()
     override var heartRateGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsForScale = Scale()

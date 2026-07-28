@@ -155,6 +155,10 @@ class GraphData @Inject constructor(
         addSeries(overviewData.stepsStackedSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addIsfIndices() {
+        addSeries(overviewData.isfIndicesSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addActivity(scale: Double) {
         addSeries(overviewData.activitySeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.activityPredictionSeries as FixedLineGraphSeries<ScaledDataPoint>)

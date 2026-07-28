@@ -128,6 +128,8 @@ interface OverviewData {
     var rawBgSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
     var stepsStackedSeries: SeriesData
+    // "f= a= b= d= g= smb=" multi-color row on graph3 — see IsfIndicesDataPoint/Shape.ISF_INDICES.
+    var isfIndicesSeries: SeriesData
     var heartRateScale: Scale
     var heartRateGraphSeries: SeriesData
     var stepsForScale: Scale
