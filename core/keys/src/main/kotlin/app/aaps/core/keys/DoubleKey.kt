@@ -94,6 +94,16 @@ enum class DoubleKey(
     // in any preference screen; defaults just mirror FslCalSlope/FslCalOffset's own defaults.
     ApsAutoIsfFslCalSlopeNormal("autoisf_fslcal_slope_normal", 1.0, 0.5, 1.5, defaultedBySM = true, exportable = false),
     ApsAutoIsfFslCalOffsetNormal("autoisf_fslcal_offset_normal", 0.0, -50.0, 50.0, defaultedBySM = true, exportable = false),
+    // The user's own configured "normal" Libre cal slope (currently 0.72) — the base reference point
+    // OldSensorAdj's tiered slopes are derived from (base - 0.02/0.04/0.07 for the D2/D1/D0 tiers),
+    // rather than each tier being an independent hardcoded literal. Distinct from
+    // ApsAutoIsfFslCalSlopeNormal above, which is a different, unrelated snapshot (what to restore
+    // FslCalSlope to once OldSensorAdj's override window ends, not the base the tiers are computed from).
+    ApsAutoIsfLibreSlopeOrig("autoisf_libre_slope_orig", 0.72, 0.5, 1.5, defaultedBySM = true),
+    // The user's own configured "normal" Libre cal offset (currently 1.4) — the base reference point
+    // OldSensorAdj's tiered offsets are derived from (base + 0.05/0.10/0.15 for the D2/D1/D0 tiers),
+    // same reasoning/pattern as ApsAutoIsfLibreSlopeOrig above.
+    ApsAutoIsfLibreOffsetOrig("autoisf_libre_offset_orig", 1.4, -50.0, 50.0, defaultedBySM = true),
 
     ActivityMonitorRatio("activity_ratio", 1.0, 0.0, 2.0, defaultedBySM = true),
     ActivityScaleFactor("activity_scale_factor", 1.0, 0.0, 1.5, defaultedBySM = true, dependency = BooleanKey.ActivityMonitorDetection),

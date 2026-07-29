@@ -1110,13 +1110,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
+            // Tier slopes/offsets are derived from the user's own base Libre slope/offset
+            // (ApsAutoIsfLibreSlopeOrig currently 0.72, ApsAutoIsfLibreOffsetOrig currently 1.4) rather
+            // than independent hardcoded literals: slope base-0.02/-0.04/-0.07 and offset base+0.05/
+            // +0.10/+0.15 for the mild/medium/extreme tiers — so retuning the base shifts all tiers
+            // together.
+            val libreSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val libreOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
             val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("D0", 0.65, 1.6)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", 0.68, 1.5)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", 0.70, 1.45)
-                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", 0.70, 1.45)
-                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", 0.68, 1.5)
-                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", 0.65, 1.6)
+                sensorAgeDays < 1.0                            -> Triple("D0", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                sensorAgeDays >= 12.0 && sensorAgeDays < 13.0 -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
@@ -1284,10 +1291,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("AcceWeightDownTT")
         }
 
-        // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.01 nudge on
+        // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.05 nudge on
         // ApsAutoIsfBgAccelWeightNormal, clamped to a max of 1.00. Same pattern as AcceWeightDownTT above.
         if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.18, 0.001)) {
-            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) + 0.01).coerceAtMost(1.00)
+            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) + 0.05).coerceAtMost(1.00)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
             cancelCurrentTempTarget()
             sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
@@ -1307,10 +1314,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("DuraWeightDownTT")
         }
 
-        // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.01 nudge on
+        // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.1 nudge on
         // ApsAutoIsfDuraWeightNormal, clamped to a max of 3.00. Same pattern as DuraWeightDownTT above.
         if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.24, 0.001)) {
-            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) + 0.01).coerceAtMost(3.00)
+            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) + 0.1).coerceAtMost(3.00)
             preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
             cancelCurrentTempTarget()
             sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
@@ -1339,6 +1346,52 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
             addCarePortalNote("SOu${round(newOffset, 2).toString().takeLast(2)}")
             markRun("SmbOffsetUpTT")
+        }
+
+        // --- LibreSlopeDownTT: manually setting a TT of 5.26 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfLibreSlopeOrig (LibreSlope_orig), clamped to a min of 0.60 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("LibreSlopeDownTT", 2) && activeTtNear(5.26, 0.001)) {
+            val newSlope = (preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig) - 0.01).coerceAtLeast(0.60)
+            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            cancelCurrentTempTarget()
+            sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
+            addCarePortalNote("LSd${round(newSlope, 2).toString().takeLast(2)}")
+            markRun("LibreSlopeDownTT")
+        }
+
+        // --- LibreSlopeUpTT: manually setting a TT of 5.28 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfLibreSlopeOrig, clamped to a max of 1.00. Same pattern as LibreSlopeDownTT above.
+        if (readyToRun("LibreSlopeUpTT", 2) && activeTtNear(5.28, 0.001)) {
+            val newSlope = (preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig) + 0.01).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            cancelCurrentTempTarget()
+            sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
+            addCarePortalNote("LSu${round(newSlope, 2).toString().takeLast(2)}")
+            markRun("LibreSlopeUpTT")
+        }
+
+        // --- LibreOffsetDownTT: manually setting a TT of 5.32 mmol is used as a remote -0.05 nudge on
+        // ApsAutoIsfLibreOffsetOrig (LibreOffset_orig), clamped to a min of 1.20 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("LibreOffsetDownTT", 2) && activeTtNear(5.32, 0.001)) {
+            val newOffsetOrig = (preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig) - 0.05).coerceAtLeast(1.20)
+            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            cancelCurrentTempTarget()
+            sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            addCarePortalNote("LOd${round(newOffsetOrig, 2).toString().takeLast(2)}")
+            markRun("LibreOffsetDownTT")
+        }
+
+        // --- LibreOffsetUpTT: manually setting a TT of 5.34 mmol is used as a remote +0.05 nudge on
+        // ApsAutoIsfLibreOffsetOrig, clamped to a max of 1.60. Same pattern as LibreOffsetDownTT above.
+        if (readyToRun("LibreOffsetUpTT", 2) && activeTtNear(5.34, 0.001)) {
+            val newOffsetOrig = (preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig) + 0.05).coerceAtMost(1.60)
+            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            cancelCurrentTempTarget()
+            sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            addCarePortalNote("LOu${round(newOffsetOrig, 2).toString().takeLast(2)}")
+            markRun("LibreOffsetUpTT")
         }
 
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
@@ -3981,6 +4034,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, dialogMessage = R.string.fslCal_Slope_summary, title = R.string.fslCal_Slope_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, dialogMessage = R.string.fsl_exp1_factor_summary, title = R.string.fsl_exp1_factor_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfOldSensorAdjEnabled, summary = R.string.old_sensor_adj_enabled_summary, title = R.string.old_sensor_adj_enabled_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLibreSlopeOrig, dialogMessage = R.string.autoisf_libre_slope_orig_summary, title = R.string.autoisf_libre_slope_orig_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLibreOffsetOrig, dialogMessage = R.string.autoisf_libre_offset_orig_summary, title = R.string.autoisf_libre_offset_orig_title))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MaintenanceCleanupDays, dialogMessage = R.string.MaintenanceCleanupDays_summary, title = R.string.MaintenanceCleanupDays_title))
                 })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutoIsfWeights, summary = R.string.openapsama_enable_autoISF, title = R.string.openapsama_enable_autoISF))
@@ -4029,5 +4084,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU401
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU402
 */
