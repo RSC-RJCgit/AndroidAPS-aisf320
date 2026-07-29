@@ -27,9 +27,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.IobTotal
@@ -1076,6 +1078,57 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolusIob().iob) + "\n" +
             rh.gs(app.aaps.core.ui.R.string.basal) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, basalIob().basaliob)
 
+    // Tappable list for the IOB icon's double-tap — matches the *TT blocks in OpenAPSAutoISFPlugin.kt
+    // exactly. Tapping an entry creates a real TT at that mmol value (see setTt() below) rather than
+    // applying the change directly — the AutoISF cycle picks it up and cancels the TT itself, same as
+    // manually typing the value into AAPS's own TT-entry UI. Setting a real TT (not a direct preference
+    // write from here) is deliberate: it's the only mechanism that also works remotely from an
+    // AAPSClient follower device, since preferences themselves never sync but a TT does.
+    private fun ttCodesList(): List<Pair<String, Double>> = listOf(
+        "5.02 — SMB delivery baseline + mild-boost, -0.01" to 5.02,
+        "5.04 — SMB delivery baseline + mild-boost, +0.01" to 5.04,
+        "5.06 — toggle Libre sensor-age adjustment on/off" to 5.06,
+        "5.08 — toggle boost automations (bg1/2/3 + Mild) on/off" to 5.08,
+        "5.12 — pp ISF weight (orig), -0.01" to 5.12,
+        "5.14 — pp ISF weight (orig), +0.01" to 5.14,
+        "5.16 — acce ISF weight (orig), -0.05" to 5.16,
+        "5.18 — acce ISF weight (orig), +0.05" to 5.18,
+        "5.22 — dura ISF weight (orig), -0.1" to 5.22,
+        "5.24 — dura ISF weight (orig), +0.1" to 5.24,
+        "5.26 — Libre cal slope (orig), -0.01" to 5.26,
+        "5.28 — Libre cal slope (orig), +0.01" to 5.28,
+        "5.32 — Libre cal offset (orig), -0.05" to 5.32,
+        "5.34 — Libre cal offset (orig), +0.05" to 5.34,
+        "5.36 — SMB offset override, -0.10" to 5.36,
+        "5.38 — SMB offset override, +0.10" to 5.38,
+        "5.42 — clean graph view (no SMB labels/arrows, solid green line)" to 5.42
+    )
+
+    // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
+    // activeTtNear() and act on it within its own throttle; the matching *TT block then cancels the TT
+    // itself, so this never lingers as an actual target.
+    private fun setTt(mmol: Double) {
+        val mgdl = mmol * app.aaps.core.data.configuration.Constants.MMOLL_TO_MGDL
+        val tt = TT(
+            timestamp = dateUtil.now(),
+            duration = TimeUnit.MINUTES.toMillis(5),
+            reason = TT.Reason.CUSTOM,
+            lowTarget = mgdl,
+            highTarget = mgdl
+        )
+        disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = tt,
+            action = Action.TT,
+            source = Sources.TTDialog,
+            note = "TT code $mmol (IOB double-tap list)",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.CUSTOM),
+                ValueWithUnit.Mgdl(mgdl),
+                ValueWithUnit.Minute(5)
+            )
+        ).subscribe()
+    }
+
     private fun updateIobCob() {
         val iobText = iobText()
         val iobDialogText = iobDialogText()
@@ -1084,20 +1137,44 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         runOnUiThread {
             _binding ?: return@runOnUiThread
             binding.infoLayout.iob.text = iobText
-            binding.infoLayout.iobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) } }
-            binding.infoLayout.iobLayout.setOnLongClickListener {
-                PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
-                // Always reset the basal-toggle preset back to 0 (normal ISF colors, transparent noisy
-                // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
-                // the other display settings, independent of the SMB-label state.
-                PointsWithLabelGraphSeries.basalToggleIndex = 0
-                // Re-decide the green-line annotation's top/under-target position from the current BGL,
-                // right now — this is the only place that decision gets refreshed (see
-                // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
-                PointsWithLabelGraphSeries.refreshAnnotationPosition()
-                rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
-                true
-            }
+            // Single tap / long-press / double-tap all live on one GestureDetector now (a View only
+            // supports one OnClickListener and one OnLongClickListener each, so a third distinct gesture
+            // needs this instead): single tap keeps the existing IOB info popup, long-press keeps the
+            // existing showSmbLabels/basalToggleIndex display toggle, double-tap is new — shows the
+            // current TT remote-trigger codes (see OpenAPSAutoISFPlugin.kt's own *TT blocks) as a
+            // read-only reference popup.
+            val iobGestureDetector = android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                    activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) }
+                    return true
+                }
+
+                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                    activity?.let { act ->
+                        val entries = ttCodesList()
+                        androidx.appcompat.app.AlertDialog.Builder(act)
+                            .setTitle("TT remote-trigger codes — tap to set")
+                            .setItems(entries.map { it.first }.toTypedArray()) { _, which -> setTt(entries[which].second) }
+                            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                            .show()
+                    }
+                    return true
+                }
+
+                override fun onLongPress(e: android.view.MotionEvent) {
+                    PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
+                    // Always reset the basal-toggle preset back to 0 (normal ISF colors, transparent noisy
+                    // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
+                    // the other display settings, independent of the SMB-label state.
+                    PointsWithLabelGraphSeries.basalToggleIndex = 0
+                    // Re-decide the green-line annotation's top/under-target position from the current BGL,
+                    // right now — this is the only place that decision gets refreshed (see
+                    // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
+                    PointsWithLabelGraphSeries.refreshAnnotationPosition()
+                    rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
+                }
+            })
+            binding.infoLayout.iobLayout.setOnTouchListener { _, event -> iobGestureDetector.onTouchEvent(event); true }
             // cob
             var cobText = displayText ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
 

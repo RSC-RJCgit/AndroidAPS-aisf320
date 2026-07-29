@@ -322,14 +322,24 @@ class PrepareIobAutosensGraphDataWorker(
         }
         data.overviewData.cobMinFailOverSeries = PointsWithLabelGraphSeries(Array(minFailOverActiveList.size) { i -> minFailOverActiveList[i] })
 
-        // ACTIVITY peak label
+        // ACTIVITY peak labels — one per local peak (each separate bolus/activity bump), not just the
+        // single tallest point over the whole displayed range. A point counts as a peak when it's
+        // strictly higher than its predecessor and at least as high as its successor (picks the leading
+        // edge of a flat-topped plateau, not every point along it) — and only above a small threshold
+        // relative to the range's own max, so numeric noise on the near-zero baseline isn't labeled.
         val allActPoints = actArrayHist + actArrayPrediction
-        val peakPoint = allActPoints.maxByOrNull { it.y }
-        data.overviewData.activityPeakSeries = if (peakPoint != null && data.overviewData.maxIAValue > 0.0) {
-            val peakLabel = decimalFormatter.to2Decimal(data.overviewData.maxIAValue * 60.0)
-            PointsWithLabelGraphSeries(arrayOf<DataPointWithLabelInterface>(
-                ActivityPeakDataPoint(peakPoint.x, peakPoint.y, peakLabel, rh)
-            ))
+        val peakThreshold = data.overviewData.maxIAValue * 0.05
+        val peakPoints = allActPoints.filterIndexed { i, point ->
+            point.y >= peakThreshold &&
+                (i == 0 || point.y > allActPoints[i - 1].y) &&
+                (i == allActPoints.size - 1 || point.y >= allActPoints[i + 1].y)
+        }
+        data.overviewData.activityPeakSeries = if (peakPoints.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
+            PointsWithLabelGraphSeries(
+                peakPoints.map { peak ->
+                    ActivityPeakDataPoint(peak.x, peak.y, decimalFormatter.to2Decimal(peak.y * 60.0), rh) as DataPointWithLabelInterface
+                }.toTypedArray()
+            )
         } else {
             PointsWithLabelGraphSeries()
         }
