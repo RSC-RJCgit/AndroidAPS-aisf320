@@ -613,18 +613,22 @@ class WizardDialog : DaggerDialogFragment() {
             // Live default for the max-bolus-override stepper. Fat dominating (its own contribution >= both
             // protein's own and carbs' own) takes priority over protein alone dominating (>= carbs' own):
             // 20% vs 33% of the current total. Re-evaluated on every wizard input change, same as the rest
-            // of this function, until the user overrides it manually.
+            // of this function, until the user overrides it manually — and reverts back to the real
+            // configured max-bolus when neither condition holds, so it never gets stuck at a stale
+            // percentage from an earlier keystroke (e.g. mid-typing a protein/fat value) once the finished
+            // numbers no longer qualify.
             if (!userAdjustedMaxBolusOverride && wizard.calculatedTotalInsulin > 0.0) {
                 val fatDominant = wizard.insulinFromFatOnly >= wizard.insulinFromProteinOnly && wizard.insulinFromFatOnly >= wizard.insulinFromCarbsOnly
                 val proteinDominant = wizard.insulinFromProteinOnly >= wizard.insulinFromCarbsOnly
-                val fraction = if (fatDominant) 0.20 else if (proteinDominant) 0.33 else null
-                if (fraction != null) {
-                    val newDefault = Round.roundTo(wizard.calculatedTotalInsulin * fraction, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
-                    if (abs(binding.maxBolusOverrideInput.value - newDefault) > 0.001) {
-                        settingMaxBolusProgrammatically = true
-                        binding.maxBolusOverrideInput.value = newDefault
-                        settingMaxBolusProgrammatically = false
-                    }
+                val newDefault = when {
+                    fatDominant     -> Round.roundTo(wizard.calculatedTotalInsulin * 0.20, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
+                    proteinDominant -> Round.roundTo(wizard.calculatedTotalInsulin * 0.33, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
+                    else            -> originalSafetyMaxBolus
+                }
+                if (abs(binding.maxBolusOverrideInput.value - newDefault) > 0.001) {
+                    settingMaxBolusProgrammatically = true
+                    binding.maxBolusOverrideInput.value = newDefault
+                    settingMaxBolusProgrammatically = false
                 }
             }
 
@@ -648,12 +652,16 @@ class WizardDialog : DaggerDialogFragment() {
                         if (!settingSplitIntervalProgrammatically) userAdjustedSplitIntervalOverride = true
                         calculateInsulin()
                     }
-                } else if (!userAdjustedSplitIntervalOverride && proteinDominantForInterval && binding.splitBolusIntervalInput.value.toInt() != 20) {
+                } else if (!userAdjustedSplitIntervalOverride) {
                     // Live default, same pattern as the max-bolus-override: re-applied on every wizard input
-                    // change while protein's own contribution stays >= carbs' own, until the user overrides it.
-                    settingSplitIntervalProgrammatically = true
-                    binding.splitBolusIntervalInput.value = 20.0
-                    settingSplitIntervalProgrammatically = false
+                    // change, reverting back to the preference default once protein's own contribution no
+                    // longer stays >= carbs' own, so it never gets stuck at 20 from an earlier keystroke.
+                    val newInterval = if (proteinDominantForInterval) 20 else preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+                    if (binding.splitBolusIntervalInput.value.toInt() != newInterval) {
+                        settingSplitIntervalProgrammatically = true
+                        binding.splitBolusIntervalInput.value = newInterval.toDouble()
+                        settingSplitIntervalProgrammatically = false
+                    }
                 }
                 binding.splitBolusRow.visibility = android.view.View.VISIBLE
                 if (binding.splitBolusCheckbox.isChecked) {
