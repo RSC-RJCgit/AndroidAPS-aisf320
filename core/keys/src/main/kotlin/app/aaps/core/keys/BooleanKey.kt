@@ -91,6 +91,13 @@ enum class BooleanKey(
     // false once cannula age drops back under 60h (i.e. a new pod was actually inserted), re-arming it
     // for the next old pod. Not shown in any preference screen.
     ApsAutoIsfOldPodNotified("autoisf_old_pod_notified", false, defaultedBySM = true, exportable = false),
+    // Internal-only, one-shot cross-module signal: set true by the CleanGraphTT trigger (see
+    // OpenAPSAutoISFPlugin.kt, TT=5.42), consumed and cleared back to false by OverviewFragment's
+    // updateGraph() the next time it runs — applies showSmbLabels=false + basalToggleIndex=2 (no SMB
+    // labels, no BGL arrowheads, solid uniform-green graph line), the same combo as long-pressing IOB
+    // then Basal. plugins:aps has no dependency on core:graph (where those companion fields live), so a
+    // plain preference flag is the simplest way to signal across modules. Not shown in any screen.
+    ApsAutoIsfCleanGraphRequested("autoisf_clean_graph_requested", false, defaultedBySM = true, exportable = false),
 
     ActivityMonitorDetection("activity_detection", false, defaultedBySM=true),
     ActivityMonitorOvernight("ignore_inactivity_overnight", true, defaultedBySM=true, dependency = ActivityMonitorDetection),

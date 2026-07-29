@@ -1173,6 +1173,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun updateGraph() {
         _binding ?: return
+        // One-shot cross-module signal from CleanGraphTT (OpenAPSAutoISFPlugin.kt, TT=5.42): applies the
+        // same "no SMB labels, no BGL arrowheads, solid uniform-green line" combo as long-pressing IOB
+        // then Basal, then clears itself so it doesn't keep re-applying and block manual long-presses
+        // afterward.
+        if (preferences.get(BooleanKey.ApsAutoIsfCleanGraphRequested)) {
+            PointsWithLabelGraphSeries.showSmbLabels = false
+            PointsWithLabelGraphSeries.basalToggleIndex = 2
+            preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, false)
+        }
         val pump = activePlugin.activePump
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
         val menuChartSettings = overviewMenus.setting

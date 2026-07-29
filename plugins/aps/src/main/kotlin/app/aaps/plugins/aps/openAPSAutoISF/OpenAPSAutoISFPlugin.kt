@@ -1394,6 +1394,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("LibreOffsetUpTT")
         }
 
+        // --- CleanGraphTT: manually setting a TT of 5.42 mmol is used as a remote trigger for the
+        // "clean main graph" display combo (no SMB labels, no BGL arrowheads, solid uniform-green line)
+        // — the same combo as long-pressing the IOB icon then the Basal icon. Not a real target. Since
+        // this plugin has no dependency on core:graph (where the actual display state — showSmbLabels/
+        // basalToggleIndex — lives), it can't set those companion fields directly; it just raises a
+        // one-shot flag that OverviewFragment's updateGraph() picks up and clears on its next run. Same
+        // tight 0.001mmol tolerance/cancel/notify pattern as the other settings-nudge TTs above.
+        if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.42, 0.001)) {
+            preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
+            cancelCurrentTempTarget()
+            sendSms("CleanGraph: no SMBs/arrows, solid green")
+            addCarePortalNote("CGrph")
+            markRun("CleanGraphTT")
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
