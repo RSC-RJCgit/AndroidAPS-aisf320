@@ -338,15 +338,16 @@ class AutoIsfHistoryExporter @Inject constructor(
         return df1.format(n / MGDL_TO_MMOL)
     }
 
-    /** Average gap in minutes between BG/Libre readings in the 5 min BEFORE this record's timestamp —
-     *  detects whether the sensor was reporting every ~1 min or every ~5 min at that point in time.
-     *  "--" if fewer than 2 readings fell in that window. `rawReadings` must be newest-first. */
+    /** Average gap in SECONDS between BG/Libre readings in the 5 min BEFORE this record's timestamp —
+     *  same units/style as smbInterval5SecStr's Sint, so a Libre reporting every ~60s shows ~60, not a
+     *  flat "1.00" minutes that hides the actual jitter. "--" if fewer than 2 readings fell in that
+     *  window. `rawReadings` must be newest-first. */
     fun readingIntervalStr(timestamp: Long, rawReadings: List<GV>): String {
         val windowStart = timestamp - 5 * 60_000L
         val inWindow = rawReadings.filter { it.timestamp in windowStart..timestamp }
         if (inWindow.size < 2) return "--"
-        val spanMin = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }) / 60_000.0
-        return df1.format(spanMin / (inWindow.size - 1))
+        val spanSec = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }).toDouble() / 1000.0
+        return (spanSec / (inWindow.size - 1)).roundToInt().toString()
     }
 
     /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —

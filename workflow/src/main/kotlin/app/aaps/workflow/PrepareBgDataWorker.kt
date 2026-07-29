@@ -36,6 +36,7 @@ import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 class PrepareBgDataWorker(
     context: Context,
@@ -177,7 +178,7 @@ class PrepareBgDataWorker(
         // (same x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
         data.overviewData.l5DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta5 != null) {
-                val label = "L5=${formatMmolDelta(libreDelta5)}"
+                val label = formatMmolDelta(libreDelta5)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L5DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -190,10 +191,10 @@ class PrepareBgDataWorker(
         // (DR=/AW=/LS=/acce=/Sint=/IOd5=) is a separate line with its own spacing.
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                val avgInterval = avgReadingIntervalMin(data.overviewData.bgReadingsArray)
+                val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
                     " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}" +
-                    " I5=${avgInterval?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"}"
+                    " I5=${avgInterval?.let { it.roundToInt().toString() } ?: "--"}"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -329,16 +330,17 @@ class PrepareBgDataWorker(
         return newestNoise - priorNoise
     }
 
-    // Average gap in minutes between readings in the trailing 5 minutes (newest.timestamp-5min ..
-    // newest.timestamp) — detects whether the sensor is currently reporting every ~1 min or every
-    // ~5 min. Null if fewer than 2 readings fell in that window. `readings` must be newest-first.
-    private fun avgReadingIntervalMin(readings: List<GV>): Double? {
+    // Average gap in SECONDS between readings in the trailing 5 minutes (newest.timestamp-5min ..
+    // newest.timestamp) — same units/style as Sint (smbInterval5SecStr): a Libre reporting every ~60s
+    // shows ~60, not a flat "1.00" minutes that hides the actual jitter. Null if fewer than 2 readings
+    // fell in that window. `readings` must be newest-first.
+    private fun avgReadingIntervalSec(readings: List<GV>): Double? {
         val newest = readings.firstOrNull() ?: return null
         val windowStart = newest.timestamp - 5 * 60_000L
         val inWindow = readings.filter { it.timestamp in windowStart..newest.timestamp }
         if (inWindow.size < 2) return null
-        val spanMin = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }) / 60_000.0
-        return spanMin / (inWindow.size - 1)
+        val spanSec = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }) / 1000.0
+        return spanSec / (inWindow.size - 1)
     }
 
     // deltaMgdl -> signed mmol string, 2 decimal places (e.g. "+0.34", "-0.11").
