@@ -487,6 +487,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsExtraRowPy, mPaint)
                     }
+                } else if (value.shape == Shape.L5_DELTA_POINT) {
+                    // "L5=..." label attached directly to the current Libre graph point — same
+                    // 45°-rotated style as GENERAL's drawLabel45Right, but no circle (the actual BG
+                    // point already has its own dot drawn by the glucose series underneath).
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
                     // AutoISFHistoryDialog's own column colors), fixed in the bottom area of graph3.

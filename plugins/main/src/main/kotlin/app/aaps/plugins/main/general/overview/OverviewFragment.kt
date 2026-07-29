@@ -1412,6 +1412,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 secondGraphData.addStepsStackedAnnotation()
                 secondGraphData.addStepsExtra()
                 secondGraphData.addNoisyBgDeltaAnnotation()
+                secondGraphData.addL5DeltaAnnotation()
             }
             // ISF adaptation indices + SMB row ("f= ac= bg= pp= du= smb="): graph3 (g==2).
             if (g == 2) secondGraphData.addIsfIndices()
