@@ -82,7 +82,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -112,6 +112,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             rawDeltaStr(r.timestamp, rawReadings, 1),
             rawDeltaStr(r.timestamp, rawReadings, 5),
             rawDeltaStr(r.timestamp, rawReadings, 15),
+            readingIntervalStr(r.timestamp, rawReadings),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
             df2.format(r.iob),
@@ -335,6 +336,17 @@ class AutoIsfHistoryExporter @Inject constructor(
         val newest = inWindow.firstOrNull() ?: return "--"
         val n = newest.noise ?: return "--"
         return df1.format(n / MGDL_TO_MMOL)
+    }
+
+    /** Average gap in minutes between BG/Libre readings in the 5 min BEFORE this record's timestamp —
+     *  detects whether the sensor was reporting every ~1 min or every ~5 min at that point in time.
+     *  "--" if fewer than 2 readings fell in that window. `rawReadings` must be newest-first. */
+    fun readingIntervalStr(timestamp: Long, rawReadings: List<GV>): String {
+        val windowStart = timestamp - 5 * 60_000L
+        val inWindow = rawReadings.filter { it.timestamp in windowStart..timestamp }
+        if (inWindow.size < 2) return "--"
+        val spanMin = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }) / 60_000.0
+        return df1.format(spanMin / (inWindow.size - 1))
     }
 
     /** Average gap in seconds between SMBs delivered in the 5 min BEFORE this record's timestamp —

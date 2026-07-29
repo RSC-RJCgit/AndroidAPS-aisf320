@@ -26,6 +26,11 @@ data class AIV(
     var iob: Double = 0.0,
     var acceIsfWeight: Double = 0.0,
     var fslCalSlope: Double = 0.0,
+    /** Average minutes between BG/Libre readings in the 5 min before [timestamp], computed on the
+     *  device actually running AutoISF (the master) from its own locally-connected sensor feed — NOT
+     *  recomputed from a follower's own local (NS-synced) GV table, since NS's own upload/sync cadence
+     *  doesn't necessarily reflect the master's true underlying reading interval. */
+    var avgReadingIntervalMin: Double = 0.0,
     var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,
