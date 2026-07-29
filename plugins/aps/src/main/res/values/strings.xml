@@ -242,6 +242,12 @@
     <string name="autoisf_smb_offset_override_summary">Default 0.5. SMB is blocked entirely whenever BG is below target + this value. Only used when \"Simple SMB offset override\" is enabled above. Max 2.0 mmol/L.</string>
     <string name="autoisf_smb_delivery_baseline_title">Resting SMB delivery ratio</string>
     <string name="autoisf_smb_delivery_baseline_summary">Default 0.14. The delivery ratio the boost/recovery automations restore to once a boost window ends. Separate from the SMB delivery ratio above, which those same automations also use transiently while boosting.</string>
+    <string name="autoisf_pp_isf_weight_normal_title">Resting postprandial ISF weight</string>
+    <string name="autoisf_pp_isf_weight_normal_summary">Default 0.08. The pp_ISF_weight value the boost/recovery automations restore to once a boost window ends. Separate from the postprandial ISF weight above, which those same automations also overwrite transiently while boosting.</string>
+    <string name="autoisf_bgaccel_isf_weight_normal_title">Resting acceleration ISF weight</string>
+    <string name="autoisf_bgaccel_isf_weight_normal_summary">Default 0.70. Your own normal bgAccel_ISF_weight value, kept separate from the acceleration ISF weight above (not currently used as a restore target by any automation — see the acceleration ISF weight\'s own hardcoded boost values).</string>
+    <string name="autoisf_dura_isf_weight_normal_title">Resting duration ISF weight</string>
+    <string name="autoisf_dura_isf_weight_normal_summary">Default 1.2. Your own normal dura_ISF_weight value. Nothing currently writes the duration ISF weight above at all, so this isn\'t used as a restore target yet either.</string>
     <string name="autoisf_boost_automations_enabled_title">Enable boost automations (BolusGiven + Mild)</string>
     <string name="autoisf_boost_automations_enabled_summary">Master switch for both BolusGiven (bg1/bg2/bg3) and BolusGivenMild together. Turning this off disables both boost automations, not just one.</string>
     <string name="autoisf_mild_boost_ratio_title">Mild boost delivery ratio</string>

@@ -1079,7 +1079,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline: hypo protection must not
                                             // keep BolusGiven's strengthened SMB delivery
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 startProfilePercentFor(50, 360, "Current Profile")   // force onto the MJ/night profile, then hold 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
@@ -1405,7 +1405,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (block != null && startTempTargetIfNeeded(102.7 /* 5.7 mmol */, 180)) {
                 setBgAccelIsfWeight(0.02)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline on hypo-risk protection
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
                 sendSms("Skittles $block: hypo risk — TT 5.7 set")
@@ -1570,7 +1570,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
                 switchProfileIfNeeded(targetProfile, 30)
                 startProfilePercentFor(110, 5, targetProfile)
-                setBgAccelIsfWeight(0.70)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
                 markRun("HighOldPod")
@@ -1850,7 +1850,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 cancelCurrentTempTarget()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
                 switchProfileIfNeeded("Current ProfileReal", 30)
-                setBgAccelIsfWeight(0.70)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
@@ -2238,7 +2238,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setBgAccelIsfWeight(0.50)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime "back to usual" recovery restores delivery baseline
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
                 sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
@@ -2273,7 +2273,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.50)
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
@@ -2538,7 +2538,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 100
                 && activeTtMgdl() == null
                 && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("Steroids", "SteroidsON"))) {
-                setBgAccelIsfWeight(0.70)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 sendSms("AcceUp")
                 addCarePortalNote("Acce")
                 markRun("AcceUp0.5")
@@ -2574,7 +2574,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // float representation, so "acceW == 0.95" could read false after the round-trip and this
             // recovery would never fire (acce stuck at 0.95). Same float trap as the DelOff reset.
             if (fuzzyEquals(acceW, 0.95) && activeTtMgdl() == null) {
-                setBgAccelIsfWeight(0.71)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 switchProfileIfNeeded("Current ProfileReal")
                 sendSms("RecentPodOff Acce")
                 addCarePortalNote("pTTOff")
@@ -2706,7 +2706,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current Profile")
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
                 sendSms("NightAcce_0.35TH18")
                 addCarePortalNote("Night")
@@ -2738,7 +2738,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // morning recovery restores delivery baseline
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.08)   // restore ppWeight baseline
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 sendSms("SemiTwilightAcce_0.50TH16")
                 addCarePortalNote("Semi")
                 markRun("SemiTwilightAcce")
@@ -2886,7 +2886,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")
                 switchProfileIfNeeded("Current Profile")
-                setBgAccelIsfWeight(0.70)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 addCarePortalNote("Steps Steroids OFF")
                 markRun("StepsSteroidsOff")
@@ -3895,11 +3895,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeight, dialogMessage = R.string.openapsama_bgAccel_ISF_weight_summary, title = R.string.openapsama_bgAccel_ISF_weight))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightNormal, dialogMessage = R.string.autoisf_bgaccel_isf_weight_normal_summary, title = R.string.autoisf_bgaccel_isf_weight_normal_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgBrakeWeight, dialogMessage = R.string.openapsama_bgBrake_ISF_weight_summary, title = R.string.openapsama_bgBrake_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLowBgWeight, dialogMessage = R.string.openapsama_lower_ISFrange_weight_summary, title = R.string.openapsama_lower_ISFrange_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfHighBgWeight, dialogMessage = R.string.openapsama_higher_ISFrange_weight_summary, title = R.string.openapsama_higher_ISFrange_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeight, dialogMessage = R.string.openapsama_pp_ISF_weight_summary, title = R.string.openapsama_pp_ISF_weight))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeightNormal, dialogMessage = R.string.autoisf_pp_isf_weight_normal_summary, title = R.string.autoisf_pp_isf_weight_normal_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfDuraWeight, dialogMessage = R.string.openapsama_dura_ISF_weight_summary, title = R.string.openapsama_dura_ISF_weight))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfDuraWeightNormal, dialogMessage = R.string.autoisf_dura_isf_weight_normal_summary, title = R.string.autoisf_dura_isf_weight_normal_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfIobThPercent, dialogMessage = R.string.openapsama_iob_threshold_percent_summary, title = R.string.openapsama_iob_threshold_percent))
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "smb_delivery_settings"
