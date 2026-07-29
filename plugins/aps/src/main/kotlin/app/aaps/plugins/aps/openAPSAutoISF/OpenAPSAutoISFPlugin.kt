@@ -1836,8 +1836,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // and re-fire DelOff every loop. fuzzyEquals (±0.001) treats baseline as baseline and only an
         // actual boost as different. Baseline is now a live preference (no more manual retune needed
         // here) — just keep it more than 0.001 apart from whatever boost ratios are in use.
+        // smbStacking/hardStackTarget computed here (not down in HardStackDelOff's own block below) so
+        // this check can also exempt "currently sitting at HardStackDelOff's own reduced target while
+        // stacking is still genuinely happening" — without that exemption, DelOff couldn't tell that
+        // state apart from "elevated above baseline, needs restoring", and would fight HardStackDelOff
+        // every single cycle: DelOff resets to baseline, HardStackDelOff immediately re-reduces it,
+        // repeating for as long as stacking continued (alternating DelOff/HardStackDelOff CarePortal
+        // notes every cycle instead of settling).
         val deliveryBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
-        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline) && activeTtMgdl() == null) {
+        val hardStackTarget = deliveryBaseline - 0.03
+        val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
+        val atHardStackTarget = fuzzyEquals(smb_delivery_ratio, hardStackTarget)
+        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline) && activeTtMgdl() == null && !(atHardStackTarget && smbStacking)) {
             setSmbDeliveryRatio(deliveryBaseline)
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
         }
@@ -1857,17 +1867,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (possibly already-reduced) ratio, so repeated cycles while the condition holds can't compound
         // into a runaway decrease. Reversion once neither condition holds isn't handled here at all — it
         // falls out of DelOff above for free: DelOff always tries to restore the constant baseline
-        // whenever the ratio isn't there and no TT is active, so the next cycle where this condition is
-        // false, DelOff's own check (which runs first) puts it straight back.
+        // whenever the ratio isn't there and no TT is active (and it's not still-genuinely-stacking at
+        // the hard-stack target — see DelOff's own exemption above), so the next cycle where this
+        // condition is false, DelOff's own check (which runs first) puts it straight back.
         // Excludes only the boost's OWN brief TT (75.7=4.2mmol bg3, 90.1=5.0mmol mild) — bg3/mild
         // successfully delivering back-to-back during their own intended 2-min window looks identical to
         // "stacking" by this same measure, and this must not cut that window short. Any OTHER active TT
         // (or none) is fair game. No readyToRun throttle — deliberately checked every iteration, same as
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
         val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
-        val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
-        val hardStackTarget = deliveryBaseline - 0.03
-        if (!fuzzyEquals(smb_delivery_ratio, hardStackTarget)
+        if (!atHardStackTarget
             && smbStacking
             && !onOwnBoostTt) {
             setSmbDeliveryRatio(hardStackTarget)
@@ -4084,5 +4093,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU402
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU403
 */
