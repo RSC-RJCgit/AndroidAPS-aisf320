@@ -173,13 +173,12 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Two rows near the top (just under the green raw-BG/delta line), split so the steps row is
-        // just steps: "S5=<5min>S15=<15min>S30=<30min>S60=<60min>" — no spaces between fields, else it
-        // doesn't fit. The extra row above it (DR=/AW=/LS=/acce=/Sint=/IOd5=) isn't as cramped, so it
-        // keeps its spaces.
+        // just steps: "S5=<5min> S15=<15min> S30=<30min> S60=<60min>". The extra row above it
+        // (DR=/AW=/LS=/acce=/Sint=/IOd5=) is a separate line with its own spacing.
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                val label = "S5=${latestSteps.steps5min}S15=${latestSteps.steps15min}" +
-                    "S30=${latestSteps.steps30min}S60=${latestSteps.steps60min}"
+                val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
+                    " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
