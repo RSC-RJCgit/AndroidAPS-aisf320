@@ -147,6 +147,10 @@ class PrepareIobAutosensGraphDataWorker(
 
         val actArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         val actArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
+        // Raw (unscaled) activity values, one per actArrayHist/actArrayPrediction entry in the same order —
+        // ScaledDataPoint.getY() returns the value already multiplied by actScale for graph rendering, so
+        // peak detection/labeling needs this separate raw list instead of reading it back through .y.
+        val rawActPoints: MutableList<Double> = ArrayList()
         val now = dateUtil.now().toDouble()
         data.overviewData.maxIAValue = 0.0
 
@@ -236,6 +240,7 @@ class PrepareIobAutosensGraphDataWorker(
             // ACTIVITY
             if (time <= now) actArrayHist.add(ScaledDataPoint(time, iob.activity, data.overviewData.actScale))
             else actArrayPrediction.add(ScaledDataPoint(time, iob.activity, data.overviewData.actScale))
+            rawActPoints.add(iob.activity)
             data.overviewData.maxIAValue = max(data.overviewData.maxIAValue, abs(iob.activity))
 
             // RATIO
@@ -329,15 +334,17 @@ class PrepareIobAutosensGraphDataWorker(
         // relative to the range's own max, so numeric noise on the near-zero baseline isn't labeled.
         val allActPoints = actArrayHist + actArrayPrediction
         val peakThreshold = data.overviewData.maxIAValue * 0.05
-        val peakPoints = allActPoints.filterIndexed { i, point ->
-            point.y >= peakThreshold &&
-                (i == 0 || point.y > allActPoints[i - 1].y) &&
-                (i == allActPoints.size - 1 || point.y >= allActPoints[i + 1].y)
+        val peakIndices = allActPoints.indices.filter { i ->
+            val raw = abs(rawActPoints[i])
+            raw >= peakThreshold &&
+                (i == 0 || raw > abs(rawActPoints[i - 1])) &&
+                (i == allActPoints.size - 1 || raw >= abs(rawActPoints[i + 1]))
         }
-        data.overviewData.activityPeakSeries = if (peakPoints.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
+        data.overviewData.activityPeakSeries = if (peakIndices.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
             PointsWithLabelGraphSeries(
-                peakPoints.map { peak ->
-                    ActivityPeakDataPoint(peak.x, peak.y, decimalFormatter.to2Decimal(peak.y * 60.0), rh) as DataPointWithLabelInterface
+                peakIndices.map { i ->
+                    val point = allActPoints[i]
+                    ActivityPeakDataPoint(point.x, point.y, decimalFormatter.to2Decimal(rawActPoints[i] * 60.0), rh) as DataPointWithLabelInterface
                 }.toTypedArray()
             )
         } else {
