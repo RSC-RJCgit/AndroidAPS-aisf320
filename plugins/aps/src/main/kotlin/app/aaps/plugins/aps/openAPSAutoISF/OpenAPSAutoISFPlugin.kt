@@ -1184,15 +1184,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- SensorAgeToggleTT: manually setting a TT of 5.4 mmol is used as a remote toggle for the
+        // --- SensorAgeToggleTT: manually setting a TT of 5.06 mmol is used as a remote toggle for the
         // OldSensorAdj enable switch (ApsAutoIsfOldSensorAdjEnabled) — not a real target. Flips the
         // switch, then immediately cancels the TT so it never actually affects dosing. activeTtNear()
         // (not a hand-rolled mg/dL literal) is deliberate here — see its own doc comment on why the
-        // exact mmol->mg/dL conversion constant matters for matching a manually-set TT. Tight 0.02mmol
-        // tolerance to stay clearly clear of the nearby 5.7mmol reversal marker (0.1mmol away). Small
-        // throttle purely as a defense against double-toggling if the cancel hasn't fully propagated by
-        // the next cycle — the cancel itself is what actually prevents re-firing in normal operation.
-        if (readyToRun("SensorAgeToggleTT", 2) && activeTtNear(5.4, 0.02)) {
+        // exact mmol->mg/dL conversion constant matters for matching a manually-set TT. Tight 0.001mmol
+        // tolerance (not the old 0.02) — this now sits in a cluster with SmbDeliveryDownTT (5.02),
+        // SmbDeliveryUpTT (5.04), and BoostToggleTT (5.08), all only 0.02mmol apart from their
+        // neighbors, so a loose tolerance would make adjacent windows overlap. Small throttle purely as
+        // a defense against double-toggling if the cancel hasn't fully propagated by the next cycle —
+        // the cancel itself is what actually prevents re-firing in normal operation.
+        if (readyToRun("SensorAgeToggleTT", 2) && activeTtNear(5.06, 0.001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjEnabled, newState)
             cancelCurrentTempTarget()
@@ -1201,10 +1203,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SensorAgeToggleTT")
         }
 
-        // --- BoostToggleTT: manually setting a TT of 5.6 mmol is used as a remote toggle for
+        // --- BoostToggleTT: manually setting a TT of 5.08 mmol is used as a remote toggle for
         // ApsAutoIsfBoostAutomationsEnabled (the combined master switch for BolusGiven bg1/2/3 and
-        // BolusGivenMild) — not a real target. Same pattern as SensorAgeToggleTT above.
-        if (readyToRun("BoostToggleTT", 2) && activeTtNear(5.6, 0.02)) {
+        // BolusGivenMild) — not a real target. Same pattern and same tight 0.001mmol tolerance as
+        // SensorAgeToggleTT above (see its comment for why).
+        if (readyToRun("BoostToggleTT", 2) && activeTtNear(5.08, 0.001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
             cancelCurrentTempTarget()
@@ -3931,5 +3934,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU398
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU399
 */
