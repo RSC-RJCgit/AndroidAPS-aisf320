@@ -116,6 +116,11 @@ class WizardDialog : DaggerDialogFragment() {
     // setOnValueChangedListener callback (NumberPicker.value's setter fires that same listener).
     private var settingMaxBolusProgrammatically = false
 
+    // Same pair of guards as above, for the split-bolus interval's live 20-minute default (see
+    // calculateInsulin()).
+    private var userAdjustedSplitIntervalOverride = false
+    private var settingSplitIntervalProgrammatically = false
+
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
 
@@ -151,6 +156,7 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("bg_input", binding.bgInput.value)
         savedInstanceState.putDouble("carbs_input", binding.carbsInput.value)
         savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
+        savedInstanceState.putDouble("fat_input", binding.fatInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
     }
@@ -210,11 +216,17 @@ class WizardDialog : DaggerDialogFragment() {
             savedInstanceState?.getDouble("carbs_input")
                 ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
-        // Protein, folded into insulinFromCarbs as protein/25 carb-equivalent (see BolusWizard.doCalc) —
-        // same upper bound as carbs itself, no dedicated constraint of its own.
+        // Protein, folded into insulinFromCarbs as protein/25 carb-equivalent (see BolusWizard.doCalc) — own
+        // fixed 200g upper bound, not tied to the carbs constraint.
         binding.proteinInput.setParams(
             savedInstanceState?.getDouble("protein_input")
-                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+        // Fat, folded into insulinFromCarbs as fat/11 carb-equivalent (see BolusWizard.doCalc) — same fixed
+        // 200g upper bound as protein.
+        binding.fatInput.setParams(
+            savedInstanceState?.getDouble("fat_input")
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
         // If there is no BG using % lower that 100% leads to high BGs
@@ -339,6 +351,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.bgInputLabel.labelFor = binding.bgInput.editTextId
         binding.carbsInputLabel.labelFor = binding.carbsInput.editTextId
         binding.proteinInputLabel.labelFor = binding.proteinInput.editTextId
+        binding.fatInputLabel.labelFor = binding.fatInput.editTextId
         binding.correctionInputLabel.labelFor = binding.correctionInput.editTextId
         binding.carbTimeInputLabel.labelFor = binding.carbTimeInput.editTextId
     }
@@ -490,6 +503,7 @@ class WizardDialog : DaggerDialogFragment() {
         var bg = SafeParse.stringToDouble(binding.bgInput.text)
         val carbs = SafeParse.stringToInt(binding.carbsInput.text)
         val protein = SafeParse.stringToInt(binding.proteinInput.text)
+        val fat = SafeParse.stringToInt(binding.fatInput.text)
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection
@@ -537,7 +551,8 @@ class WizardDialog : DaggerDialogFragment() {
             carbTime,
             usePercentage = usePercentage,
             totalPercentage = percentageCorrection.toDouble(),
-            protein = protein
+            protein = protein,
+            fat = fat
         )
 
         wizard?.let { wizard ->
@@ -595,15 +610,21 @@ class WizardDialog : DaggerDialogFragment() {
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
 
-            // Live default for the max-bolus-override stepper: while protein's own insulin contribution is at
-            // least as large as carbs' own, default it to 33% of the current total — re-evaluated on every
-            // wizard input change, same as the rest of this function — until the user overrides it manually.
-            if (!userAdjustedMaxBolusOverride && wizard.insulinFromProteinOnly >= wizard.insulinFromCarbsOnly && wizard.calculatedTotalInsulin > 0.0) {
-                val newDefault = Round.roundTo(wizard.calculatedTotalInsulin * 0.33, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
-                if (abs(binding.maxBolusOverrideInput.value - newDefault) > 0.001) {
-                    settingMaxBolusProgrammatically = true
-                    binding.maxBolusOverrideInput.value = newDefault
-                    settingMaxBolusProgrammatically = false
+            // Live default for the max-bolus-override stepper. Fat dominating (its own contribution >= both
+            // protein's own and carbs' own) takes priority over protein alone dominating (>= carbs' own):
+            // 20% vs 33% of the current total. Re-evaluated on every wizard input change, same as the rest
+            // of this function, until the user overrides it manually.
+            if (!userAdjustedMaxBolusOverride && wizard.calculatedTotalInsulin > 0.0) {
+                val fatDominant = wizard.insulinFromFatOnly >= wizard.insulinFromProteinOnly && wizard.insulinFromFatOnly >= wizard.insulinFromCarbsOnly
+                val proteinDominant = wizard.insulinFromProteinOnly >= wizard.insulinFromCarbsOnly
+                val fraction = if (fatDominant) 0.20 else if (proteinDominant) 0.33 else null
+                if (fraction != null) {
+                    val newDefault = Round.roundTo(wizard.calculatedTotalInsulin * fraction, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
+                    if (abs(binding.maxBolusOverrideInput.value - newDefault) > 0.001) {
+                        settingMaxBolusProgrammatically = true
+                        binding.maxBolusOverrideInput.value = newDefault
+                        settingMaxBolusProgrammatically = false
+                    }
                 }
             }
 
@@ -613,16 +634,26 @@ class WizardDialog : DaggerDialogFragment() {
             val activeProfileSwitchPct = if (p is ProfileSealed.EPS) p.value.originalPercentage else p?.percentage ?: 100
             val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0
             if (splitFeatureAvailable) {
+                val proteinDominantForInterval = wizard.insulinFromProteinOnly >= wizard.insulinFromCarbsOnly
                 if (!splitBolusInitialized) {
                     splitBolusInitialized = true
-                    splitBolusIntervalLocal = preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
+                    splitBolusIntervalLocal = if (proteinDominantForInterval) 20 else preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)
                     binding.splitBolusCheckbox.isChecked = true
                     binding.splitBolusIntervalInput.setParams(
                         splitBolusIntervalLocal.toDouble(), 1.0, 60.0, 1.0, java.text.DecimalFormat("0"), false, binding.okcancel.ok, null
                     )
                     binding.splitBolusIntervalInput.value = splitBolusIntervalLocal.toDouble()
                     binding.splitBolusCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
-                    binding.splitBolusIntervalInput.setOnValueChangedListener { calculateInsulin() }
+                    binding.splitBolusIntervalInput.setOnValueChangedListener {
+                        if (!settingSplitIntervalProgrammatically) userAdjustedSplitIntervalOverride = true
+                        calculateInsulin()
+                    }
+                } else if (!userAdjustedSplitIntervalOverride && proteinDominantForInterval && binding.splitBolusIntervalInput.value.toInt() != 20) {
+                    // Live default, same pattern as the max-bolus-override: re-applied on every wizard input
+                    // change while protein's own contribution stays >= carbs' own, until the user overrides it.
+                    settingSplitIntervalProgrammatically = true
+                    binding.splitBolusIntervalInput.value = 20.0
+                    settingSplitIntervalProgrammatically = false
                 }
                 binding.splitBolusRow.visibility = android.view.View.VISIBLE
                 if (binding.splitBolusCheckbox.isChecked) {

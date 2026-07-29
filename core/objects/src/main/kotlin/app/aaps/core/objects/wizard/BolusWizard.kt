@@ -112,6 +112,10 @@ class BolusWizard @Inject constructor(
         private set
     var insulinFromProteinOnly = 0.0
         private set
+    // Fat's own contribution — same pattern as protein: folded in as a carb-equivalent (fat/11, vs
+    // protein's fat/25) before dividing by IC, so it shares insulinFromCarbs' unit conversion.
+    var insulinFromFatOnly = 0.0
+        private set
     var insulinFromBolusIOB = 0.0
         private set
     var insulinFromBasalIOB = 0.0
@@ -157,6 +161,9 @@ class BolusWizard @Inject constructor(
     // the insulinFromCarbs calculation only — the raw carbs field itself (what actually gets recorded
     // on the delivered treatment) is untouched, so treatment history still reflects the real carbs eaten.
     var protein: Int = 0
+    // Fat input (grams), converted to a carb-equivalent (fat/11) and added on top of carbs (and protein)
+    // for the insulinFromCarbs calculation only — same treatment as protein above, different divisor.
+    var fat: Int = 0
     var cob: Double = 0.0
     var bg: Double = 0.0
     private var correction: Double = 0.0
@@ -199,7 +206,8 @@ class BolusWizard @Inject constructor(
         totalPercentage: Double = 100.0,
         quickWizard: Boolean = false,
         positiveIOBOnly: Boolean = false,
-        protein: Int = 0
+        protein: Int = 0,
+        fat: Int = 0
     ): BolusWizard {
 
         this.profile = profile
@@ -207,6 +215,7 @@ class BolusWizard @Inject constructor(
         this.tempTarget = tempTarget
         this.carbs = carbs
         this.protein = protein
+        this.fat = fat
         this.cob = cob
         this.bg = bg
         this.correction = correction
@@ -261,13 +270,14 @@ class BolusWizard @Inject constructor(
         }
 
         // Insulin from carbs — base-100 IC when the active profile is boosted (see baseScale above).
-        // Protein is folded in as a carb-equivalent (protein/25) added on top of the entered carbs
-        // before dividing by IC — the raw carbs field itself stays untouched (used elsewhere for the
-        // actual recorded treatment), only this insulin calculation sees the combined value.
+        // Protein and fat are each folded in as a carb-equivalent (protein/25, fat/11) added on top of the
+        // entered carbs before dividing by IC — the raw carbs field itself stays untouched (used elsewhere
+        // for the actual recorded treatment), only this insulin calculation sees the combined value.
         ic = profile.getIc() * baseScale
         insulinFromCarbsOnly = carbs / ic
         insulinFromProteinOnly = (protein / 25.0) / ic
-        insulinFromCarbs = insulinFromCarbsOnly + insulinFromProteinOnly
+        insulinFromFatOnly = (fat / 11.0) / ic
+        insulinFromCarbs = insulinFromCarbsOnly + insulinFromProteinOnly + insulinFromFatOnly
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
