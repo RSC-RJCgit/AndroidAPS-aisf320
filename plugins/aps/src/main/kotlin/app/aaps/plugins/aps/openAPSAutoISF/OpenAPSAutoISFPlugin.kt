@@ -1213,11 +1213,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("BoostToggleTT")
         }
 
-        // --- SmbDeliveryDownTT: manually setting a TT of 4.9 mmol is used as a remote -0.01 nudge on
+        // --- SmbDeliveryDownTT: manually setting a TT of 5.02 mmol is used as a remote -0.01 nudge on
         // both SMB delivery settings (ApsAutoIsfSmbDeliveryBaseline, ApsAutoIsfMildBoostRatio) — not a
         // real target. Clamped to each key's own min (0.1 for both). Same activeTtNear()/cancel/notify
-        // pattern as SensorAgeToggleTT/BoostToggleTT above.
-        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(4.9, 0.02)) {
+        // pattern as SensorAgeToggleTT/BoostToggleTT above. Tight 0.001mmol tolerance (not the usual
+        // 0.02) — 5.02 and 5.04 (SmbDeliveryUpTT) are only 0.02mmol apart, so 0.02 tolerance would make
+        // their windows overlap each other (and creep into 5.0's own "own boost TT" territory).
+        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(5.02, 0.001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) - 0.01).coerceAtLeast(0.1)
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
@@ -1229,10 +1231,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SmbDeliveryDownTT")
         }
 
-        // --- SmbDeliveryUpTT: manually setting a TT of 5.1 mmol is used as a remote +0.01 nudge on
-        // both SMB delivery settings, clamped to each key's own max (0.5 for both). Same pattern as
-        // SmbDeliveryDownTT above.
-        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.1, 0.02)) {
+        // --- SmbDeliveryUpTT: manually setting a TT of 5.04 mmol is used as a remote +0.01 nudge on
+        // both SMB delivery settings, clamped to each key's own max (0.5 for both). Same pattern and
+        // same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
+        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.04, 0.001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
