@@ -142,6 +142,7 @@ class WizardDialog : DaggerDialogFragment() {
         super.onSaveInstanceState(savedInstanceState)
         savedInstanceState.putDouble("bg_input", binding.bgInput.value)
         savedInstanceState.putDouble("carbs_input", binding.carbsInput.value)
+        savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
     }
@@ -198,6 +199,12 @@ class WizardDialog : DaggerDialogFragment() {
         }
         binding.carbsInput.setParams(
             savedInstanceState?.getDouble("carbs_input")
+                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+        // Protein, folded into insulinFromCarbs as protein/25 carb-equivalent (see BolusWizard.doCalc) —
+        // same upper bound as carbs itself, no dedicated constraint of its own.
+        binding.proteinInput.setParams(
+            savedInstanceState?.getDouble("protein_input")
                 ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
@@ -322,6 +329,7 @@ class WizardDialog : DaggerDialogFragment() {
     private fun setA11yLabels() {
         binding.bgInputLabel.labelFor = binding.bgInput.editTextId
         binding.carbsInputLabel.labelFor = binding.carbsInput.editTextId
+        binding.proteinInputLabel.labelFor = binding.proteinInput.editTextId
         binding.correctionInputLabel.labelFor = binding.correctionInput.editTextId
         binding.carbTimeInputLabel.labelFor = binding.carbTimeInput.editTextId
     }
@@ -472,6 +480,7 @@ class WizardDialog : DaggerDialogFragment() {
         val usePercentage = binding.correctionPercent.isChecked
         var bg = SafeParse.stringToDouble(binding.bgInput.text)
         val carbs = SafeParse.stringToInt(binding.carbsInput.text)
+        val protein = SafeParse.stringToInt(binding.proteinInput.text)
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection
@@ -518,7 +527,8 @@ class WizardDialog : DaggerDialogFragment() {
             binding.notesLayout.notes.text.toString(),
             carbTime,
             usePercentage = usePercentage,
-            totalPercentage = percentageCorrection.toDouble()
+            totalPercentage = percentageCorrection.toDouble(),
+            protein = protein
         )
 
         wizard?.let { wizard ->
