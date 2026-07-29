@@ -104,6 +104,14 @@ class BolusWizard @Inject constructor(
         private set
     var insulinFromCarbs = 0.0
         private set
+    // Decomposed halves of insulinFromCarbs (which is their sum) — exposed so callers (the reducedMode
+    // split-bolus check below, and WizardDialog's live max-bolus-override default) can compare protein's
+    // own contribution against carbs' own, without each needing to recompute carbs/ic and protein/25/ic
+    // separately.
+    var insulinFromCarbsOnly = 0.0
+        private set
+    var insulinFromProteinOnly = 0.0
+        private set
     var insulinFromBolusIOB = 0.0
         private set
     var insulinFromBasalIOB = 0.0
@@ -257,7 +265,9 @@ class BolusWizard @Inject constructor(
         // before dividing by IC — the raw carbs field itself stays untouched (used elsewhere for the
         // actual recorded treatment), only this insulin calculation sees the combined value.
         ic = profile.getIc() * baseScale
-        insulinFromCarbs = (carbs + protein / 25.0) / ic
+        insulinFromCarbsOnly = carbs / ic
+        insulinFromProteinOnly = (protein / 25.0) / ic
+        insulinFromCarbs = insulinFromCarbsOnly + insulinFromProteinOnly
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
@@ -654,8 +664,6 @@ class BolusWizard @Inject constructor(
                                             // smaller than a full maxPart share — scaled down further the longer the
                                             // overall planned span is — trading completeness of the calculated total
                                             // for safety margin when circumstances suggest less certainty.
-                                            val insulinFromProteinOnly = (protein / 25.0) / ic
-                                            val insulinFromCarbsOnly = carbs / ic
                                             val reducedMode = intervalMins > 10 || insulinFromProteinOnly >= insulinFromCarbsOnly
                                             if (reducedMode) {
                                                 val reducedFraction = when {

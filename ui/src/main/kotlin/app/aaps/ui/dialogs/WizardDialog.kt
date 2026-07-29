@@ -108,6 +108,14 @@ class WizardDialog : DaggerDialogFragment() {
     // running total/split-bolus display to reflect it.
     private var originalSafetyMaxBolus = 0.0
 
+    // Once the user manually touches the max-bolus-override stepper, the live 33%-of-total protein-driven
+    // default (see calculateInsulin()) stops overwriting it for the rest of this wizard session.
+    private var userAdjustedMaxBolusOverride = false
+
+    // Guards the .value = newDefault assignment below from being misread as a user edit by the
+    // setOnValueChangedListener callback (NumberPicker.value's setter fires that same listener).
+    private var settingMaxBolusProgrammatically = false
+
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
 
@@ -182,6 +190,7 @@ class WizardDialog : DaggerDialogFragment() {
             decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep), false, binding.okcancel.ok
         )
         binding.maxBolusOverrideInput.setOnValueChangedListener {
+            if (!settingMaxBolusProgrammatically) userAdjustedMaxBolusOverride = true
             preferences.put(DoubleKey.SafetyMaxBolus, binding.maxBolusOverrideInput.value)
             calculateInsulin()
         }
@@ -585,6 +594,18 @@ class WizardDialog : DaggerDialogFragment() {
             binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, wizard.percentageCorrection)
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
+
+            // Live default for the max-bolus-override stepper: while protein's own insulin contribution is at
+            // least as large as carbs' own, default it to 33% of the current total — re-evaluated on every
+            // wizard input change, same as the rest of this function — until the user overrides it manually.
+            if (!userAdjustedMaxBolusOverride && wizard.insulinFromProteinOnly >= wizard.insulinFromCarbsOnly && wizard.calculatedTotalInsulin > 0.0) {
+                val newDefault = Round.roundTo(wizard.calculatedTotalInsulin * 0.33, bolusStep.takeIf { it > 0.0 } ?: 0.05).coerceIn(0.1, 60.0)
+                if (abs(binding.maxBolusOverrideInput.value - newDefault) > 0.001) {
+                    settingMaxBolusProgrammatically = true
+                    binding.maxBolusOverrideInput.value = newDefault
+                    settingMaxBolusProgrammatically = false
+                }
+            }
 
             // Split bolus controls: show when profile% = 100 (feature may apply)
             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
