@@ -2372,18 +2372,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && checkAutomationState("Steroids", "Steroids Off")
         ) {
             val g   = glucoseStatus.glucose
+            val d   = glucoseStatus.delta
             val sd  = glucoseStatus.shortAvgDelta
             val cob = mealData.mealCOB
             val steps60  = recentSteps60Minutes
             val steps180 = StepService.getRecentStepCount180Min()
             val iobTH = iobThresholdPercent
+            // "iobTH==50" alone isn't proof the fall that caused it has actually stopped — Extra50%
+            // (X50-N) can fire at any point up to 6.5mmol while still falling, which overlaps this
+            // block's own >=5.5mmol floor. Requiring d/sd both >=0 confirms the fall has genuinely
+            // stabilized (not just crossed the recovery BG floor mid-fall) before treating iobTH==50 as
+            // recovery evidence — without this, Extra50%/Usual2forTH could ping-pong every ~5-10 min in
+            // that overlap zone (Extra50% drops iobTH to 50, Usual2forTH immediately sees iobTH==50 +
+            // BG>=5.5 and restores it, re-arming Extra50%, repeat). Only gates the iobTH==50 disjunct —
+            // iobTH<=19 is a separate, more severe reduction from other automations, not what was
+            // flip-flopping, so it's left alone.
+            val stabilized = d >= 0.0 && sd >= 0.0
             // block 1: daytime 08:00–20:00, some activity, iobTH low or reduced
             val u2b1 = isTimeBetween(8, 0, 20, 0) &&
-                (steps180 >= 10 || iobTH <= 19 || iobTH == 50) &&
+                (steps180 >= 10 || iobTH <= 19 || (iobTH == 50 && stabilized)) &&
                 steps60 >= 50
             // block 2: day 09:01–20:00, iobTH at night/twilight level
             val u2b2 = isTimeBetween(9, 1, 20, 0) &&
-                (iobTH <= 19 || iobTH == 50)
+                (iobTH <= 19 || (iobTH == 50 && stabilized))
             // block 3: 05:01–20:00, waking/rising BGL
             val u2b3 = isTimeBetween(5, 1, 20, 0) &&
                 (cob >= 10.0 || steps60 >= 100 || g >= 153.1 || sd >= 18.0)  // 8.5mmol / 1.0mmol
@@ -4093,5 +4104,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU403
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU404
 */
