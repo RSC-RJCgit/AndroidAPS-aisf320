@@ -1249,6 +1249,98 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SmbDeliveryUpTT")
         }
 
+        // --- PpWeightDownTT: manually setting a TT of 5.12 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfPpWeightNormal (ppISFwt_orig), clamped to its own min (0.0) — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the SmbDelivery*/SensorAge/Boost toggle TTs above.
+        if (readyToRun("PpWeightDownTT", 2) && activeTtNear(5.12, 0.001)) {
+            val newPp = (preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal) - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
+            addCarePortalNote("PPd${round(newPp, 2).toString().takeLast(2)}")
+            markRun("PpWeightDownTT")
+        }
+
+        // --- PpWeightUpTT: manually setting a TT of 5.14 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfPpWeightNormal, clamped to its own max (0.15). Same pattern as PpWeightDownTT above.
+        if (readyToRun("PpWeightUpTT", 2) && activeTtNear(5.14, 0.001)) {
+            val newPp = (preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal) + 0.01).coerceAtMost(0.15)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
+            addCarePortalNote("PPu${round(newPp, 2).toString().takeLast(2)}")
+            markRun("PpWeightUpTT")
+        }
+
+        // --- AcceWeightDownTT: manually setting a TT of 5.16 mmol is used as a remote -0.05 nudge on
+        // ApsAutoIsfBgAccelWeightNormal (acceISFwt_orig), clamped to a min of 0.55 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("AcceWeightDownTT", 2) && activeTtNear(5.16, 0.001)) {
+            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) - 0.05).coerceAtLeast(0.55)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
+            addCarePortalNote("ACd${round(newAcce, 2).toString().takeLast(2)}")
+            markRun("AcceWeightDownTT")
+        }
+
+        // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfBgAccelWeightNormal, clamped to a max of 1.00. Same pattern as AcceWeightDownTT above.
+        if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.18, 0.001)) {
+            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) + 0.01).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
+            addCarePortalNote("ACu${round(newAcce, 2).toString().takeLast(2)}")
+            markRun("AcceWeightUpTT")
+        }
+
+        // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("DuraWeightDownTT", 2) && activeTtNear(5.22, 0.001)) {
+            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) - 0.1).coerceAtLeast(0.00)
+            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            cancelCurrentTempTarget()
+            sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
+            addCarePortalNote("DUd${round(newDura, 2).toString().takeLast(2)}")
+            markRun("DuraWeightDownTT")
+        }
+
+        // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfDuraWeightNormal, clamped to a max of 3.00. Same pattern as DuraWeightDownTT above.
+        if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.24, 0.001)) {
+            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) + 0.01).coerceAtMost(3.00)
+            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            cancelCurrentTempTarget()
+            sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
+            addCarePortalNote("DUu${round(newDura, 2).toString().takeLast(2)}")
+            markRun("DuraWeightUpTT")
+        }
+
+        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.10 nudge on
+        // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
+        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.36, 0.001)) {
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.10).coerceAtLeast(0.50)
+            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
+            cancelCurrentTempTarget()
+            sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
+            addCarePortalNote("SOd${round(newOffset, 2).toString().takeLast(2)}")
+            markRun("SmbOffsetDownTT")
+        }
+
+        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.10 nudge on
+        // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
+        if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.38, 0.001)) {
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.10).coerceAtMost(1.50)
+            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
+            cancelCurrentTempTarget()
+            sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
+            addCarePortalNote("SOu${round(newOffset, 2).toString().takeLast(2)}")
+            markRun("SmbOffsetUpTT")
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
@@ -3937,5 +4029,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU399
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU401
 */
