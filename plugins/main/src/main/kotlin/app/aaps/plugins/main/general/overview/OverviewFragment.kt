@@ -906,6 +906,50 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // long-press, which still refreshes it immediately/unthrottled on demand.
     private var lastAnnotationPositionAutoRefresh = 0L
 
+    // Latest IOB dialog text, refreshed every updateIobCob() cycle — read by iobGestureDetector below
+    // at tap time, so the detector itself doesn't need to be rebuilt each refresh just to close over a
+    // fresh value.
+    private var iobDialogTextCached = ""
+
+    // Created ONCE (not per-refresh) — double-tap detection needs the same detector instance to see
+    // both taps of a pair. Rebuilding it inside updateIobCob()'s periodic refresh meant a refresh
+    // landing between the two taps of a double-tap swapped in a brand-new detector that never saw the
+    // first tap, so every double-tap attempt was silently evaluated as two isolated single-taps
+    // instead (each firing immediately once ITS OWN detector's timeout passed).
+    private val iobGestureDetector by lazy {
+        android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogTextCached) }
+                return true
+            }
+
+            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                activity?.let { act ->
+                    val entries = ttCodesList()
+                    androidx.appcompat.app.AlertDialog.Builder(act)
+                        .setTitle("TT remote-trigger codes — tap to set")
+                        .setItems(entries.map { it.first }.toTypedArray()) { _, which -> setTt(entries[which].second) }
+                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                        .show()
+                }
+                return true
+            }
+
+            override fun onLongPress(e: android.view.MotionEvent) {
+                PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
+                // Always reset the basal-toggle preset back to 0 (normal ISF colors, transparent noisy
+                // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
+                // the other display settings, independent of the SMB-label state.
+                PointsWithLabelGraphSeries.basalToggleIndex = 0
+                // Re-decide the green-line annotation's top/under-target position from the current BGL,
+                // right now — this is the only place that decision gets refreshed (see
+                // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
+                PointsWithLabelGraphSeries.refreshAnnotationPosition()
+                rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
+            }
+        })
+    }
+
     @SuppressLint("SetTextI18n")
     fun updateBg() {
         val lastBg = lastBgData.lastBg()
@@ -1137,43 +1181,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         runOnUiThread {
             _binding ?: return@runOnUiThread
             binding.infoLayout.iob.text = iobText
-            // Single tap / long-press / double-tap all live on one GestureDetector now (a View only
-            // supports one OnClickListener and one OnLongClickListener each, so a third distinct gesture
-            // needs this instead): single tap keeps the existing IOB info popup, long-press keeps the
-            // existing showSmbLabels/basalToggleIndex display toggle, double-tap is new — shows the
-            // current TT remote-trigger codes (see OpenAPSAutoISFPlugin.kt's own *TT blocks) as a
-            // read-only reference popup.
-            val iobGestureDetector = android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                    activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.iob), iobDialogText) }
-                    return true
-                }
-
-                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                    activity?.let { act ->
-                        val entries = ttCodesList()
-                        androidx.appcompat.app.AlertDialog.Builder(act)
-                            .setTitle("TT remote-trigger codes — tap to set")
-                            .setItems(entries.map { it.first }.toTypedArray()) { _, which -> setTt(entries[which].second) }
-                            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                            .show()
-                    }
-                    return true
-                }
-
-                override fun onLongPress(e: android.view.MotionEvent) {
-                    PointsWithLabelGraphSeries.showSmbLabels = !PointsWithLabelGraphSeries.showSmbLabels
-                    // Always reset the basal-toggle preset back to 0 (normal ISF colors, transparent noisy
-                    // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
-                    // the other display settings, independent of the SMB-label state.
-                    PointsWithLabelGraphSeries.basalToggleIndex = 0
-                    // Re-decide the green-line annotation's top/under-target position from the current BGL,
-                    // right now — this is the only place that decision gets refreshed (see
-                    // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
-                    PointsWithLabelGraphSeries.refreshAnnotationPosition()
-                    rxBus.send(EventRefreshOverview("toggleSmbLabels", now = true))
-                }
-            })
+            iobDialogTextCached = iobDialogText
+            // Single tap / long-press / double-tap all live on one persistent GestureDetector (see
+            // iobGestureDetector field) — re-attaching the listener here each refresh is fine/cheap, but
+            // the detector instance itself must stay the same one across refreshes for double-tap
+            // detection to work (see that field's own comment).
             binding.infoLayout.iobLayout.setOnTouchListener { _, event -> iobGestureDetector.onTouchEvent(event); true }
             // cob
             var cobText = displayText ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
