@@ -76,6 +76,40 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/max_bolus_override_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Max bolus (this bolus only)"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                tools:ignore="HardcodedText" />
+
+            <app.aaps.core.ui.elements.NumberPicker
+                android:id="@+id/max_bolus_override_input"
+                android:layout_width="130dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/insulin_unit_shortname"
+                android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/split_bolus_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

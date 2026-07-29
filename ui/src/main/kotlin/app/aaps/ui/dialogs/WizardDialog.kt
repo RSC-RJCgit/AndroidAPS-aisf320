@@ -39,6 +39,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -96,6 +97,16 @@ class WizardDialog : DaggerDialogFragment() {
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var bolusStep = 0.0
     private var _binding: DialogWizardBinding? = null
+
+    // Snapshot of the user's real DoubleKey.SafetyMaxBolus, taken once in onViewCreated before the
+    // max-bolus-override stepper can touch it. Restored unconditionally in onDestroy() (the one
+    // lifecycle hook guaranteed to run on every exit path — OK, Cancel, back, swipe-dismiss, or the
+    // onResume() protection-check auto-cancel), so a temporary raise for this one bolus can never
+    // accidentally stick around for the next one. BolusWizard.doCalc() re-applies the bolus constraint
+    // pipeline (which reads this same key) on every keystroke while the dialog is open, so the override
+    // has to be live in the preference itself — not just checked at confirm time — for the wizard's own
+    // running total/split-bolus display to reflect it.
+    private var originalSafetyMaxBolus = 0.0
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -161,6 +172,18 @@ class WizardDialog : DaggerDialogFragment() {
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
         val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
         bolusStep = activePlugin.activePump.pumpDescription.bolusStep
+
+        // Temporary max-bolus override for this one wizard session only — see originalSafetyMaxBolus's
+        // own doc comment for why the revert lives in onDestroy() rather than here.
+        originalSafetyMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        binding.maxBolusOverrideInput.setParams(
+            originalSafetyMaxBolus, 0.1, 60.0, bolusStep.takeIf { it > 0.0 } ?: 0.05,
+            decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep), false, binding.okcancel.ok
+        )
+        binding.maxBolusOverrideInput.setOnValueChangedListener {
+            preferences.put(DoubleKey.SafetyMaxBolus, binding.maxBolusOverrideInput.value)
+            calculateInsulin()
+        }
 
         if (profileFunction.getUnits() == GlucoseUnit.MGDL) {
             binding.bgInput.setParams(
@@ -310,6 +333,10 @@ class WizardDialog : DaggerDialogFragment() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Unconditional revert of the max-bolus override — runs on every exit path (OK, Cancel, back,
+        // swipe-dismiss, or the onResume() protection-check auto-cancel), so a temporary raise for this
+        // one bolus can never accidentally stick around for the next one.
+        preferences.put(DoubleKey.SafetyMaxBolus, originalSafetyMaxBolus)
         disposable.clear()
         handler.removeCallbacksAndMessages(null)
         handler.looper.quitSafely()
