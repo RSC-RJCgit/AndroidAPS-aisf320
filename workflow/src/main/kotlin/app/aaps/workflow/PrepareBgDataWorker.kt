@@ -13,7 +13,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
-import app.aaps.core.graph.data.L5DeltaDataPoint
+import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
@@ -174,14 +174,14 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "L5=<libre 5-min delta>" label (orange), attached directly to the current Libre graph point
-        // (same x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
-        data.overviewData.l5DeltaSeries =
-            if (latest != null && noisyBg != null && libreDelta5 != null) {
-                val label = formatMmolDelta(libreDelta5)
+        // Libre 1-min delta label (red), attached directly to the current Libre graph point (same
+        // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
+        data.overviewData.l1DeltaSeries =
+            if (latest != null && noisyBg != null && libreDelta != null) {
+                val label = formatMmolDelta(libreDelta)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        L5DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
+                        L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

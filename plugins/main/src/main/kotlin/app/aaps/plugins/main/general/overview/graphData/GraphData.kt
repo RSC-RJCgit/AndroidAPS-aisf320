@@ -151,8 +151,8 @@ class GraphData @Inject constructor(
         addSeries(overviewData.noisyBgDeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
-    fun addL5DeltaAnnotation() {
-        addSeries(overviewData.l5DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    fun addL1DeltaAnnotation() {
+        addSeries(overviewData.l1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
     fun addStepsStackedAnnotation() {

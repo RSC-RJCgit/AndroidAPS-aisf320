@@ -1299,9 +1299,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
-        // "L5=..." label attached to the actual current Libre point — must be on THIS graph (the real
-        // BG graph, same y-scale as the plotted point), not a secondary graph panel.
-        graphData.addL5DeltaAnnotation()
+        // Libre 1-min delta label attached to the actual current Libre point — must be on THIS graph
+        // (the real BG graph, same y-scale as the plotted point), not a secondary graph panel.
+        graphData.addL1DeltaAnnotation()
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()

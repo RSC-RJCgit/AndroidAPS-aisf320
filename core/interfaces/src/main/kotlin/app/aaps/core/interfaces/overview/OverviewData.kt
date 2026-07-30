@@ -127,8 +127,8 @@ interface OverviewData {
     var dsMinSeries: SeriesData
     var rawBgSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
-    // "L5=<libre 5-min delta>" label attached to the current Libre graph point — see L5DeltaDataPoint/Shape.L5_DELTA_POINT.
-    var l5DeltaSeries: SeriesData
+    // Libre 1-min delta label attached to the current Libre graph point — see L1DeltaDataPoint/Shape.L1_DELTA_POINT.
+    var l1DeltaSeries: SeriesData
     var stepsStackedSeries: SeriesData
     // "DR=/AW=/LS=" row, split out of stepsStackedSeries — see StepsExtraDataPoint/Shape.STEPS_EXTRA_ROW.
     var stepsExtraSeries: SeriesData

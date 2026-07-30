@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -408,6 +409,14 @@ class TreatmentsBolusCarbsFragment : DaggerFragment(), MenuProvider {
     private fun removeSelected(selectedItems: SparseArray<MealLink>) {
         activity?.let { activity ->
             OKDialog.showConfirmation(activity, rh.gs(app.aaps.core.ui.R.string.removerecord), getConfirmationText(selectedItems), Runnable {
+                // Deleting a bolus/carbs treatment supersedes any still-pending BolusWizard split/protein/
+                // fat schedule (see ScheduledDoseSupersession's own doc comment) — there's no per-record
+                // link between a deleted treatment and whichever in-memory schedule it may have spawned, so
+                // this deliberately cancels EVERYTHING currently pending rather than risk leaving an
+                // orphaned scheduled dose tied to a treatment record that no longer exists.
+                var removingBolusOrCarbs = false
+                selectedItems.forEach { _, ml -> if (ml.bolus != null || ml.carbs != null) removingBolusOrCarbs = true }
+                if (removingBolusOrCarbs) ScheduledDoseSupersession.bump()
                 selectedItems.forEach { _, ml ->
                     ml.bolus?.let { bolus ->
                         disposable += persistenceLayer.invalidateBolus(
