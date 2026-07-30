@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -267,6 +268,10 @@ class InsulinDialog : DialogFragmentWithDate() {
                             ).subscribe()
                             if (timeOffset == 0)
                                 automation.removeAutomationEventBolusReminder()
+                            // A manually-recorded bolus is still a new insulin entry — supersede any
+                            // still-pending BolusWizard split/protein/fat schedule (see
+                            // ScheduledDoseSupersession's own doc comment).
+                            ScheduledDoseSupersession.bump()
                         } else {
                             uel.log(
                                 Action.BOLUS, Sources.InsulinDialog,
@@ -279,6 +284,7 @@ class InsulinDialog : DialogFragmentWithDate() {
                                         uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                                     } else {
                                         automation.removeAutomationEventBolusReminder()
+                                        ScheduledDoseSupersession.bump()
                                     }
                                 }
                             })

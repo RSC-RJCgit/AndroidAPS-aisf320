@@ -61,9 +61,10 @@ object BolusProgressData {
     var stopPressed = false
 
     /**
-     * Set when stop is pressed — prevents any scheduled follow-up doses from firing
-     * (equal-parts split bolus parts AND delayed-bolus checks alike).
-     * Cleared when a new bolus starts via set().
+     * Set when stop is pressed — prevents any scheduled follow-up doses from firing (BolusWizard's
+     * carb-split, protein, and fat delayed doses, and the delayed-bolus check, alike).
+     * Cleared when a new bolus starts via set(). See ScheduledDoseSupersession for the separate
+     * mechanism that detects "a newer bolus/carbs entry superseded this one" specifically.
      */
     var followUpBolusCancelled = false
 }

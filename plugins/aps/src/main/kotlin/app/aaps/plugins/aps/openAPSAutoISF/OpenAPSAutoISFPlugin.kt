@@ -827,14 +827,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
         val iobData = iobArray[0]
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
-        // Two independent SMB-block windows: equal-parts split bolus and delayed bolus.
-        // Whichever reaches further into the future wins; each is released by its own mechanism.
-        val splitBolusBlockUntil = preferences.get(LongKey.SplitBolusBlockSmbUntil)
+        // SMB-block window for the (separate, unrelated to BolusWizard's own split-bolus feature)
+        // 50%-profile delayed-bolus mechanism. BolusWizard's own carb-split/protein/fat scheduling never
+        // blocks SMBs (removed entirely — see BolusWizard.kt's scheduleReducedPartsSplitBolus), so there
+        // is no longer a second window to combine here.
         val delayedBolusBlockUntil = preferences.get(LongKey.DelayedBolusBlockSmbUntil)
-        val smbBlockUntil = max(splitBolusBlockUntil, delayedBolusBlockUntil)
-        val microBolusAllowed = if (smbBlockUntil > dateUtil.now()) {
-            val blocker = if (delayedBolusBlockUntil >= splitBolusBlockUntil) "Delayed bolus" else "Split bolus"
-            inputConstraints.copyReasons(ConstraintObject(false, aapsLogger).also { it.set(false, "$blocker active — SMBs blocked until ${dateUtil.timeString(smbBlockUntil)}", this) })
+        val microBolusAllowed = if (delayedBolusBlockUntil > dateUtil.now()) {
+            inputConstraints.copyReasons(ConstraintObject(false, aapsLogger).also { it.set(false, "Delayed bolus active — SMBs blocked until ${dateUtil.timeString(delayedBolusBlockUntil)}", this) })
             false
         } else {
             constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()

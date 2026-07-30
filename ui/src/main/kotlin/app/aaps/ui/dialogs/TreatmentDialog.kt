@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -197,6 +198,10 @@ class TreatmentDialog : DialogFragmentWithDate() {
                                 source = Sources.TreatmentDialog,
                                 note = if (carbsAfterConstraints != 0) rh.gs(app.aaps.core.ui.R.string.record) else ""
                             ).subscribe()
+                        // A manually-recorded bolus/carbs entry is still a new treatment — supersede any
+                        // still-pending BolusWizard split/protein/fat schedule (see
+                        // ScheduledDoseSupersession's own doc comment).
+                        if (detailedBolusInfo.insulin > 0 || detailedBolusInfo.carbs > 0) ScheduledDoseSupersession.bump()
                     } else {
                         if (detailedBolusInfo.insulin > 0) {
                             uel.log(
@@ -211,16 +216,20 @@ class TreatmentDialog : DialogFragmentWithDate() {
                                 override fun run() {
                                     if (!result.success) {
                                         uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                    } else {
+                                        ScheduledDoseSupersession.bump()
                                     }
                                 }
                             })
                         } else {
-                            if (detailedBolusInfo.carbs > 0)
+                            if (detailedBolusInfo.carbs > 0) {
                                 disposable += persistenceLayer.insertOrUpdateCarbs(
                                     detailedBolusInfo.createCarbs(),
                                     action = action,
                                     source = Sources.TreatmentDialog
                                 ).subscribe()
+                                ScheduledDoseSupersession.bump()
+                            }
                         }
                     }
                 })

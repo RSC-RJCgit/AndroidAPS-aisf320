@@ -32,6 +32,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -137,6 +138,8 @@ class BolusWizard @Inject constructor(
     var manualSplitBolusEnabled: Boolean = false
     var manualSplitBolusIntervalMins: Int = 7
     private var splitBolusScheduled = false  // guard against double-callback
+    private var proteinDoseScheduled = false // guard against double-callback (protein's single +120min dose)
+    private var fatDoseScheduled = false     // guard against double-callback (fat's single +180min dose)
 
     // Result
     var calculatedTotalInsulin: Double = 0.0
@@ -270,14 +273,16 @@ class BolusWizard @Inject constructor(
         }
 
         // Insulin from carbs — base-100 IC when the active profile is boosted (see baseScale above).
-        // Protein and fat are each folded in as a carb-equivalent (protein/25, fat/11) added on top of the
-        // entered carbs before dividing by IC — the raw carbs field itself stays untouched (used elsewhere
-        // for the actual recorded treatment), only this insulin calculation sees the combined value.
+        // Protein and fat are each computed as their own carb-equivalent (protein/25, fat/11) divided by
+        // IC, but are NO LONGER folded into insulinFromCarbs/calculatedTotalInsulin — they're delivered
+        // entirely separately, as their own single fixed-time doses (see the protein/fat scheduling in
+        // commonProcessing()'s success callback: one dose at +120min for protein, one at +180min for
+        // fat), independent of the immediate bolus and of the carb-split schedule below.
         ic = profile.getIc() * baseScale
         insulinFromCarbsOnly = carbs / ic
         insulinFromProteinOnly = (protein / 25.0) / ic
         insulinFromFatOnly = (fat / 11.0) / ic
-        insulinFromCarbs = insulinFromCarbsOnly + insulinFromProteinOnly + insulinFromFatOnly
+        insulinFromCarbs = insulinFromCarbsOnly
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
@@ -648,13 +653,30 @@ class BolusWizard @Inject constructor(
                                             listValues = listOf()
                                         ).blockingGet()
                                     }
-                                    // Equal-parts split bolus: profile% at or above 100 (a boosted profile still
-                                    // needs its correctly-scaled, larger recalculated dose split if it exceeds
-                                    // maxBolus — excluding >100 was a bug, not intentional; only a REDUCED
-                                    // profile, where the assumptions this recalculation relies on don't hold,
-                                    // should be excluded), total > maxBolus, enabled per-bolus.
+                                    // Carb-split bolus: profile% at or above 100 (a boosted profile still needs
+                                    // its correctly-scaled, larger recalculated dose split if it exceeds maxBolus
+                                    // — excluding >100 was a bug, not intentional; only a REDUCED profile, where
+                                    // the assumptions this recalculation relies on don't hold, should be excluded),
+                                    // total > maxBolus, enabled per-bolus. SMBs are never blocked here — the old
+                                    // equal-parts/SplitBolusBlockSmbUntil mode is gone entirely; every split is
+                                    // BG-gated and IOB-delta-sized instead (see scheduleReducedPartsSplitBolus).
                                     val schedulingPct = activeProfileSwitchPct()
+                                    // Superbolus (this wizard's own useSuperBolus above, OR any other still-active
+                                    // one) blocks carb-split/protein/fat scheduling entirely — a superbolus already
+                                    // bakes in its own specific 2h TBR-suspension tradeoff; layering split/delayed
+                                    // doses on top of that window risks over-delivery neither side accounts for.
+                                    val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
+                                    // Claims this confirmation's own supersession token — see
+                                    // ScheduledDoseSupersession's own doc comment. Bumping here (rather than
+                                    // only reading it) means THIS confirmation also retires any earlier
+                                    // still-pending schedule (from a previous wizard confirm, a manual bolus
+                                    // via InsulinDialog, or carbs entered via CarbsDialog), not just the
+                                    // reverse.
+                                    val myScheduleToken = ScheduledDoseSupersession.bump()
+                                    // IOB right before THIS (the first/immediate) dose, from doCalc()'s own fields.
+                                    val iobBeforeFirstDose = insulinFromBolusIOB + insulinFromBasalIOB
                                     if (!splitBolusScheduled &&
+                                        !superBolusActive &&
                                         manualSplitBolusEnabled &&
                                         schedulingPct >= 100 &&
                                         calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
@@ -664,51 +686,40 @@ class BolusWizard @Inject constructor(
                                         val intervalMins = manualSplitBolusIntervalMins
                                         val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
                                         if (numParts > 1) {
-                                            val totalPlannedDurationMins = (numParts - 1) * intervalMins
-                                            // Reduced/gated mode: long interval (>10min), or protein's own insulin
-                                            // contribution at least matches carbs' own — (protein/25)/ic >= carbs/ic,
-                                            // which simplifies to protein/25 >= carbs since ic cancels out of both
-                                            // sides. These are cases where a fixed rapid equal-parts split is less
-                                            // appropriate than a slower, BG-gated trickle: SMBs are left unblocked
-                                            // (the point is to let them help instead), and each part is deliberately
-                                            // smaller than a full maxPart share — scaled down further the longer the
-                                            // overall planned span is — trading completeness of the calculated total
-                                            // for safety margin when circumstances suggest less certainty.
-                                            val reducedMode = intervalMins > 10 || insulinFromProteinOnly >= insulinFromCarbsOnly
-                                            if (reducedMode) {
-                                                val reducedFraction = when {
-                                                    totalPlannedDurationMins <= 20 -> 0.50
-                                                    totalPlannedDurationMins <= 30 -> 0.25
-                                                    totalPlannedDurationMins <= 40 -> 0.10
-                                                    else -> 0.0
-                                                }
-                                                val residual = calculatedTotalInsulin - maxPart // part 1 already delivered synchronously above
-                                                if (reducedFraction > 0.0) {
-                                                    val partDose = Round.roundTo(maxPart * reducedFraction, activePlugin.activePump.pumpDescription.bolusStep)
-                                                    aapsLogger.info(
-                                                        LTag.CORE,
-                                                        "ReducedSplitBolus: residual ${residual}U, ${partDose}U every ${intervalMins}min " +
-                                                            "(${(reducedFraction * 100).toInt()}% of a full part, planned span ${totalPlannedDurationMins}min), SMBs allowed, BG-gated"
-                                                    )
-                                                    scheduleReducedPartsSplitBolus(residual, partDose, intervalMins, schedulingPct)
-                                                } else {
-                                                    aapsLogger.info(
-                                                        LTag.CORE,
-                                                        "ReducedSplitBolus: planned span ${totalPlannedDurationMins}min exceeds 40min — residual ${residual}U not delivered, no further parts scheduled"
-                                                    )
-                                                }
-                                            } else {
-                                                val blockMs = T.mins(totalPlannedDurationMins.toLong()).msecs()
-                                                preferences.put(LongKey.SplitBolusBlockSmbUntil, dateUtil.now() + blockMs)
-                                                val lastPart = Round.roundTo(calculatedTotalInsulin - (numParts - 1) * maxPart, activePlugin.activePump.pumpDescription.bolusStep)
-                                                val splitDesc = if (lastPart < maxPart)
-                                                    "${numParts - 1}×${maxPart}U + ${lastPart}U"
-                                                else
-                                                    "${numParts}×${maxPart}U"
-                                                aapsLogger.info(LTag.CORE, "EqualSplitBolus: scheduled $splitDesc every ${intervalMins}min, SMBs blocked ${totalPlannedDurationMins}min")
-                                                scheduleEqualPartsSplitBolus(calculatedTotalInsulin, maxPart, intervalMins, 2, numParts, schedulingPct)
-                                            }
+                                            val residual = calculatedTotalInsulin - maxPart // part 1 (100% of maxPart) already delivered synchronously above
+                                            // Becomes the baseline the first scheduled split's IOB-delta is measured
+                                            // against once maxPart (this dose) is added to it, matching "gap start =
+                                            // IOB before a dose + that dose's own amount" throughout.
+                                            aapsLogger.info(
+                                                LTag.CORE,
+                                                "ReducedSplitBolus: residual ${residual}U, first scheduled part starts from ${maxPart}U every ${intervalMins}min, SMBs allowed, BG- and IOBdelta-gated"
+                                            )
+                                            scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
                                         }
+                                    }
+                                    // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after
+                                    // the actual delivered immediate dose (insulinAfterConstraints — carbs/BG/etc
+                                    // only, since protein/fat are excluded from it) joined the pool. A lot of SMBs
+                                    // firing between now and each one's own +120/+180min delivery point can already
+                                    // cover much of the anticipated protein/fat-driven rise — see scheduleSingleDelayedDose.
+                                    val iobBaselineForDelayedDoses = iobBeforeFirstDose + insulinAfterConstraints
+                                    // Protein: one single dose at +120min. Decoupled from manualSplitBolusEnabled
+                                    // (the "Split bolus every" checkbox) entirely — fires whenever protein was
+                                    // entered, regardless of whether carb-splitting is enabled/needed for this
+                                    // bolus — its own amount, its own timing, its own gate. Still requires
+                                    // schedulingPct >= 100, same reasoning as carb-splits: at any other percentage
+                                    // the carb-equivalent this amount was computed from no longer reflects reality.
+                                    if (!proteinDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromProteinOnly > 0.0) {
+                                        proteinDoseScheduled = true
+                                        aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
+                                        scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+                                    }
+                                    // Fat: one single dose at +180min. Same decoupling/preconditions as protein above
+                                    // — fully independent of the carb-split schedule and of protein's own dose.
+                                    if (!fatDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromFatOnly > 0.0) {
+                                        fatDoseScheduled = true
+                                        aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
+                                        scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
                                     }
                                 }
                             }
@@ -738,86 +749,55 @@ class BolusWizard @Inject constructor(
     private fun activeProfileSwitchPct(): Int {
         val profile = profileFunction.getProfile()
         val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile?.percentage ?: 100
-        aapsLogger.info(LTag.CORE, "EqualSplitBolus: profilePct=$pct (type=${profile?.javaClass?.simpleName})")
+        aapsLogger.info(LTag.CORE, "SplitBolus: profilePct=$pct (type=${profile?.javaClass?.simpleName})")
         return pct
     }
 
-    private fun scheduleEqualPartsSplitBolus(totalDose: Double, maxPart: Double, intervalMins: Int, partNumber: Int, totalParts: Int, schedulingPct: Int, deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()) {
-        if (partNumber > totalParts) return
-        val partDose = Round.roundTo(
-            min(maxPart, totalDose - (partNumber - 1) * maxPart),
-            activePlugin.activePump.pumpDescription.bolusStep
-        )
-        if (partDose <= 0) return
-        // Poll every 2 min so profile% changes are caught quickly, not just at delivery time
-        val pollMs = T.mins(2).msecs()
-        val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
-        aapsLogger.debug(LTag.CORE, "EqualSplitBolus: scheduling part $partNumber/$totalParts in ${delayMs/1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (BolusProgressData.followUpBolusCancelled) {
-                preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
-                aapsLogger.info(LTag.CORE, "EqualSplitBolus: bolus was stopped — cancelling part $partNumber/$totalParts, SMBs unblocked")
-                return@postDelayed
-            }
-            val pct = activeProfileSwitchPct()
-            aapsLogger.info(LTag.CORE, "EqualSplitBolus: poll for part $partNumber/$totalParts — profileSwitch%=$pct, scheduledAt=$schedulingPct%, deliverAt=${dateUtil.timeString(deliverAt)}, now=${dateUtil.timeString(dateUtil.now())}")
-            // Absolute, not relative to schedulingPct: only cancel on a drop into genuinely reduced
-            // (sub-100%) territory — e.g. a hypo-driven switch to 50% — which is a real safety concern.
-            // A drop from a boosted percentage (say 110%) back down to plain 100% is NOT a risk state;
-            // 100% is normal baseline, not "reduced", so it shouldn't abort an in-flight residual.
-            // schedulingPct is kept only for the log line above, not for this comparison.
-            if (pct < 100) {
-                preferences.put(LongKey.SplitBolusBlockSmbUntil, 0L)
-                aapsLogger.info(LTag.CORE, "EqualSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling part $partNumber/$totalParts, SMBs unblocked")
-                return@postDelayed
-            }
-            if (dateUtil.now() < deliverAt) {
-                // Interval not elapsed yet — poll again
-                scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber, totalParts, schedulingPct, deliverAt)
-                return@postDelayed
-            }
-            DetailedBolusInfo().apply {
-                eventType = TE.Type.CORRECTION_BOLUS
-                insulin = partDose
-                notes = "Split bolus part $partNumber/$totalParts"
-                uel.log(
-                    action = Action.BOLUS,
-                    source = Sources.WizardDialog,
-                    note = notes,
-                    listValues = listOf(ValueWithUnit.Insulin(partDose))
-                )
-                commandQueue.bolus(this, object : Callback() {
-                    override fun run() {
-                        if (!result.success)
-                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                        else
-                            scheduleEqualPartsSplitBolus(totalDose, maxPart, intervalMins, partNumber + 1, totalParts, schedulingPct)
-                    }
-                })
-            }
-        }, delayMs)
+    // Live total active insulin (bolus + basal IOB), matching the same calculation doCalc() itself uses
+    // for insulinFromBolusIOB/insulinFromBasalIOB, but re-fetched fresh at scheduling-check time rather
+    // than the wizard's own calc-time snapshot — needed for the IOB-delta split-sizing check below.
+    private fun currentTotalIob(): Double {
+        val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
+        val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
+        return bolusIob.iob + basalIob.basaliob
     }
 
-    // Reduced/gated split-bolus delivery — used instead of scheduleEqualPartsSplitBolus when the
-    // interval is long (>10min) or protein's own contribution dominates (see the reducedMode check at
-    // the call site). Unlike the equal-parts scheduler, every part is a FIXED size (partDose, already
-    // scaled down from a full maxPart share) rather than sized to exactly complete the calculated
-    // total — deliberately trades completeness for caution. Delivers partDose repeatedly every
-    // intervalMins until remainingResidual is exhausted, gated before EACH delivery on: not cancelled,
-    // profile% still >=100 (same check as the equal-parts scheduler), AND a live BG safety check
+    // True if the pump itself reports being suspended (not delivering insulin) — checked fresh at
+    // delivery time, same pattern as the other gates. Deliberately does NOT also check
+    // loop.runningMode.isSuspended() — that also covers RM.Mode.SUPER_BOLUS, which this same wizard can
+    // itself set as a normal, non-alarming part of a superbolus-enabled delivery (see useSuperBolus
+    // above), so using it here would false-positive and cancel every split/delayed dose whenever a
+    // legitimate superbolus is in progress.
+    private fun pumpUnavailable(): Boolean = activePlugin.activePump.isSuspended()
+
+    // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
+    // an explicit stop press, OR by a newer bolus/carbs entry superseding this schedule — see
+    // ScheduledDoseSupersession), profile% still >=100, pump not suspended, AND a live BG safety check
     // (>=7.0mmol, not falling on either delta) — any failure cancels all further parts. SMBs are never
-    // blocked in this mode (see the call site — SplitBolusBlockSmbUntil is deliberately not set).
+    // blocked (the old equal-parts/SplitBolusBlockSmbUntil mode is gone entirely).
+    //
+    // Dose sizing is IOB-delta driven: iobBaselineForNextGap is "IOB right before the previous dose was
+    // given, plus that dose's own amount" (i.e. IOB right AFTER the previous dose joined the pool). At
+    // delivery time, iobIncrease = max(0, liveIob - iobBaselineForNextGap) — only a genuine rise counts;
+    // if IOB net fell during the gap (decay outpacing anything new), the dose stays at previousPartDose,
+    // never gets boosted. thisDose = previousPartDose - iobIncrease; if that's <=0, the whole remaining
+    // residual is dropped (not just this one part skipped) — matching the old "nil tier" in spirit, now
+    // driven by IOB rather than elapsed time.
     private fun scheduleReducedPartsSplitBolus(
-        remainingResidual: Double, partDose: Double, intervalMins: Int, schedulingPct: Int,
+        remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()
     ) {
-        if (remainingResidual <= 0 || partDose <= 0) return
+        if (remainingResidual <= 0) return
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
-        aapsLogger.debug(LTag.CORE, "ReducedSplitBolus: scheduling ${partDose}U in ${delayMs / 1000}s, remaining residual ${remainingResidual}U, deliverAt=${dateUtil.timeString(deliverAt)}")
+        aapsLogger.debug(LTag.CORE, "ReducedSplitBolus: scheduling next part in ${delayMs / 1000}s, remaining residual ${remainingResidual}U, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: bolus was stopped — cancelling remaining ${remainingResidual}U")
+                return@postDelayed
+            }
+            if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superseded by a newer bolus/carbs entry — cancelling remaining ${remainingResidual}U")
                 return@postDelayed
             }
             val pct = activeProfileSwitchPct()
@@ -825,8 +805,16 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling remaining ${remainingResidual}U")
                 return@postDelayed
             }
+            if (pumpUnavailable()) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: pump suspended — cancelling remaining ${remainingResidual}U")
+                return@postDelayed
+            }
+            if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superbolus active — cancelling remaining ${remainingResidual}U")
+                return@postDelayed
+            }
             if (dateUtil.now() < deliverAt) {
-                scheduleReducedPartsSplitBolus(remainingResidual, partDose, intervalMins, schedulingPct, deliverAt)
+                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, deliverAt)
                 return@postDelayed
             }
             // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
@@ -837,8 +825,13 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta}) — cancelling remaining ${remainingResidual}U")
                 return@postDelayed
             }
-            val thisDose = Round.roundTo(min(partDose, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
-            if (thisDose <= 0) return@postDelayed
+            val liveIob = currentTotalIob()
+            val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
+            val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
+            if (thisDose <= 0) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, stopping remaining ${remainingResidual}U")
+                return@postDelayed
+            }
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
@@ -853,8 +846,89 @@ class BolusWizard @Inject constructor(
                     override fun run() {
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                        else
-                            scheduleReducedPartsSplitBolus(remainingResidual - thisDose, partDose, intervalMins, schedulingPct)
+                        else {
+                            val newResidual = remainingResidual - thisDose
+                            if (newResidual > 0.0)
+                                scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken)
+                        }
+                    }
+                })
+            }
+        }, delayMs)
+    }
+
+    // Protein's/fat's single fixed-time delayed dose (see the call sites, +120min/+180min respectively).
+    // Gated at delivery time on the SAME combined criteria as carb splits: not cancelled (stop press or
+    // superseded by a newer entry), profile% still >=100, pump not suspended, superbolus not active, and
+    // the live BG safety check — any failure skips this one dose entirely (no retry, since there's only
+    // ever this one delivery for this contribution).
+    //
+    // Dose sizing is ALSO IOB-delta reduced, same principle as scheduleReducedPartsSplitBolus: a lot of
+    // SMBs (or anything else) firing between now and this delivery point may have already covered much of
+    // the anticipated protein/fat-driven rise, so iobBaseline (IOB right after the immediate dose was
+    // delivered — shared by both protein's and fat's own call, see the call site) is compared against the
+    // live IOB at delivery time; only a genuine rise reduces the dose, and dropping to <=0 cancels it
+    // entirely (no partial delivery, no retry).
+    private fun scheduleSingleDelayedDose(
+        dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
+        deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs()
+    ) {
+        val pollMs = T.mins(2).msecs()
+        val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
+        aapsLogger.debug(LTag.CORE, "DelayedDose($label): scheduling ${dose}U in ${delayMs / 1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (BolusProgressData.followUpBolusCancelled) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): bolus was stopped — cancelling ${dose}U")
+                return@postDelayed
+            }
+            if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): superseded by a newer bolus/carbs entry — cancelling ${dose}U")
+                return@postDelayed
+            }
+            val pct = activeProfileSwitchPct()
+            if (pct < 100) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): profile switch at $pct% (scheduled at $schedulingPct%) — cancelling ${dose}U")
+                return@postDelayed
+            }
+            if (pumpUnavailable()) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): pump suspended — cancelling ${dose}U")
+                return@postDelayed
+            }
+            if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): superbolus active — cancelling ${dose}U")
+                return@postDelayed
+            }
+            if (dateUtil.now() < deliverAt) {
+                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt)
+                return@postDelayed
+            }
+            val gs = glucoseStatusProvider.glucoseStatusData
+            val bgOk = gs != null && gs.glucose >= 126.1 /* 7.0 mmol */ && gs.delta > -0.90 /* -0.05 mmol */ && gs.shortAvgDelta > -0.90 /* -0.05 mmol */
+            if (!bgOk) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta}) — cancelling ${dose}U")
+                return@postDelayed
+            }
+            val liveIob = currentTotalIob()
+            val iobIncrease = max(0.0, liveIob - iobBaseline)
+            val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
+            if (thisDose <= 0) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
+                return@postDelayed
+            }
+            DetailedBolusInfo().apply {
+                eventType = TE.Type.CORRECTION_BOLUS
+                insulin = thisDose
+                notes = "Delayed $label dose"
+                uel.log(
+                    action = Action.BOLUS,
+                    source = Sources.WizardDialog,
+                    note = notes,
+                    listValues = listOf(ValueWithUnit.Insulin(thisDose))
+                )
+                commandQueue.bolus(this, object : Callback() {
+                    override fun run() {
+                        if (!result.success)
+                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                     }
                 })
             }

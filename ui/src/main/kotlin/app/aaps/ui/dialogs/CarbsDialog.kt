@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck.Protection.BOLUS
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -387,8 +388,14 @@ class CarbsDialog : DialogFragmentWithDate() {
                                 automation.removeAutomationEventEatReminder()
                                 if (!result.success) {
                                     uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                } else if (preferences.get(BooleanKey.OverviewUseBolusReminder) && remindBolus)
-                                    automation.scheduleAutomationEventBolusReminder()
+                                } else {
+                                    if (preferences.get(BooleanKey.OverviewUseBolusReminder) && remindBolus)
+                                        automation.scheduleAutomationEventBolusReminder()
+                                    // Extra carbs entered here change the assumptions any still-pending
+                                    // BolusWizard split/protein/fat schedule was calculated under — supersede
+                                    // it (see ScheduledDoseSupersession's own doc comment).
+                                    ScheduledDoseSupersession.bump()
+                                }
                             }
                         })
                     }
