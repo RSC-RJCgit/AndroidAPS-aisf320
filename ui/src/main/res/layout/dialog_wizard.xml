@@ -157,6 +157,18 @@
             android:textColor="?attr/warningColor"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/protein_fat_delay_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="2dp"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="?attr/warningColor"
+            android:visibility="gone" />
+
         <LinearLayout
             android:id="@+id/spacer"
             android:layout_width="match_parent"

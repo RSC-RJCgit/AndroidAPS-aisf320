@@ -621,9 +621,9 @@ class WizardDialog : DaggerDialogFragment() {
                     val lastPartDose = Round.roundTo(wizard.calculatedTotalInsulin - fullParts * maxBolus, bolusStep)
                     val partSize = Round.roundTo(maxBolus, bolusStep)
                     val infoText = if (lastPartDose < partSize)
-                        "Split: ${fullParts}× ${decimalFormatter.to2Decimal(partSize)}U + ${decimalFormatter.to2Decimal(lastPartDose)}U every ${intervalMins}min — SMBs allowed"
+                        "Split: ${fullParts}× ${decimalFormatter.to2Decimal(partSize)}U + ${decimalFormatter.to2Decimal(lastPartDose)}U every ${intervalMins}min — SMBs allowed, IOB rise deducted"
                     else
-                        "Split: ${numParts}× ${decimalFormatter.to2Decimal(partSize)}U every ${intervalMins}min — SMBs allowed"
+                        "Split: ${numParts}× ${decimalFormatter.to2Decimal(partSize)}U every ${intervalMins}min — SMBs allowed, IOB rise deducted"
                     binding.splitBolusInfo.text = infoText
                     binding.splitBolusInfo.visibility = android.view.View.VISIBLE
                 } else {
@@ -633,6 +633,25 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.splitBolusRow.visibility = android.view.View.GONE
                 binding.splitBolusInfo.visibility = android.view.View.GONE
                 splitBolusInitialized = false
+            }
+
+            // Protein's/fat's own projected delayed doses (see BolusWizard's scheduleSingleDelayedDose) —
+            // independent of carb-splitting above, shown whenever either amount is present. Projected
+            // amounts are the FULL pre-IOB-delta figures; the actual delivered amount at 2h/3h may end up
+            // lower (or the dose skipped entirely) depending on how much IOB has risen by then.
+            if (wizard.insulinFromProteinOnly > 0.0 || wizard.insulinFromFatOnly > 0.0) {
+                val infoText = when {
+                    wizard.insulinFromProteinOnly > 0.0 && wizard.insulinFromFatOnly > 0.0 ->
+                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U and Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 2 and 3 hours, less IOB rise"
+                    wizard.insulinFromProteinOnly > 0.0 ->
+                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U split at 2 hours, less IOB rise"
+                    else ->
+                        "Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 3 hours, less IOB rise"
+                }
+                binding.proteinFatDelayInfo.text = infoText
+                binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
+            } else {
+                binding.proteinFatDelayInfo.visibility = android.view.View.GONE
             }
         }
 
