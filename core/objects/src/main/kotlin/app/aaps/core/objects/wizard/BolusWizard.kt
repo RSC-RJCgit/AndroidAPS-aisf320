@@ -443,7 +443,11 @@ class BolusWizard @Inject constructor(
     }
 
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
-        if (calculatedTotalInsulin > 0.0 || carbs > 0.0) {
+        // insulinFromProteinOnly/insulinFromFatOnly are deliberately excluded from calculatedTotalInsulin
+        // (see their own doc comments) — but a protein-only or fat-only entry (no carbs, no other
+        // component) still needs to reach commonProcessing() below to schedule its delayed dose, or it
+        // silently falls into the "no action selected" branch and the previewed dose never gets scheduled.
+        if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
             if (accepted) {
                 aapsLogger.debug(LTag.UI, "guarding: already accepted")
                 return
@@ -542,7 +546,8 @@ class BolusWizard @Inject constructor(
 
         val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
         OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
-            if (insulinAfterConstraints > 0 || carbs > 0) {
+            // Same protein/fat-only fix as confirmAndExecute()'s own guard above.
+            if (insulinAfterConstraints > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
                 if (useSuperBolus) {
                     if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
                         loop.handleRunningModeChange(
@@ -583,7 +588,10 @@ class BolusWizard @Inject constructor(
                     carbsTimestamp = now + T.mins(this@BolusWizard.carbTime.toLong()).msecs()
                     bolusCalculatorResult = createBolusCalculatorResult()
                     notes = this@BolusWizard.notes
-                    if (insulin > 0 || carbs > 0) {
+                    // Same protein/fat-only fix as confirmAndExecute()'s own guard above — otherwise a
+                    // protein-only/fat-only entry never reaches commandQueue.bolus() at all, so the
+                    // previewed delayed dose silently never gets scheduled.
+                    if (insulin > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
                         val action = when {
                             insulinAfterConstraints == 0.0 -> Action.CARBS
                             carbs == 0.0                   -> Action.BOLUS

@@ -178,7 +178,10 @@ class PrepareBgDataWorker(
         // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
-                val label = formatMmolDelta(libreDelta)
+                // Sign repeated at the end too (e.g. "-0.15-") for visibility — the leading sign alone is
+                // easy to miss on a small rotated graph label.
+                val formatted = formatMmolDelta(libreDelta)
+                val label = formatted + formatted.first()
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
