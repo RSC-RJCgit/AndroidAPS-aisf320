@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
@@ -663,9 +664,13 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfilePct}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                         // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)
+                                        // NoteTimestampAllocator.next() — see its own doc comment: guards against
+                                        // this note silently losing a same-millisecond dedup race to some other
+                                        // note created in the same cycle (insertPumpTherapyEventIfNewByTimestamp
+                                        // dedupes purely on (type, timestamp), not note text).
                                         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                                             therapyEvent = TE(
-                                                timestamp = dateUtil.now(),
+                                                timestamp = NoteTimestampAllocator.next(dateUtil.now()),
                                                 type = TE.Type.NOTE,
                                                 glucoseUnit = profileFunction.getUnits()
                                             ).also {
@@ -792,7 +797,9 @@ class BolusWizard @Inject constructor(
         if (totalProjectedFutureSplitDoses > 0.0) {
             persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
                 therapyEvent = TE(
-                    timestamp = dateUtil.now(),
+                    // NoteTimestampAllocator.next() — see cancelDoseNote's own comment on why a bare
+                    // dateUtil.now() risks silently losing this note to a same-millisecond dedup collision.
+                    timestamp = NoteTimestampAllocator.next(dateUtil.now()),
                     type = TE.Type.NOTE,
                     glucoseUnit = profileFunction.getUnits()
                 ).also {
@@ -839,10 +846,14 @@ class BolusWizard @Inject constructor(
     // history. `amount` is whatever's being dropped (the carb-split's remaining residual, or the
     // protein/fat dose itself); `reason` is a short human-readable description, kept out of the compact
     // on-graph label but included in the audit-log note visible in NS/UE history.
+    // NoteTimestampAllocator.next() (not a bare dateUtil.now()) — insertPumpTherapyEventIfNewByTimestamp's
+    // dedup check keys purely on (type, timestamp), not note text, so this note could otherwise silently
+    // lose a same-millisecond collision to any other note created elsewhere in the same processing cycle,
+    // with no error anywhere to indicate it happened.
     private fun cancelDoseNote(amount: Double, reason: String) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
-                timestamp = dateUtil.now(),
+                timestamp = NoteTimestampAllocator.next(dateUtil.now()),
                 type = TE.Type.NOTE,
                 glucoseUnit = profileFunction.getUnits()
             ).also {

@@ -67,6 +67,7 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.stats.TddCalculator
+import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -610,9 +611,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Mirrors ActionCarePortalEvent for a plain note. Default duration is 5 min (not the 30 min the
     // original ported automations used) per explicit preference.
+    // NoteTimestampAllocator.next() (not a bare dateUtil.now()) — insertPumpTherapyEventIfNewByTimestamp's
+    // dedup check keys purely on (type, timestamp), not note text, so two different notes landing on the
+    // same millisecond (very possible with ~20+ automations checked sequentially, synchronously, in the
+    // same cycle) would otherwise silently drop whichever one loses the race, with no error anywhere.
     private fun addCarePortalNote(note: String, durationInMinutes: Int = 1) {
         val therapyEvent = TE(
-            timestamp = dateUtil.now(),
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
             type = TE.Type.NOTE,
             glucoseUnit = profileFunction.getUnits()
         ).apply {
@@ -4166,5 +4171,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU429
+OpenAPSAutoISFPlugin.kt320TDD2AU320TDD2AU430
 */
