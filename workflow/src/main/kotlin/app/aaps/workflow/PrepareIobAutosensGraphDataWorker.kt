@@ -339,7 +339,12 @@ class PrepareIobAutosensGraphDataWorker(
         val allActPoints = actArrayHist + actArrayPrediction
         val sixHoursMs = 6 * 60 * 60 * 1000L
         val twoHoursMs = 2 * 60 * 60 * 1000L
-        var lastLabeledTimestamp = Long.MIN_VALUE
+        // Nullable, not Long.MIN_VALUE — subtracting a real timestamp from Long.MIN_VALUE overflows
+        // (wraps to a huge negative number instead of "practically infinite gap"), which made the very
+        // first candidate always fail the cooldown check below and, since lastLabeledTimestamp then never
+        // got set, every candidate after it too — no peak was ever labeled. null cleanly means "nothing
+        // labeled yet, don't gate the first candidate at all."
+        var lastLabeledTimestamp: Long? = null
         val peakIndices = allActPoints.indices.filter { i ->
             val raw = abs(rawActPoints[i])
             val isLocalPeak = (i == 0 || raw > abs(rawActPoints[i - 1])) &&
@@ -352,7 +357,8 @@ class PrepareIobAutosensGraphDataWorker(
                 .maxOf { j -> abs(rawActPoints[j]) }
             if (raw < maxInTrailingWindow) return@filter false
             val thisTimestamp = allActPoints[i].x.toLong()
-            if (thisTimestamp - lastLabeledTimestamp < twoHoursMs) return@filter false
+            val sinceLast = lastLabeledTimestamp
+            if (sinceLast != null && thisTimestamp - sinceLast < twoHoursMs) return@filter false
             lastLabeledTimestamp = thisTimestamp
             true
         }
