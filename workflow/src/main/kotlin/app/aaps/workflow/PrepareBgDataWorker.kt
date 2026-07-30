@@ -10,6 +10,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
+import app.aaps.core.graph.data.A1DeltaDataPoint
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
@@ -185,6 +186,21 @@ class PrepareBgDataWorker(
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+        // AAPS (smoothed) 1-min delta label (green), same style as the Libre one above but attached to
+        // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
+        // usually sit at slightly different heights, so anchoring each label to its own line's actual
+        // point keeps them from landing on top of each other.
+        data.overviewData.a1DeltaSeries =
+            if (latest != null && aapsDelta != null) {
+                val formatted = formatMmolDelta(aapsDelta)
+                val label = formatted + formatted.first().toString().repeat(2)
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

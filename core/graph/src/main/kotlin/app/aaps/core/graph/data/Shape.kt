@@ -35,5 +35,6 @@ enum class Shape {
     SMB_GRAPH2, // SMB dose label fixed near top of graph 2 (IOB graph), always visible
     ISF_INDICES, // multi-color "f= a= b= d= g= smb=" row fixed near the bottom of graph3, one color per field
     STEPS_EXTRA_ROW, // "DR=/AW=/LS=" row, fixed one line-height above the steps row (Shape.STEPS_STACKED_BOTTOM)
-    L1_DELTA_POINT // Libre 1-min delta label attached directly to the current Libre graph point (no fixed row) — same 45°-rotated style as GENERAL's drawLabel45Right, no circle, own color (red)
+    L1_DELTA_POINT, // Libre 1-min delta label attached directly to the current Libre graph point (no fixed row) — same 45°-rotated style as GENERAL's drawLabel45Right, no circle, own color (green)
+    A1_DELTA_POINT // AAPS (smoothed) 1-min delta label attached directly to the current smoothed BG graph point — same style as L1_DELTA_POINT, own color (green)
 }

@@ -155,6 +155,10 @@ class GraphData @Inject constructor(
         addSeries(overviewData.l1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addA1DeltaAnnotation() {
+        addSeries(overviewData.a1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addStepsStackedAnnotation() {
         addSeries(overviewData.stepsStackedSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
