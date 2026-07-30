@@ -1408,6 +1408,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("CleanGraphTT")
         }
 
+        // --- WizardPctDownTT: manually setting a TT of 5.46 mmol is used as a remote -5 nudge on
+        // OverviewBolusPercentage (Wizard bolus %), clamped to a min of 50 — not a real target. Same
+        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("WizardPctDownTT", 2) && activeTtNear(5.46, 0.001)) {
+            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) - 5).coerceAtLeast(50)
+            preferences.put(IntKey.OverviewBolusPercentage, newPct)
+            cancelCurrentTempTarget()
+            sendSms("WizardPctDown: BolusPct=$newPct")
+            addCarePortalNote("WPd${newPct.toString().takeLast(2)}")
+            markRun("WizardPctDownTT")
+        }
+
+        // --- WizardPctUpTT: manually setting a TT of 5.48 mmol is used as a remote +5 nudge on
+        // OverviewBolusPercentage, clamped to a max of 100. Same pattern as WizardPctDownTT above.
+        if (readyToRun("WizardPctUpTT", 2) && activeTtNear(5.48, 0.001)) {
+            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) + 5).coerceAtMost(100)
+            preferences.put(IntKey.OverviewBolusPercentage, newPct)
+            cancelCurrentTempTarget()
+            sendSms("WizardPctUp: BolusPct=$newPct")
+            addCarePortalNote("WPu${newPct.toString().takeLast(2)}")
+            markRun("WizardPctUpTT")
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
