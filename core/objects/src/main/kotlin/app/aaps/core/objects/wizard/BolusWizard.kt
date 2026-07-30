@@ -675,6 +675,10 @@ class BolusWizard @Inject constructor(
                                     val myScheduleToken = ScheduledDoseSupersession.bump()
                                     // IOB right before THIS (the first/immediate) dose, from doCalc()'s own fields.
                                     val iobBeforeFirstDose = insulinFromBolusIOB + insulinFromBasalIOB
+                                    // Sum of everything actually scheduled below (carb-split residual, protein,
+                                    // fat) — used for the single combined CarePortal note after all three checks,
+                                    // so it only counts what really got scheduled, not just what was calculated.
+                                    var totalProjectedFutureSplitDoses = 0.0
                                     if (!splitBolusScheduled &&
                                         !superBolusActive &&
                                         manualSplitBolusEnabled &&
@@ -695,6 +699,7 @@ class BolusWizard @Inject constructor(
                                                 "ReducedSplitBolus: residual ${residual}U, first scheduled part starts from ${maxPart}U every ${intervalMins}min, SMBs allowed, BG- and IOBdelta-gated"
                                             )
                                             scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
+                                            totalProjectedFutureSplitDoses += residual
                                         }
                                     }
                                     // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after
@@ -713,6 +718,7 @@ class BolusWizard @Inject constructor(
                                         proteinDoseScheduled = true
                                         aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
                                         scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+                                        totalProjectedFutureSplitDoses += insulinFromProteinOnly
                                     }
                                     // Fat: one single dose at +180min. Same decoupling/preconditions as protein above
                                     // — fully independent of the carb-split schedule and of protein's own dose.
@@ -720,6 +726,27 @@ class BolusWizard @Inject constructor(
                                         fatDoseScheduled = true
                                         aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
                                         scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+                                        totalProjectedFutureSplitDoses += insulinFromFatOnly
+                                    }
+                                    // Single combined CarePortal note marking that split/protein/fat dosing was just
+                                    // scheduled, with the total amount still to come (e.g. "S1.30") — separate from
+                                    // each individual part's own delivered-treatment note, so there's one visible
+                                    // marker at the moment of scheduling itself, not just after each part lands.
+                                    if (totalProjectedFutureSplitDoses > 0.0) {
+                                        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                                            therapyEvent = TE(
+                                                timestamp = dateUtil.now(),
+                                                type = TE.Type.NOTE,
+                                                glucoseUnit = profileFunction.getUnits()
+                                            ).also {
+                                                it.note = "S${decimalFormatter.to2Decimal(totalProjectedFutureSplitDoses)}"
+                                                it.duration = T.mins(1).msecs()
+                                            },
+                                            action = Action.CAREPORTAL,
+                                            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                                            note = "Split/protein/fat dosing scheduled",
+                                            listValues = listOf()
+                                        ).blockingGet()
                                     }
                                 }
                             }

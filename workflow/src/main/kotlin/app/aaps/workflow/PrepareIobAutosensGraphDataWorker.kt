@@ -330,12 +330,16 @@ class PrepareIobAutosensGraphDataWorker(
         // ACTIVITY peak labels — only the genuinely dominant peaks, not one per local bump. A point first
         // has to be a local peak at all (strictly higher than its predecessor, at least as high as its
         // successor — picks the leading edge of a flat-topped plateau, not every point along it), then it
-        // only gets a label if BOTH: (1) it's over 75% of the day's overall maximum peak (maxIAValue), and
+        // only gets a label if ALL of: (1) it's over 75% of the day's overall maximum peak (maxIAValue),
         // (2) it's the maximum activity value within the trailing 6-hour window ending at its own time —
-        // i.e. nothing taller occurred in the preceding 6 hours. Both conditions together are far
-        // stricter than the old flat 5%-of-max noise floor, so that's subsumed rather than kept separately.
+        // i.e. nothing taller occurred in the preceding 6 hours, and (3) at least 2 hours have passed
+        // since the last point that itself got a label — a hard repeat-rate cap on top of (1)/(2), evaluated
+        // sequentially in chronological order (allActPoints/rawActPoints are already time-ordered) so an
+        // accepted label's own timestamp becomes the cooldown baseline for everything after it.
         val allActPoints = actArrayHist + actArrayPrediction
         val sixHoursMs = 6 * 60 * 60 * 1000L
+        val twoHoursMs = 2 * 60 * 60 * 1000L
+        var lastLabeledTimestamp = Long.MIN_VALUE
         val peakIndices = allActPoints.indices.filter { i ->
             val raw = abs(rawActPoints[i])
             val isLocalPeak = (i == 0 || raw > abs(rawActPoints[i - 1])) &&
@@ -346,7 +350,11 @@ class PrepareIobAutosensGraphDataWorker(
             val maxInTrailingWindow = allActPoints.indices
                 .filter { j -> allActPoints[j].x in windowStart..allActPoints[i].x }
                 .maxOf { j -> abs(rawActPoints[j]) }
-            raw >= maxInTrailingWindow
+            if (raw < maxInTrailingWindow) return@filter false
+            val thisTimestamp = allActPoints[i].x.toLong()
+            if (thisTimestamp - lastLabeledTimestamp < twoHoursMs) return@filter false
+            lastLabeledTimestamp = thisTimestamp
+            true
         }
         data.overviewData.activityPeakSeries = if (peakIndices.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
             PointsWithLabelGraphSeries(
