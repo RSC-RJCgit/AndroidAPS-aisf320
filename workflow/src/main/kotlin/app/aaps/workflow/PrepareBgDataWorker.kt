@@ -179,10 +179,10 @@ class PrepareBgDataWorker(
         // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
-                // Sign repeated twice at the end too (e.g. "+0.25++") for visibility — the leading sign
-                // alone is easy to miss on a small rotated graph label.
+                // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
+                // sign alone is easy to miss on a small rotated graph label.
                 val formatted = formatMmolDelta(libreDelta)
-                val label = formatted + formatted.first().toString().repeat(2)
+                val label = formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -190,14 +190,15 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // AAPS (smoothed) 1-min delta label (green), same style as the Libre one above but attached to
+        // AAPS (smoothed) 1-min delta label (orange), same style as the Libre one above but attached to
         // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
         // usually sit at slightly different heights, so anchoring each label to its own line's actual
-        // point keeps them from landing on top of each other.
+        // point keeps them from landing on top of each other. 5 leading spaces additionally offset this
+        // one from the Libre label so the two rotated texts don't run into each other when close together.
         data.overviewData.a1DeltaSeries =
             if (latest != null && aapsDelta != null) {
                 val formatted = formatMmolDelta(aapsDelta)
-                val label = formatted + formatted.first().toString().repeat(2)
+                val label = "     " + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)

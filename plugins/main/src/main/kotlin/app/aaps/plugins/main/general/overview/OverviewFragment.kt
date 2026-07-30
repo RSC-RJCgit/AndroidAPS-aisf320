@@ -1147,7 +1147,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         "5.38 — SMB offset override, +0.10" to 5.38,
         "5.42 — clean graph view (no SMB labels/arrows, solid green line)" to 5.42,
         "5.46 — Wizard bolus %, -5" to 5.46,
-        "5.48 — Wizard bolus %, +5" to 5.48
+        "5.48 — Wizard bolus %, +5" to 5.48,
+        "5.52 — MildBoost ratio, -0.01" to 5.52,
+        "5.54 — MildBoost ratio, +0.01" to 5.54
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via

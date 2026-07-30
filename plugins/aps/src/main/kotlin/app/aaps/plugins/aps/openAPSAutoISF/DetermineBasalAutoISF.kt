@@ -1386,7 +1386,9 @@ class DetermineBasalAutoISF @Inject constructor(
                         COB <= 25 &&
                         Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
-                        ((IOB > 0.10 * profile.max_iob)
+                        ((IOB > 0.12 * profile.max_iob) // was 0.10 — gently widens the fully-uncapped (no fast-rise
+                            // caps at all) zone to slightly more accumulated daytime IOB before this whole
+                            // capping cascade starts applying
                             || (nowHour >= 22 || nowHour <= 5)) &&
                         rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                     ) {
@@ -1426,19 +1428,19 @@ class DetermineBasalAutoISF @Inject constructor(
                             SDelta < 0.55 * 18
                         ) {
                             if (bg > 8.8 * 18) {
-                                microBolus = microBolus * 0.85
-                                rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${microBolus} ")
+                                microBolus = microBolus * 0.9 // was 0.85 — slight loosening, mild-tier daytime rise
+                                rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${microBolus} ")
                                 rT.reason.append(" CHANGED SIZE 0.855 for mild fast rise 0.855 ")
                             } else if (bg > 8.0 * 18) {
-                                microBolus = microBolus * 0.8
-                                rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                                microBolus = microBolus * 0.85 // was 0.8 — slight loosening
+                                rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${microBolus} ")
                                 rT.reason.append(" CHANGED SIZE 0.806 for mild fast rise 0.806 ")
                             } else if (bg <= 8.0 * 18 &&
                                 (microBolus > ThresholForFastRise ||
                                     (nowHour <= 8 && nowHour >= 3))
                             ) {
-                                microBolus = microBolus * 0.7
-                                rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.7 ; microBolus = ${microBolus} ")
+                                microBolus = microBolus * 0.75 // was 0.7 — slight loosening
+                                rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.75 ; microBolus = ${microBolus} ")
                                 rT.reason.append(" CHANGED SIZE 0.707 for mild fast rise 0.707 ")
                             } else {
                                 rT.reason.append("smbUn 0.707 for 0.025 * profile.max_iob microBolus = ${microBolus} ")
@@ -1452,8 +1454,8 @@ class DetermineBasalAutoISF @Inject constructor(
                         if (microBolus > ThresholForFastRise ||
                             nowHour <= 8
                         ) {
-                            microBolus = microBolus * 0.6
-                            rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.6 ; microBolus = ${microBolus} ")
+                            microBolus = microBolus * 0.7 // was 0.6 — slight loosening, narrowest/earliest-stage rise tier
+                            rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.7 ; microBolus = ${microBolus} ")
                             rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
                         } else {
                             rT.reason.append("smbUn 0.608 for 0.030 * profile.max_iob microBolus = ${microBolus} ")

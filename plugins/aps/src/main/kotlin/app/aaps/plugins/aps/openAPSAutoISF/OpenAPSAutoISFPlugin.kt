@@ -1431,6 +1431,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctUpTT")
         }
 
+        // --- MildBoostDownTT: manually setting a TT of 5.52 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.02, which nudges it together with
+        // ApsAutoIsfSmbDeliveryBaseline), clamped to its own min of 0.1 — not a real target. Same
+        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.52, 0.001)) {
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote("MBd${round(newMildBoost, 2).toString().takeLast(2)}")
+            markRun("MildBoostDownTT")
+        }
+
+        // --- MildBoostUpTT: manually setting a TT of 5.54 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 0.5. Same pattern as MildBoostDownTT above.
+        if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.54, 0.001)) {
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote("MBu${round(newMildBoost, 2).toString().takeLast(2)}")
+            markRun("MildBoostUpTT")
+        }
+
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
@@ -2088,12 +2112,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Delivery-suppressed bypass — same reasoning as bg3's mirror above: raw-only (no `d`,
             // which lags behind suppressed delivery itself), direct numbers (not stackK-scaled, since
             // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
-            // (6.3mg/dL/0.35mmol) and upper cap (<14.4) so it still can't overlap bg3's territory.
-            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
+            // cap (<14.4) so it still can't overlap bg3's territory.
+            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val fire = isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 6.3 * stackK /* 0.35 mmol; AAPS smoothed-delta confirmation */) || deliverySuppressedMild)
-                && rawDelta5 >= 6.3 * stackK /* 0.35 mmol */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
+                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
+                && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
@@ -2151,11 +2176,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g <= 171.2 && profileName != "Current Profile" && !mjActive()
                 && readyToRun("BolusGivenMild", 10) && movementOk
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 6.3 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 22, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
-                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 6.3 * stackK) || deliverySuppressedMild)
-                && rawDelta5 >= 6.3 * stackK && rawDelta5 < 14.4 * stackK
+                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
+                && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
                 && profileName != "Current Profile" && !mjActive()
                 && readyToRun("BolusGivenBg3", 10) && movementOk
