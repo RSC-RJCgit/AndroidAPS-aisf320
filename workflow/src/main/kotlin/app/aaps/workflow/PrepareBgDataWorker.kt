@@ -174,14 +174,14 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // Libre 1-min delta label (red), attached directly to the current Libre graph point (same
+        // Libre 1-min delta label (green), attached directly to the current Libre graph point (same
         // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
-                // Sign repeated at the end too (e.g. "-0.15-") for visibility — the leading sign alone is
-                // easy to miss on a small rotated graph label.
+                // Sign repeated twice at the end too (e.g. "+0.25++") for visibility — the leading sign
+                // alone is easy to miss on a small rotated graph label.
                 val formatted = formatMmolDelta(libreDelta)
-                val label = formatted + formatted.first()
+                val label = formatted + formatted.first().toString().repeat(2)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)

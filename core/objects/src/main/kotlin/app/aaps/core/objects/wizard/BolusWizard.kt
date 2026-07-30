@@ -338,8 +338,25 @@ class BolusWizard @Inject constructor(
         return this
     }
 
+    // Protein's/fat's projected future-split info (see WizardDialog's own live protein_fat_delay_info
+    // line — this is the same text, persisted into the calc-details snapshot below so it's still visible
+    // later from the Treatments list, not just while the wizard dialog itself is open). Deliberately built
+    // as a SEPARATE string appended only to the BolusCalculatorResult.note snapshot — this is a distinct,
+    // already-historical DB field shown read-only in WizardInfoDialog, not the live editable Notes box in
+    // WizardDialog (this@BolusWizard.notes itself is never touched).
+    private fun splitProjectionNote(): String {
+        if (insulinFromProteinOnly <= 0.0 && insulinFromFatOnly <= 0.0) return ""
+        val parts = listOfNotNull(
+            "Protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U @2h".takeIf { insulinFromProteinOnly > 0.0 },
+            "Fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U @3h".takeIf { insulinFromFatOnly > 0.0 }
+        )
+        return parts.joinToString(" and ") + " split, less IOB rise"
+    }
+
     fun createBolusCalculatorResult(): BCR {
         val unit = profileFunction.getUnits()
+        val splitNote = splitProjectionNote()
+        val combinedNote = if (splitNote.isEmpty()) notes else if (notes.isEmpty()) splitNote else "$notes\n$splitNote"
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
@@ -370,7 +387,7 @@ class BolusWizard @Inject constructor(
             totalInsulin = calculatedTotalInsulin,
             percentageCorrection = percentageCorrection,
             profileName = profileName,
-            note = notes
+            note = combinedNote
         )
     }
 
@@ -588,10 +605,10 @@ class BolusWizard @Inject constructor(
                     carbsTimestamp = now + T.mins(this@BolusWizard.carbTime.toLong()).msecs()
                     bolusCalculatorResult = createBolusCalculatorResult()
                     notes = this@BolusWizard.notes
-                    // Same protein/fat-only fix as confirmAndExecute()'s own guard above — otherwise a
-                    // protein-only/fat-only entry never reaches commandQueue.bolus() at all, so the
-                    // previewed delayed dose silently never gets scheduled.
-                    if (insulin > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
+                    // Real delivery path (insulin and/or carbs to actually record/deliver). Protein/fat-only
+                    // entries (insulin==0 && carbs==0) deliberately do NOT take this branch — see the
+                    // else-if below for why.
+                    if (insulin > 0 || carbs > 0) {
                         val action = when {
                             insulinAfterConstraints == 0.0 -> Action.CARBS
                             carbs == 0.0                   -> Action.BOLUS
@@ -661,104 +678,17 @@ class BolusWizard @Inject constructor(
                                             listValues = listOf()
                                         ).blockingGet()
                                     }
-                                    // Carb-split bolus: profile% at or above 100 (a boosted profile still needs
-                                    // its correctly-scaled, larger recalculated dose split if it exceeds maxBolus
-                                    // — excluding >100 was a bug, not intentional; only a REDUCED profile, where
-                                    // the assumptions this recalculation relies on don't hold, should be excluded),
-                                    // total > maxBolus, enabled per-bolus. SMBs are never blocked here — the old
-                                    // equal-parts/SplitBolusBlockSmbUntil mode is gone entirely; every split is
-                                    // BG-gated and IOB-delta-sized instead (see scheduleReducedPartsSplitBolus).
-                                    val schedulingPct = activeProfileSwitchPct()
-                                    // Superbolus (this wizard's own useSuperBolus above, OR any other still-active
-                                    // one) blocks carb-split/protein/fat scheduling entirely — a superbolus already
-                                    // bakes in its own specific 2h TBR-suspension tradeoff; layering split/delayed
-                                    // doses on top of that window risks over-delivery neither side accounts for.
-                                    val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
-                                    // Claims this confirmation's own supersession token — see
-                                    // ScheduledDoseSupersession's own doc comment. Bumping here (rather than
-                                    // only reading it) means THIS confirmation also retires any earlier
-                                    // still-pending schedule (from a previous wizard confirm, a manual bolus
-                                    // via InsulinDialog, or carbs entered via CarbsDialog), not just the
-                                    // reverse.
-                                    val myScheduleToken = ScheduledDoseSupersession.bump()
-                                    // IOB right before THIS (the first/immediate) dose, from doCalc()'s own fields.
-                                    val iobBeforeFirstDose = insulinFromBolusIOB + insulinFromBasalIOB
-                                    // Sum of everything actually scheduled below (carb-split residual, protein,
-                                    // fat) — used for the single combined CarePortal note after all three checks,
-                                    // so it only counts what really got scheduled, not just what was calculated.
-                                    var totalProjectedFutureSplitDoses = 0.0
-                                    if (!splitBolusScheduled &&
-                                        !superBolusActive &&
-                                        manualSplitBolusEnabled &&
-                                        schedulingPct >= 100 &&
-                                        calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
-                                    ) {
-                                        splitBolusScheduled = true
-                                        val maxPart = constraintChecker.getMaxBolusAllowed().value()
-                                        val intervalMins = manualSplitBolusIntervalMins
-                                        val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
-                                        if (numParts > 1) {
-                                            val residual = calculatedTotalInsulin - maxPart // part 1 (100% of maxPart) already delivered synchronously above
-                                            // Becomes the baseline the first scheduled split's IOB-delta is measured
-                                            // against once maxPart (this dose) is added to it, matching "gap start =
-                                            // IOB before a dose + that dose's own amount" throughout.
-                                            aapsLogger.info(
-                                                LTag.CORE,
-                                                "ReducedSplitBolus: residual ${residual}U, first scheduled part starts from ${maxPart}U every ${intervalMins}min, SMBs allowed, BG- and IOBdelta-gated"
-                                            )
-                                            scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
-                                            totalProjectedFutureSplitDoses += residual
-                                        }
-                                    }
-                                    // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after
-                                    // the actual delivered immediate dose (insulinAfterConstraints — carbs/BG/etc
-                                    // only, since protein/fat are excluded from it) joined the pool. A lot of SMBs
-                                    // firing between now and each one's own +120/+180min delivery point can already
-                                    // cover much of the anticipated protein/fat-driven rise — see scheduleSingleDelayedDose.
-                                    val iobBaselineForDelayedDoses = iobBeforeFirstDose + insulinAfterConstraints
-                                    // Protein: one single dose at +120min. Decoupled from manualSplitBolusEnabled
-                                    // (the "Split bolus every" checkbox) entirely — fires whenever protein was
-                                    // entered, regardless of whether carb-splitting is enabled/needed for this
-                                    // bolus — its own amount, its own timing, its own gate. Still requires
-                                    // schedulingPct >= 100, same reasoning as carb-splits: at any other percentage
-                                    // the carb-equivalent this amount was computed from no longer reflects reality.
-                                    if (!proteinDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromProteinOnly > 0.0) {
-                                        proteinDoseScheduled = true
-                                        aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
-                                        scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-                                        totalProjectedFutureSplitDoses += insulinFromProteinOnly
-                                    }
-                                    // Fat: one single dose at +180min. Same decoupling/preconditions as protein above
-                                    // — fully independent of the carb-split schedule and of protein's own dose.
-                                    if (!fatDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromFatOnly > 0.0) {
-                                        fatDoseScheduled = true
-                                        aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
-                                        scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-                                        totalProjectedFutureSplitDoses += insulinFromFatOnly
-                                    }
-                                    // Single combined CarePortal note marking that split/protein/fat dosing was just
-                                    // scheduled, with the total amount still to come (e.g. "S1.30") — separate from
-                                    // each individual part's own delivered-treatment note, so there's one visible
-                                    // marker at the moment of scheduling itself, not just after each part lands.
-                                    if (totalProjectedFutureSplitDoses > 0.0) {
-                                        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
-                                            therapyEvent = TE(
-                                                timestamp = dateUtil.now(),
-                                                type = TE.Type.NOTE,
-                                                glucoseUnit = profileFunction.getUnits()
-                                            ).also {
-                                                it.note = "S${decimalFormatter.to2Decimal(totalProjectedFutureSplitDoses)}"
-                                                it.duration = T.mins(1).msecs()
-                                            },
-                                            action = Action.CAREPORTAL,
-                                            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-                                            note = "Split/protein/fat dosing scheduled",
-                                            listValues = listOf()
-                                        ).blockingGet()
-                                    }
+                                    scheduleSplitProteinFatDoses()
                                 }
                             }
                         })
+                    } else if (insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
+                        // Protein/fat only — nothing to actually deliver right now (0U insulin, 0 carbs), so
+                        // deliberately skip commandQueue.bolus() entirely: calling it with an empty
+                        // DetailedBolusInfo drives the real pump-delivery UI (BolusProgressDialog), which has
+                        // no defined behavior for "deliver 0 units" and hangs, requiring a force-stop to
+                        // recover. Go straight to scheduling instead — there's no immediate treatment to log.
+                        scheduleSplitProteinFatDoses()
                     }
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
                     // Record zero bolus on graph/NS when insulin is 0 (e.g. IOB covers BG, only carbs logged)
@@ -777,6 +707,104 @@ class BolusWizard @Inject constructor(
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
         })
+    }
+
+    // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
+    // larger recalculated dose split if it exceeds maxBolus — excluding >100 was a bug, not intentional;
+    // only a REDUCED profile, where the assumptions this recalculation relies on don't hold, should be
+    // excluded), total > maxBolus, enabled per-bolus. SMBs are never blocked here — the old
+    // equal-parts/SplitBolusBlockSmbUntil mode is gone entirely; every split is BG-gated and
+    // IOB-delta-sized instead (see scheduleReducedPartsSplitBolus). Also schedules protein's/fat's own
+    // single delayed doses. Extracted into its own function so it can be called either from
+    // commandQueue.bolus()'s success callback (a real immediate delivery/carbs-record happened), or
+    // directly, synchronously, for a protein/fat-only entry that never goes through commandQueue.bolus()
+    // at all (see the call sites in commonProcessing()).
+    private fun scheduleSplitProteinFatDoses() {
+        val schedulingPct = activeProfileSwitchPct()
+        // Superbolus (this wizard's own useSuperBolus above, OR any other still-active one) blocks
+        // carb-split/protein/fat scheduling entirely — a superbolus already bakes in its own specific 2h
+        // TBR-suspension tradeoff; layering split/delayed doses on top of that window risks over-delivery
+        // neither side accounts for.
+        val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
+        // Claims this confirmation's own supersession token — see ScheduledDoseSupersession's own doc
+        // comment. Bumping here (rather than only reading it) means THIS confirmation also retires any
+        // earlier still-pending schedule (from a previous wizard confirm, a manual bolus via InsulinDialog,
+        // or carbs entered via CarbsDialog), not just the reverse.
+        val myScheduleToken = ScheduledDoseSupersession.bump()
+        // IOB right before THIS (the first/immediate) dose, from doCalc()'s own fields.
+        val iobBeforeFirstDose = insulinFromBolusIOB + insulinFromBasalIOB
+        // Sum of everything actually scheduled below (carb-split residual, protein, fat) — used for the
+        // single combined CarePortal note after all three checks, so it only counts what really got
+        // scheduled, not just what was calculated.
+        var totalProjectedFutureSplitDoses = 0.0
+        if (!splitBolusScheduled &&
+            !superBolusActive &&
+            manualSplitBolusEnabled &&
+            schedulingPct >= 100 &&
+            calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
+        ) {
+            splitBolusScheduled = true
+            val maxPart = constraintChecker.getMaxBolusAllowed().value()
+            val intervalMins = manualSplitBolusIntervalMins
+            val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
+            if (numParts > 1) {
+                val residual = calculatedTotalInsulin - maxPart // part 1 (100% of maxPart) already delivered synchronously above
+                // Becomes the baseline the first scheduled split's IOB-delta is measured against once
+                // maxPart (this dose) is added to it, matching "gap start = IOB before a dose + that dose's
+                // own amount" throughout.
+                aapsLogger.info(
+                    LTag.CORE,
+                    "ReducedSplitBolus: residual ${residual}U, first scheduled part starts from ${maxPart}U every ${intervalMins}min, SMBs allowed, BG- and IOBdelta-gated"
+                )
+                scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
+                totalProjectedFutureSplitDoses += residual
+            }
+        }
+        // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after the actual
+        // delivered immediate dose (insulinAfterConstraints — carbs/BG/etc only, since protein/fat are
+        // excluded from it) joined the pool. A lot of SMBs firing between now and each one's own
+        // +120/+180min delivery point can already cover much of the anticipated protein/fat-driven rise —
+        // see scheduleSingleDelayedDose.
+        val iobBaselineForDelayedDoses = iobBeforeFirstDose + insulinAfterConstraints
+        // Protein: one single dose at +120min. Decoupled from manualSplitBolusEnabled (the "Split bolus
+        // every" checkbox) entirely — fires whenever protein was entered, regardless of whether
+        // carb-splitting is enabled/needed for this bolus — its own amount, its own timing, its own gate.
+        // Still requires schedulingPct >= 100, same reasoning as carb-splits: at any other percentage the
+        // carb-equivalent this amount was computed from no longer reflects reality.
+        if (!proteinDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromProteinOnly > 0.0) {
+            proteinDoseScheduled = true
+            aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
+            scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+            totalProjectedFutureSplitDoses += insulinFromProteinOnly
+        }
+        // Fat: one single dose at +180min. Same decoupling/preconditions as protein above — fully
+        // independent of the carb-split schedule and of protein's own dose.
+        if (!fatDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromFatOnly > 0.0) {
+            fatDoseScheduled = true
+            aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
+            scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+            totalProjectedFutureSplitDoses += insulinFromFatOnly
+        }
+        // Single combined CarePortal note marking that split/protein/fat dosing was just scheduled, with
+        // the total amount still to come (e.g. "S1.30") — separate from each individual part's own
+        // delivered-treatment note, so there's one visible marker at the moment of scheduling itself, not
+        // just after each part lands.
+        if (totalProjectedFutureSplitDoses > 0.0) {
+            persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                therapyEvent = TE(
+                    timestamp = dateUtil.now(),
+                    type = TE.Type.NOTE,
+                    glucoseUnit = profileFunction.getUnits()
+                ).also {
+                    it.note = "S${decimalFormatter.to2Decimal(totalProjectedFutureSplitDoses)}"
+                    it.duration = T.mins(1).msecs()
+                },
+                action = Action.CAREPORTAL,
+                source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                note = "Split/protein/fat dosing scheduled",
+                listValues = listOf()
+            ).blockingGet()
+        }
     }
 
     // Returns the active profile switch percentage. EPS bakes percentage into rates (pct=100),
