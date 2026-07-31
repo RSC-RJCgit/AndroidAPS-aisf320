@@ -1301,9 +1301,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addTargetLine()
         graphData.addRunningModes()
         graphData.addNowLine(dateUtil.now())
-        // Libre 1-min / AAPS (smoothed) 1-min delta / hypo-prediction labels attached to the actual
-        // current graph points — must be on THIS graph (the real BG graph, same y-scale as the plotted
-        // points), not a secondary graph panel.
+        // Libre 1-min / AAPS (smoothed) 1-min delta labels attached to the actual current graph points —
+        // must be on THIS graph (the real BG graph, same y-scale as the plotted points), not a secondary
+        // graph panel. The hypo-prediction row is fixed-position (ignores y-scale entirely), but stays
+        // here too since it wants the main graph's own basal-column area at the bottom, not graph1's.
         graphData.addL1DeltaAnnotation()
         graphData.addA1DeltaAnnotation()
         graphData.addHpAnnotation()

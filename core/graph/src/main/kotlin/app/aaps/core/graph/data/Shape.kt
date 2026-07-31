@@ -37,5 +37,5 @@ enum class Shape {
     STEPS_EXTRA_ROW, // "DR=/AW=/LS=" row, fixed one line-height above the steps row (Shape.STEPS_STACKED_BOTTOM)
     L1_DELTA_POINT, // Libre 1-min delta label attached directly to the current Libre graph point (no fixed row) — same 45°-rotated style as GENERAL's drawLabel45Right, no circle, own color (green)
     A1_DELTA_POINT, // AAPS (smoothed) 1-min delta label attached directly to the current smoothed BG graph point — same style as L1_DELTA_POINT, own color (green)
-    HP_DELTA_POINT // Hypo-prediction (HP=) label attached to the same point as L1_DELTA_POINT — same style, own color
+    HP_ROW_BOTTOM // "hypoprection= <value>" row, fixed near the bottom of the MAIN graph (same nearBottomPy as Shape.STEPS_STACKED_BOTTOM, but on the main graph's own viewport, near the basal columns), own larger font size
 }
