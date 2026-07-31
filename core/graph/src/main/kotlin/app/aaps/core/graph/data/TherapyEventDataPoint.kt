@@ -53,5 +53,12 @@ class TherapyEventDataPoint(
     override val paintStyle: Paint.Style = Paint.Style.FILL // not used
 
     override val size get() = if (rh.gb(app.aaps.core.ui.R.bool.isTablet)) 12.0f else 10.0f
-    override fun color(context: Context?): Int = Color.WHITE
+    // System-change events (pump/cannula/sensor) back to the original faded grey (therapyEvent_Default,
+    // #808080) — reverted from the flat-white unification below for everything else.
+    override fun color(context: Context?): Int =
+        when (data.type) {
+            TE.Type.CANNULA_CHANGE, TE.Type.INSULIN_CHANGE, TE.Type.SENSOR_CHANGE, TE.Type.PUMP_BATTERY_CHANGE ->
+                rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_Default)
+            else -> Color.WHITE
+        }
 }
