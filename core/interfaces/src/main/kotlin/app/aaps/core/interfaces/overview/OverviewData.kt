@@ -125,7 +125,10 @@ interface OverviewData {
     val dsMinScale: Scale
     var dsMaxSeries: SeriesData
     var dsMinSeries: SeriesData
-    var rawBgSeries: SeriesData
+    // A list, not a single series: the raw/Libre line is split into color-banded segments (red / yellow
+    // low / yellow high) since GraphView's line series can't vary color within itself — see
+    // PrepareBgDataWorker.kt.
+    var rawBgSeries: List<SeriesData>
     var noisyBgDeltaSeries: SeriesData
     // Libre 1-min delta label attached to the current Libre graph point — see L1DeltaDataPoint/Shape.L1_DELTA_POINT.
     var l1DeltaSeries: SeriesData

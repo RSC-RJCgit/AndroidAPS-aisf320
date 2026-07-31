@@ -183,7 +183,9 @@ class GraphData @Inject constructor(
             minY = 0.0
             maxY = overviewData.maxBgValue
         }
-        addSeries(overviewData.rawBgSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+        // Split into color-banded segments (red / yellow low / yellow high) rather than one series —
+        // see PrepareBgDataWorker.kt.
+        overviewData.rawBgSeries.forEach { addSeries(it as LineGraphSeries<*>) }
     }
 
     fun addBgParabola(addPredictions: Boolean, scale: Double) {

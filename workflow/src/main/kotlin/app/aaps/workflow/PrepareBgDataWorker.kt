@@ -3,6 +3,7 @@ package app.aaps.workflow
 import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GV
@@ -15,11 +16,12 @@ import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.L1DeltaDataPoint
+import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
-import app.aaps.core.graph.data.RawBgDataPoint
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
+import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -109,14 +111,37 @@ class PrepareBgDataWorker(
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
         // Raw BG line — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration
-        // when OFF. Per-point dots (not a LineGraphSeries) so it can turn yellow when low, same as the
-        // main BG dots below — GraphView's line series can't vary color per point. Stays red otherwise.
-        val rawPointsList: MutableList<DataPointWithLabelInterface> = ArrayList()
-        data.overviewData.bgReadingsArray
+        // when OFF. Split into color-banded segments (red normally, yellow below 3.0mmol or above
+        // 12.5mmol — fixed thresholds, independent of the user's Overview low/high marks) since
+        // GraphView's line series can't vary color within itself. Each time the color changes, the
+        // crossing reading is duplicated into both the outgoing and incoming segment so the segments
+        // visually connect with no gap, instead of true threshold interpolation.
+        val rawReadings = data.overviewData.bgReadingsArray
             .filter { it.timestamp in fromTime..toTime && it.noise != null && it.noise!! > 10.0 }
             .sortedBy { it.timestamp }
-            .forEach { rawPointsList.add(RawBgDataPoint(it.timestamp, it.noise!!, profileUtil, rh)) }
-        data.overviewData.rawBgSeries = PointsWithLabelGraphSeries(Array(rawPointsList.size) { i -> rawPointsList[i] })
+        val rawLowMgdl = 3.0 * Constants.MMOLL_TO_MGDL   // 54.0
+        val rawHighMgdl = 12.5 * Constants.MMOLL_TO_MGDL // 225.0
+        fun rawColor(mgdl: Double) = if (mgdl < rawLowMgdl || mgdl > rawHighMgdl) android.graphics.Color.YELLOW else android.graphics.Color.RED
+        val rawSegments = mutableListOf<LineGraphSeries<DataPoint>>()
+        if (rawReadings.isNotEmpty()) {
+            var currentColor = rawColor(rawReadings[0].noise!!)
+            var currentPoints = mutableListOf(DataPoint(rawReadings[0].timestamp.toDouble(), profileUtil.fromMgdlToUnits(rawReadings[0].noise!!)))
+            for (i in 1 until rawReadings.size) {
+                val reading = rawReadings[i]
+                val point = DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(reading.noise!!))
+                val color = rawColor(reading.noise!!)
+                if (color != currentColor) {
+                    currentPoints.add(point) // duplicate boundary point into the outgoing segment
+                    rawSegments.add(LineGraphSeries(currentPoints.toTypedArray()).also { it.color = currentColor; it.thickness = 4 })
+                    currentPoints = mutableListOf(point) // new segment starts from the same boundary point
+                    currentColor = color
+                } else {
+                    currentPoints.add(point)
+                }
+            }
+            rawSegments.add(LineGraphSeries(currentPoints.toTypedArray()).also { it.color = currentColor; it.thickness = 4 })
+        }
+        data.overviewData.rawBgSeries = rawSegments
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.
