@@ -255,11 +255,13 @@ class PrepareBgDataWorker(
         // point keeps them from landing on top of each other. 6-underscore offset + "A" right before the
         // value identifies this as the AAPS-derived delta (vs 3-underscore+"L" for Libre above) and keeps
         // this one further offset from the Libre label so the two rotated texts don't run into each other
-        // when close together.
+        // when close together. Single trailing sign (not repeated), followed by the live BG-acceleration
+        // value (same "acceBG" AIV-table column/formatting as stepsExtraSeries's own "acce=" field below).
         data.overviewData.a1DeltaSeries =
             if (latest != null && aapsDelta != null) {
                 val formatted = formatMmolDelta(aapsDelta)
-                val label = "______A" + formatted + formatted.first().toString().repeat(4)
+                val acceStr = latestAiv?.let { String.format(Locale.getDefault(), "%.2f", it.bgAcceleration) } ?: "--"
+                val label = "______A" + formatted + formatted.first() + "acce" + acceStr
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)

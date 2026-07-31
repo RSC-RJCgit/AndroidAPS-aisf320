@@ -1153,7 +1153,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         "5.056 — pp ISF weight (high/boosted), -0.01" to 5.056,
         "5.058 — pp ISF weight (high/boosted), +0.01" to 5.058,
         "5.062 — acce ISF weight (high/boosted), -0.01" to 5.062,
-        "5.064 — acce ISF weight (high/boosted), +0.01" to 5.064
+        "5.064 — acce ISF weight (high/boosted), +0.01" to 5.064,
+        "5.068 — higher ISF range weight, -0.1" to 5.068,
+        "5.070 — higher ISF range weight, +0.1" to 5.070
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via

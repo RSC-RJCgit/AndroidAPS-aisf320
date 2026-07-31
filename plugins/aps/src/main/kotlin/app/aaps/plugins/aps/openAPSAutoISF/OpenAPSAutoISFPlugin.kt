@@ -1421,6 +1421,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("AcceWeightHighUpTT")
         }
 
+        // --- HigherIsfRangeWeightDownTT: manually setting a TT of 5.068 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfHighBgWeight (higher_ISFrange_weight), clamped to a min of 0.0 — not a real target. Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("HigherIsfRangeWeightDownTT", 2) && activeTtNear(5.068, 0.0001)) {
+            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
+            val newHigh = (currentHigh - 0.1).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
+            cancelCurrentTempTarget()
+            sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}")
+            addCarePortalNote("Hd${round(newHigh, 2).toString().takeLast(3)}")
+            markRun("HigherIsfRangeWeightDownTT")
+        }
+
+        // --- HigherIsfRangeWeightUpTT: manually setting a TT of 5.070 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfHighBgWeight, clamped to a max of 2.0. Same pattern as HigherIsfRangeWeightDownTT above.
+        if (readyToRun("HigherIsfRangeWeightUpTT", 2) && activeTtNear(5.070, 0.0001)) {
+            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
+            val newHigh = (currentHigh + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
+            cancelCurrentTempTarget()
+            sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}")
+            addCarePortalNote("Hu${round(newHigh, 2).toString().takeLast(3)}")
+            markRun("HigherIsfRangeWeightUpTT")
+        }
+
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
