@@ -147,7 +147,7 @@ class GraphData @Inject constructor(
         addSeries(overviewData.noteEventSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
-    // Same notes as addNoteEvents(), rendered as plain unscaled arrowheads at graph3's old ISF-row spot.
+    // Same notes as addNoteEvents(), rendered as plain unscaled arrowheads at graph4's top half.
     fun addNoteArrowheads() {
         addSeries(overviewData.noteArrowheadSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }

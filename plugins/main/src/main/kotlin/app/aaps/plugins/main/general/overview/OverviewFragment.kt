@@ -1415,9 +1415,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
-            // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
-            // different graph to render on.
-            if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
+            // CarePortal notes: swapped from graph2 to graph4 (g==3) — was on graph2, swapped positions
+            // with the SMB stacked labels below. Same TREAT toggle source as before.
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
             // Steps row + DR/AW/LS row above it + yellow/white line + ISF adaptation indices/SMB row
             // ("f= ac= bg= pp= du= smb=") above all three of those: graph1 (g==0), fixed near the bottom.
             if (g == 0) {
@@ -1426,11 +1426,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 secondGraphData.addNoisyBgDeltaAnnotation()
                 secondGraphData.addIsfIndices()
             }
-            // Note arrowheads: graph3 (g==2), at the fixed spot the ISF row used to occupy there before
-            // it moved to graph1 above. Same TREAT toggle source as addNoteEvents on graph2.
-            if (g == 2 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
-            // SMB stacked labels: graph4 (g==3).
-            if (g == 3) secondGraphData.addSmbLabels()
+            // Note arrowheads: moved from graph3 to graph4 (g==3), top half — see noteArrowheadPy in
+            // PointsWithLabelGraphSeries.kt. Same TREAT toggle source.
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
+            // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
+            // positions with the CarePortal notes above.
+            if (g == 1) secondGraphData.addSmbLabels()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

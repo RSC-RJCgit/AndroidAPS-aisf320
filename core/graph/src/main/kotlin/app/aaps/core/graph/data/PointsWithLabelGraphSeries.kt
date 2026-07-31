@@ -181,9 +181,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // fixed one more line-height above stepsExtraRowPy so it sits above all three of the rows/lines
         // above rather than overlapping any of them.
         val isfIndicesRowPy = stepsExtraRowPy - scaledTextSize * 0.6f
-        // Freed-up spot on graph3 where the ISF row used to sit (its old fixed position, 0.94 of that
-        // graph's own height) before it moved to graph1 above — now used for Shape.NOTE_ARROWHEAD_GRAPH3.
-        val isfIndicesOldRowPy = graphTop + graphHeight * 0.94f
+        // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
+        // own height.
+        val noteArrowheadPy = graphTop + graphHeight * 0.2f
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -498,19 +498,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // Libre 1-min / AAPS (smoothed) 1-min delta label attached directly to the current
                     // graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no circle
                     // (the actual BG point already has its own dot drawn by the glucose series
-                    // underneath). L1 sized up further than A1 — still hard to read at 0.85f on the graph
-                    // background; A1 stays at 0.85f. Already bold via drawLabel45Right's isFakeBoldText.
-                    val sizeMultiplier = if (value.shape == Shape.L1_DELTA_POINT) 1.1f else 0.85f
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * sizeMultiplier)
+                    // underneath). L1 decreased again, from 1.1f to 0.85f, now matching A1. Already bold
+                    // via drawLabel45Right's isFakeBoldText.
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.85f)
                 } else if (value.shape == Shape.HP_ROW_BOTTOM) {
-                    // "hypoprection= <value>" row, fixed at nearBottomPy — same static-position mechanism
-                    // as Shape.STEPS_STACKED_BOTTOM (see that computation above), but drawn on the MAIN
-                    // graph's own instance of this series, near its basal-column area at the bottom —
-                    // the spot the steps row itself occupied there before it fully migrated to graph1.
-                    // Larger font than the steps row (0.9f vs 0.6f) — meant to stand out.
+                    // "hypoprediction= <value>" row, fixed at nearBottomPy — same static-position
+                    // mechanism as Shape.STEPS_STACKED_BOTTOM (see that computation above), but drawn on
+                    // the MAIN graph's own instance of this series, near its basal-column area at the
+                    // bottom — the spot the steps row itself occupied there before it fully migrated to
+                    // graph1. Decreased from 0.9f to 0.6f (matches the steps row's own size).
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        mPaint.textSize = (scaledTextSize * 0.9f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
@@ -536,14 +535,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
                     // Plain CarePortal-note arrowhead — same unscaled triangle+shaft proportions as
                     // Shape.SMB's own "arrowhead just below the relevant BGL point" (no dose-size
-                    // scaling there either), but fixed at graph3's old ISF-row position
-                    // (isfIndicesOldRowPy) instead of tracking an actual BGL value, since graph3 isn't
-                    // glucose-scaled.
+                    // scaling there either), but fixed at noteArrowheadPy (graph4's top half) instead of
+                    // tracking an actual BGL value, since graph4 isn't glucose-scaled.
                     mPaint.strokeWidth = 0f
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                     val noteSize = value.size * scaledPxSize * 1.2f
-                    val triTop = isfIndicesOldRowPy
+                    val triTop = noteArrowheadPy
                     val triBase = triTop + noteSize * 1.5f
                     val halfWidth = noteSize * 0.25f
                     drawArrows(arrayOf(

@@ -208,7 +208,7 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "hypoprection= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
+        // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
         // area — see Shape.HP_ROW_BOTTOM). HP = (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*LibreDelta5[mmol]
         // + COB/10. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
         // LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol
@@ -222,7 +222,7 @@ class PrepareBgDataWorker(
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
-                val label = "hypoprection= " + String.format(Locale.getDefault(), "%.1f", hp)
+                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -258,7 +258,7 @@ class PrepareBgDataWorker(
                 // COB/10. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5
                 // from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion is
                 // fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined
-                // in mmol. Requires libreDelta5 non-null. Same formula as the hypoprection= row on the
+                // in mmol. Requires libreDelta5 non-null. Same formula as the hypoprediction= row on the
                 // main graph below — this is the graph1 copy, kept alongside it.
                 val hpTxt = "HP=" + (if (latestAiv != null && libreDelta5 != null) {
                     val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL

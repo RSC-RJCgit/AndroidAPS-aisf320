@@ -38,5 +38,5 @@ enum class Shape {
     L1_DELTA_POINT, // Libre 1-min delta label attached directly to the current Libre graph point (no fixed row) — same 45°-rotated style as GENERAL's drawLabel45Right, no circle, own color (green)
     A1_DELTA_POINT, // AAPS (smoothed) 1-min delta label attached directly to the current smoothed BG graph point — same style as L1_DELTA_POINT, own color (green)
     HP_ROW_BOTTOM, // "hypoprection= <value>" row, fixed near the bottom of the MAIN graph (same nearBottomPy as Shape.STEPS_STACKED_BOTTOM, but on the main graph's own viewport, near the basal columns), own larger font size
-    NOTE_ARROWHEAD_GRAPH3 // Plain CarePortal-note arrowhead (same unscaled triangle+shaft as Shape.SMB's own BGL-point arrowhead, no dose-size scaling), fixed at graph3's old ISF-row position (freed up by ISF_INDICES moving to graph1)
+    NOTE_ARROWHEAD_GRAPH3 // Plain CarePortal-note arrowhead (same unscaled triangle+shaft as Shape.SMB's own BGL-point arrowhead, no dose-size scaling), fixed at graph4's top half (name kept, moved there from its original graph3-bottom spot)
 }
