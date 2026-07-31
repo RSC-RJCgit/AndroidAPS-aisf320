@@ -2103,6 +2103,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // risk (movement can distort readings) and a hypo-risk multiplier (activity raises
                 // insulin sensitivity), so a big boost is specifically the wrong response right then.
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                // Steps60 guard: same movement-risk reasoning as the 5m/30m checks above, extended to a
+                // full hour so a longer walk/activity session still blocks the boost even once the
+                // shorter windows have quieted back down.
+                && recentSteps60Minutes < 300
+                // Long-smoothed-avg-delta floor: glucoseStatus.longAvgDelta averages the ~17.5-42.5 min-old
+                // readings (DeltaCalculator.kt) — requiring it above 7.2 mg/dL (0.4mmol) confirms the rise
+                // isn't just a short-lived spike riding on an otherwise flat/falling longer trend.
+                && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
             //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
@@ -2231,6 +2239,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
                 && g <= 171.2 && profileName != "Current Profile" && !mjActive()
                 && readyToRun("BolusGivenMild", 10) && movementOk
+                && recentSteps60Minutes < 300 && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 22, 0)
@@ -2248,7 +2257,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 3)} mildBase=${round(mildBase, 3)} hardStackTarget=${round(hardStackTarget, 3)} currentRatio=${round(smb_delivery_ratio, 3)} thresholdScale=${round(thresholdScale, 3)} ;;")
             consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
-            consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin ;;")
+            consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${round(glucoseStatus.longAvgDelta, 2)} recentSteps60Minutes=$recentSteps60Minutes ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
             consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 3)} wouldFire=$mildWould ;;")
         }
