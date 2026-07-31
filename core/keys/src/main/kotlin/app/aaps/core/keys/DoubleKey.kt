@@ -41,11 +41,14 @@ enum class DoubleKey(
     ApsAutoIsfMin("autoISF_min", 1.0, 0.3, 1.0, defaultedBySM = true),
     ApsAutoIsfMax("autoISF_max", 1.0, 1.0, 3.0, defaultedBySM = true),
     ApsAutoIsfBgAccelWeight("bgAccel_ISF_weight", 0.0, 0.0, 1.0, defaultedBySM = true),
-    // The user's own configured "normal" bgAccel_ISF_weight (currently 0.70). See ApsAutoIsfPpWeightNormal
-    // below for the reasoning; NOT yet wired into any restore call — see conversation before assuming
-    // any of the existing hardcoded 0.70/0.71 boost-tier literals in OpenAPSAutoISFPlugin.kt should
-    // read this back, since those looked like deliberate per-automation targets, not baseline restores.
+    // The user's own configured "normal" bgAccel_ISF_weight (currently 0.70) — what AcceUp0.5/
+    // RecentPodOff restore ApsAutoIsfBgAccelWeight to once their own conditions clear.
     ApsAutoIsfBgAccelWeightNormal("autoisf_bgaccel_isf_weight_normal", 0.70, 0.0, 1.0, defaultedBySM = true),
+    // The user's own configured "boosted" bgAccel_ISF_weight (default 0.95, matching the value this
+    // replaces) — what OldPod2/RecentPod set ApsAutoIsfBgAccelWeight to while boosting, and what
+    // AcceUp0.5 now targets too (not the resting baseline above). Was a hardcoded 0.95 literal in all 3
+    // places; now a live, user-tunable preference instead.
+    ApsAutoIsfBgAccelWeightHigh("autoisf_bgaccel_isf_weight_high", 0.95, 0.0, 1.0, defaultedBySM = true),
     ApsAutoIsfBgBrakeWeight("bgBrake_ISF_weight", 0.0, 0.0, 1.0, defaultedBySM = true),
     ApsAutoIsfLowBgWeight("lower_ISFrange_weight", 0.0, 0.0, 2.0, defaultedBySM = true),
     ApsAutoIsfHighBgWeight("higher_ISFrange_weight", 0.0, 0.0, 2.0, defaultedBySM = true),

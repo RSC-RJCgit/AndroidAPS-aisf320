@@ -247,7 +247,9 @@
     <string name="autoisf_pp_isf_weight_high_title">Boosted postprandial ISF weight</string>
     <string name="autoisf_pp_isf_weight_high_summary">Default 0.15. The pp_ISF_weight value the fast-rise boost automations (BolusGiven, BolusGivenMild, High6PP, HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) set while boosting — was previously hardcoded, now a setting.</string>
     <string name="autoisf_bgaccel_isf_weight_normal_title">Resting acceleration ISF weight</string>
-    <string name="autoisf_bgaccel_isf_weight_normal_summary">Default 0.70. Your own normal bgAccel_ISF_weight value, kept separate from the acceleration ISF weight above (not currently used as a restore target by any automation — see the acceleration ISF weight\'s own hardcoded boost values).</string>
+    <string name="autoisf_bgaccel_isf_weight_normal_summary">Default 0.70. The bgAccel_ISF_weight value RecentPodOff restores to once its own conditions clear. Separate from the acceleration ISF weight above, which that same automation also overwrites transiently.</string>
+    <string name="autoisf_bgaccel_isf_weight_high_title">Boosted acceleration ISF weight</string>
+    <string name="autoisf_bgaccel_isf_weight_high_summary">Default 0.95. The bgAccel_ISF_weight value OldPod2/RecentPod set while boosting, and what AcceUp0.5 now targets too — was previously hardcoded, now a setting.</string>
     <string name="autoisf_dura_isf_weight_normal_title">Resting duration ISF weight</string>
     <string name="autoisf_dura_isf_weight_normal_summary">Default 1.2. Your own normal dura_ISF_weight value. Nothing currently writes the duration ISF weight above at all, so this isn\'t used as a restore target yet either.</string>
     <string name="autoisf_libre_slope_orig_title">Base Libre cal slope (OldSensorAdj)</string>

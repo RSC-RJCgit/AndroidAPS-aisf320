@@ -1332,16 +1332,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 6 existing restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct rule — it can
         // revert PP even while a boost's own profile% duration is still running. 5-min throttle is a
         // defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
+        // Nested acce check: under the same trigger (BG<8.5mmol or high activity), also revert
+        // ApsAutoIsfBgAccelWeight to its own baseline (ApsAutoIsfBgAccelWeightNormal) if it's currently
+        // ABOVE baseline — deliberately one-directional (only reverts an elevated/boosted acce, never
+        // touches a legitimately-reduced protective acce like NightAcce's 0.35 or GentleHypoRisk's
+        // 0.07/0.02, which sit below baseline and are unrelated to this rule).
         if (readyToRun("PpWeightRevertUnder8_5", 5)) {
             val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
             val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
             val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
             val activeMovement = recentSteps5Minutes > 100 || recentSteps30Minutes > 200 || recentSteps60Minutes > 300
-            if (!fuzzyEquals(currentPp, baselinePp) && (lowBg || activeMovement)) {
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
+            val trigger = lowBg || activeMovement
+            val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger
+            val acceNeedsRevert = currentAcce > baselineAcce && trigger
+            if (ppNeedsRevert || acceNeedsRevert) {
+                if (ppNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
+                if (acceNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, baselineAcce)
                 val reason = if (lowBg) "BG<8.5mmol" else "activity"
-                sendSms("PpWeightRevert: ppISFwt=${round(baselinePp, 2)} ($reason)")
-                addCarePortalNote("PPrv")
+                val what = when {
+                    ppNeedsRevert && acceNeedsRevert -> "ppISFwt=${round(baselinePp, 2)} acceISFwt=${round(baselineAcce, 2)}"
+                    ppNeedsRevert                    -> "ppISFwt=${round(baselinePp, 2)}"
+                    else                              -> "acceISFwt=${round(baselineAcce, 2)}"
+                }
+                sendSms("PpWeightRevert: $what ($reason)")
+                val note = if (ppNeedsRevert && acceNeedsRevert) "PArv" else if (ppNeedsRevert) "PPrv" else "ACrv"
+                addCarePortalNote(note)
                 markRun("PpWeightRevertUnder8_5")
             }
         }
@@ -1373,6 +1390,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
             addCarePortalNote("ACu${round(newAcce, 2).toString().takeLast(2)}")
             markRun("AcceWeightUpTT")
+        }
+
+        // --- AcceWeightHighDownTT: manually setting a TT of 5.062 mmol is used as a remote -0.01 nudge
+        // on ApsAutoIsfBgAccelWeightHigh (acceISFwt_high — the boosted value OldPod2/RecentPod/AcceUp0.5
+        // set, previously a hardcoded 0.95 literal in each), clamped to its own min (0.0) — not a real
+        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No
+        // dual-update: unlike AcceWeightNormal/AcceWeight, this only ever gets written into the live
+        // weight transiently when a boost automation actually fires, not continuously.
+        if (readyToRun("AcceWeightHighDownTT", 2) && activeTtNear(5.062, 0.0001)) {
+            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+            val newAcceHigh = (currentAcceHigh - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}")
+            addCarePortalNote("AHd${round(newAcceHigh, 2).toString().takeLast(2)}")
+            markRun("AcceWeightHighDownTT")
+        }
+
+        // --- AcceWeightHighUpTT: manually setting a TT of 5.064 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfBgAccelWeightHigh, clamped to its own max (1.00). Same pattern as
+        // AcceWeightHighDownTT above.
+        if (readyToRun("AcceWeightHighUpTT", 2) && activeTtNear(5.064, 0.0001)) {
+            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+            val newAcceHigh = (currentAcceHigh + 0.01).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}")
+            addCarePortalNote("AHu${round(newAcceHigh, 2).toString().takeLast(2)}")
+            markRun("AcceWeightHighUpTT")
         }
 
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
@@ -2907,9 +2953,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Code port of "AcceUp0.5": raises acce weight to 0.70 when currently very low, BGL is
-        // stable/rising, no TT, and either MJ is clear or steroids are on. No live-pump gate: the
-        // original's Note field was empty.
+        // Code port of "AcceUp0.5": raises acce weight to its boosted level (ApsAutoIsfBgAccelWeightHigh,
+        // not the resting baseline) when currently very low, BGL is stable/rising, no TT, and either MJ
+        // is clear or steroids are on. No live-pump gate: the original's Note field was empty.
         if (readyToRun("AcceUp0.5", 5)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             if (acceW <= 0.5
@@ -2917,7 +2963,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 100
                 && activeTtMgdl() == null
                 && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("Steroids", "SteroidsON"))) {
-                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
                 sendSms("AcceUp")
                 addCarePortalNote("Acce")
                 markRun("AcceUp0.5")
@@ -2937,7 +2983,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Old2")
                 sendSms("OldPod2")
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
-                setBgAccelIsfWeight(0.95)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
                 switchProfileIfNeeded("Current ProfileReal")
                 startProfilePercentFor(130, 5)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
@@ -2945,15 +2991,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Code port of "RecentPodOff": relaxes acce weight back to 0.71 once the RecentPod/OldPod2
-        // safety TT has ended and acce weight is still at its 0.95 safety level. No live-pump gate:
-        // the original's Note field was empty.
+        // Code port of "RecentPodOff": relaxes acce weight back to baseline once the RecentPod/OldPod2
+        // safety TT has ended and acce weight is still at its boosted (ApsAutoIsfBgAccelWeightHigh)
+        // level. No live-pump gate: the original's Note field was empty.
         if (readyToRun("RecentPodOff", 5)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            // fuzzyEquals, not ==: acceW is a Double pref set to 0.95 elsewhere, and 0.95 has no exact
-            // float representation, so "acceW == 0.95" could read false after the round-trip and this
-            // recovery would never fire (acce stuck at 0.95). Same float trap as the DelOff reset.
-            if (fuzzyEquals(acceW, 0.95) && activeTtMgdl() == null) {
+            val acceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+            // fuzzyEquals, not ==: acceHigh has no exact float representation at values like 0.95, so
+            // "acceW == acceHigh" could read false after the round-trip and this recovery would never
+            // fire (acce stuck at its boosted level). Same float trap as the DelOff reset.
+            if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 switchProfileIfNeeded("Current ProfileReal")
                 sendSms("RecentPodOff Acce")
@@ -2990,10 +3037,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g >= 90.1 /* 5.0 mmol */) {
                 startProfilePercentFor(130, 5)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
-                setBgAccelIsfWeight(0.95)
+                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 sendSms("RecentPod Acce")
-                addCarePortalNote("RecPod")   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + acce 0.95 fresh/stale-pod boost
+                addCarePortalNote("RecPod")   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + boosted-acce fresh/stale-pod boost
                 markRun("RecentPod")
             }
         }
@@ -4279,6 +4326,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeight, dialogMessage = R.string.openapsama_bgAccel_ISF_weight_summary, title = R.string.openapsama_bgAccel_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightNormal, dialogMessage = R.string.autoisf_bgaccel_isf_weight_normal_summary, title = R.string.autoisf_bgaccel_isf_weight_normal_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightHigh, dialogMessage = R.string.autoisf_bgaccel_isf_weight_high_summary, title = R.string.autoisf_bgaccel_isf_weight_high_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgBrakeWeight, dialogMessage = R.string.openapsama_bgBrake_ISF_weight_summary, title = R.string.openapsama_bgBrake_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLowBgWeight, dialogMessage = R.string.openapsama_lower_ISFrange_weight_summary, title = R.string.openapsama_lower_ISFrange_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfHighBgWeight, dialogMessage = R.string.openapsama_higher_ISFrange_weight_summary, title = R.string.openapsama_higher_ISFrange_weight))
