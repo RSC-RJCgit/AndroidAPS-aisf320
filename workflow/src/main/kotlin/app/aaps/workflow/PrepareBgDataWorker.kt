@@ -210,15 +210,18 @@ class PrepareBgDataWorker(
 
         // Hypo-prediction (HP=) label, same anchor point as l1DeltaSeries above (just above it on the
         // rotated diagonal, via the leading-underscore offset). HP = (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
-        // + COB/10. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
-        // mmol conversion is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the
-        // formula is defined in mmol.
+        // + 0.5*LibreDelta5[mmol] + COB/10. BGL/IOB/SDelta from the same latestAiv record (internally
+        // consistent timestamp); LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's
+        // L5= field). mmol conversion is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative,
+        // since the formula is defined in mmol. Requires libreDelta5 non-null (falls back to "--" like
+        // the rest of this row when unavailable).
         data.overviewData.hpSeries =
-            if (latest != null && noisyBg != null && latestAiv != null) {
+            if (latest != null && noisyBg != null && latestAiv != null && libreDelta5 != null) {
                 val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + cob / 10.0
+                val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
                 val label = "_______HP=" + String.format(Locale.getDefault(), "%.2f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
@@ -251,16 +254,19 @@ class PrepareBgDataWorker(
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
-                // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + COB/10. BGL/IOB/SDelta from
-                // latestAiv (internally consistent timestamp); mmol conversion is fixed
-                // (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in mmol.
-                val hpTxt = "HP=" + (latestAiv?.let {
-                    val bglMmol = it.glucose * Constants.MGDL_TO_MMOLL
-                    val sdeltaMmol = it.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*LibreDelta5[mmol] +
+                // COB/10. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5
+                // from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion is
+                // fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined
+                // in mmol. Requires libreDelta5 non-null.
+                val hpTxt = "HP=" + (if (latestAiv != null && libreDelta5 != null) {
+                    val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
+                    val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                    val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val hp = (bglMmol - it.iob) + 0.5 * sdeltaMmol + cob / 10.0
+                    val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
                     String.format(Locale.getDefault(), "%.2f", hp)
-                } ?: "--")
+                } else "--")
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
                     " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}" +
                     " I5=${avgInterval?.let { it.roundToInt().toString() } ?: "--"} $hpTxt"
