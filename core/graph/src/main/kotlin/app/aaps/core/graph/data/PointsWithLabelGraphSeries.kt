@@ -177,6 +177,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // (stepsRowPy + a small gap). No more HIGH/LOW toggle (annotationUnderTarget is no longer read
         // here — see its own declaration if reviving later).
         val greenLinePy = stepsRowPy + scaledTextSize * 0.5f
+        // ISF adaptation indices/SMB row ("f= ac= bg= pp= du= smb=") — moved from graph3 to graph1,
+        // fixed one more line-height above stepsExtraRowPy so it sits above all three of the rows/lines
+        // above rather than overlapping any of them.
+        val isfIndicesRowPy = stepsExtraRowPy - scaledTextSize * 0.6f
+        // Freed-up spot on graph3 where the ISF row used to sit (its old fixed position, 0.94 of that
+        // graph's own height) before it moved to graph1 above — now used for Shape.NOTE_ARROWHEAD_GRAPH3.
+        val isfIndicesOldRowPy = graphTop + graphHeight * 0.94f
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -198,7 +205,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // glucose values.
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
-                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM
+                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -511,21 +518,43 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
-                    // AutoISFHistoryDialog's own column colors), fixed in the bottom area of graph3.
+                    // AutoISFHistoryDialog's own column colors), fixed at isfIndicesRowPy — moved from
+                    // graph3 to graph1, above the steps row/extra row/yellow-white line there.
                     if (value is IsfIndicesDataPoint && value.segments.isNotEmpty()) {
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.7f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        val py = graphTop + graphHeight * 0.94f
                         var xCursor = graphLeft + 10f
                         for ((text, color) in value.segments) {
                             mPaint.color = color
-                            canvas.drawText(text, xCursor, py, mPaint)
+                            canvas.drawText(text, xCursor, isfIndicesRowPy, mPaint)
                             xCursor += mPaint.measureText(text) + 12f
                         }
                     }
+                } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
+                    // Plain CarePortal-note arrowhead — same unscaled triangle+shaft proportions as
+                    // Shape.SMB's own "arrowhead just below the relevant BGL point" (no dose-size
+                    // scaling there either), but fixed at graph3's old ISF-row position
+                    // (isfIndicesOldRowPy) instead of tracking an actual BGL value, since graph3 isn't
+                    // glucose-scaled.
+                    mPaint.strokeWidth = 0f
+                    mPaint.style = Paint.Style.FILL_AND_STROKE
+                    if (!value.hasColorOverride) mPaint.color = Color.YELLOW
+                    val noteSize = value.size * scaledPxSize * 1.2f
+                    val triTop = isfIndicesOldRowPy
+                    val triBase = triTop + noteSize * 1.5f
+                    val halfWidth = noteSize * 0.25f
+                    drawArrows(arrayOf(
+                        Point(endX.toInt(), triTop.toInt()),
+                        Point((endX + halfWidth).toInt(), triBase.toInt()),
+                        Point((endX - halfWidth).toInt(), triBase.toInt())
+                    ), canvas, mPaint)
+                    mPaint.strokeWidth = 2f
+                    mPaint.style = Paint.Style.STROKE
+                    val shaftEnd = triBase + scaledTextSize * 0.25f
+                    canvas.drawLine(endX, triBase, endX, shaftEnd, mPaint)
                 }
                 // set values above point
             }

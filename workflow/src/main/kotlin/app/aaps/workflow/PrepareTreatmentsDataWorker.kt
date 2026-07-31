@@ -193,6 +193,26 @@ class PrepareTreatmentsDataWorker(
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
+
+        // Same notes as noteEventSeries above, rendered as plain unscaled arrowheads (Shape.SMB's own
+        // BGL-point arrowhead, no dose-size scaling) fixed at graph3's old ISF-row spot — an additional,
+        // simpler view alongside the full note display on graph2.
+        val noteArrowheads = filteredNotes
+            .map { note ->
+                object : DataPointWithLabelInterface {
+                    override fun getX(): Double = note.x
+                    override fun getY(): Double = 0.0
+                    override fun setY(y: Double) {}
+                    override val label: String = ""
+                    override val duration: Long = 0L
+                    override val shape = app.aaps.core.graph.data.Shape.NOTE_ARROWHEAD_GRAPH3
+                    override val size: Float = 1.0f
+                    override val paintStyle = android.graphics.Paint.Style.FILL
+                    override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
+                }
+            }
+        data.overviewData.noteArrowheadSeries = PointsWithLabelGraphSeries(noteArrowheads.toTypedArray())
+
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 
         data.overviewData.heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(

@@ -88,6 +88,9 @@ interface OverviewData {
     // Plain TE.Type.NOTE events only (split out from therapyEventSeries) — renders on graph2, while
     // therapyEventSeries (Announcements/MBG/finger-stick/settings-export/exercise) stays on the main graph.
     var noteEventSeries: SeriesData
+    // Same notes as noteEventSeries, but rendered as plain unscaled arrowheads (Shape.NOTE_ARROWHEAD_GRAPH3)
+    // fixed at graph3's old ISF-row spot — an additional, simpler view alongside noteEventSeries on graph2.
+    var noteArrowheadSeries: SeriesData
 
     var maxIobValueFound: Double
     val iobScale: Scale

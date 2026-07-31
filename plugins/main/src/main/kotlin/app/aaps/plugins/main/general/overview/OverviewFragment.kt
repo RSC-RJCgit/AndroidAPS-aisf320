@@ -1418,14 +1418,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // CarePortal notes: main graph -> graph2 (g==1). Same TREAT toggle source as before, just a
             // different graph to render on.
             if (g == 1 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            // Steps row + DR/AW/LS row above it + yellow/white line: graph1 (g==0), fixed near the bottom.
+            // Steps row + DR/AW/LS row above it + yellow/white line + ISF adaptation indices/SMB row
+            // ("f= ac= bg= pp= du= smb=") above all three of those: graph1 (g==0), fixed near the bottom.
             if (g == 0) {
                 secondGraphData.addStepsStackedAnnotation()
                 secondGraphData.addStepsExtra()
                 secondGraphData.addNoisyBgDeltaAnnotation()
+                secondGraphData.addIsfIndices()
             }
-            // ISF adaptation indices + SMB row ("f= ac= bg= pp= du= smb="): graph3 (g==2).
-            if (g == 2) secondGraphData.addIsfIndices()
+            // Note arrowheads: graph3 (g==2), at the fixed spot the ISF row used to occupy there before
+            // it moved to graph1 above. Same TREAT toggle source as addNoteEvents on graph2.
+            if (g == 2 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
             // SMB stacked labels: graph4 (g==3).
             if (g == 3) secondGraphData.addSmbLabels()
 
