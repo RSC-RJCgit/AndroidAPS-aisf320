@@ -2343,6 +2343,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // TT5.8New3 — mid-G, very-low-IOB/COB catch: like off3 but without requiring flatness.
             val new3 = g >= 117.1 /* 6.5 */ && iob <= 0.8 && cob <= 4.0
 
+            // MildConfirmed — BolusGivenMild's own full fire condition, recomputed here since Mild can't
+            // run while this TT is active (its outer gate requires activeTtMgdl()==null). Reuses every
+            // guard from Mild's own block (not just the delta threshold) — raw delta bounds, iobChange5,
+            // bolus/carb timing, MJ state, cross-cooldown with bg3, movement guard — on the reasoning
+            // that Mild's own strict multi-signal rise confirmation is itself adequate evidence the hypo
+            // risk this TT was protecting against has passed. Cancelling here lets Mild actually fire
+            // (delivery ratio + offset-zero) on the next loop cycle once activeTtMgdl() is clear.
+            val mildLastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val mildLastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val mildIobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val mildRawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val mildRawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            val mildStackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            val mildThresholdScale = deliveryBaseline / 0.17
+            val mildRawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || mildRawDelta1 >= 4.5 * mildStackK
+            val mildDeliverySuppressed = smbCount5Min() <= 1 && mildRawDelta5 >= 5.4 && mildRawDelta5 < 14.4 && mildRawDelta1 < 14.4
+            val mildConfirmed = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
+                isTimeBetween(8, 30, 22, 0) &&
+                mildLastBolusMin >= 120 && mildLastCarbMin >= 120 &&
+                ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
+                mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
+                mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
+                profileFunction.getProfileName() != "Current Profile" &&
+                !mjActive() &&
+                readyToRun("BolusGivenBg3", 10) &&
+                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+
             val which = when { off2 -> "off2"; off3 -> "off3"; off4 -> "off4"; off5 -> "off5"; off1 -> "off1"; else -> null }
             if (which != null) {
                 cancelCurrentTempTarget()
@@ -2356,11 +2383,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else {
                 // TT5.8New1/2/3's original action lists were just "Send SMS" + "Stop temp target" —
                 // no acce/profile/state reset, no CarePortal note. Kept minimal to match exactly.
-                val whichNew = when { new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; else -> null }
+                // MildConfirmed reuses this same minimal style — it isn't a "hypo recovered" event like
+                // off1-off5, just clearing the way for Mild's own (separately gated) boost to run.
+                val whichNew = when { new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; mildConfirmed -> "TT5.7MildOff"; else -> null }
                 if (whichNew != null) {
                     cancelCurrentTempTarget()
                     sendSms(whichNew)
-                    addCarePortalNote("TToff-${if (new2) "N2" else "N3"}")   // careportal note (SMS-only before, so no careportal trail): logs the 5.7 TT reversal
+                    addCarePortalNote("TToff-${if (new2) "N2" else if (new3) "N3" else "Mld"}")   // careportal note (SMS-only before, so no careportal trail): logs the 5.7 TT reversal
                     markRun("TT57Reversal")
                 }
             }

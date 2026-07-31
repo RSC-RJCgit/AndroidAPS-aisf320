@@ -200,7 +200,7 @@ class PrepareBgDataWorker(
                 // right before the value identifies this as the Libre-derived delta (vs 6-underscore+"A"
                 // for AAPS below) and keeps the two rotated labels from landing on top of each other.
                 val formatted = formatMmolDelta(libreDelta)
-                val label = "___L" + formatted + formatted.first().toString().repeat(4)
+                val label = "____L" + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -222,7 +222,7 @@ class PrepareBgDataWorker(
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
-                val label = "______________HP=" + String.format(Locale.getDefault(), "%.1f", hp)
+                val label = "_________________HP=" + String.format(Locale.getDefault(), "%.1f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)

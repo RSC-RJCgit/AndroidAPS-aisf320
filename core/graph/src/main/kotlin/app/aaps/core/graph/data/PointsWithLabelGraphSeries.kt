@@ -491,11 +491,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // Libre 1-min / AAPS (smoothed) 1-min delta / hypo-prediction label attached directly
                     // to the current graph point — same 45°-rotated style as GENERAL's drawLabel45Right,
                     // but no circle (the actual BG point already has its own dot drawn by the glucose
-                    // series underneath). L1/A1 bumped up from the original 0.6f — hard to read at that
-                    // size on the graph background. HP kept smaller (0.55f) — it's further out along the
-                    // diagonal and already has more room via its longer underscore offset. Already bold
+                    // series underneath). L1 sized up further than A1 — still hard to read at 0.85f on the
+                    // graph background; A1 stays at 0.85f. HP kept smaller (0.55f) — it's further out along
+                    // the diagonal and already has more room via its longer underscore offset. Already bold
                     // via drawLabel45Right's isFakeBoldText.
-                    val sizeMultiplier = if (value.shape == Shape.HP_DELTA_POINT) 0.55f else 0.85f
+                    val sizeMultiplier = when (value.shape) {
+                        Shape.L1_DELTA_POINT -> 1.1f
+                        Shape.HP_DELTA_POINT -> 0.55f
+                        else                  -> 0.85f
+                    }
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * sizeMultiplier)
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
