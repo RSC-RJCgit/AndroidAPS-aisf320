@@ -9,12 +9,15 @@ import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 
 class GlucoseValueDataPoint(
     val data: GV,
     private val profileUtil: ProfileUtil,
     private val rh: ResourceHelper,
-    dateUtil: DateUtil
+    dateUtil: DateUtil,
+    private val preferences: Preferences
 ) : DataPointWithLabelInterface {
 
     // Set externally (see PrepareBgDataWorker.kt) to the dominant ISF-weight color, same logic/colors
@@ -40,10 +43,20 @@ class GlucoseValueDataPoint(
     override val paintStyle: Paint.Style get() = if (isPrediction || colorOverride != 0 || PointsWithLabelGraphSeries.uniformGreenBg) Paint.Style.FILL else Paint.Style.STROKE
 
     override fun color(context: Context?): Int {
+        val units = profileUtil.units
+        val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val highLine = preferences.get(UnitDoubleKey.OverviewHighMark)
         return when {
             isPrediction     -> predictionColor(context)
             PointsWithLabelGraphSeries.uniformGreenBg -> PointsWithLabelGraphSeries.uniformGreenBgColor
+            // Low deliberately outranks colorOverride (unlike high, below) — hypo visibility on the graph
+            // must never be masked by the ISF-weight dominant color, even while that color is active.
+            valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
             colorOverride != 0 -> colorOverride
+            // Restores low/high coloring dropped during an earlier core:graph refactor (it had collapsed
+            // to a flat originalBgValueColor for every non-override point). High still yields to
+            // colorOverride above, same as before — only genuinely unoverridden points reach this branch.
+            valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
             else             -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
         }
     }

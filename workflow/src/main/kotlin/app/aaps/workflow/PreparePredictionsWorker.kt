@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ class PreparePredictionsWorker(
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var dateUtil: DateUtil
+    @Inject lateinit var preferences: Preferences
 
     class PreparePredictionsData(
         val overviewData: OverviewData
@@ -75,7 +77,7 @@ class PreparePredictionsWorker(
 
         val bgListArray: MutableList<DataPointWithLabelInterface> = ArrayList()
         val predictions: MutableList<GlucoseValueDataPoint>? = apsResult?.predictionsAsGv
-            ?.map { bg -> GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil) }
+            ?.map { bg -> GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil, preferences) }
             ?.toMutableList()
         if (predictions != null) {
             predictions.sortWith { o1: GlucoseValueDataPoint, o2: GlucoseValueDataPoint -> o1.x.compareTo(o2.x) }

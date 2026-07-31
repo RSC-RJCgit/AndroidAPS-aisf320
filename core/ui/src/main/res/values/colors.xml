@@ -85,7 +85,7 @@
     <!--    BgReading-->
     <color name="inRange">#00FF00</color>
     <color name="low">#FFFF00</color>
-    <color name="high">#FFFF00</color>
+    <color name="high">#FFFB8C00</color>
     <color name="iob">#1e88e5</color>
     <color name="extendedBolus">#1e88e5</color>
     <color name="iobPredAS">#1ea3e5</color>

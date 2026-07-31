@@ -110,7 +110,7 @@ class OverviewDataImpl @Inject constructor(
         maxTherapyEventValue = 0.0
         therapyEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         noteEventSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
-        rawBgSeries = LineGraphSeries<ScaledDataPoint>()
+        rawBgSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         noisyBgDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         l1DeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         a1DeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -301,7 +301,7 @@ class OverviewDataImpl @Inject constructor(
     override val dsMinScale = Scale()
     override var dsMaxSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
     override var dsMinSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
-    override var rawBgSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var rawBgSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var noisyBgDeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var l1DeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var a1DeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

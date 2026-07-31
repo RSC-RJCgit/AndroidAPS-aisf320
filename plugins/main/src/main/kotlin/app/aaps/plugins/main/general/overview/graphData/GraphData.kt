@@ -183,7 +183,7 @@ class GraphData @Inject constructor(
             minY = 0.0
             maxY = overviewData.maxBgValue
         }
-        addSeries(overviewData.rawBgSeries as LineGraphSeries<*>)
+        addSeries(overviewData.rawBgSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
     fun addBgParabola(addPredictions: Boolean, scale: Double) {

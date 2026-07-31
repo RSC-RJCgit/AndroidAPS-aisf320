@@ -15,12 +15,11 @@ import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.L1DeltaDataPoint
-import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.RawBgDataPoint
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
-import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -81,7 +80,7 @@ class PrepareBgDataWorker(
         for (bg in data.overviewData.bgReadingsArray) {
             if (bg.timestamp < fromTime || bg.timestamp > toTime) continue
             if (bg.value > data.overviewData.maxBgValue) data.overviewData.maxBgValue = bg.value
-            val dp = GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil)
+            val dp = GlucoseValueDataPoint(bg, profileUtil, rh, dateUtil, preferences)
             if (aivList.isNotEmpty()) {
                 val nearest = aivList.minByOrNull { aiv -> kotlin.math.abs(aiv.timestamp - bg.timestamp) }
                 if (nearest != null && kotlin.math.abs(nearest.timestamp - bg.timestamp) < T.mins(15).msecs()) {
@@ -109,15 +108,15 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
-        // Raw BG line (red) — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration when OFF
-        val rawPoints = data.overviewData.bgReadingsArray
+        // Raw BG line — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration
+        // when OFF. Per-point dots (not a LineGraphSeries) so it can turn yellow when low, same as the
+        // main BG dots below — GraphView's line series can't vary color per point. Stays red otherwise.
+        val rawPointsList: MutableList<DataPointWithLabelInterface> = ArrayList()
+        data.overviewData.bgReadingsArray
             .filter { it.timestamp in fromTime..toTime && it.noise != null && it.noise!! > 10.0 }
             .sortedBy { it.timestamp }
-            .map { DataPoint(it.timestamp.toDouble(), profileUtil.fromMgdlToUnits(it.noise!!)) }
-        data.overviewData.rawBgSeries = LineGraphSeries(rawPoints.toTypedArray()).also {
-            it.color = android.graphics.Color.RED
-            it.thickness = 4
-        }
+            .forEach { rawPointsList.add(RawBgDataPoint(it.timestamp, it.noise!!, preferences, profileUtil, rh)) }
+        data.overviewData.rawBgSeries = PointsWithLabelGraphSeries(Array(rawPointsList.size) { i -> rawPointsList[i] })
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.
@@ -180,9 +179,11 @@ class PrepareBgDataWorker(
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
                 // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
-                // sign alone is easy to miss on a small rotated graph label.
+                // sign alone is easy to miss on a small rotated graph label. "L" + 3-space offset
+                // identifies this as the Libre-derived delta (vs "A"+6-space for AAPS below) and keeps
+                // the two rotated labels from landing on top of each other.
                 val formatted = formatMmolDelta(libreDelta)
-                val label = formatted + formatted.first().toString().repeat(4)
+                val label = "L   " + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -193,12 +194,13 @@ class PrepareBgDataWorker(
         // AAPS (smoothed) 1-min delta label (orange), same style as the Libre one above but attached to
         // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
         // usually sit at slightly different heights, so anchoring each label to its own line's actual
-        // point keeps them from landing on top of each other. 5 leading spaces additionally offset this
-        // one from the Libre label so the two rotated texts don't run into each other when close together.
+        // point keeps them from landing on top of each other. "A" + 6-space offset identifies this as
+        // the AAPS-derived delta (vs "L"+3-space for Libre above) and keeps this one further offset from
+        // the Libre label so the two rotated texts don't run into each other when close together.
         data.overviewData.a1DeltaSeries =
             if (latest != null && aapsDelta != null) {
                 val formatted = formatMmolDelta(aapsDelta)
-                val label = "     " + formatted + formatted.first().toString().repeat(4)
+                val label = "A      " + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
