@@ -15,6 +15,9 @@ import com.jjoe64.graphview.series.BaseSeries
 import kotlin.math.min
 import androidx.core.graphics.withSave
 import androidx.core.graphics.withRotation
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Series that plots the data as points.
@@ -163,6 +166,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
         val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
         val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
+        val noteArrowBucketSeen = HashSet<Long>() // bucket (25-min, same bucketing as the note-text stack) -> whether the arrowhead for that bucket's first (beginning) entry has already drawn its time label
         // Steps row — graph1 now, fixed near the bottom of THIS graph's own viewport. No longer
         // glucose-pinned — graph1 isn't necessarily glucose-scaled. Completely static: no toggle, no
         // dependency on BGL state/long-press at all.
@@ -414,13 +418,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // showing up twice in the same 25-min bucket is deduped to its first occurrence.
                     val alreadyDrawnThisBucket = !noteDedupSeen.getOrPut(rawBucket) { mutableSetOf() }.add(value.label)
                     if (value.label.isNotEmpty() && !alreadyDrawnThisBucket) {
-                        // Stacked by 25-min bucket, max 6 per bucket, so notes landing close together in
+                        // Stacked by 25-min bucket, max 8 per bucket, so notes landing close together in
                         // time offset downward instead of overlapping at the same fixed height. Nothing
-                        // is ever dropped: once a bucket already has 6, the note spills into the next
-                        // 25-min bucket's stack instead (rather than simply not drawing the 7th+ note in
+                        // is ever dropped: once a bucket already has 8, the note spills into the next
+                        // 25-min bucket's stack instead (rather than simply not drawing the 9th+ note in
                         // an overfull bucket).
                         var noteBucket = rawBucket
-                        while (noteStack.getOrDefault(noteBucket, 0) >= 6) noteBucket++
+                        while (noteStack.getOrDefault(noteBucket, 0) >= 8) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
                         // Truncated to 5 characters for display only — the full note text is unaffected
@@ -535,12 +539,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
                     // Plain CarePortal-note arrowhead, pointing DOWN (apex at bottom) — inverted from
-                    // Shape.SMB's own upward BGL-point arrowhead, with a much longer shaft (4x) hanging
-                    // above it from noteArrowheadPy (graph4's top half) down to the triangle's base.
-                    // Fixed position, not tracking an actual BGL value, since graph4 isn't glucose-scaled.
+                    // Shape.SMB's own upward BGL-point arrowhead, with a shaft half the length of the
+                    // original (scaledTextSize*0.5f, was 1.0f) hanging above it down to the triangle's
+                    // base. Fixed position (noteArrowheadPy, graph4's top half) for every arrowhead — no
+                    // vertical stacking of the arrowheads themselves (that's the separate, pre-existing
+                    // GENERAL_WITH_DURATION note-text stack above). Reuses that stack's own 25-min
+                    // bucketing purely to find which arrowhead corresponds to the FIRST (beginning) entry
+                    // of each of ITS stacks — only that one gets a time label (HHmm, e.g. "2228") at the
+                    // top of its shaft; every other arrowhead in the same bucket stays label-free. Not
+                    // tracking an actual BGL value, since graph4 isn't glucose-scaled.
+                    mPaint.strokeWidth = 0f
+                    val arrowBucketMs = 25 * 60_000L
+                    val arrowBucket = value.x.toLong() / arrowBucketMs
+                    val isFirstInBucket = !noteArrowBucketSeen.contains(arrowBucket)
+                    noteArrowBucketSeen.add(arrowBucket)
+
                     val noteSize = value.size * scaledPxSize * 1.2f
                     val shaftStart = noteArrowheadPy
-                    val shaftEnd = shaftStart + scaledTextSize * 0.25f * 4  // 4x the original shaft length
+                    val shaftEnd = shaftStart + scaledTextSize * 0.25f * 2  // half of the original 4x
                     val triBase = shaftEnd
                     val triTip = triBase + noteSize * 1.5f
                     val halfWidth = noteSize * 0.25f
@@ -555,6 +571,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         Point((endX + halfWidth).toInt(), triBase.toInt()),
                         Point((endX - halfWidth).toInt(), triBase.toInt())
                     ), canvas, mPaint)
+                    if (isFirstInBucket) {
+                        val timeLabel = SimpleDateFormat("HHmm", Locale.getDefault()).format(Date(value.x.toLong()))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.CENTER
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        canvas.drawText(timeLabel, endX, shaftStart - 4f, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
                 }
                 // set values above point
             }
