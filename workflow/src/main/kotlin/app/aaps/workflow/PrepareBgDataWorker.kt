@@ -179,11 +179,11 @@ class PrepareBgDataWorker(
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
                 // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
-                // sign alone is easy to miss on a small rotated graph label. "L" + 3-space offset
-                // identifies this as the Libre-derived delta (vs "A"+6-space for AAPS below) and keeps
-                // the two rotated labels from landing on top of each other.
+                // sign alone is easy to miss on a small rotated graph label. 3-underscore offset + "L"
+                // right before the value identifies this as the Libre-derived delta (vs 6-underscore+"A"
+                // for AAPS below) and keeps the two rotated labels from landing on top of each other.
                 val formatted = formatMmolDelta(libreDelta)
-                val label = "L   " + formatted + formatted.first().toString().repeat(4)
+                val label = "___L" + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -194,13 +194,14 @@ class PrepareBgDataWorker(
         // AAPS (smoothed) 1-min delta label (orange), same style as the Libre one above but attached to
         // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
         // usually sit at slightly different heights, so anchoring each label to its own line's actual
-        // point keeps them from landing on top of each other. "A" + 6-space offset identifies this as
-        // the AAPS-derived delta (vs "L"+3-space for Libre above) and keeps this one further offset from
-        // the Libre label so the two rotated texts don't run into each other when close together.
+        // point keeps them from landing on top of each other. 6-underscore offset + "A" right before the
+        // value identifies this as the AAPS-derived delta (vs 3-underscore+"L" for Libre above) and keeps
+        // this one further offset from the Libre label so the two rotated texts don't run into each other
+        // when close together.
         data.overviewData.a1DeltaSeries =
             if (latest != null && aapsDelta != null) {
                 val formatted = formatMmolDelta(aapsDelta)
-                val label = "A      " + formatted + formatted.first().toString().repeat(4)
+                val label = "______A" + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
