@@ -533,26 +533,27 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         }
                     }
                 } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
-                    // Plain CarePortal-note arrowhead — same unscaled triangle+shaft proportions as
-                    // Shape.SMB's own "arrowhead just below the relevant BGL point" (no dose-size
-                    // scaling there either), but fixed at noteArrowheadPy (graph4's top half) instead of
-                    // tracking an actual BGL value, since graph4 isn't glucose-scaled.
+                    // Plain CarePortal-note arrowhead, pointing DOWN (apex at bottom) — inverted from
+                    // Shape.SMB's own upward BGL-point arrowhead, with a much longer shaft (4x) hanging
+                    // above it from noteArrowheadPy (graph4's top half) down to the triangle's base.
+                    // Fixed position, not tracking an actual BGL value, since graph4 isn't glucose-scaled.
+                    val noteSize = value.size * scaledPxSize * 1.2f
+                    val shaftStart = noteArrowheadPy
+                    val shaftEnd = shaftStart + scaledTextSize * 0.25f * 4  // 4x the original shaft length
+                    val triBase = shaftEnd
+                    val triTip = triBase + noteSize * 1.5f
+                    val halfWidth = noteSize * 0.25f
+                    if (!value.hasColorOverride) mPaint.color = Color.YELLOW
+                    mPaint.strokeWidth = 2f
+                    mPaint.style = Paint.Style.STROKE
+                    canvas.drawLine(endX, shaftStart, endX, shaftEnd, mPaint)
                     mPaint.strokeWidth = 0f
                     mPaint.style = Paint.Style.FILL_AND_STROKE
-                    if (!value.hasColorOverride) mPaint.color = Color.YELLOW
-                    val noteSize = value.size * scaledPxSize * 1.2f
-                    val triTop = noteArrowheadPy
-                    val triBase = triTop + noteSize * 1.5f
-                    val halfWidth = noteSize * 0.25f
                     drawArrows(arrayOf(
-                        Point(endX.toInt(), triTop.toInt()),
+                        Point(endX.toInt(), triTip.toInt()),
                         Point((endX + halfWidth).toInt(), triBase.toInt()),
                         Point((endX - halfWidth).toInt(), triBase.toInt())
                     ), canvas, mPaint)
-                    mPaint.strokeWidth = 2f
-                    mPaint.style = Paint.Style.STROKE
-                    val shaftEnd = triBase + scaledTextSize * 0.25f
-                    canvas.drawLine(endX, triBase, endX, shaftEnd, mPaint)
                 }
                 // set values above point
             }
