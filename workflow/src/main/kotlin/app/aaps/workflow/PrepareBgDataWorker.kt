@@ -222,7 +222,7 @@ class PrepareBgDataWorker(
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
-                val label = "_______HP=" + String.format(Locale.getDefault(), "%.2f", hp)
+                val label = "______________HP=" + String.format(Locale.getDefault(), "%.1f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
@@ -265,7 +265,7 @@ class PrepareBgDataWorker(
                     val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                     val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
-                    String.format(Locale.getDefault(), "%.2f", hp)
+                    String.format(Locale.getDefault(), "%.1f", hp)
                 } else "--")
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
                     " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}" +
