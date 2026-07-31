@@ -1292,20 +1292,55 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("PpWeightUpTT")
         }
 
+        // --- PpWeightHighDownTT: manually setting a TT of 5.056 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfPpWeightHigh (ppISFwt_high — the boosted value the 7 fast-rise automations set,
+        // previously a hardcoded 0.15 literal in each), clamped to its own min (0.0) — not a real target.
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No dual-update:
+        // unlike PpWeightNormal/PpWeight, this only ever gets written into the live weight transiently
+        // when a boost automation actually fires, not continuously.
+        if (readyToRun("PpWeightHighDownTT", 2) && activeTtNear(5.056, 0.0001)) {
+            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
+            val newPpHigh = (currentPpHigh - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}")
+            addCarePortalNote("PHd${round(newPpHigh, 2).toString().takeLast(2)}")
+            markRun("PpWeightHighDownTT")
+        }
+
+        // --- PpWeightHighUpTT: manually setting a TT of 5.058 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfPpWeightHigh, clamped to its own max (0.15). Same pattern as PpWeightHighDownTT above.
+        if (readyToRun("PpWeightHighUpTT", 2) && activeTtNear(5.058, 0.0001)) {
+            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
+            val newPpHigh = (currentPpHigh + 0.01).coerceAtMost(0.15)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}")
+            addCarePortalNote("PHu${round(newPpHigh, 2).toString().takeLast(2)}")
+            markRun("PpWeightHighUpTT")
+        }
+
         // --- PpWeightRevertUnder8_5: genuine automatic (not TT-triggered) counterpart to the boost
         // automations that set ApsAutoIsfPpWeight to 0.15 (BolusGiven, BolusGivenMild, High6PP,
-        // HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) — always-on, fires whenever BG is back
-        // under 8.5mmol and the live PP weight currently differs from its own baseline
-        // (ApsAutoIsfPpWeightNormal), reverting it. No profile%/TT preconditions: unlike the 6 existing
-        // restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct, simple BG-only rule —
-        // it can revert PP even while a boost's own profile% duration is still running. 5-min throttle
-        // is a defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
+        // HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) — always-on, fires whenever the live PP
+        // weight currently differs from its own baseline (ApsAutoIsfPpWeightNormal) AND either BG is
+        // back under 8.5mmol OR recent activity is high enough — same recentSteps5Minutes/
+        // recentSteps30Minutes thresholds (100/200) already used as the movement-guard BLOCKER in
+        // BolusGiven/BolusGivenMild/bg3's own fire conditions, plus bg3's own extra recentSteps60Minutes
+        // (300) gate, all reused here as POSITIVE triggers instead: active movement is independent
+        // evidence the elevated PP weight is no longer needed. No profile%/TT preconditions: unlike the
+        // 6 existing restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct rule — it can
+        // revert PP even while a boost's own profile% duration is still running. 5-min throttle is a
+        // defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
         if (readyToRun("PpWeightRevertUnder8_5", 5)) {
             val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
             val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
-            if (!fuzzyEquals(currentPp, baselinePp) && glucoseStatus.glucose < 153.1 /* 8.5 mmol */) {
+            val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
+            val activeMovement = recentSteps5Minutes > 100 || recentSteps30Minutes > 200 || recentSteps60Minutes > 300
+            if (!fuzzyEquals(currentPp, baselinePp) && (lowBg || activeMovement)) {
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
-                sendSms("PpWeightRevert: ppISFwt=${round(baselinePp, 2)} (BG<8.5mmol)")
+                val reason = if (lowBg) "BG<8.5mmol" else "activity"
+                sendSms("PpWeightRevert: ppISFwt=${round(baselinePp, 2)} ($reason)")
                 addCarePortalNote("PPrv")
                 markRun("PpWeightRevertUnder8_5")
             }
@@ -1839,7 +1874,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded(targetProfile, 30)
                 startProfilePercentFor(110, 5, targetProfile)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
                 markRun("HighOldPod")
@@ -2145,7 +2180,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 // "Strong" boost ratio is derived from the mild-boost base, not set independently —
                 // see ApsAutoIsfMildBoostRatio's doc comment.
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.03)
@@ -2226,7 +2261,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (g < 106.2 /* 5.9 mmol */) {
                     preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
                 }
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("BMild")
                 markRun("BolusGivenMild")
@@ -2792,7 +2827,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d <= 5.4 /* 0.3 mmol */ && d >= 1.8 /* 0.1 mmol */
             if (h6b1 || h6b2 || h6b3) {
                 startProfilePercentFor(120, 5)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 sendSms("High6PP Acce")
                 addCarePortalNote("P120")
                 markRun("High6PP")
@@ -2833,7 +2868,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current ProfileReal")
                 setAutomationState("Profile", "C100")
                 startProfilePercentFor(130, 60)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 sendSms("PodChangeHighPP130 Acce")
                 addCarePortalNote("Pod130")
                 markRun("PodChangeHighPP130")
@@ -2905,7 +2940,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.95)
                 switchProfileIfNeeded("Current ProfileReal")
                 startProfilePercentFor(130, 5)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 markRun("OldPod2")
             }
         }
@@ -2956,7 +2991,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startProfilePercentFor(130, 5)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(0.95)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 sendSms("RecentPod Acce")
                 addCarePortalNote("RecPod")   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + acce 0.95 fresh/stale-pod boost
                 markRun("RecentPod")
@@ -4249,6 +4284,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfHighBgWeight, dialogMessage = R.string.openapsama_higher_ISFrange_weight_summary, title = R.string.openapsama_higher_ISFrange_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeight, dialogMessage = R.string.openapsama_pp_ISF_weight_summary, title = R.string.openapsama_pp_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeightNormal, dialogMessage = R.string.autoisf_pp_isf_weight_normal_summary, title = R.string.autoisf_pp_isf_weight_normal_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfPpWeightHigh, dialogMessage = R.string.autoisf_pp_isf_weight_high_summary, title = R.string.autoisf_pp_isf_weight_high_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfDuraWeight, dialogMessage = R.string.openapsama_dura_ISF_weight_summary, title = R.string.openapsama_dura_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfDuraWeightNormal, dialogMessage = R.string.autoisf_dura_isf_weight_normal_summary, title = R.string.autoisf_dura_isf_weight_normal_title))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfIobThPercent, dialogMessage = R.string.openapsama_iob_threshold_percent_summary, title = R.string.openapsama_iob_threshold_percent))

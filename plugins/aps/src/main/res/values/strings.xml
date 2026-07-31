@@ -244,6 +244,8 @@
     <string name="autoisf_smb_delivery_baseline_summary">Default 0.14. The delivery ratio the boost/recovery automations restore to once a boost window ends. Separate from the SMB delivery ratio above, which those same automations also use transiently while boosting.</string>
     <string name="autoisf_pp_isf_weight_normal_title">Resting postprandial ISF weight</string>
     <string name="autoisf_pp_isf_weight_normal_summary">Default 0.08. The pp_ISF_weight value the boost/recovery automations restore to once a boost window ends. Separate from the postprandial ISF weight above, which those same automations also overwrite transiently while boosting.</string>
+    <string name="autoisf_pp_isf_weight_high_title">Boosted postprandial ISF weight</string>
+    <string name="autoisf_pp_isf_weight_high_summary">Default 0.15. The pp_ISF_weight value the fast-rise boost automations (BolusGiven, BolusGivenMild, High6PP, HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) set while boosting — was previously hardcoded, now a setting.</string>
     <string name="autoisf_bgaccel_isf_weight_normal_title">Resting acceleration ISF weight</string>
     <string name="autoisf_bgaccel_isf_weight_normal_summary">Default 0.70. Your own normal bgAccel_ISF_weight value, kept separate from the acceleration ISF weight above (not currently used as a restore target by any automation — see the acceleration ISF weight\'s own hardcoded boost values).</string>
     <string name="autoisf_dura_isf_weight_normal_title">Resting duration ISF weight</string>

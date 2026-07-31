@@ -55,6 +55,11 @@ enum class DoubleKey(
     // automations restore ApsAutoIsfPpWeight to once a boost window ends. Same reasoning as
     // ApsAutoIsfSmbDeliveryBaseline: a live, user-tunable preference rather than a hardcoded literal.
     ApsAutoIsfPpWeightNormal("autoisf_pp_isf_weight_normal", 0.08, 0.0, 0.15, defaultedBySM = true),
+    // The user's own configured "boosted" pp_ISF_weight (default 0.15, matching the value this replaces)
+    // — what the fast-rise boost automations (BolusGiven, BolusGivenMild, High6PP, HighOldPod,
+    // PodChangeHighPP130, OldPod2, RecentPod) set ApsAutoIsfPpWeight to while boosting. Was a hardcoded
+    // 0.15 literal in all 7 places; now a live, user-tunable preference instead.
+    ApsAutoIsfPpWeightHigh("autoisf_pp_isf_weight_high", 0.15, 0.0, 0.15, defaultedBySM = true),
     ApsAutoIsfDuraWeight("dura_ISF_weight", 0.0, 0.0, 3.0, defaultedBySM = true),
     // The user's own configured "normal" dura_ISF_weight (currently 1.2). Nothing in
     // OpenAPSAutoISFPlugin.kt currently writes ApsAutoIsfDuraWeight at all (read-only, via the

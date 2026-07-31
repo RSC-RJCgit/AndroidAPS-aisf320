@@ -1149,7 +1149,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         "5.046 — Wizard bolus %, -5" to 5.046,
         "5.048 — Wizard bolus %, +5" to 5.048,
         "5.052 — MildBoost ratio, -0.01" to 5.052,
-        "5.054 — MildBoost ratio, +0.01" to 5.054
+        "5.054 — MildBoost ratio, +0.01" to 5.054,
+        "5.056 — pp ISF weight (high/boosted), -0.01" to 5.056,
+        "5.058 — pp ISF weight (high/boosted), +0.01" to 5.058
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
