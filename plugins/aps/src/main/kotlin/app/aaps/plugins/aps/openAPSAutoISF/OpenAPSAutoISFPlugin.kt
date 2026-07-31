@@ -1205,7 +1205,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // neighbors, so a loose tolerance would make adjacent windows overlap. Small throttle purely as
         // a defense against double-toggling if the cancel hasn't fully propagated by the next cycle —
         // the cancel itself is what actually prevents re-firing in normal operation.
-        if (readyToRun("SensorAgeToggleTT", 2) && activeTtNear(5.06, 0.001)) {
+        if (readyToRun("SensorAgeToggleTT", 2) && activeTtNear(5.006, 0.0001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjEnabled, newState)
             cancelCurrentTempTarget()
@@ -1218,7 +1218,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // ApsAutoIsfBoostAutomationsEnabled (the combined master switch for BolusGiven bg1/2/3 and
         // BolusGivenMild) — not a real target. Same pattern and same tight 0.001mmol tolerance as
         // SensorAgeToggleTT above (see its comment for why).
-        if (readyToRun("BoostToggleTT", 2) && activeTtNear(5.08, 0.001)) {
+        if (readyToRun("BoostToggleTT", 2) && activeTtNear(5.008, 0.0001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
             cancelCurrentTempTarget()
@@ -1233,7 +1233,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // pattern as SensorAgeToggleTT/BoostToggleTT above. Tight 0.001mmol tolerance (not the usual
         // 0.02) — 5.02 and 5.04 (SmbDeliveryUpTT) are only 0.02mmol apart, so 0.02 tolerance would make
         // their windows overlap each other (and creep into 5.0's own "own boost TT" territory).
-        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(5.02, 0.001)) {
+        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(5.002, 0.0001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) - 0.01).coerceAtLeast(0.1)
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
@@ -1248,7 +1248,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- SmbDeliveryUpTT: manually setting a TT of 5.04 mmol is used as a remote +0.01 nudge on
         // both SMB delivery settings, clamped to each key's own max (0.5 for both). Same pattern and
         // same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
-        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.04, 0.001)) {
+        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.004, 0.0001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
@@ -1263,9 +1263,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- PpWeightDownTT: manually setting a TT of 5.12 mmol is used as a remote -0.01 nudge on
         // ApsAutoIsfPpWeightNormal (ppISFwt_orig), clamped to its own min (0.0) — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the SmbDelivery*/SensorAge/Boost toggle TTs above.
-        if (readyToRun("PpWeightDownTT", 2) && activeTtNear(5.12, 0.001)) {
-            val newPp = (preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal) - 0.01).coerceAtLeast(0.0)
+        if (readyToRun("PpWeightDownTT", 2) && activeTtNear(5.012, 0.0001)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val newPp = (currentPp - 0.01).coerceAtLeast(0.0)
             preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            // If the live weight currently equals its own baseline (nothing has it diverged away right
+            // now), nudge both together so the change is felt immediately — otherwise only the baseline
+            // moves, leaving whatever's currently overriding it undisturbed until it next restores.
+            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive - 0.01).coerceAtLeast(0.0))
             cancelCurrentTempTarget()
             sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
             addCarePortalNote("PPd${round(newPp, 2).toString().takeLast(2)}")
@@ -1274,9 +1280,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- PpWeightUpTT: manually setting a TT of 5.14 mmol is used as a remote +0.01 nudge on
         // ApsAutoIsfPpWeightNormal, clamped to its own max (0.15). Same pattern as PpWeightDownTT above.
-        if (readyToRun("PpWeightUpTT", 2) && activeTtNear(5.14, 0.001)) {
-            val newPp = (preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal) + 0.01).coerceAtMost(0.15)
+        if (readyToRun("PpWeightUpTT", 2) && activeTtNear(5.014, 0.0001)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val newPp = (currentPp + 0.01).coerceAtMost(0.15)
             preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive + 0.01).coerceAtMost(0.15))
             cancelCurrentTempTarget()
             sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
             addCarePortalNote("PPu${round(newPp, 2).toString().takeLast(2)}")
@@ -1286,9 +1295,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- AcceWeightDownTT: manually setting a TT of 5.16 mmol is used as a remote -0.05 nudge on
         // ApsAutoIsfBgAccelWeightNormal (acceISFwt_orig), clamped to a min of 0.55 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("AcceWeightDownTT", 2) && activeTtNear(5.16, 0.001)) {
-            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) - 0.05).coerceAtLeast(0.55)
+        if (readyToRun("AcceWeightDownTT", 2) && activeTtNear(5.016, 0.0001)) {
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val newAcce = (currentAcce - 0.05).coerceAtLeast(0.55)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive - 0.05).coerceAtLeast(0.55))
             cancelCurrentTempTarget()
             sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
             addCarePortalNote("ACd${round(newAcce, 2).toString().takeLast(2)}")
@@ -1297,9 +1309,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.05 nudge on
         // ApsAutoIsfBgAccelWeightNormal, clamped to a max of 1.00. Same pattern as AcceWeightDownTT above.
-        if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.18, 0.001)) {
-            val newAcce = (preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal) + 0.05).coerceAtMost(1.00)
+        if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.018, 0.0001)) {
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val newAcce = (currentAcce + 0.05).coerceAtMost(1.00)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive + 0.05).coerceAtMost(1.00))
             cancelCurrentTempTarget()
             sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
             addCarePortalNote("ACu${round(newAcce, 2).toString().takeLast(2)}")
@@ -1309,30 +1324,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("DuraWeightDownTT", 2) && activeTtNear(5.22, 0.001)) {
-            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) - 0.1).coerceAtLeast(0.00)
+        if (readyToRun("DuraWeightDownTT", 2) && activeTtNear(5.022, 0.0001)) {
+            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+            val newDura = (currentDura - 0.1).coerceAtLeast(0.00)
             preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive - 0.1).coerceAtLeast(0.00))
             cancelCurrentTempTarget()
             sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
-            addCarePortalNote("DUd${round(newDura, 2).toString().takeLast(2)}")
+            // 3 trailing chars (not 2) — Dura's 0-3.00 range needs the whole-number digit too, e.g. "Dd2.4"
+            addCarePortalNote("Dd${round(newDura, 2).toString().takeLast(3)}")
             markRun("DuraWeightDownTT")
         }
 
         // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.1 nudge on
         // ApsAutoIsfDuraWeightNormal, clamped to a max of 3.00. Same pattern as DuraWeightDownTT above.
-        if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.24, 0.001)) {
-            val newDura = (preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal) + 0.1).coerceAtMost(3.00)
+        if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.024, 0.0001)) {
+            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+            val newDura = (currentDura + 0.1).coerceAtMost(3.00)
             preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive + 0.1).coerceAtMost(3.00))
             cancelCurrentTempTarget()
             sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
-            addCarePortalNote("DUu${round(newDura, 2).toString().takeLast(2)}")
+            addCarePortalNote("Du${round(newDura, 2).toString().takeLast(3)}")
             markRun("DuraWeightUpTT")
         }
 
         // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.10 nudge on
         // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
         // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.36, 0.001)) {
+        if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.036, 0.0001)) {
             val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.10).coerceAtLeast(0.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
@@ -1343,7 +1365,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.10 nudge on
         // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
-        if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.38, 0.001)) {
+        if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.038, 0.0001)) {
             val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.10).coerceAtMost(1.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
@@ -1352,60 +1374,76 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SmbOffsetUpTT")
         }
 
-        // --- LibreSlopeDownTT: manually setting a TT of 5.26 mmol is used as a remote -0.01 nudge on
+        // --- LibreSlopeDownTT: manually setting a TT of 5.026 mmol is used as a remote -0.01 nudge on
         // ApsAutoIsfLibreSlopeOrig (LibreSlope_orig), clamped to a min of 0.60 — not a real target.
-        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("LibreSlopeDownTT", 2) && activeTtNear(5.26, 0.001)) {
-            val newSlope = (preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig) - 0.01).coerceAtLeast(0.60)
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalSlope
+        // (the live setting) currently equals its own baseline, nudge both together.
+        if (readyToRun("LibreSlopeDownTT", 2) && activeTtNear(5.026, 0.0001)) {
+            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalSlope)
+            val newSlope = (currentSlopeOrig - 0.01).coerceAtLeast(0.60)
             preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive - 0.01).coerceAtLeast(0.60))
             cancelCurrentTempTarget()
             sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
             addCarePortalNote("LSd${round(newSlope, 2).toString().takeLast(2)}")
             markRun("LibreSlopeDownTT")
         }
 
-        // --- LibreSlopeUpTT: manually setting a TT of 5.28 mmol is used as a remote +0.01 nudge on
+        // --- LibreSlopeUpTT: manually setting a TT of 5.028 mmol is used as a remote +0.01 nudge on
         // ApsAutoIsfLibreSlopeOrig, clamped to a max of 1.00. Same pattern as LibreSlopeDownTT above.
-        if (readyToRun("LibreSlopeUpTT", 2) && activeTtNear(5.28, 0.001)) {
-            val newSlope = (preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig) + 0.01).coerceAtMost(1.00)
+        if (readyToRun("LibreSlopeUpTT", 2) && activeTtNear(5.028, 0.0001)) {
+            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalSlope)
+            val newSlope = (currentSlopeOrig + 0.01).coerceAtMost(1.00)
             preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive + 0.01).coerceAtMost(1.00))
             cancelCurrentTempTarget()
             sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
             addCarePortalNote("LSu${round(newSlope, 2).toString().takeLast(2)}")
             markRun("LibreSlopeUpTT")
         }
 
-        // --- LibreOffsetDownTT: manually setting a TT of 5.32 mmol is used as a remote -0.05 nudge on
+        // --- LibreOffsetDownTT: manually setting a TT of 5.032 mmol is used as a remote -0.05 nudge on
         // ApsAutoIsfLibreOffsetOrig (LibreOffset_orig), clamped to a min of 1.20 — not a real target.
-        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("LibreOffsetDownTT", 2) && activeTtNear(5.32, 0.001)) {
-            val newOffsetOrig = (preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig) - 0.05).coerceAtLeast(1.20)
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalOffset
+        // currently equals its own baseline, nudge both together. Note suffix uses takeLast(4) (not the
+        // usual 2) since this setting is >=1.0 — the one outlier allowed to run to 6 total chars
+        // ("Ld1.25") rather than dropping the leading digit, so the note stays unambiguous on its own.
+        if (readyToRun("LibreOffsetDownTT", 2) && activeTtNear(5.032, 0.0001)) {
+            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalOffset)
+            val newOffsetOrig = (currentOffsetOrig - 0.05).coerceAtLeast(1.20)
             preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive - 0.05).coerceAtLeast(1.20))
             cancelCurrentTempTarget()
             sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote("LOd${round(newOffsetOrig, 2).toString().takeLast(2)}")
+            addCarePortalNote("Ld${round(newOffsetOrig, 2).toString().takeLast(4)}")
             markRun("LibreOffsetDownTT")
         }
 
-        // --- LibreOffsetUpTT: manually setting a TT of 5.34 mmol is used as a remote +0.05 nudge on
+        // --- LibreOffsetUpTT: manually setting a TT of 5.034 mmol is used as a remote +0.05 nudge on
         // ApsAutoIsfLibreOffsetOrig, clamped to a max of 1.60. Same pattern as LibreOffsetDownTT above.
-        if (readyToRun("LibreOffsetUpTT", 2) && activeTtNear(5.34, 0.001)) {
-            val newOffsetOrig = (preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig) + 0.05).coerceAtMost(1.60)
+        if (readyToRun("LibreOffsetUpTT", 2) && activeTtNear(5.034, 0.0001)) {
+            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalOffset)
+            val newOffsetOrig = (currentOffsetOrig + 0.05).coerceAtMost(1.60)
             preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive + 0.05).coerceAtMost(1.60))
             cancelCurrentTempTarget()
             sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote("LOu${round(newOffsetOrig, 2).toString().takeLast(2)}")
+            addCarePortalNote("Lu${round(newOffsetOrig, 2).toString().takeLast(4)}")
             markRun("LibreOffsetUpTT")
         }
 
-        // --- CleanGraphTT: manually setting a TT of 5.42 mmol is used as a remote trigger for the
+        // --- CleanGraphTT: manually setting a TT of 5.042 mmol is used as a remote trigger for the
         // "clean main graph" display combo (no SMB labels, no BGL arrowheads, solid uniform-green line)
         // — the same combo as long-pressing the IOB icon then the Basal icon. Not a real target. Since
         // this plugin has no dependency on core:graph (where the actual display state — showSmbLabels/
         // basalToggleIndex — lives), it can't set those companion fields directly; it just raises a
         // one-shot flag that OverviewFragment's updateGraph() picks up and clears on its next run. Same
-        // tight 0.001mmol tolerance/cancel/notify pattern as the other settings-nudge TTs above.
-        if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.42, 0.001)) {
+        // tight 0.0001mmol tolerance/cancel/notify pattern as the other settings-nudge TTs above.
+        if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.042, 0.0001)) {
             preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
             cancelCurrentTempTarget()
             sendSms("CleanGraph: no SMBs/arrows, solid green")
@@ -1413,10 +1451,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("CleanGraphTT")
         }
 
-        // --- WizardPctDownTT: manually setting a TT of 5.46 mmol is used as a remote -5 nudge on
+        // --- WizardPctDownTT: manually setting a TT of 5.046 mmol is used as a remote -5 nudge on
         // OverviewBolusPercentage (Wizard bolus %), clamped to a min of 50 — not a real target. Same
-        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("WizardPctDownTT", 2) && activeTtNear(5.46, 0.001)) {
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("WizardPctDownTT", 2) && activeTtNear(5.046, 0.0001)) {
             val newPct = (preferences.get(IntKey.OverviewBolusPercentage) - 5).coerceAtLeast(50)
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
@@ -1425,9 +1463,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctDownTT")
         }
 
-        // --- WizardPctUpTT: manually setting a TT of 5.48 mmol is used as a remote +5 nudge on
+        // --- WizardPctUpTT: manually setting a TT of 5.048 mmol is used as a remote +5 nudge on
         // OverviewBolusPercentage, clamped to a max of 100. Same pattern as WizardPctDownTT above.
-        if (readyToRun("WizardPctUpTT", 2) && activeTtNear(5.48, 0.001)) {
+        if (readyToRun("WizardPctUpTT", 2) && activeTtNear(5.048, 0.0001)) {
             val newPct = (preferences.get(IntKey.OverviewBolusPercentage) + 5).coerceAtMost(100)
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
@@ -1436,11 +1474,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctUpTT")
         }
 
-        // --- MildBoostDownTT: manually setting a TT of 5.52 mmol is used as a remote -0.01 nudge on
-        // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.02, which nudges it together with
+        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
         // ApsAutoIsfSmbDeliveryBaseline), clamped to its own min of 0.1 — not a real target. Same
-        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.52, 0.001)) {
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
@@ -1449,9 +1487,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MildBoostDownTT")
         }
 
-        // --- MildBoostUpTT: manually setting a TT of 5.54 mmol is used as a remote +0.01 nudge on
+        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.01 nudge on
         // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 0.5. Same pattern as MildBoostDownTT above.
-        if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.54, 0.001)) {
+        if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
@@ -1918,6 +1956,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
         }
 
+        // MildOffsetZero restore: same "no active TT" timer as the delivery-ratio boost above — clears
+        // the BolusGivenMild-under-5.9mmol offset-zero flag the moment its own 2-min TT expires.
+        if (activeTtMgdl() == null && preferences.get(BooleanKey.ApsAutoIsfMildOffsetZeroActive)) {
+            preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, false)
+        }
+
         // --- HardStackDelOff: forced delivery-ratio REDUCTION (not a full revert) on genuine SMB
         // stacking, independent of TT state. DelOff above only reverts when NO TT is active — it
         // correctly defers while bg3/mild's own short 2-min TT is running, but ALSO defers for any other
@@ -2147,6 +2191,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
                 setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores baseline
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
+                // Below 5.9mmol, the separate "no COB + BG under target+offset -> zero SMB" gate in
+                // DetermineBasalAutoISF can still block SMB outright regardless of delivery ratio — zero
+                // the offset for this same 2-min window so the boost above isn't wasted. Not applied at/above
+                // 5.9mmol: there's more headroom above target there already, so the gate is less likely to bind.
+                if (g < 106.2 /* 5.9 mmol */) {
+                    preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
+                }
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("BMild")
                 markRun("BolusGivenMild")

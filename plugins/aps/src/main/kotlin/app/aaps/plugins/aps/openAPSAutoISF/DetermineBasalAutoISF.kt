@@ -888,6 +888,15 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("useSimpleOffsetOverride: varOffset fixed at ${convert_bg(varOffset)} ;")
         }
 
+        // MildOffsetZero: OpenAPSAutoISFPlugin's BolusGivenMild sets this flag when it fires while BG <
+        // 5.9mmol, so its stronger SMB delivery ratio isn't wasted behind this offset gate below — forces
+        // varOffset to 0 (bg only needs to clear targetBgOrig itself, not target+offset) for the same
+        // 2-min window as the delivery-ratio boost. Self-clears when that TT expires.
+        if (preferences.get(BooleanKey.ApsAutoIsfMildOffsetZeroActive)) {
+            varOffset = 0.0
+            rT.reason.append("MildOffsetZero active (BolusGivenMild fired under 5.9mmol): varOffset forced to 0 ;")
+        }
+
         var offsetSoZeroSMB = false
         if (bg < targetBgOffset && (COB == 0.0 || (COB < 5.0 && CarbAge > 120))) {
             offsetSoZeroSMB = true

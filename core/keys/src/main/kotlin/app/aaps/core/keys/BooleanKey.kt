@@ -99,6 +99,13 @@ enum class BooleanKey(
     // plain preference flag is the simplest way to signal across modules. Not shown in any screen.
     ApsAutoIsfCleanGraphRequested("autoisf_clean_graph_requested", false, defaultedBySM = true, exportable = false),
 
+    // Internal, not user-facing. Set by OpenAPSAutoISFPlugin's BolusGivenMild block when it fires while
+    // BG < 5.9mmol: forces DetermineBasalAutoISF's varOffset (the "no COB + BG under target+offset ->
+    // zero SMB" gate) to 0 for that window, so the mild-boost's stronger delivery ratio isn't wasted
+    // behind a gate that would otherwise still block SMB outright at that BG. Self-clears the same way
+    // the delivery-ratio boost itself does — when the mild fire's own 2-min TT expires.
+    ApsAutoIsfMildOffsetZeroActive("autoisf_mild_offset_zero_active", false, defaultedBySM = true, exportable = false),
+
     ActivityMonitorDetection("activity_detection", false, defaultedBySM=true),
     ActivityMonitorOvernight("ignore_inactivity_overnight", true, defaultedBySM=true, dependency = ActivityMonitorDetection),
     ActivityMonitorStepsActive("steps_activity_detected", false, defaultedBySM=true),

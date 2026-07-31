@@ -1129,27 +1129,27 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // write from here) is deliberate: it's the only mechanism that also works remotely from an
     // AAPSClient follower device, since preferences themselves never sync but a TT does.
     private fun ttCodesList(): List<Pair<String, Double>> = listOf(
-        "5.02 — SMB delivery baseline + mild-boost, -0.01" to 5.02,
-        "5.04 — SMB delivery baseline + mild-boost, +0.01" to 5.04,
-        "5.06 — toggle Libre sensor-age adjustment on/off" to 5.06,
-        "5.08 — toggle boost automations (bg1/2/3 + Mild) on/off" to 5.08,
-        "5.12 — pp ISF weight (orig), -0.01" to 5.12,
-        "5.14 — pp ISF weight (orig), +0.01" to 5.14,
-        "5.16 — acce ISF weight (orig), -0.05" to 5.16,
-        "5.18 — acce ISF weight (orig), +0.05" to 5.18,
-        "5.22 — dura ISF weight (orig), -0.1" to 5.22,
-        "5.24 — dura ISF weight (orig), +0.1" to 5.24,
-        "5.26 — Libre cal slope (orig), -0.01" to 5.26,
-        "5.28 — Libre cal slope (orig), +0.01" to 5.28,
-        "5.32 — Libre cal offset (orig), -0.05" to 5.32,
-        "5.34 — Libre cal offset (orig), +0.05" to 5.34,
-        "5.36 — SMB offset override, -0.10" to 5.36,
-        "5.38 — SMB offset override, +0.10" to 5.38,
-        "5.42 — clean graph view (no SMB labels/arrows, solid green line)" to 5.42,
-        "5.46 — Wizard bolus %, -5" to 5.46,
-        "5.48 — Wizard bolus %, +5" to 5.48,
-        "5.52 — MildBoost ratio, -0.01" to 5.52,
-        "5.54 — MildBoost ratio, +0.01" to 5.54
+        "5.002 — SMB delivery baseline + mild-boost, -0.01" to 5.002,
+        "5.004 — SMB delivery baseline + mild-boost, +0.01" to 5.004,
+        "5.006 — toggle Libre sensor-age adjustment on/off" to 5.006,
+        "5.008 — toggle boost automations (bg1/2/3 + Mild) on/off" to 5.008,
+        "5.012 — pp ISF weight (orig), -0.01" to 5.012,
+        "5.014 — pp ISF weight (orig), +0.01" to 5.014,
+        "5.016 — acce ISF weight (orig), -0.05" to 5.016,
+        "5.018 — acce ISF weight (orig), +0.05" to 5.018,
+        "5.022 — dura ISF weight (orig), -0.1" to 5.022,
+        "5.024 — dura ISF weight (orig), +0.1" to 5.024,
+        "5.026 — Libre cal slope (orig), -0.01" to 5.026,
+        "5.028 — Libre cal slope (orig), +0.01" to 5.028,
+        "5.032 — Libre cal offset (orig), -0.05" to 5.032,
+        "5.034 — Libre cal offset (orig), +0.05" to 5.034,
+        "5.036 — SMB offset override, -0.10" to 5.036,
+        "5.038 — SMB offset override, +0.10" to 5.038,
+        "5.042 — clean graph view (no SMB labels/arrows, solid green line)" to 5.042,
+        "5.046 — Wizard bolus %, -5" to 5.046,
+        "5.048 — Wizard bolus %, +5" to 5.048,
+        "5.052 — MildBoost ratio, -0.01" to 5.052,
+        "5.054 — MildBoost ratio, +0.01" to 5.054
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
@@ -1266,7 +1266,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun updateGraph() {
         _binding ?: return
-        // One-shot cross-module signal from CleanGraphTT (OpenAPSAutoISFPlugin.kt, TT=5.42): applies the
+        // One-shot cross-module signal from CleanGraphTT (OpenAPSAutoISFPlugin.kt, TT=5.042): applies the
         // same "no SMB labels, no BGL arrowheads, solid uniform-green line" combo as long-pressing IOB
         // then Basal, then clears itself so it doesn't keep re-applying and block manual long-presses
         // afterward.
