@@ -115,7 +115,7 @@ class PrepareBgDataWorker(
         data.overviewData.bgReadingsArray
             .filter { it.timestamp in fromTime..toTime && it.noise != null && it.noise!! > 10.0 }
             .sortedBy { it.timestamp }
-            .forEach { rawPointsList.add(RawBgDataPoint(it.timestamp, it.noise!!, preferences, profileUtil, rh)) }
+            .forEach { rawPointsList.add(RawBgDataPoint(it.timestamp, it.noise!!, profileUtil, rh)) }
         data.overviewData.rawBgSeries = PointsWithLabelGraphSeries(Array(rawPointsList.size) { i -> rawPointsList[i] })
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>

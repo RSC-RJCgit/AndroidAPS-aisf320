@@ -8,18 +8,17 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
-import app.aaps.core.keys.UnitDoubleKey
-import app.aaps.core.keys.interfaces.Preferences
 
 // Raw/Libre line (gv.noise), replacing the old flat-red LineGraphSeries — GraphView's line series can't
 // vary color per point, so this reuses the same per-point dot rendering as the ISF-weight overlay
 // (InMemoryGlucoseValueDataPoint) instead. Stays red at all other values, INCLUDING clean-graph
 // (uniformGreenBg) mode — unlike the main BG dots, this line deliberately does not go green there. Only
-// turns yellow (bgLow) when below the low line.
+// turns yellow (bgLow) below its own fixed 3.0mmol threshold — deliberately NOT the shared, user-
+// configurable OverviewLowMark that the main BG dots use, so this line's low-color trigger stays fixed
+// regardless of what the user has their Overview low mark set to.
 class RawBgDataPoint(
     private val timestamp: Long,
     private val valueMgdl: Double,
-    private val preferences: Preferences,
     private val profileUtil: ProfileUtil,
     private val rh: ResourceHelper
 ) : DataPointWithLabelInterface {
@@ -38,8 +37,7 @@ class RawBgDataPoint(
 
     @ColorInt
     override fun color(context: Context?): Int {
-        val units = profileUtil.units
-        val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
-        return if (valueToUnits(units) < lowLine) rh.gac(context, app.aaps.core.ui.R.attr.bgLow) else Color.RED
+        val lowLineMgdl = 3.0 * Constants.MMOLL_TO_MGDL // 54.0
+        return if (valueMgdl < lowLineMgdl) rh.gac(context, app.aaps.core.ui.R.attr.bgLow) else Color.RED
     }
 }
