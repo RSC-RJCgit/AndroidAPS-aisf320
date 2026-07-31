@@ -21,6 +21,8 @@ class InMemoryGlucoseValueDataPoint(
 
     // Set externally (see PrepareBucketedDataWorker.kt) to the dominant ISF-weight color, same logic/colors
     // used for the SMB arrow and GlucoseValueDataPoint overrides. 0 = no override, use default range color.
+    // Only applies at basalToggleIndex 0/1 — the second long-press option (uniformGreenBg, index 2) never
+    // shows this tint, see color() below.
     var colorOverride: Int = 0
     override val hasColorOverride: Boolean get() = colorOverride != 0
 
@@ -41,12 +43,21 @@ class InMemoryGlucoseValueDataPoint(
         val units = profileFunction.getUnits()
         val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
         val highLine = preferences.get(UnitDoubleKey.OverviewHighMark)
-        val color = when {
-            PointsWithLabelGraphSeries.uniformGreenBg -> PointsWithLabelGraphSeries.uniformGreenBgColor
-            colorOverride != 0              -> colorOverride
-            valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
-            valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
-            else                           -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
+        val color = if (PointsWithLabelGraphSeries.uniformGreenBg) {
+            // Second long-press option (basalToggleIndex 2): plain low/high/in-range coloring, no
+            // ISF-weight tint — NOT the old flat uniform-green fill.
+            when {
+                valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
+                valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
+                else                            -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
+            }
+        } else {
+            when {
+                colorOverride != 0              -> colorOverride
+                valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
+                valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
+                else                           -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
+            }
         }
         return if (data.filledGap) ColorUtils.setAlphaComponent(color, 128) else color
     }

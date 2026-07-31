@@ -491,7 +491,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // Libre 1-min / AAPS (smoothed) 1-min delta label attached directly to the current
                     // graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no circle
                     // (the actual BG point already has its own dot drawn by the glucose series underneath).
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
+                    // L1 (red, on the graph background) gets a larger size than A1 — harder to read at the
+                    // same size as A1's green. Already bold via drawLabel45Right's isFakeBoldText.
+                    val sizeMultiplier = if (value.shape == Shape.L1_DELTA_POINT) 0.85f else 0.6f
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * sizeMultiplier)
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
                     // AutoISFHistoryDialog's own column colors), fixed in the bottom area of graph3.

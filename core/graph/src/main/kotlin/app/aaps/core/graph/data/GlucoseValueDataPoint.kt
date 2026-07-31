@@ -22,6 +22,8 @@ class GlucoseValueDataPoint(
 
     // Set externally (see PrepareBgDataWorker.kt) to the dominant ISF-weight color, same logic/colors
     // used for the SMB arrow override in PrepareTreatmentsDataWorker.kt. 0 = no override, use default color.
+    // Only applies at basalToggleIndex 0/1 — the second long-press option (uniformGreenBg, index 2) never
+    // shows this tint, see color() below.
     var colorOverride: Int = 0
     override val hasColorOverride: Boolean get() = colorOverride != 0
 
@@ -46,16 +48,21 @@ class GlucoseValueDataPoint(
         val units = profileUtil.units
         val lowLine = preferences.get(UnitDoubleKey.OverviewLowMark)
         val highLine = preferences.get(UnitDoubleKey.OverviewHighMark)
+        if (isPrediction) return predictionColor(context)
+        if (PointsWithLabelGraphSeries.uniformGreenBg) {
+            // Second long-press option (basalToggleIndex 2): plain low/high/in-range coloring, no
+            // ISF-weight tint — NOT the old flat uniform-green fill.
+            return when {
+                valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
+                valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
+                else                            -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
+            }
+        }
         return when {
-            isPrediction     -> predictionColor(context)
-            PointsWithLabelGraphSeries.uniformGreenBg -> PointsWithLabelGraphSeries.uniformGreenBgColor
-            // Low deliberately outranks colorOverride (unlike high, below) — hypo visibility on the graph
-            // must never be masked by the ISF-weight dominant color, even while that color is active.
+            // Low deliberately outranks colorOverride — hypo visibility on the graph must never be
+            // masked by the ISF-weight dominant color, even while that color is active.
             valueToUnits(units) < lowLine  -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
             colorOverride != 0 -> colorOverride
-            // Restores low/high coloring dropped during an earlier core:graph refactor (it had collapsed
-            // to a flat originalBgValueColor for every non-override point). High still yields to
-            // colorOverride above, same as before — only genuinely unoverridden points reach this branch.
             valueToUnits(units) > highLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
             else             -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
         }
