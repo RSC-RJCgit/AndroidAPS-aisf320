@@ -138,8 +138,10 @@ interface OverviewData {
     var l1DeltaSeries: SeriesData
     // AAPS (smoothed) 1-min delta label attached to the current smoothed BG graph point — see A1DeltaDataPoint/Shape.A1_DELTA_POINT.
     var a1DeltaSeries: SeriesData
-    // "hypoprection= <value>" row, fixed near the bottom of the main graph — see HPDataPoint/Shape.HP_ROW_BOTTOM.
+    // "hypoprediction= <value>" row, fixed near the bottom of the main graph — see HPDataPoint/Shape.HP_ROW_BOTTOM.
     var hpSeries: SeriesData
+    // "pp= acc= du=" row, fixed near the bottom of graph3 — see IsfWeightsRowDataPoint.
+    var isfWeightsRowSeries: SeriesData
     var stepsStackedSeries: SeriesData
     // "DR=/AW=/LS=" row, split out of stepsStackedSeries — see StepsExtraDataPoint/Shape.STEPS_EXTRA_ROW.
     var stepsExtraSeries: SeriesData

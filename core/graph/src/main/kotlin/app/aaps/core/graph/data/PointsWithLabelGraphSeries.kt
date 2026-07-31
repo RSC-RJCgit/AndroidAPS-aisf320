@@ -431,12 +431,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // in the database/NS, this only shortens what's drawn on the graph.
                         val displayLabel = value.label.take(5)
                         mPaint.strokeWidth = 0f
-                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat() // slightly smaller, was 0.6f
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         // Bottom-anchored, stacking upward, flush against the very bottom of graph2 (no
-                        // fixed base offset) — first note sits right at graphTop+graphHeight.
-                        val py = graphTop + graphHeight - noteStackIndex * (scaledTextSize * 0.45f)
+                        // fixed base offset) — first note sits right at graphTop+graphHeight. Stack gap
+                        // slightly larger, was 0.45f.
+                        val py = graphTop + graphHeight - noteStackIndex * (scaledTextSize * 0.55f)
                         canvas.drawText(displayLabel, endX, py, mPaint)
                     }
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION_OFFSET) {

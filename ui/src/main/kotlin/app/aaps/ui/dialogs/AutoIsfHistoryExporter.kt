@@ -7,6 +7,7 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.FileListProvider
@@ -40,7 +41,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val dateUtil: DateUtil,
     private val profileFunction: ProfileFunction,
     private val preferences: Preferences,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val iobCobCalculator: IobCobCalculator
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -82,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -118,6 +120,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.iob),
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
+            hpStr(r, rawReadings),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
@@ -381,4 +384,35 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Scheduled profile basal rate (U/hr) at this record's time, or "--" if unresolvable. */
     fun basalStr(r: AIV): String =
         profileFunction.getProfile(r.timestamp)?.getBasal(r.timestamp)?.let { df2.format(it) } ?: "--"
+
+    /** Same 5-min raw-Libre-delta window/logic as rawDeltaStr's minutesBack<=5 branch, but returning the
+     *  raw mmol Double instead of a formatted string, for use in hpStr's own arithmetic. Kept separate
+     *  from rawDeltaStr rather than refactoring it, to avoid touching that already-relied-upon function.
+     *  `rawReadings` must be newest-first. Null when readings/noise are missing (same conditions as
+     *  rawDeltaStr returning "--"). */
+    private fun rawDelta5Mmol(timestamp: Long, rawReadings: List<GV>): Double? {
+        val inWindow = rawReadings.filter { it.timestamp in (timestamp - 7 * 60_000L)..timestamp }
+        if (inWindow.size < 2) return null
+        val newest = inWindow.first()
+        val n = newest.noise ?: return null
+        val target = timestamp - 5 * 60_000L
+        val ref = inWindow.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return null
+        if (ref.timestamp == newest.timestamp) return null
+        val refNoise = ref.noise ?: return null
+        return (n - refNoise) / MGDL_TO_MMOL
+    }
+
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*LibreDelta5[mmol] + COB/10 — same
+     *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes
+     *  from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp), the record's own COB at ITS
+     *  timestamp (not today's live COB, which would be wrong for older rows). "--" if the raw-Libre-delta
+     *  window doesn't have enough data at this row's timestamp. `rawReadings` must be newest-first. */
+    fun hpStr(r: AIV, rawReadings: List<GV>): String {
+        val libreDelta5Mmol = rawDelta5Mmol(r.timestamp, rawReadings) ?: return "--"
+        val bglMmol = r.glucose / MGDL_TO_MMOL
+        val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
+        val cob = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.cob ?: 0.0
+        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
+        return df1.format(hp)
+    }
 }

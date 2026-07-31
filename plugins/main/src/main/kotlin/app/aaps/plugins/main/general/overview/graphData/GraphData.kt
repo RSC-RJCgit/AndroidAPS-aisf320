@@ -156,6 +156,11 @@ class GraphData @Inject constructor(
         addSeries(overviewData.noisyBgDeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    // "pp= acc= du=" row, fixed near the bottom of graph3, same style/mechanism as addNoisyBgDeltaAnnotation()'s row on graph1.
+    fun addIsfWeightsRow() {
+        addSeries(overviewData.isfWeightsRowSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addL1DeltaAnnotation() {
         addSeries(overviewData.l1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }

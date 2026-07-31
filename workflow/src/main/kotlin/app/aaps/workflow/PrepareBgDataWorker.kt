@@ -15,6 +15,7 @@ import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.HPDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
+import app.aaps.core.graph.data.IsfWeightsRowDataPoint
 import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
@@ -31,6 +32,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -191,16 +193,33 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
+        // "pp= acc= du=" row, fixed near the bottom of graph3 — current (live) ApsAutoIsfPpWeight/
+        // BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row above on graph1.
+        data.overviewData.isfWeightsRowSeries =
+            if (latest != null) {
+                val ppW = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+                val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+                val duraW = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+                val label = "pp=${String.format(Locale.getDefault(), "%.2f", ppW)} " +
+                    "acc=${String.format(Locale.getDefault(), "%.2f", acceW)} " +
+                    "du=${String.format(Locale.getDefault(), "%.2f", duraW)}"
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
         // Libre 1-min delta label (green), attached directly to the current Libre graph point (same
         // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
         data.overviewData.l1DeltaSeries =
             if (latest != null && noisyBg != null && libreDelta != null) {
                 // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
-                // sign alone is easy to miss on a small rotated graph label. 3-underscore offset + "L"
-                // right before the value identifies this as the Libre-derived delta (vs 6-underscore+"A"
-                // for AAPS below) and keeps the two rotated labels from landing on top of each other.
+                // sign alone is easy to miss on a small rotated graph label. "L" right before the value
+                // identifies this as the Libre-derived delta (vs the 6-underscore+"A" offset kept for
+                // AAPS below, so the two rotated labels don't land on top of each other).
                 val formatted = formatMmolDelta(libreDelta)
-                val label = "____L" + formatted + formatted.first().toString().repeat(4)
+                val label = "L" + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)

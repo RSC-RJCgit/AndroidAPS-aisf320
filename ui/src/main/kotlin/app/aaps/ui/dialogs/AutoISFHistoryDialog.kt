@@ -176,6 +176,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(insulinStr(r.iob),                         colorInsulin),
                     Cell(autoIsfHistoryExporter.iob5MinChangeStr(r, allRecords), colorInsulin),
                     Cell(autoIsfHistoryExporter.basalStr(r),        colorInsulin),
+                    Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings), colorInsulin),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 5)?.toString()   ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 15)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),
@@ -243,7 +244,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 2, bold = true),
                 Cell("BG", colorGlucose, span = 7, bold = true),
-                Cell("Insulin", colorInsulin, span = 5, bold = true),
+                Cell("Insulin", colorInsulin, span = 6, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
                 Cell("MJ", colorTime, bold = true)
             )
@@ -279,6 +280,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("IOB",    colorInsulin, bold = true),
                 Cell("IOBΔ5",  colorInsulin, bold = true),
                 Cell("Basal",  colorInsulin, bold = true),
+                Cell("HP",     colorInsulin, bold = true),
                 Cell("S5",     colorHeader, bold = true),
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),
