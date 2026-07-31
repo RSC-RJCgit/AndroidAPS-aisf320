@@ -487,14 +487,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsExtraRowPy, mPaint)
                     }
-                } else if (value.shape == Shape.L1_DELTA_POINT || value.shape == Shape.A1_DELTA_POINT) {
-                    // Libre 1-min / AAPS (smoothed) 1-min delta label attached directly to the current
-                    // graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no circle
-                    // (the actual BG point already has its own dot drawn by the glucose series underneath).
-                    // L1 (red, on the graph background) gets a larger size than A1 — harder to read at the
-                    // same size as A1's green. Already bold via drawLabel45Right's isFakeBoldText.
-                    val sizeMultiplier = if (value.shape == Shape.L1_DELTA_POINT) 0.85f else 0.6f
-                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * sizeMultiplier)
+                } else if (value.shape == Shape.L1_DELTA_POINT || value.shape == Shape.A1_DELTA_POINT || value.shape == Shape.HP_DELTA_POINT) {
+                    // Libre 1-min / AAPS (smoothed) 1-min delta / hypo-prediction label attached directly
+                    // to the current graph point — same 45°-rotated style as GENERAL's drawLabel45Right,
+                    // but no circle (the actual BG point already has its own dot drawn by the glucose
+                    // series underneath). Bumped up from the original 0.6f — hard to read at that size on
+                    // the graph background. Already bold via drawLabel45Right's isFakeBoldText.
+                    if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.85f)
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching
                     // AutoISFHistoryDialog's own column colors), fixed in the bottom area of graph3.

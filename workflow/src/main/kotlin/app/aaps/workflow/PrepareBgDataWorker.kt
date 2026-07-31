@@ -5,7 +5,6 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
-import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
@@ -14,6 +13,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.A1DeltaDataPoint
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.GlucoseValueDataPoint
+import app.aaps.core.graph.data.HPDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
@@ -174,14 +174,6 @@ class PrepareBgDataWorker(
         // green line's acce=/IOd5= fields below and isfIndicesSeries further down, so only queried once.
         val recentAiv = persistenceLayer.getAutoIsfValuesFromTimeToTime(toTime - T.hours(2).msecs(), toTime)
         val latestAiv = recentAiv.maxByOrNull { it.timestamp }
-        // SMB boluses for the green line's Sint= field (mirrors AutoIsfHistoryExporter's
-        // smbInterval5SecStr) — real treatment records, sync to the client normally like any other
-        // bolus. 2h query window (not just 5min from toTime) for the same reason as the AIV window
-        // above: toTime can sit up to ~59min ahead of "now", so a narrow window anchored to toTime
-        // could miss every recent SMB entirely; smbInterval5SecStr does its own precise 5-min
-        // filtering (anchored to latest.timestamp, not toTime) once this is fetched.
-        val recentSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(toTime - T.hours(2).msecs(), toTime, ascending = false)
-            .filter { it.type == BS.Type.SMB }
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val delta5Txt = " A5=${aapsDelta5?.let { formatMmolDelta(it) } ?: "--"} L5=${libreDelta5?.let { formatMmolDelta(it) } ?: "--"}"
@@ -216,6 +208,25 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
+        // Hypo-prediction (HP=) label, same anchor point as l1DeltaSeries above (just above it on the
+        // rotated diagonal, via the leading-underscore offset). HP = (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
+        // + COB/10. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
+        // mmol conversion is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the
+        // formula is defined in mmol.
+        data.overviewData.hpSeries =
+            if (latest != null && noisyBg != null && latestAiv != null) {
+                val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
+                val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+                val hp = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + cob / 10.0
+                val label = "_______HP=" + String.format(Locale.getDefault(), "%.2f", hp)
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
         // AAPS (smoothed) 1-min delta label (orange), same style as the Libre one above but attached to
         // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
         // usually sit at slightly different heights, so anchoring each label to its own line's actual
@@ -236,13 +247,23 @@ class PrepareBgDataWorker(
 
         // Two rows near the top (just under the green raw-BG/delta line), split so the steps row is
         // just steps: "S5=<5min> S15=<15min> S30=<30min> S60=<60min>". The extra row above it
-        // (DR=/AW=/LS=/acce=/Sint=/IOd5=) is a separate line with its own spacing.
+        // (DR=/AW=/LS=/acce=/IOd5=) is a separate line with its own spacing.
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
                 val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
+                // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + COB/10. BGL/IOB/SDelta from
+                // latestAiv (internally consistent timestamp); mmol conversion is fixed
+                // (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in mmol.
+                val hpTxt = "HP=" + (latestAiv?.let {
+                    val bglMmol = it.glucose * Constants.MGDL_TO_MMOLL
+                    val sdeltaMmol = it.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                    val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+                    val hp = (bglMmol - it.iob) + 0.5 * sdeltaMmol + cob / 10.0
+                    String.format(Locale.getDefault(), "%.2f", hp)
+                } ?: "--")
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
                     " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}" +
-                    " I5=${avgInterval?.let { it.roundToInt().toString() } ?: "--"}"
+                    " I5=${avgInterval?.let { it.roundToInt().toString() } ?: "--"} $hpTxt"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -250,9 +271,9 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "DR= AW= LS= acce= Sint= IOd5=" — spaced (this row isn't cramped like the steps row is), with
-        // acce=/Sint=/IOd5= from the AIV table, matching AutoISFHistoryDialog's own "acce"(BG group)/
-        // SMBi5/IOBΔ5 columns.
+        // "DR= AW= LS= acce= IOd5=" — spaced (this row isn't cramped like the steps row is), with
+        // acce=/IOd5= from the AIV table, matching AutoISFHistoryDialog's own "acce"(BG group)/
+        // IOBΔ5 columns.
         data.overviewData.stepsExtraSeries =
             if (latest != null) {
                 val drVal = latestApsReason?.let { doubleFromReason(it, smbRatioRegex) }
@@ -262,9 +283,8 @@ class PrepareBgDataWorker(
                 val acWtLabel = "AW=${acWtVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val lSlopeLabel = "LS=${lSlopeVal?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "--"}"
                 val acceTxt = "acce=${latestAiv?.let { String.format(Locale.getDefault(), "%.2f", it.bgAcceleration) } ?: "--"}"
-                val sintTxt = "Sint=${smbInterval5SecStr(latest.timestamp, recentSmbBoluses)}"
                 val iod5Txt = "IOd5=${latestAiv?.let { iob5MinChangeStr(it, recentAiv) } ?: "--"}"
-                val label = "$drLabel $acWtLabel $lSlopeLabel $acceTxt $sintTxt $iod5Txt"
+                val label = "$drLabel $acWtLabel $lSlopeLabel $acceTxt $iod5Txt"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsExtraDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -439,17 +459,6 @@ class PrepareBgDataWorker(
 
     private fun doubleFromReason(reason: String, regex: Regex): Double? =
         regex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
-
-    // Mirrors AutoIsfHistoryExporter.smbInterval5SecStr(): average gap (seconds) between SMB boluses
-    // in the 5-min window ending at [atTime]. "--" if fewer than 2 SMBs in that window (no interval to
-    // measure). smbBoluses is expected pre-filtered to BS.Type.SMB.
-    private fun smbInterval5SecStr(atTime: Long, smbBoluses: List<BS>): String {
-        val windowStart = atTime - T.mins(5).msecs()
-        val inWindow = smbBoluses.filter { it.timestamp in windowStart..atTime }
-        if (inWindow.size < 2) return "--"
-        val spanSec = (inWindow.maxOf { it.timestamp } - inWindow.minOf { it.timestamp }).toDouble() / 1000.0
-        return Math.round(spanSec / (inWindow.size - 1)).toString()
-    }
 
     // Mirrors AutoIsfHistoryExporter.iob5MinChangeStr(): change in AIV.iob over ~5 minutes, using
     // whichever AIV record is nearest the 5-min-ago mark (within a 3-min tolerance, since AIV rows

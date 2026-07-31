@@ -1292,6 +1292,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("PpWeightUpTT")
         }
 
+        // --- PpWeightRevertUnder8_5: genuine automatic (not TT-triggered) counterpart to the boost
+        // automations that set ApsAutoIsfPpWeight to 0.15 (BolusGiven, BolusGivenMild, High6PP,
+        // HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) — always-on, fires whenever BG is back
+        // under 8.5mmol and the live PP weight currently differs from its own baseline
+        // (ApsAutoIsfPpWeightNormal), reverting it. No profile%/TT preconditions: unlike the 6 existing
+        // restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct, simple BG-only rule —
+        // it can revert PP even while a boost's own profile% duration is still running. 5-min throttle
+        // is a defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
+        if (readyToRun("PpWeightRevertUnder8_5", 5)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            if (!fuzzyEquals(currentPp, baselinePp) && glucoseStatus.glucose < 153.1 /* 8.5 mmol */) {
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
+                sendSms("PpWeightRevert: ppISFwt=${round(baselinePp, 2)} (BG<8.5mmol)")
+                addCarePortalNote("PPrv")
+                markRun("PpWeightRevertUnder8_5")
+            }
+        }
+
         // --- AcceWeightDownTT: manually setting a TT of 5.16 mmol is used as a remote -0.05 nudge on
         // ApsAutoIsfBgAccelWeightNormal (acceISFwt_orig), clamped to a min of 0.55 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
@@ -1820,6 +1839,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded(targetProfile, 30)
                 startProfilePercentFor(110, 5, targetProfile)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 addCarePortalNote("Old")
                 sendSms("HighOldPod: g=${String.format("%.1f", g / 18.016)} cannula=${String.format("%.1f", cannulaH)}h")
                 markRun("HighOldPod")
@@ -2206,6 +2226,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (g < 106.2 /* 5.9 mmol */) {
                     preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
                 }
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("BMild")
                 markRun("BolusGivenMild")
@@ -2742,6 +2763,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d <= 5.4 /* 0.3 mmol */ && d >= 1.8 /* 0.1 mmol */
             if (h6b1 || h6b2 || h6b3) {
                 startProfilePercentFor(120, 5)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 sendSms("High6PP Acce")
                 addCarePortalNote("P120")
                 markRun("High6PP")
@@ -2782,6 +2804,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchProfileIfNeeded("Current ProfileReal")
                 setAutomationState("Profile", "C100")
                 startProfilePercentFor(130, 60)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 sendSms("PodChangeHighPP130 Acce")
                 addCarePortalNote("Pod130")
                 markRun("PodChangeHighPP130")
@@ -2853,6 +2876,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.95)
                 switchProfileIfNeeded("Current ProfileReal")
                 startProfilePercentFor(130, 5)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 markRun("OldPod2")
             }
         }
@@ -2903,6 +2927,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startProfilePercentFor(130, 5)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(0.95)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, 0.15)
                 sendSms("RecentPod Acce")
                 addCarePortalNote("RecPod")   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + acce 0.95 fresh/stale-pod boost
                 markRun("RecentPod")
