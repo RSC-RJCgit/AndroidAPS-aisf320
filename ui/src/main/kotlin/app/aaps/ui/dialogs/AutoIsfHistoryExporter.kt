@@ -83,7 +83,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     // -----------------------------------------------------------------------------------------------
 
     val exportHeaders = listOf(
-        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "Lslope",
+        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
         "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
@@ -106,6 +106,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             smbInterval5SecStr(r.timestamp, smbBoluses),
             df2.format(r.iobThEffective),
             df2.format(r.acceIsfWeight),
+            ppWeightStr(r.timestamp, apsResults),
             df2.format(r.fslCalSlope),
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
@@ -238,6 +239,21 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (full != null) return String.format(Locale.US, "%.3f", full).replace(".", "").trimStart('0').ifEmpty { "0" }
         val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return Math.round(factor * 10).toString()
+    }
+
+    // "pp_ISF_weight is <value> ;;" written into RT.reason every determineBasal cycle (see
+    // DetermineBasalAutoISF.kt) — the same synced RT.reason text NSDeviceStatusHandler.kt already
+    // regex-parses to reconstruct acWt (AcceIsfWeight) on a client build, so this is exactly as
+    // reliable there as acWt is; no separate persisted AIV field needed.
+    private val ppWeightRegex = Regex("""pp_ISF_weight\s+is\s+([0-9.]+)""", RegexOption.IGNORE_CASE)
+
+    /** ppISFwt value from the nearest APSResult within 15 min (same nearest-match pattern as
+     *  exactFastRiseStr/stepsFromReason above). "--" if none close enough or no match in the reason text. */
+    fun ppWeightStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val value = ppWeightRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return df2.format(value)
     }
 
     // Step counts get written into DetermineBasalAutoISF.kt's reason text as "StepsXM: <value> ;"
@@ -402,8 +418,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         return (n - refNoise) / MGDL_TO_MMOL
     }
 
-    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/10 +
-     *  Steps60/500 + Steps30/500 — same formula as the graph rows (PrepareBgDataWorker.kt), but
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/10 -
+     *  Steps60/500 - Steps30/500 — same formula as the graph rows (PrepareBgDataWorker.kt), but
      *  historically accurate here: COB comes from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp),
      *  the record's own COB at ITS timestamp (not today's live COB, which would be wrong for older rows);
      *  Steps30/60 come from stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used
@@ -417,8 +433,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         val cob = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.cob ?: 0.0
         val steps30 = stepsValue(sc, r.timestamp, apsResults, 30) ?: 0
         val steps60 = stepsValue(sc, r.timestamp, apsResults, 60) ?: 0
-        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 10.0 +
-            steps60 / 500.0 + steps30 / 500.0
+        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 10.0 -
+            steps60 / 500.0 - steps30 / 500.0
         return df1.format(hp)
     }
 }
