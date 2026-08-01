@@ -1155,7 +1155,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         "5.062 — acce ISF weight (high/boosted), -0.01" to 5.062,
         "5.064 — acce ISF weight (high/boosted), +0.01" to 5.064,
         "5.068 — higher ISF range weight, -0.1" to 5.068,
-        "5.070 — higher ISF range weight, +0.1" to 5.070
+        "5.070 — higher ISF range weight, +0.1" to 5.070,
+        "5.074 — peak insulin time, -5 min" to 5.074,
+        "5.076 — peak insulin time, +5 min" to 5.076,
+        "5.080 — autoISF max (low BG, unused), -0.1" to 5.080,
+        "5.082 — autoISF max (low BG, unused), +0.1" to 5.082,
+        "5.086 — autoISF max (normal), -0.1" to 5.086,
+        "5.088 — autoISF max (normal), +0.1" to 5.088
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via

@@ -1446,6 +1446,77 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("HigherIsfRangeWeightUpTT")
         }
 
+        // --- PeakInsulinTimeDownTT: manually setting a TT of 5.074 mmol is used as a remote -5 nudge on
+        // InsulinOrefPeak (peak insulin activity time, minutes), clamped to its own min (35) — not a real
+        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("PeakInsulinTimeDownTT", 2) && activeTtNear(5.074, 0.0001)) {
+            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) - 5).coerceAtLeast(35)
+            preferences.put(IntKey.InsulinOrefPeak, newPeak)
+            cancelCurrentTempTarget()
+            sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak")
+            addCarePortalNote("IPd${newPeak.toString().takeLast(2)}")
+            markRun("PeakInsulinTimeDownTT")
+        }
+
+        // --- PeakInsulinTimeUpTT: manually setting a TT of 5.076 mmol is used as a remote +5 nudge on
+        // InsulinOrefPeak, clamped to its own max (120). Same pattern as PeakInsulinTimeDownTT above.
+        if (readyToRun("PeakInsulinTimeUpTT", 2) && activeTtNear(5.076, 0.0001)) {
+            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) + 5).coerceAtMost(120)
+            preferences.put(IntKey.InsulinOrefPeak, newPeak)
+            cancelCurrentTempTarget()
+            sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak")
+            addCarePortalNote("IPu${newPeak.toString().takeLast(2)}")
+            markRun("PeakInsulinTimeUpTT")
+        }
+
+        // --- AutoIsfMaxLowDownTT: manually setting a TT of 5.080 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfMaxLow (autoISF_max_low — not yet wired into any calculation, see DoubleKey.kt),
+        // clamped to a min of 1.0 — not a real target. Same pattern/tight 0.0001mmol tolerance as the
+        // other settings-nudge TTs above.
+        if (readyToRun("AutoIsfMaxLowDownTT", 2) && activeTtNear(5.080, 0.0001)) {
+            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) - 0.1).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}")
+            addCarePortalNote("MLd${round(newMaxLow, 2).toString().takeLast(3)}")
+            markRun("AutoIsfMaxLowDownTT")
+        }
+
+        // --- AutoIsfMaxLowUpTT: manually setting a TT of 5.082 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfMaxLow, clamped to a max of 3.0. Same pattern as AutoIsfMaxLowDownTT above.
+        if (readyToRun("AutoIsfMaxLowUpTT", 2) && activeTtNear(5.082, 0.0001)) {
+            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) + 0.1).coerceAtMost(3.0)
+            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}")
+            addCarePortalNote("MLu${round(newMaxLow, 2).toString().takeLast(3)}")
+            markRun("AutoIsfMaxLowUpTT")
+        }
+
+        // --- AutoIsfMaxNormalDownTT: manually setting a TT of 5.086 mmol is used as a remote -0.1 nudge
+        // on ApsAutoIsfMax (autoISF_max — the existing, already-live setting; "Normal" here just
+        // distinguishes it from AutoIsfMaxLow above), clamped to a min of 1.0 — not a real target. Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("AutoIsfMaxNormalDownTT", 2) && activeTtNear(5.086, 0.0001)) {
+            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) - 0.1).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}")
+            addCarePortalNote("MNd${round(newMax, 2).toString().takeLast(3)}")
+            markRun("AutoIsfMaxNormalDownTT")
+        }
+
+        // --- AutoIsfMaxNormalUpTT: manually setting a TT of 5.088 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfMax, clamped to a max of 3.0. Same pattern as AutoIsfMaxNormalDownTT above.
+        if (readyToRun("AutoIsfMaxNormalUpTT", 2) && activeTtNear(5.088, 0.0001)) {
+            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) + 0.1).coerceAtMost(3.0)
+            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}")
+            addCarePortalNote("MNu${round(newMax, 2).toString().takeLast(3)}")
+            markRun("AutoIsfMaxNormalUpTT")
+        }
+
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
@@ -4349,6 +4420,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutoIsfWeights, summary = R.string.openapsama_enable_autoISF, title = R.string.openapsama_enable_autoISF))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMaxLow, dialogMessage = R.string.openapsama_autoISF_max_low_summary, title = R.string.openapsama_autoISF_max_low))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeight, dialogMessage = R.string.openapsama_bgAccel_ISF_weight_summary, title = R.string.openapsama_bgAccel_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightNormal, dialogMessage = R.string.autoisf_bgaccel_isf_weight_normal_summary, title = R.string.autoisf_bgaccel_isf_weight_normal_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightHigh, dialogMessage = R.string.autoisf_bgaccel_isf_weight_high_summary, title = R.string.autoisf_bgaccel_isf_weight_high_title))

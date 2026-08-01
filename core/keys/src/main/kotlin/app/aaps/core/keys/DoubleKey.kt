@@ -40,6 +40,9 @@ enum class DoubleKey(
     AutosensMax("autosens_max", 1.2, 0.5, 3.0, defaultedBySM = true),
     ApsAutoIsfMin("autoISF_min", 1.0, 0.3, 1.0, defaultedBySM = true),
     ApsAutoIsfMax("autoISF_max", 1.0, 1.0, 3.0, defaultedBySM = true),
+    // Low-BG counterpart to ApsAutoIsfMax above — added as a plain settings-only value for now, not
+    // yet wired into any calculation (no low-BG branch exists yet to pick this over autoISF_max).
+    ApsAutoIsfMaxLow("autoISF_max_low", 1.0, 1.0, 3.0, defaultedBySM = true),
     ApsAutoIsfBgAccelWeight("bgAccel_ISF_weight", 0.0, 0.0, 1.0, defaultedBySM = true),
     // The user's own configured "normal" bgAccel_ISF_weight (currently 0.70) — what AcceUp0.5/
     // RecentPodOff restore ApsAutoIsfBgAccelWeight to once their own conditions clear.
