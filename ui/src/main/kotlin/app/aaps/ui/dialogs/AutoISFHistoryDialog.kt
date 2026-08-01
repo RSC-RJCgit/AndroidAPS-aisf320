@@ -176,7 +176,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(insulinStr(r.iob),                         colorInsulin),
                     Cell(autoIsfHistoryExporter.iob5MinChangeStr(r, allRecords), colorInsulin),
                     Cell(autoIsfHistoryExporter.basalStr(r),        colorInsulin),
-                    Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings), colorInsulin),
+                    Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings, sc, apsResults), colorInsulin),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 5)?.toString()   ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 15)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),

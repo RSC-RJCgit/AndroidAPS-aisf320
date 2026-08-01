@@ -120,7 +120,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.iob),
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
-            hpStr(r, rawReadings),
+            hpStr(r, rawReadings, sc, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
@@ -402,17 +402,23 @@ class AutoIsfHistoryExporter @Inject constructor(
         return (n - refNoise) / MGDL_TO_MMOL
     }
 
-    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*LibreDelta5[mmol] + COB/10 — same
-     *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes
-     *  from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp), the record's own COB at ITS
-     *  timestamp (not today's live COB, which would be wrong for older rows). "--" if the raw-Libre-delta
-     *  window doesn't have enough data at this row's timestamp. `rawReadings` must be newest-first. */
-    fun hpStr(r: AIV, rawReadings: List<GV>): String {
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/10 +
+     *  Steps60/500 + Steps30/500 — same formula as the graph rows (PrepareBgDataWorker.kt), but
+     *  historically accurate here: COB comes from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp),
+     *  the record's own COB at ITS timestamp (not today's live COB, which would be wrong for older rows);
+     *  Steps30/60 come from stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used
+     *  for this row's own S30/S60 columns (0 if unavailable, rather than blanking the whole row). "--" if
+     *  the raw-Libre-delta window doesn't have enough data at this row's timestamp. `rawReadings` must be
+     *  newest-first. */
+    fun hpStr(r: AIV, rawReadings: List<GV>, sc: SC?, apsResults: List<APSResult>): String {
         val libreDelta5Mmol = rawDelta5Mmol(r.timestamp, rawReadings) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
         val cob = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.cob ?: 0.0
-        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * libreDelta5Mmol + cob / 10.0
+        val steps30 = stepsValue(sc, r.timestamp, apsResults, 30) ?: 0
+        val steps60 = stepsValue(sc, r.timestamp, apsResults, 60) ?: 0
+        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 10.0 +
+            steps60 / 500.0 + steps30 / 500.0
         return df1.format(hp)
     }
 }
