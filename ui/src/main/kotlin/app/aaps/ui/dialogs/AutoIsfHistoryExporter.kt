@@ -418,8 +418,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         return (n - refNoise) / MGDL_TO_MMOL
     }
 
-    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/10 -
-     *  Steps60/500 - Steps30/500 — same formula as the graph rows (PrepareBgDataWorker.kt), but
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/10 -
+     *  Steps60/750 - Steps30/750 — same formula as the graph rows (PrepareBgDataWorker.kt), but
      *  historically accurate here: COB comes from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp),
      *  the record's own COB at ITS timestamp (not today's live COB, which would be wrong for older rows);
      *  Steps30/60 come from stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used
@@ -433,8 +433,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         val cob = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.cob ?: 0.0
         val steps30 = stepsValue(sc, r.timestamp, apsResults, 30) ?: 0
         val steps60 = stepsValue(sc, r.timestamp, apsResults, 60) ?: 0
-        val hp = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 10.0 -
-            steps60 / 500.0 - steps30 / 500.0
+        val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 10.0 -
+            steps60 / 750.0 - steps30 / 750.0
         return df1.format(hp)
     }
 }
