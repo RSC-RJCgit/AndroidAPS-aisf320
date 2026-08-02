@@ -19,6 +19,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.View.OnLongClickListener
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
@@ -926,9 +927,32 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
                 activity?.let { act ->
                     val entries = ttCodesList()
+                    // Compact adapter (small text, minimal padding) instead of the default
+                    // select_dialog_item row — that one reserves ~48dp min height per row plus its own
+                    // vertical padding, which wastes a lot of space on a narrow phone with this many
+                    // entries. No functional difference, just tighter rows with no gap between them.
+                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.first }) {
+                        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                            val tv = convertView as? TextView ?: TextView(act).apply {
+                                setPadding(24, 2, 24, 2)
+                                textSize = 13f
+                            }
+                            tv.text = getItem(position)
+                            return tv
+                        }
+                    }
                     androidx.appcompat.app.AlertDialog.Builder(act)
                         .setTitle("TT remote-trigger codes — tap to set")
-                        .setItems(entries.map { it.first }.toTypedArray()) { _, which -> setTt(entries[which].second) }
+                        .setAdapter(adapter) { _, which ->
+                            // Confirm before actually setting the TT — a single mistap on a dense,
+                            // gapless list would otherwise silently nudge the wrong setting.
+                            val (label, mmol) = entries[which]
+                            androidx.appcompat.app.AlertDialog.Builder(act)
+                                .setTitle(label)
+                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> setTt(mmol) }
+                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                                .show()
+                        }
                         .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
                         .show()
                 }
@@ -1128,40 +1152,42 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // manually typing the value into AAPS's own TT-entry UI. Setting a real TT (not a direct preference
     // write from here) is deliberate: it's the only mechanism that also works remotely from an
     // AAPSClient follower device, since preferences themselves never sync but a TT does.
+    // Abbreviated for narrow-phone display: weight->Wt, SMB delivery->SMBdel, boost->Bst, normal->N,
+    // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
     private fun ttCodesList(): List<Pair<String, Double>> = listOf(
-        "5.002 — SMB delivery baseline + mild-boost, -0.01" to 5.002,
-        "5.004 — SMB delivery baseline + mild-boost, +0.01" to 5.004,
-        "5.006 — toggle Libre sensor-age adjustment on/off" to 5.006,
-        "5.008 — toggle boost automations (bg1/2/3 + Mild) on/off" to 5.008,
-        "5.012 — pp ISF weight (orig), -0.01" to 5.012,
-        "5.014 — pp ISF weight (orig), +0.01" to 5.014,
-        "5.016 — acce ISF weight (orig), -0.05" to 5.016,
-        "5.018 — acce ISF weight (orig), +0.05" to 5.018,
-        "5.022 — dura ISF weight (orig), -0.1" to 5.022,
-        "5.024 — dura ISF weight (orig), +0.1" to 5.024,
-        "5.026 — Libre cal slope (orig), -0.01" to 5.026,
-        "5.028 — Libre cal slope (orig), +0.01" to 5.028,
-        "5.032 — Libre cal offset (orig), -0.05" to 5.032,
-        "5.034 — Libre cal offset (orig), +0.05" to 5.034,
-        "5.036 — SMB offset override, -0.10" to 5.036,
-        "5.038 — SMB offset override, +0.10" to 5.038,
-        "5.042 — clean graph view (no SMB labels/arrows, solid green line)" to 5.042,
+        "5.002 — SMBdel base + mild-Bst, -0.01" to 5.002,
+        "5.004 — SMBdel base + mild-Bst, +0.01" to 5.004,
+        "5.006 — Tog Libre sens on/off" to 5.006,
+        "5.008 — Tog Bst autos(all) on/off" to 5.008,
+        "5.012 — pp ISF Wt (Or), -0.01" to 5.012,
+        "5.014 — pp ISF Wt (Or), +0.01" to 5.014,
+        "5.016 — acce ISF Wt (Or), -0.05" to 5.016,
+        "5.018 — acce ISF Wt (Or), +0.05" to 5.018,
+        "5.022 — dura ISF Wt (Or), -0.1" to 5.022,
+        "5.024 — dura ISF Wt (Or), +0.1" to 5.024,
+        "5.026 — Libre slope (Or), -0.01" to 5.026,
+        "5.028 — Libre slope (Or), +0.01" to 5.028,
+        "5.032 — Libre Offset (Or), -0.05" to 5.032,
+        "5.034 — Libre Offset (Or), +0.05" to 5.034,
+        "5.036 — SMB offset HARD, -0.10" to 5.036,
+        "5.038 — SMB offset HARD, +0.10" to 5.038,
+        "5.042 — clean grph view" to 5.042,
         "5.046 — Wizard bolus %, -5" to 5.046,
         "5.048 — Wizard bolus %, +5" to 5.048,
-        "5.052 — MildBoost ratio, -0.01" to 5.052,
-        "5.054 — MildBoost ratio, +0.01" to 5.054,
-        "5.056 — pp ISF weight (high/boosted), -0.01" to 5.056,
-        "5.058 — pp ISF weight (high/boosted), +0.01" to 5.058,
-        "5.062 — acce ISF weight (high/boosted), -0.01" to 5.062,
-        "5.064 — acce ISF weight (high/boosted), +0.01" to 5.064,
-        "5.068 — higher ISF range weight, -0.1" to 5.068,
-        "5.070 — higher ISF range weight, +0.1" to 5.070,
+        "5.052 — MildBst ratio, -0.01" to 5.052,
+        "5.054 — MildBst ratio, +0.01" to 5.054,
+        "5.056 — pp ISF Wt (High), -0.01" to 5.056,
+        "5.058 — pp ISF Wt (High), +0.01" to 5.058,
+        "5.062 — acce ISF Wt (High), -0.01" to 5.062,
+        "5.064 — acce ISF Wt (High), +0.01" to 5.064,
+        "5.068 — higher ISF range Wt, -0.1" to 5.068,
+        "5.070 — higher ISF range Wt, +0.1" to 5.070,
         "5.074 — peak insulin time, -5 min" to 5.074,
         "5.076 — peak insulin time, +5 min" to 5.076,
-        "5.080 — autoISF max (low BG, unused), -0.1" to 5.080,
-        "5.082 — autoISF max (low BG, unused), +0.1" to 5.082,
-        "5.086 — autoISF max (normal), -0.1" to 5.086,
-        "5.088 — autoISF max (normal), +0.1" to 5.088
+        "5.080 — autoISF max (lowBG), -0.1" to 5.080,
+        "5.082 — autoISF max (lowBG), +0.1" to 5.082,
+        "5.086 — autoISF max (N), -0.1" to 5.086,
+        "5.088 — autoISF max (N), +0.1" to 5.088
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
