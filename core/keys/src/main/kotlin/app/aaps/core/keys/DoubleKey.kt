@@ -75,12 +75,30 @@ enum class DoubleKey(
     ApsAutoIsfSmbDeliveryRatio("openapsama_smb_delivery_ratio", 0.2, 0.1, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbDeliveryRatioMin("openapsama_smb_delivery_ratio_min", 0.5, 0.1, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbDeliveryRatioMax("openapsama_smb_delivery_ratio_max", 0.5, 0.5, 1.0, defaultedBySM = true),
+    // Fallback TDDfactor (scales max_iob/insulinReq) used only while ApsAutoIsfTddFactor is off — a
+    // dedicated setting, split out from the old ApsAutoIsfSmbDeliveryRatioMin>0.8 piggyback so that
+    // setting stays single-purpose. Default 1.0 (neutral, matches the original lower_SMB baseline);
+    // range 0.8-1.2 matches the live tddRatio clamp used when ApsAutoIsfTddFactor is on.
+    ApsAutoIsfTddFactorFallback("autoisf_tdd_factor_fallback", 1.0, 0.8, 1.2, defaultedBySM = true),
     ApsAutoIsfSmbMaxRangeExtension("openapsama_smb_max_range_extension", 1.0, 1.0, 5.0, defaultedBySM = true),
     // Simple flat BG-above-target offset (mmol/L) that fully replaces the complex varOffset derivation
     // when ApsAutoIsfSmbOffsetOverrideEnabled is on. Max 2.0 mmol (36 mg/dL) matches the original
     // varOffset hard clamp (min(36.0, varOffset)) in DetermineBasalAutoISF.kt, so this can never exceed
     // what the old mechanism itself was capable of.
     ApsAutoIsfSmbOffsetOverride("autoisf_smb_offset_override", 0.5, 0.0, 2.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled),
+    // Time-of-day varOffset nudge (mmol), one signed value per fixed window — applied ADDITIVELY on top
+    // of whatever varOffset already is (ApsAutoIsfSmbOffsetOverride's own HARD value, or the normal
+    // smb_delivery_ratio_max-based derivation), regardless of which mode is active. Default 0.0 = no
+    // adjustment; TT-nudgeable +/-0.1 (see the *TT blocks in OpenAPSAutoISFPlugin.kt). Replaces the old
+    // carbsReqThreshold-encoded offset1/2/3 + hardcoded nowHour mechanism in DetermineBasalAutoISF.kt.
+    ApsAutoIsfTodOffset0002("autoisf_tod_offset_0002", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset0204("autoisf_tod_offset_0204", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset0406("autoisf_tod_offset_0406", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset0609("autoisf_tod_offset_0609", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset0912("autoisf_tod_offset_0912", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset1218("autoisf_tod_offset_1218", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset1822("autoisf_tod_offset_1822", 0.0, -2.0, 2.0, defaultedBySM = true),
+    ApsAutoIsfTodOffset2200("autoisf_tod_offset_2200", 0.0, -2.0, 2.0, defaultedBySM = true),
     // Resting SMB delivery ratio the custom automations (DelOff and the recovery/protective autos)
     // restore to once a boost window ends. Deliberately separate from ApsAutoIsfSmbDeliveryRatio, which
     // those same autos also write into transiently while a boost is active (bg3/mild write boosted

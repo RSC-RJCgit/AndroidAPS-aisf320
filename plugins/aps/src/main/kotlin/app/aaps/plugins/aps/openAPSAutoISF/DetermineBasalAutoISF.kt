@@ -345,11 +345,7 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError.addAll(auto_isf_consoleLog)
             consoleError.addAll(auto_isf_consoleError)
         }
-        var lower_SMB = 1.00
-        if (profile.smb_delivery_ratio_min > 0.8) {
-            lower_SMB = profile.smb_delivery_ratio_min
-        }
-        var TDDfactor = lower_SMB
+        var TDDfactor = preferences.get(DoubleKey.ApsAutoIsfTddFactorFallback)
         if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
             consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
@@ -787,9 +783,9 @@ class DetermineBasalAutoISF @Inject constructor(
         var CarbAge = lastCarbAge
 
         val high_SMB = profile.smb_delivery_ratio_max
-        // Simple override: a single fixed mmol value (GUI setting) replaces the entire complex varOffset
-        // derivation below — smb_delivery_ratio_max as a base, carbsReqThreshold-encoded offset1/2/3
-        // flags, and hour-of-day/delta_accl adjustments are all skipped when this is on.
+        // Simple override: a single fixed mmol value (GUI setting) replaces smb_delivery_ratio_max as
+        // varOffset's base when this is on. Either way, the time-of-day nudge below always applies on
+        // top (see ApsAutoIsfTodOffset* below) — it's independent of this toggle.
         val useSimpleOffsetOverride = preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled)
         var varOffset: Double = if (useSimpleOffsetOverride) preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) * 18.0
                                  else high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
@@ -817,75 +813,43 @@ class DetermineBasalAutoISF @Inject constructor(
         var day3Ov = false
         var over6Ov = false
 
-        var offset1 = false
-        var offset2 = false
-        var offset3 = false
-
         if (profile.temptargetSet && target_bg < 4.45 * 18 && target_bg > 4.35 * 18 && bg > 4.5 * 18 && Delta > 0.02 * 18) {
             eatSoon = true
         }
 
         var highProfile = false
-        var carbsSugg = profile.carbsReqThreshold
-        var carbsSuggOrig = carbsSugg
         var boostOrig = false
 
         var profileSwitch = 100
 
-        if (!useSimpleOffsetOverride) {
-            if (carbsSugg == 1) {
-                offset1 = true
-            } else if (carbsSugg == 9) {
-                varOffset -= 9
-            } else if (carbsSugg == 10) {
-                varOffset += 9
-            } else if (carbsSugg == 2) {
-                offset2 = true
-            } else if (carbsSugg == 3) {
-                offset3 = true
-            } else if (carbsSugg == 8) {
-                offset2 = true
-                offset3 = true
-            } else if (carbsSugg == 7) {
-                offset1 = true
-                offset3 = true
-            } else if (carbsSugg == 6) {
-                offset1 = true
-                offset2 = true
-            } else if (carbsSugg == 4) {
-                offset1 = true
-                offset2 = true
-                offset3 = true
-            }
-        }
         var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
 
-        var enableButton = false
-
-        if (!isEven(profile.max_iob)) {
-            enableButton = true
-        }
         val nowHour = LocalDateTime.now().hour
         // Omnipod Dash requires durationInMinutes divisible by 30; 15-min temps are rejected.
         val standardTempDuration = 30
 
-        if (!useSimpleOffsetOverride) {
-            if (enableButton && nowHour >= 1 && nowHour <= 7 && offset1) {
-                varOffset = varOffset - 9
-                rT.reason.append("offset1 ${offset1} ;")
-                rT.reason.append("enableButton && nowHour ov=1 && nowHour un=7 && offset1 :varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
-            } else if (nowHour >= 8 && nowHour < 10 && offset2) {
-                varOffset = varOffset - 9
-                rT.reason.append("offset2 ${offset2} ;")
-                rT.reason.append("nowHour ov= 8 && nowHour un 10 && offset2:varOffset = varOffset - 9 ${convert_bg(varOffset)} ;")
-            }
-            if ((enableButton && delta_accl < -10) || (nowHour >= 20 && offset3)) {
-                varOffset = varOffset + 9
-                rT.reason.append("offset3 ${offset3} ;")
-                rT.reason.append("enableButton && delta_accl un -1; varOffset = varOffset + 9 ${convert_bg(varOffset)} ;")
-            }
-        } else {
-            rT.reason.append("useSimpleOffsetOverride: varOffset fixed at ${convert_bg(varOffset)} ;")
+        rT.reason.append(
+            if (useSimpleOffsetOverride) "useSimpleOffsetOverride: varOffset fixed at ${convert_bg(varOffset)} ;"
+            else "varOffset from smb_delivery_ratio_max: ${convert_bg(varOffset)} ;"
+        )
+
+        // Time-of-day varOffset nudge — one signed mmol value per fixed window (TT-adjustable, see the
+        // *TT blocks in OpenAPSAutoISFPlugin.kt), applied ADDITIVELY on top of whatever varOffset already
+        // is above, regardless of which mode (HARD override or the normal derivation) produced it.
+        // Replaces the old carbsReqThreshold-encoded offset1/2/3 + hardcoded nowHour mechanism.
+        val todOffsetMmol = when (nowHour) {
+            in 0 until 2   -> preferences.get(DoubleKey.ApsAutoIsfTodOffset0002)
+            in 2 until 4   -> preferences.get(DoubleKey.ApsAutoIsfTodOffset0204)
+            in 4 until 6   -> preferences.get(DoubleKey.ApsAutoIsfTodOffset0406)
+            in 6 until 9   -> preferences.get(DoubleKey.ApsAutoIsfTodOffset0609)
+            in 9 until 12  -> preferences.get(DoubleKey.ApsAutoIsfTodOffset0912)
+            in 12 until 18 -> preferences.get(DoubleKey.ApsAutoIsfTodOffset1218)
+            in 18 until 22 -> preferences.get(DoubleKey.ApsAutoIsfTodOffset1822)
+            else           -> preferences.get(DoubleKey.ApsAutoIsfTodOffset2200)   // 22-24
+        }
+        if (todOffsetMmol != 0.0) {
+            varOffset += todOffsetMmol * 18.0
+            rT.reason.append("todOffset[${nowHour}h] ${round(todOffsetMmol, 2)}mmol: varOffset now ${convert_bg(varOffset)} ;")
         }
 
         // MildOffsetZero: OpenAPSAutoISFPlugin's BolusGivenMild sets this flag when it fires while BG <
@@ -906,14 +870,8 @@ class DetermineBasalAutoISF @Inject constructor(
             offsetSoZeroSMB = false
             rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
-        rT.reason.append("offset1 ${offset1} ;")
-        rT.reason.append("offset2 ${offset2} ;")
-        rT.reason.append("offset3 ${offset3} ;")
         rT.reason.append("varOffset ${convert_bg(varOffset)} ;")
         rT.reason.append("varOffset ${varOffset} ;")
-        consoleError.add("offset1 ${offset1} ;")
-        consoleError.add("offset2 ${offset2} ;")
-        consoleError.add("offset3 ${offset3} ;")
         consoleError.add("varOffset ${convert_bg(varOffset)} ;")
         consoleError.add("varOffset ${varOffset} ;")
         varOffset = min(36.0, varOffset)
@@ -926,15 +884,11 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("bg un targetBgOffset && no/low COB: ")
         }
 
-        consoleError.add("target_bgOrigmmcarbsSuggOrig: " + carbsSuggOrig + " ; ")
         consoleError.add("target_bgOrigmm: " + target_bgOrigmm + " ; ")
         consoleError.add("targetBgOrig: " + convert_bg(targetBgOrig) + " ; ")
         consoleError.add("targetBgOffset: " + convert_bg(targetBgOffset) + " ; ")
         consoleError.add("offsetSoZeroSMB: " + offsetSoZeroSMB + " ; ")
-        consoleError.add("enableButton: " + enableButton + " ; ")
-        rT.reason.append("carbsSuggOrig: " + carbsSuggOrig + " ; ")
         rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
-        rT.reason.append("enableButton: ${enableButton} ;")
         rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset)} ;")
         rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig)} ;")
         rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")

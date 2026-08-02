@@ -1187,7 +1187,23 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         "5.080 — autoISF max (lowBG), -0.1" to 5.080,
         "5.082 — autoISF max (lowBG), +0.1" to 5.082,
         "5.086 — autoISF max (N), -0.1" to 5.086,
-        "5.088 — autoISF max (N), +0.1" to 5.088
+        "5.088 — autoISF max (N), +0.1" to 5.088,
+        "5.092 — T1 tod offset 00-02h, -0.1" to 5.092,
+        "5.094 — T1 tod offset 00-02h, +0.1" to 5.094,
+        "5.098 — T2 tod offset 02-04h, -0.1" to 5.098,
+        "5.100 — T2 tod offset 02-04h, +0.1" to 5.100,
+        "5.104 — T3 tod offset 04-06h, -0.1" to 5.104,
+        "5.106 — T3 tod offset 04-06h, +0.1" to 5.106,
+        "5.110 — T4 tod offset 06-09h, -0.1" to 5.110,
+        "5.112 — T4 tod offset 06-09h, +0.1" to 5.112,
+        "5.116 — T5 tod offset 09-12h, -0.1" to 5.116,
+        "5.118 — T5 tod offset 09-12h, +0.1" to 5.118,
+        "5.122 — T6 tod offset 12-18h, -0.1" to 5.122,
+        "5.124 — T6 tod offset 12-18h, +0.1" to 5.124,
+        "5.128 — T7 tod offset 18-22h, -0.1" to 5.128,
+        "5.130 — T7 tod offset 18-22h, +0.1" to 5.130,
+        "5.134 — T8 tod offset 22-00h, -0.1" to 5.134,
+        "5.136 — T8 tod offset 22-00h, +0.1" to 5.136
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via

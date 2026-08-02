@@ -1517,6 +1517,140 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("AutoIsfMaxNormalUpTT")
         }
 
+        // --- TodOffset*TT (8 pairs, T1-T8): manually setting a TT of 5.092-5.136 mmol is used as a
+        // remote +/-0.1 nudge on one of the 8 fixed time-of-day varOffset windows (ApsAutoIsfTodOffset*,
+        // see DetermineBasalAutoISF.kt), clamped to +/-2.0 — not a real target. T1=00-02h, T2=02-04h,
+        // T3=04-06h, T4=06-09h, T5=09-12h, T6=12-18h, T7=18-22h, T8=22-00h. Same pattern/tight 0.0001mmol
+        // tolerance as the other settings-nudge TTs above.
+        if (readyToRun("TodOffset0002DownTT", 2) && activeTtNear(5.092, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
+            addCarePortalNote("T1d${round(newVal, 2)}")
+            markRun("TodOffset0002DownTT")
+        }
+        if (readyToRun("TodOffset0002UpTT", 2) && activeTtNear(5.094, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
+            addCarePortalNote("T1u${round(newVal, 2)}")
+            markRun("TodOffset0002UpTT")
+        }
+        if (readyToRun("TodOffset0204DownTT", 2) && activeTtNear(5.098, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
+            addCarePortalNote("T2d${round(newVal, 2)}")
+            markRun("TodOffset0204DownTT")
+        }
+        if (readyToRun("TodOffset0204UpTT", 2) && activeTtNear(5.100, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
+            addCarePortalNote("T2u${round(newVal, 2)}")
+            markRun("TodOffset0204UpTT")
+        }
+        if (readyToRun("TodOffset0406DownTT", 2) && activeTtNear(5.104, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
+            addCarePortalNote("T3d${round(newVal, 2)}")
+            markRun("TodOffset0406DownTT")
+        }
+        if (readyToRun("TodOffset0406UpTT", 2) && activeTtNear(5.106, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
+            addCarePortalNote("T3u${round(newVal, 2)}")
+            markRun("TodOffset0406UpTT")
+        }
+        if (readyToRun("TodOffset0609DownTT", 2) && activeTtNear(5.110, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
+            addCarePortalNote("T4d${round(newVal, 2)}")
+            markRun("TodOffset0609DownTT")
+        }
+        if (readyToRun("TodOffset0609UpTT", 2) && activeTtNear(5.112, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
+            addCarePortalNote("T4u${round(newVal, 2)}")
+            markRun("TodOffset0609UpTT")
+        }
+        if (readyToRun("TodOffset0912DownTT", 2) && activeTtNear(5.116, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
+            addCarePortalNote("T5d${round(newVal, 2)}")
+            markRun("TodOffset0912DownTT")
+        }
+        if (readyToRun("TodOffset0912UpTT", 2) && activeTtNear(5.118, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
+            addCarePortalNote("T5u${round(newVal, 2)}")
+            markRun("TodOffset0912UpTT")
+        }
+        if (readyToRun("TodOffset1218DownTT", 2) && activeTtNear(5.122, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
+            addCarePortalNote("T6d${round(newVal, 2)}")
+            markRun("TodOffset1218DownTT")
+        }
+        if (readyToRun("TodOffset1218UpTT", 2) && activeTtNear(5.124, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
+            addCarePortalNote("T6u${round(newVal, 2)}")
+            markRun("TodOffset1218UpTT")
+        }
+        if (readyToRun("TodOffset1822DownTT", 2) && activeTtNear(5.128, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
+            addCarePortalNote("T7d${round(newVal, 2)}")
+            markRun("TodOffset1822DownTT")
+        }
+        if (readyToRun("TodOffset1822UpTT", 2) && activeTtNear(5.130, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
+            addCarePortalNote("T7u${round(newVal, 2)}")
+            markRun("TodOffset1822UpTT")
+        }
+        if (readyToRun("TodOffset2200DownTT", 2) && activeTtNear(5.134, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
+            addCarePortalNote("T8d${round(newVal, 2)}")
+            markRun("TodOffset2200DownTT")
+        }
+        if (readyToRun("TodOffset2200UpTT", 2) && activeTtNear(5.136, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
+            addCarePortalNote("T8u${round(newVal, 2)}")
+            markRun("TodOffset2200UpTT")
+        }
+
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
@@ -4451,6 +4585,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbMaxRangeExtension, dialogMessage = R.string.openapsama_smb_max_range_extension_summary, title = R.string.openapsama_smb_max_range_extension))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled, summary = R.string.autoisf_smb_offset_override_enabled_summary, title = R.string.autoisf_smb_offset_override_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbOffsetOverride, dialogMessage = R.string.autoisf_smb_offset_override_summary, title = R.string.autoisf_smb_offset_override_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset0002, dialogMessage = R.string.autoisf_tod_offset_0002_summary, title = R.string.autoisf_tod_offset_0002_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset0204, dialogMessage = R.string.autoisf_tod_offset_0204_summary, title = R.string.autoisf_tod_offset_0204_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset0406, dialogMessage = R.string.autoisf_tod_offset_0406_summary, title = R.string.autoisf_tod_offset_0406_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset0609, dialogMessage = R.string.autoisf_tod_offset_0609_summary, title = R.string.autoisf_tod_offset_0609_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset0912, dialogMessage = R.string.autoisf_tod_offset_0912_summary, title = R.string.autoisf_tod_offset_0912_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset1218, dialogMessage = R.string.autoisf_tod_offset_1218_summary, title = R.string.autoisf_tod_offset_1218_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset1822, dialogMessage = R.string.autoisf_tod_offset_1822_summary, title = R.string.autoisf_tod_offset_1822_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTodOffset2200, dialogMessage = R.string.autoisf_tod_offset_2200_summary, title = R.string.autoisf_tod_offset_2200_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryBaseline, dialogMessage = R.string.autoisf_smb_delivery_baseline_summary, title = R.string.autoisf_smb_delivery_baseline_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfBoostAutomationsEnabled, summary = R.string.autoisf_boost_automations_enabled_summary, title = R.string.autoisf_boost_automations_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMildBoostRatio, dialogMessage = R.string.autoisf_mild_boost_ratio_summary, title = R.string.autoisf_mild_boost_ratio_title))
@@ -4459,6 +4601,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfSplitBolusInterval, dialogMessage = R.string.split_bolus_interval_summary, title = R.string.split_bolus_interval_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddSensitivity, summary = R.string.autoisf_tdd_sensitivity_summary, title = R.string.autoisf_tdd_sensitivity))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfTddFactor, summary = R.string.autoisf_tdd_factor_summary, title = R.string.autoisf_tdd_factor))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfTddFactorFallback, dialogMessage = R.string.autoisf_tdd_factor_fallback_summary, title = R.string.autoisf_tdd_factor_fallback_title))
                 })
             })
         }
