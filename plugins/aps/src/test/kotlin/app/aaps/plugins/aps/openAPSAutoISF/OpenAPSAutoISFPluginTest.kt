@@ -321,7 +321,6 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
         whenever(glucoseStatus.corrSqu).thenReturn(0.4711)
         assertThat(openAPSAutoISFPlugin.autoISF(profile)).isEqualTo(47.11)                             // bad parabola
         whenever(preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)).thenReturn(true)
-        whenever(preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget)).thenReturn(160)
         assertThat(openAPSAutoISFPlugin.autoISF(profile)).isEqualTo(47.11 * 2.0)                       // exercise mode w/o AutoISF
         whenever(glucoseStatus.corrSqu).thenReturn(0.95)
         whenever(glucoseStatus.glucose).thenReturn(90.0)

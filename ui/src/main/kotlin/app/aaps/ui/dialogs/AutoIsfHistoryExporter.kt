@@ -194,17 +194,19 @@ class AutoIsfHistoryExporter @Inject constructor(
     }
 
     /** Plain-text dump of just the AutoISF-specific preference values (not the full app settings
-     *  list), sorted by name, written alongside the CSV so a reviewer knows what AutoISF settings
-     *  were in effect for that export. Returns the file on success, null on failure. */
+     *  list), one "key = value" line each (key is the short preference-key string, not the CamelCase
+     *  enum name), sorted alphabetically by key, written alongside the CSV so a reviewer knows what
+     *  AutoISF settings were in effect for that export. Double/UnitDouble values are rounded to 2
+     *  decimals for readability. Returns the file on success, null on failure. */
     private fun exportSettingsText(dir: File, stamp: String): File? {
         return try {
             val file = File(dir, "AutoISF_settings_$stamp.txt")
             val lines = mutableListOf<String>()
-            BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
-            IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
-            DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
-            UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
-            StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.name} (${it.key}) = ${preferences.get(it)}") }
+            BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+            IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+            DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
+            UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
+            StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
             file.bufferedWriter().use { writer ->
                 for (line in lines.sorted()) writer.write("$line\n")
             }
