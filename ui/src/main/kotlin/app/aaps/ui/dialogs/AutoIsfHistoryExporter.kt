@@ -84,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -121,6 +121,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.iob),
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
+            cobStr(r),
             hpStr(r, rawReadings, sc, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
@@ -420,19 +421,29 @@ class AutoIsfHistoryExporter @Inject constructor(
         return (n - refNoise) / MGDL_TO_MMOL
     }
 
+    /** Historically-accurate COB (grams) at [timestamp] — the record's own COB at ITS timestamp (not
+     *  today's live COB, which would be wrong for older rows). 0.0 if no autosens data covers that time.
+     *  Shared by hpStr() (feeds the HP formula) and cobStr() (the table's own visible COB column) so both
+     *  read the identical source. */
+    private fun historicalCob(timestamp: Long): Double = iobCobCalculator.ads.getAutosensDataAtTime(timestamp)?.cob ?: 0.0
+
+    /** Formatted COB (grams) for the table's own visible column — same historicalCob() source hpStr()
+     *  computes internally, exposed directly so COB can be filtered/analyzed on its own (e.g. "was there
+     *  COB onboard when HP predicted X") without having to reverse-engineer it out of the HP number. */
+    fun cobStr(r: AIV): String = df1.format(historicalCob(r.timestamp))
+
     /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/5 -
      *  Steps60/750 - Steps30/750 — same formula as the graph rows (PrepareBgDataWorker.kt), but
-     *  historically accurate here: COB comes from iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp),
-     *  the record's own COB at ITS timestamp (not today's live COB, which would be wrong for older rows);
-     *  Steps30/60 come from stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used
-     *  for this row's own S30/S60 columns (0 if unavailable, rather than blanking the whole row). "--" if
-     *  the raw-Libre-delta window doesn't have enough data at this row's timestamp. `rawReadings` must be
-     *  newest-first. */
+     *  historically accurate here: COB comes from historicalCob(r.timestamp), the record's own COB at ITS
+     *  timestamp (not today's live COB, which would be wrong for older rows); Steps30/60 come from
+     *  stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used for this row's own
+     *  S30/S60 columns (0 if unavailable, rather than blanking the whole row). "--" if the raw-Libre-delta
+     *  window doesn't have enough data at this row's timestamp. `rawReadings` must be newest-first. */
     fun hpStr(r: AIV, rawReadings: List<GV>, sc: SC?, apsResults: List<APSResult>): String {
         val libreDelta5Mmol = rawDelta5Mmol(r.timestamp, rawReadings) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
-        val cob = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.cob ?: 0.0
+        val cob = historicalCob(r.timestamp)
         val steps30 = stepsValue(sc, r.timestamp, apsResults, 30) ?: 0
         val steps60 = stepsValue(sc, r.timestamp, apsResults, 60) ?: 0
         val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0 -
