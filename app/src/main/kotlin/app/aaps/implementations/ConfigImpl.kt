@@ -46,7 +46,6 @@ class ConfigImpl @Inject constructor(
     private var enableAutotune: Boolean? = null
     private var enableOmnipodDriftCompensation: Boolean? = null
     private var disableLeakCanary: Boolean? = null
-    private var enableOmnipodDriftCompensation: Boolean? = null
 
     override fun isEngineeringModeOrRelease(): Boolean = if (!APS) true else isEngineeringMode() || !isDev()
     override fun isEngineeringMode(): Boolean = true        //isEngineeringMode ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("engineering_mode") != null).also { isEngineeringMode = it }
@@ -58,5 +57,4 @@ class ConfigImpl @Inject constructor(
     override fun enableAutotune(): Boolean = enableAutotune ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("enable_autotune") != null).also { enableAutotune = it }
     override fun enableOmnipodDriftCompensation(): Boolean = enableOmnipodDriftCompensation ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("omnipod_drift_compensation") != null).also { enableOmnipodDriftCompensation = it }
     override fun disableLeakCanary(): Boolean = disableLeakCanary ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("disable_leakcanary") != null).also { disableLeakCanary = it }
-    override fun enableOmnipodDriftCompensation(): Boolean = enableOmnipodDriftCompensation ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("omnipod_drift_compensation") != null).also { enableOmnipodDriftCompensation = it }
 }
