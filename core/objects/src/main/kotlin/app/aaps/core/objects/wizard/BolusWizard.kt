@@ -354,12 +354,18 @@ class BolusWizard @Inject constructor(
         val parts = mutableListOf<String>()
         val schedulingPct = activeProfileSwitchPct()
         val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
+        val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
+        aapsLogger.info(
+            LTag.CORE,
+            "splitProjectionNote check: splitBolusScheduled=$splitBolusScheduled superBolusActive=$superBolusActive " +
+                "manualSplitBolusEnabled=$manualSplitBolusEnabled schedulingPct=$schedulingPct " +
+                "calculatedTotalInsulin=$calculatedTotalInsulin maxBolusAllowed=$maxBolusAllowed"
+        )
         if (!splitBolusScheduled && !superBolusActive && manualSplitBolusEnabled &&
-            schedulingPct >= 100 && calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
+            schedulingPct >= 100 && calculatedTotalInsulin > maxBolusAllowed
         ) {
-            val maxPart = constraintChecker.getMaxBolusAllowed().value()
-            if (ceil(calculatedTotalInsulin / maxPart).toInt() > 1) {
-                val residual = calculatedTotalInsulin - maxPart
+            if (ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1) {
+                val residual = calculatedTotalInsulin - maxBolusAllowed
                 parts.add("Carb split ${decimalFormatter.to2Decimal(residual)}U every ${manualSplitBolusIntervalMins}min")
             }
         }
