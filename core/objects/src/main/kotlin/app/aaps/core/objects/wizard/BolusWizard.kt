@@ -763,6 +763,9 @@ class BolusWizard @Inject constructor(
         // single combined CarePortal note after all three checks, so it only counts what really got
         // scheduled, not just what was calculated.
         var totalProjectedFutureSplitDoses = 0.0
+        // Human-readable detail per component actually scheduled below — joined into the combined note's
+        // full audit text (User Entry log) so it says WHAT/WHEN, not just that something was scheduled.
+        val noteDetails = mutableListOf<String>()
         if (!splitBolusScheduled &&
             !superBolusActive &&
             manualSplitBolusEnabled &&
@@ -784,6 +787,7 @@ class BolusWizard @Inject constructor(
                 )
                 scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
                 totalProjectedFutureSplitDoses += residual
+                noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U every ${intervalMins}min")
             }
         }
         // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after the actual
@@ -802,6 +806,7 @@ class BolusWizard @Inject constructor(
             aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
             scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
             totalProjectedFutureSplitDoses += insulinFromProteinOnly
+            noteDetails.add("protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U at +120min")
         }
         // Fat: one single dose at +180min. Same decoupling/preconditions as protein above — fully
         // independent of the carb-split schedule and of protein's own dose.
@@ -810,6 +815,7 @@ class BolusWizard @Inject constructor(
             aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
             scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
             totalProjectedFutureSplitDoses += insulinFromFatOnly
+            noteDetails.add("fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U at +180min")
         }
         // Single combined CarePortal note marking that split/protein/fat dosing was just scheduled, with
         // the total amount still to come (e.g. "S1.30") — separate from each individual part's own
@@ -829,7 +835,7 @@ class BolusWizard @Inject constructor(
                 },
                 action = Action.CAREPORTAL,
                 source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-                note = "Split/protein/fat dosing scheduled",
+                note = "Split/protein/fat dosing scheduled: " + noteDetails.joinToString(", "),
                 listValues = listOf()
             ).blockingGet()
         }
@@ -886,6 +892,21 @@ class BolusWizard @Inject constructor(
             note = "Split/protein/fat dose cancelled: $reason",
             listValues = listOf()
         ).blockingGet()
+    }
+
+    // Explicit 0U bolus treatment for a split/delayed dose that calculated out to <=0 (IOB rose enough
+    // to fully absorb it) — same "record a visible 0U entry" pattern confirmAndExecute()'s own overall
+    // zero-total branch already uses above, so a calculated-zero part is visually consistent with a
+    // calculated-zero whole wizard result: both show as a real 0U treatment, not just a cancel note.
+    // Deliberately a plain DB insert (persistenceLayer.insertOrUpdateBolus), not commandQueue.bolus() —
+    // there's nothing to actually command the pump to deliver for 0U. Called ALONGSIDE cancelDoseNote()
+    // at the call site, not instead of it — the cancel note (with its own reason) still marks that the
+    // REMAINING residual/dose was dropped; this only additionally marks that THIS part's own calculated
+    // amount was zero.
+    private fun insertZeroDoseTreatment(label: String, iobIncrease: Double) {
+        val zeroNote = "$label: 0U (IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U)"
+        val zeroBolus = BS(timestamp = dateUtil.now(), amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
+        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroNote).blockingGet()
     }
 
     // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
@@ -954,6 +975,7 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, stopping remaining ${remainingResidual}U")
+                insertZeroDoseTreatment("Reduced split bolus part", iobIncrease)
                 cancelDoseNote(remainingResidual, "IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
                 return@postDelayed
             }
@@ -1044,6 +1066,7 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
+                insertZeroDoseTreatment("Delayed $label dose", iobIncrease)
                 cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
                 return@postDelayed
             }
