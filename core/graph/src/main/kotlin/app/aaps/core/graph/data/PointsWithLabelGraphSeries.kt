@@ -164,9 +164,21 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
         val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
-        val noteStack = HashMap<Long, Int>() // bucket (20-min) -> count of CarePortal notes drawn at this height
-        val noteDedupSeen = HashMap<Long, MutableSet<String>>() // bucket (20-min) -> note labels already drawn there, so no note repeats within a bucket
-        val noteArrowBucketSeen = HashSet<Long>() // bucket (25-min, same bucketing as the note-text stack) -> whether the arrowhead for that bucket's first (beginning) entry has already drawn its time label
+        // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
+        // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
+        // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
+        // boundaries, so stacks weren't reliably 25 real minutes long. noteStackIndex is a synthetic,
+        // monotonically increasing id for "which stack this note belongs to" (not a time value itself);
+        // noteStackAnchor is the timestamp a new stack starts counting 25 minutes from.
+        val noteStack = HashMap<Long, Int>() // stack id -> count of CarePortal notes drawn at this height
+        val noteDedupSeen = HashMap<Long, MutableSet<String>>() // stack id -> note labels already drawn there, so no note repeats within a stack
+        var noteStackId = 0L
+        var noteStackAnchor = Long.MIN_VALUE
+        // Arrowhead time-label grouping (Shape.NOTE_ARROWHEAD_GRAPH3): same rolling-anchor concept as the
+        // note-text stack above, but tracked independently (arrowheads and note-text are separate point
+        // series drawn in the same pass) — arrowStackAnchor is the timestamp the CURRENT 25-min window
+        // started; only the first arrowhead seen since that anchor gets a time label.
+        var arrowStackAnchor = Long.MIN_VALUE
         // Steps row — graph1 now, fixed near the bottom of THIS graph's own viewport. No longer
         // glucose-pinned — graph1 isn't necessarily glucose-scaled. Completely static: no toggle, no
         // dependency on BGL state/long-press at all.
@@ -411,7 +423,16 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 } else if (value.shape == Shape.GENERAL_WITH_DURATION) {
                     mPaint.strokeWidth = 0f
                     val bucketMs = 25 * 60_000L
-                    val rawBucket = value.getX().toLong() / bucketMs
+                    // Rolling window: a new stack starts only when >=25 real minutes have elapsed since
+                    // the CURRENT stack's own first note — not a fixed epoch-aligned grid (which could
+                    // split two notes only a few minutes apart into different buckets whenever they
+                    // straddled one of the grid's absolute boundaries).
+                    val noteX = value.getX().toLong()
+                    if (noteStackAnchor == Long.MIN_VALUE || noteX - noteStackAnchor >= bucketMs) {
+                        noteStackAnchor = noteX
+                        noteStackId++
+                    }
+                    val rawBucket = noteStackId
                     // No note ever repeats within a bucket, regardless of type — throttle-less repeats
                     // (e.g. HardStackDelOff/DelOff, which re-check every loop cycle with no readyToRun)
                     // would otherwise flood a bucket with duplicates of themselves, but any exact label
@@ -544,16 +565,20 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // original (scaledTextSize*0.5f, was 1.0f) hanging above it down to the triangle's
                     // base. Fixed position (noteArrowheadPy, graph4's top half) for every arrowhead — no
                     // vertical stacking of the arrowheads themselves (that's the separate, pre-existing
-                    // GENERAL_WITH_DURATION note-text stack above). Reuses that stack's own 25-min
-                    // bucketing purely to find which arrowhead corresponds to the FIRST (beginning) entry
-                    // of each of ITS stacks — only that one gets a time label (HHmm, e.g. "2228") at the
-                    // top of its shaft; every other arrowhead in the same bucket stays label-free. Not
-                    // tracking an actual BGL value, since graph4 isn't glucose-scaled.
+                    // GENERAL_WITH_DURATION note-text stack above). Same rolling-25-min-anchor concept as
+                    // that stack (see noteStackAnchor above) — a new window starts only when >=25 real
+                    // minutes have elapsed since the current window's own first arrowhead, NOT a fixed
+                    // epoch-aligned grid (which could split two arrowheads only a few minutes apart into
+                    // different windows whenever they straddled one of the grid's absolute boundaries —
+                    // the original bug: two notes 5 min apart both got their own time label). Only the
+                    // first arrowhead in each window gets a time label (HHmm, e.g. "2228") at the top of
+                    // its shaft; every other arrowhead in the same window stays label-free. Not tracking
+                    // an actual BGL value, since graph4 isn't glucose-scaled.
                     mPaint.strokeWidth = 0f
                     val arrowBucketMs = 25 * 60_000L
-                    val arrowBucket = value.x.toLong() / arrowBucketMs
-                    val isFirstInBucket = !noteArrowBucketSeen.contains(arrowBucket)
-                    noteArrowBucketSeen.add(arrowBucket)
+                    val arrowX = value.x.toLong()
+                    val isFirstInBucket = arrowStackAnchor == Long.MIN_VALUE || arrowX - arrowStackAnchor >= arrowBucketMs
+                    if (isFirstInBucket) arrowStackAnchor = arrowX
 
                     val noteSize = value.size * scaledPxSize * 1.2f
                     val shaftStart = noteArrowheadPy

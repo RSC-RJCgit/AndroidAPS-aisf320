@@ -339,18 +339,33 @@ class BolusWizard @Inject constructor(
         return this
     }
 
-    // Protein's/fat's projected future-split info (see WizardDialog's own live protein_fat_delay_info
-    // line — this is the same text, persisted into the calc-details snapshot below so it's still visible
-    // later from the Treatments list, not just while the wizard dialog itself is open). Deliberately built
-    // as a SEPARATE string appended only to the BolusCalculatorResult.note snapshot — this is a distinct,
-    // already-historical DB field shown read-only in WizardInfoDialog, not the live editable Notes box in
-    // WizardDialog (this@BolusWizard.notes itself is never touched).
+    // Manual carb-split's/protein's/fat's projected future-split info (see WizardDialog's own live
+    // protein_fat_delay_info line — this is the same text, persisted into the calc-details snapshot below
+    // so it's still visible later from the Treatments list, not just while the wizard dialog itself is
+    // open). Deliberately built as a SEPARATE string appended only to the BolusCalculatorResult.note
+    // snapshot — this is a distinct, already-historical DB field shown read-only in WizardInfoDialog, not
+    // the live editable Notes box in WizardDialog (this@BolusWizard.notes itself is never touched).
+    // Carb-split's own entry mirrors scheduleSplitProteinFatDoses()'s exact gating condition — evaluated
+    // here BEFORE that function runs (createBolusCalculatorResult() is always called first, see call
+    // sites), purely as a projection: it doesn't schedule anything itself, just reports whether the
+    // manual "Split bolus every" setting will actually fire for this dose and at what interval, which was
+    // previously missing from the calc note entirely (only protein/fat @2h/@3h were shown).
     private fun splitProjectionNote(): String {
-        if (insulinFromProteinOnly <= 0.0 && insulinFromFatOnly <= 0.0) return ""
-        val parts = listOfNotNull(
-            "Protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U @2h".takeIf { insulinFromProteinOnly > 0.0 },
-            "Fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U @3h".takeIf { insulinFromFatOnly > 0.0 }
-        )
+        val parts = mutableListOf<String>()
+        val schedulingPct = activeProfileSwitchPct()
+        val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
+        if (!splitBolusScheduled && !superBolusActive && manualSplitBolusEnabled &&
+            schedulingPct >= 100 && calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
+        ) {
+            val maxPart = constraintChecker.getMaxBolusAllowed().value()
+            if (ceil(calculatedTotalInsulin / maxPart).toInt() > 1) {
+                val residual = calculatedTotalInsulin - maxPart
+                parts.add("Carb split ${decimalFormatter.to2Decimal(residual)}U every ${manualSplitBolusIntervalMins}min")
+            }
+        }
+        if (insulinFromProteinOnly > 0.0) parts.add("Protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U @2h")
+        if (insulinFromFatOnly > 0.0) parts.add("Fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U @3h")
+        if (parts.isEmpty()) return ""
         return parts.joinToString(" and ") + " split, less IOB rise"
     }
 
