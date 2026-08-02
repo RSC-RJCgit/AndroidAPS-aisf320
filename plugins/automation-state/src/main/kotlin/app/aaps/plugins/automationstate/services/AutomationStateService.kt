@@ -35,7 +35,7 @@ class AutomationStateService @Inject constructor(
         }
     }
 
-   override fun inState(stateName: String, state: String): Boolean {
+    override fun inState(stateName: String, state: String): Boolean {
         if (automationStates.containsKey(stateName.trim())) {
             return automationStates[stateName.trim()] == state.trim()
         }
@@ -43,8 +43,8 @@ class AutomationStateService @Inject constructor(
     }
 
     override fun setState(stateName: String, state: String) {
-        val trimmedName = stateName.trim()
-        val trimmedState = state.trim()
+       val trimmedName = stateName.trim()
+       val trimmedState = state.trim()
 
         // Validate that the state value is in the allowed list
         require(stateValues.containsKey(trimmedName)) { "Invalid state name: $trimmedName" }
@@ -52,6 +52,7 @@ class AutomationStateService @Inject constructor(
 
         automationStates[trimmedName] = trimmedState
         preferences.put(AutomationStateStringKey.AutomationCurrentStates, Json.encodeToString(automationStates))
+        // Notify UI (States tab) — covers changes made by automations or Kotlin, not just manually
         rxBus.send(EventPreferenceChange(AutomationStateStringKey.AutomationCurrentStates.key))
     }
 

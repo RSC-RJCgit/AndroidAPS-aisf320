@@ -158,7 +158,7 @@ class AutomationStateValuesDialog : DaggerDialogFragment() {
                     automationStateService.setState(stateName, stateValue)
                     currentStateValue = stateValue
                     notifyDataSetChanged()
-                    rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))
+                    //rxBus.send(EventPreferenceChange(rh.gs(R.string.automation_state_values)))    // now done in setState above
                 } catch (e: Exception) {
                     ToastUtils.showToastInUiThread(context, e.message ?: "Error setting state")
                 }

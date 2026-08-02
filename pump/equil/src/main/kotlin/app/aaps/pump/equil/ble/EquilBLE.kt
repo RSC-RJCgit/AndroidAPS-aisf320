@@ -123,6 +123,11 @@ class EquilBLE @Inject constructor(
                     isConnected = true
                     equilManager.equilState?.bluetoothConnectionState = BluetoothConnectionState.CONNECTED
                     handler.removeMessages(TIME_OUT_CONNECT_WHAT)
+                    synchronized(notifyLock) {
+                        // New link: notifications not yet enabled. Block command dispatch until onDescriptorWrite.
+                        notificationEnabled = false
+                        pendingCmd = null
+                    }
                     bluetoothGatt?.discoverServices()
                     updateCmdStatus(ResolvedResult.FAILURE)
                     //                    rxBus.send(new EventPumpStatusChanged(EventPumpStatusChanged.Status.CONNECTED));
@@ -175,7 +180,14 @@ class EquilBLE @Inject constructor(
                 aapsLogger.debug(LTag.PUMPBTCOMM, "onDescriptorWrite received: $status")
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     aapsLogger.debug(LTag.PUMPBTCOMM, "onDescriptorWrite: Wrote GATT Descriptor successfully.")
-                    ready()
+                    synchronized(notifyLock) {
+                        notificationEnabled = true
+                        // Flush a command that writeCmd deferred while notifications were coming up.
+                        if (pendingCmd != null) {
+                            pendingCmd = null
+                            ready()
+                        }
+                    }
                 }
             }
         }
@@ -226,6 +238,7 @@ class EquilBLE @Inject constructor(
 
     fun disconnect() {
         isConnected = false
+        connecting = false
         startTrue = false
         autoScan = false
         equilManager?.equilState?.bluetoothConnectionState = BluetoothConnectionState.DISCONNECTED
@@ -235,13 +248,19 @@ class EquilBLE @Inject constructor(
         bluetoothGatt = null
         baseCmd = null
         preCmd = null
+        synchronized(notifyLock) {
+            notificationEnabled = false
+            pendingCmd = null
+        }
         rxBus.send(EventPumpStatusChanged(EventPumpStatusChanged.Status.DISCONNECTED))
     }
 
     fun closeBleAuto() {
-        handler.postDelayed({
-            disconnect()
-        }, EquilConst.EQUIL_BLE_NEXT_CMD)
+        // Tear down immediately. The AAPS command queue owns the connection lifecycle: after the last
+        // command it holds the link for waitForDisconnectionInSeconds() (5 s) for reuse and only then
+        // calls Pump.disconnect() -> here. No extra driver-side linger is needed, and an immediate
+        // teardown avoids the mid-command race that a deferred, cancellable timer would introduce.
+        disconnect()
     }
 
     var autoScan = true
@@ -264,6 +283,21 @@ class EquilBLE @Inject constructor(
 
     private var baseCmd: BaseCmd? = null
     private var preCmd: BaseCmd? = null
+
+    // Notification-readiness gate for the current GATT connection. Android allows only ONE outstanding
+    // GATT operation at a time. When the queue's connect() phase opens the link, `isConnected` flips
+    // true at onConnectionStateChange(CONNECTED) - BEFORE onServicesDiscovered runs openNotification()
+    // (the notify-descriptor write). If a command's writeCmd then writes its first characteristic packet
+    // in that window, it collides with the pending descriptor write: writeDescriptor() returns false
+    // (log: "openNotification: false"), notifications never enable, the pump's replies never arrive, and
+    // the command idle-times-out after ~9 s -> "Pump connection failure / manually check delivered
+    // insulin" (bolus, tempBasal, and profile/CmdSettingSet all hit this via different writeCmd branches).
+    // Fix: never send on a connected link until onDescriptorWrite confirms notifications are enabled;
+    // hold the command in `pendingCmd` and let onDescriptorWrite flush it. See #4910 (and its follow-up).
+    private val notifyLock = Any()
+    @Volatile private var notificationEnabled = false
+    private var pendingCmd: BaseCmd? = null
+
     fun writeCmd(baseCmd: BaseCmd) {
         aapsLogger.debug(LTag.PUMPCOMM, "writeCmd {}", baseCmd)
         this.baseCmd = baseCmd
@@ -273,13 +307,30 @@ class EquilBLE @Inject constructor(
             else -> equilManager?.equilState?.address ?: error("Unknown MAC address")
         }
         autoScan = baseCmd is CmdRunningModeGet || baseCmd is CmdInsulinGet
+        if (isConnected) {
+            synchronized(notifyLock) {
+                if (!notificationEnabled) {
+                    // Fresh link, notifications not enabled yet: defer ALL send paths (pair step,
+                    // continuation, or first command) so the characteristic write does not collide with
+                    // the openNotification() descriptor write. onDescriptorWrite flushes pendingCmd.
+                    pendingCmd = baseCmd
+                    preCmd = baseCmd
+                    return
+                }
+            }
+        }
         if (isConnected && baseCmd.isPairStep()) {
             ready()
         } else if (isConnected) {
-            preCmd?.let { preCmd ->
-                baseCmd.runCode = preCmd.runCode
-                baseCmd.runPwd = preCmd.runPwd
+            val prevCmd = preCmd
+            if (prevCmd != null) {
+                baseCmd.runCode = prevCmd.runCode
+                baseCmd.runPwd = prevCmd.runPwd
                 nextCmd2()
+            } else {
+                // GATT link opened by the queue's connect() phase, notifications already up: send this
+                // command as the first one on the open link (else the pump idle-disconnects, status 19).
+                ready()
             }
         } else {
             findEquil(mac)
@@ -297,6 +348,7 @@ class EquilBLE @Inject constructor(
             preCmd = baseCmd
         } else {
             aapsLogger.debug(LTag.PUMPCOMM, "readHistory error")
+            synchronized(baseCmd) { (baseCmd as Object).notifyAll() }
         }
     }
 
@@ -373,12 +425,14 @@ class EquilBLE @Inject constructor(
         aapsLogger.debug(LTag.PUMPBTCOMM, "startScan====$startTrue====$macAddress===")
         if (macAddress.isNullOrEmpty()) return
         if (startTrue) return
+        startTrue = true
+        connecting = true
+        equilManager?.equilState?.bluetoothConnectionState = BluetoothConnectionState.CONNECTING
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
             try {
                 val bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
                 if (bluetoothLeScanner != null) {
                     updateCmdStatus(ResolvedResult.NOT_FOUNT)
-                    connecting = true
                     bluetoothLeScanner.startScan(buildScanFilters(), buildScanSettings(), scanCallback)
                 }
             } catch (_: IllegalStateException) {
@@ -393,8 +447,8 @@ class EquilBLE @Inject constructor(
     }
 
     fun connect(from: String) {
-        aapsLogger.debug(LTag.PUMPCOMM, "connect====startTrue=$startTrue====isConnected=$isConnected from $from")
-        if (startTrue || isConnected) {
+        aapsLogger.debug(LTag.PUMPCOMM, "connect====connecting=$connecting====isConnected=$isConnected from $from")
+        if (connecting || isConnected) {
             return
         }
         autoScan = true
