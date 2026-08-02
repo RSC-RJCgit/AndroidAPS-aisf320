@@ -163,7 +163,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphLeft = graphView.graphContentLeft.toFloat()
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
-        val smbStack = HashMap<Long, Int>() // bucket (5-min) -> count of SMBs drawn
+        val smbStack = HashMap<Long, Int>() // stack id -> count of SMBs drawn at this height
+        // SMB stack grouping: same rolling-anchor concept as the note stacks below — a new stack starts
+        // only when >=10 real minutes have elapsed since the CURRENT stack's own first SMB, not a fixed
+        // epoch-aligned grid (timestamp/10min), which could split two SMBs only a few minutes apart into
+        // different buckets whenever they straddled one of the grid's absolute boundaries. Shared between
+        // Shape.SMB (main graph) and Shape.SMB_GRAPH2 (graph2 stacked labels) — both intentionally agree
+        // on the same stack id for the same SMB event, keeping the two renderings visually consistent.
+        var smbStackAnchor = Long.MIN_VALUE
+        var smbStackId = 0L
         // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
         // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
         // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
@@ -289,7 +297,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                 } else if (value.shape == Shape.SMB) {
-                    val bucket = (value.x / 600_000L).toLong()
+                    val smbBucketMs = 10 * 60_000L
+                    val smbX = value.x.toLong()
+                    if (smbStackAnchor == Long.MIN_VALUE || smbX - smbStackAnchor >= smbBucketMs) {
+                        smbStackAnchor = smbX
+                        smbStackId++
+                    }
+                    val bucket = smbStackId
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
                     smbStack[bucket] = stackIndex + 1
                     val size = value.size * scaledPxSize * 1.2f
@@ -480,7 +494,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
-                        val bucket2 = (value.x / 600_000L).toLong()
+                        val smbBucketMs2 = 10 * 60_000L
+                        val smbX2 = value.x.toLong()
+                        if (smbStackAnchor == Long.MIN_VALUE || smbX2 - smbStackAnchor >= smbBucketMs2) {
+                            smbStackAnchor = smbX2
+                            smbStackId++
+                        }
+                        val bucket2 = smbStackId
                         val stackIndex2 = smbStack.getOrDefault(bucket2, 0)
                         smbStack[bucket2] = stackIndex2 + 1
                         mPaint.strokeWidth = 0f
