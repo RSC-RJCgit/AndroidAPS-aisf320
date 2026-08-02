@@ -8,6 +8,8 @@ import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.profiling.Profiler
@@ -34,6 +36,8 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var automationStateService: AutomationStateInterface
     @Mock lateinit var tddCalculator: TddCalculator
+    @Mock lateinit var importExportPrefs: ImportExportPrefs
+    @Mock lateinit var exportPasswordDataStore: ExportPasswordDataStore
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
@@ -41,7 +45,8 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileUtil, config, activePlugin,
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, uiInteraction, determineBasalSMB, profiler,
-            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator), apsResultProvider, tddCalculator
+            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator), apsResultProvider, tddCalculator,
+            context, importExportPrefs, exportPasswordDataStore
         )
         openAPSAutoISFPlugin.automationStateService = automationStateService
     }
