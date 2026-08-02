@@ -231,7 +231,7 @@
     <string name="autoisf_tdd_factor">TDD Factor (max_iob/insulinReq)</string>
     <string name="autoisf_tdd_factor_summary">Scale max_iob and insulinReq by blended TDD ratio. When disabled, TDDfactor instead uses the fixed fallback value below.</string>
     <string name="autoisf_tdd_factor_fallback_title">TDD Factor fallback value</string>
-    <string name="autoisf_tdd_factor_fallback_summary">Default 1.0 (neutral). The fixed TDDfactor used whenever "TDD Factor" above is disabled — has no effect while that's enabled, since the live TDD ratio overrides it every cycle. Range 0.8–1.2, matching the live calculation\'s own clamp.</string>
+    <string name="autoisf_tdd_factor_fallback_summary">Default 1.0 (neutral). The fixed TDDfactor used whenever "TDD Factor" above is disabled — has no effect while that is enabled, since the live TDD ratio overrides it every cycle. Range 0.8–1.2, matching the live calculation\'s own clamp.</string>
     <string name="enableSMB_EvenOn_OddOff_always">Enable alternative activation of SMB depending on active target being even number</string>
     <string name="enableSMB_EvenOn_OddOff_always_summary">\nenabled ...\nif active target(mmol/L) has even decimal\nor active target(mg/dL) is even number\n\ndisabled otherwise</string>
     <string name="openapsama_iob_threshold_percent_summary" formatted="false">Percentage of maxIOB above which SMBs are disabled.\nDefault value: 100%\nWith 100% this feature is effectively disabled.</string>
