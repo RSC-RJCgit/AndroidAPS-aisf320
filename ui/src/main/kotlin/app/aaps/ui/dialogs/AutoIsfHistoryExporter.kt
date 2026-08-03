@@ -432,7 +432,7 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  COB onboard when HP predicted X") without having to reverse-engineer it out of the HP number. */
     fun cobStr(r: AIV): String = df1.format(historicalCob(r.timestamp))
 
-    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/5 — same
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/12 — same
      *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes from
      *  historicalCob(r.timestamp), the record's own COB at ITS timestamp (not today's live COB, which
      *  would be wrong for older rows). "--" if the raw-Libre-delta window doesn't have enough data at this
@@ -446,7 +446,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
         val cob = historicalCob(r.timestamp)
-        val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
+        val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
         return df1.format(hp)
     }
 }

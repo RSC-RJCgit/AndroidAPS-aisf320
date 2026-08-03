@@ -229,7 +229,7 @@ class PrepareBgDataWorker(
 
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
         // area — see Shape.HP_ROW_BOTTOM). HP = (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol]
-        // + COB/5. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
+        // + COB/12. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
         // LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion
         // is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in
         // mmol. Requires libreDelta5 non-null (falls back to "--" like the rest of this row when
@@ -244,7 +244,7 @@ class PrepareBgDataWorker(
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
+                val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
@@ -281,7 +281,7 @@ class PrepareBgDataWorker(
             if (latest != null && latestSteps != null) {
                 val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
                 // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] +
-                // COB/5. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5 from
+                // COB/12. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5 from
                 // libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion is fixed
                 // (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in
                 // mmol. Requires libreDelta5 non-null. Same formula as the hypoprediction= row on the main
@@ -292,7 +292,7 @@ class PrepareBgDataWorker(
                     val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
                     val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
+                    val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
                     String.format(Locale.getDefault(), "%.1f", hp)
                 } else "--")
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
