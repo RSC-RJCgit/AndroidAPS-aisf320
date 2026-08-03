@@ -511,6 +511,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .count { it.type == BS.Type.SMB }
     }
 
+    // Count of SMBs delivered in the last 20 minutes. Deliberately a much longer window than
+    // smbCount5Min() -- used by BolusGivenMildFailsafe to detect genuine delivery silence (sensor
+    // dropout, pod disconnect, etc.), not just the normal gap between doses that a 5-min window
+    // could mistake for suppression.
+    private fun smbCount20Min(): Int {
+        val now = dateUtil.now()
+        return persistenceLayer.getBolusesFromTimeToTime(now - 20 * 60_000L, now, ascending = false)
+            .count { it.type == BS.Type.SMB }
+    }
+
     // Total IOB (bolus + temp-basal) at a timestamp — matches the loop's IOB and the "IOB change"
     // trigger. Basal contribution is included deliberately.
     private fun totalIobAt(time: Long): Double {
@@ -2541,6 +2551,57 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
                 addCarePortalNote("BMild")
                 markRun("BolusGivenMild")
+            }
+        }
+
+        // --- BolusGivenMildFailsafe: safety-net sibling of BolusGivenMild for when SMBs simply haven't
+        // been delivering during a clearly-confirmed rise (sensor dropout, pod disconnect, etc.) -- not
+        // a delivery-ratio tuning scenario, a "the loop isn't acting at all" one. Requires ALL of Delta,
+        // SDelta, and AAPS's own longAvgDelta to independently confirm the rise (stricter than
+        // BolusGivenMild's own OR-based gate), near-zero IOB (nothing already in the pipe), and genuine
+        // SMB silence over a longer window (smbCount20Min() == 0, not the 5-min signal
+        // deliverySuppressedMild uses -- that shorter window can just be a normal gap between doses).
+        // Restricted to 09:00-21:00 (narrower than BolusGivenMild's own 8:30-22:00) and, like it, no
+        // separate enable toggle -- shares ApsAutoIsfBoostAutomationsEnabled with its siblings, since
+        // this should fire rarely and a dedicated switch would be one more thing to remember to turn on.
+        // Keeps the same recent-bolus/carb gate as regular BolusGivenMild.
+        if (profile_percentage == 100 && activeTtMgdl() == null
+            && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+            && isTimeBetween(9, 0, 21, 0)
+            && readyToRun("BolusGivenMildFailsafe", 10)) {
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val iobNow = totalIobAt(dateUtil.now())
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val fire = g > 117.0 /* 6.5 mmol */
+                && d >= 5.4 /* 0.3 mmol Delta */
+                && sd >= 5.4 /* 0.3 mmol SDelta */
+                && ld >= 3.6 /* 0.2 mmol longAvgDelta */
+                && iobNow <= 0.20
+                && smbCount20Min() == 0                  // genuine silence, not just a normal gap
+                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && readyToRun("BolusGivenBg3", 10)        // cross-cooldown, same as BolusGivenMild
+                && readyToRun("BolusGivenMild", 10)       // and with BolusGivenMild itself
+                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+            if (fire) {
+                val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+                val deliveryRatio = when {
+                    g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
+                    g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
+                    else                     -> mildBase
+                }
+                setSmbDeliveryRatio(deliveryRatio)
+                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)
+                if (g < 106.2 /* 5.9 mmol */) {
+                    preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
+                }
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                sendSms("BolusGivenMildFailsafe: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} IOB=${round(iobNow, 2)} (no SMB in 20min despite confirmed rise)")
+                addCarePortalNote("BMildFS")
+                markRun("BolusGivenMildFailsafe")
             }
         }
 
