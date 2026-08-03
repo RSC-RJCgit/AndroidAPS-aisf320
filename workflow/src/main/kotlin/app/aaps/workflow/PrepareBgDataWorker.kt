@@ -229,22 +229,22 @@ class PrepareBgDataWorker(
 
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
         // area — see Shape.HP_ROW_BOTTOM). HP = (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol]
-        // + COB/5 - Steps60/750 - Steps30/750. BGL/IOB/SDelta from the same latestAiv record (internally
-        // consistent timestamp); LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5=
-        // field); Steps30/60 from latestSteps (0 if unavailable — missing step data shouldn't blank the
-        // whole row the way missing LibreDelta5 does). mmol conversion is fixed (Constants.MGDL_TO_MMOLL),
-        // not display-unit-relative, since the formula is defined in mmol. Requires libreDelta5 non-null
-        // (falls back to "--" like the rest of this row when unavailable).
+        // + COB/5. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
+        // LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion
+        // is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in
+        // mmol. Requires libreDelta5 non-null (falls back to "--" like the rest of this row when
+        // unavailable). No steps term: AutoISF already cuts SMB size directly on high recent steps
+        // (DetermineBasalAutoISF.kt's "HIGH STEPS: SMB SIZE CHANGE" block) and on the multi-day AIV-export
+        // accuracy check, subtracting steps here just made HP chronically predict lower than reality
+        // without improving correlation — the low it anticipated had usually already been headed off by
+        // the reduced dosing, not merely delayed.
         data.overviewData.hpSeries =
             if (latest != null && latestAiv != null && libreDelta5 != null) {
                 val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                val steps30 = latestSteps?.steps30min ?: 0
-                val steps60 = latestSteps?.steps60min ?: 0
-                val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0 -
-                    steps60 / 750.0 - steps30 / 750.0
+                val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
@@ -281,20 +281,18 @@ class PrepareBgDataWorker(
             if (latest != null && latestSteps != null) {
                 val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
                 // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] +
-                // COB/5 - Steps60/750 - Steps30/750. BGL/IOB/SDelta from latestAiv (internally consistent
-                // timestamp); LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5=
-                // field); Steps30/60 from latestSteps (already non-null, guarded by this whole block's own
-                // `latestSteps != null` condition above). mmol conversion is fixed (Constants.MGDL_TO_MMOLL),
-                // not display-unit-relative, since the formula is defined in mmol. Requires libreDelta5
-                // non-null. Same formula as the hypoprediction= row on the main graph below — this is the
-                // graph1 copy, kept alongside it.
+                // COB/5. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5 from
+                // libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion is fixed
+                // (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in
+                // mmol. Requires libreDelta5 non-null. Same formula as the hypoprediction= row on the main
+                // graph below — this is the graph1 copy, kept alongside it. No steps term — see hpSeries
+                // above for why.
                 val hpTxt = "HP=" + (if (latestAiv != null && libreDelta5 != null) {
                     val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                     val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
                     val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0 -
-                        latestSteps.steps60min / 750.0 - latestSteps.steps30min / 750.0
+                    val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
                     String.format(Locale.getDefault(), "%.1f", hp)
                 } else "--")
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +

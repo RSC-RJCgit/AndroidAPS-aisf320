@@ -122,7 +122,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
             cobStr(r),
-            hpStr(r, rawReadings, sc, apsResults),
+            hpStr(r, rawReadings),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
@@ -432,22 +432,21 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  COB onboard when HP predicted X") without having to reverse-engineer it out of the HP number. */
     fun cobStr(r: AIV): String = df1.format(historicalCob(r.timestamp))
 
-    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/5 -
-     *  Steps60/750 - Steps30/750 — same formula as the graph rows (PrepareBgDataWorker.kt), but
-     *  historically accurate here: COB comes from historicalCob(r.timestamp), the record's own COB at ITS
-     *  timestamp (not today's live COB, which would be wrong for older rows); Steps30/60 come from
-     *  stepsValue(sc, ...) — same nearest-record-or-reason-text lookup already used for this row's own
-     *  S30/S60 columns (0 if unavailable, rather than blanking the whole row). "--" if the raw-Libre-delta
-     *  window doesn't have enough data at this row's timestamp. `rawReadings` must be newest-first. */
-    fun hpStr(r: AIV, rawReadings: List<GV>, sc: SC?, apsResults: List<APSResult>): String {
+    /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/5 — same
+     *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes from
+     *  historicalCob(r.timestamp), the record's own COB at ITS timestamp (not today's live COB, which
+     *  would be wrong for older rows). "--" if the raw-Libre-delta window doesn't have enough data at this
+     *  row's timestamp. `rawReadings` must be newest-first. No steps term: a multi-day accuracy check
+     *  (COB/no-COB x falling/rising, episode-clustered across ~10 days) showed subtracting Steps60/750 +
+     *  Steps30/750 didn't improve correlation and made HP chronically predict lower than reality — AutoISF
+     *  already cuts SMB size directly on high recent steps, so the low this term anticipated had usually
+     *  already been headed off by the reduced dosing. */
+    fun hpStr(r: AIV, rawReadings: List<GV>): String {
         val libreDelta5Mmol = rawDelta5Mmol(r.timestamp, rawReadings) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
         val cob = historicalCob(r.timestamp)
-        val steps30 = stepsValue(sc, r.timestamp, apsResults, 30) ?: 0
-        val steps60 = stepsValue(sc, r.timestamp, apsResults, 60) ?: 0
-        val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0 -
-            steps60 / 750.0 - steps30 / 750.0
+        val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 5.0
         return df1.format(hp)
     }
 }
