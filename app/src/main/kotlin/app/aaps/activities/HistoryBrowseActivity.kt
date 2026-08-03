@@ -8,6 +8,7 @@ import android.widget.RelativeLayout
 import android.widget.TextView
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.GraphViewWithCleanup
+import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -331,11 +332,16 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
-        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal]) {
+        // Line1: checkbox is a master gate; carbLine1QuickShow is set directly by the relevant long-press
+        // ACTIONS (basal icon push0/1/2, IOB icon press) -- see OverviewFragment.kt's matching comment
+        // for the full reasoning.
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
             graphData.addCarbAbsorption(0.8)
-            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
-                graphData.addCarbModelCurve(0.8)
-        }
+        // Line2 (carb model curve) is intentionally independent of line1's own checkbox/toggle state --
+        // controlled purely by its own settings switch, never affected by the CARB_ABS checkbox above or
+        // any basal-icon long-press effect on line1.
+        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+            graphData.addCarbModelCurve(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(false, 1.0)
         if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])

@@ -400,13 +400,6 @@ class OverviewMenusImpl @Inject constructor(
         storeGraphConfig()
     }
 
-    // Quick flip-flop toggle (not a one-way disable) -- meant for a fast gesture shortcut (long-press
-    // on the basal icon) rather than the chart-menu checkbox, so it can be turned back on the same way.
-    override fun toggleCarbAbsorption() {
-        _setting[0][OverviewMenus.CharType.CARB_ABS.ordinal] = !_setting[0][OverviewMenus.CharType.CARB_ABS.ordinal]
-        storeGraphConfig()
-    }
-
     override fun isEnabledIn(type: OverviewMenus.CharType): Int {
         val settingsCopy = setting
         val numOfGraphs = settingsCopy.size // 1 main + x secondary

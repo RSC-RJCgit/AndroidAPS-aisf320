@@ -965,6 +965,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // line) regardless of which direction showSmbLabels just went — a "reset to normal" for
                 // the other display settings, independent of the SMB-label state.
                 PointsWithLabelGraphSeries.basalToggleIndex = 0
+                // A direct IOB-icon long-press forces line1 (Carbs Absorption) ON, grouped with
+                // push1/push2's behavior on the basal icon -- this is deliberate despite this same press
+                // ALSO resetting basalToggleIndex to 0 above: that reset is this action's own unrelated
+                // side effect, not a push0 press, so it must not turn line1 off (see carbLine1QuickShow's
+                // doc comment).
+                PointsWithLabelGraphSeries.carbLine1QuickShow = true
                 // Re-decide the green-line annotation's top/under-target position from the current BGL,
                 // right now — this is the only place that decision gets refreshed (see
                 // refreshAnnotationPosition() doc comment); draw() no longer recomputes it every redraw.
@@ -1087,10 +1093,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // Cycles 3 presets: 0=arrowheads on/normal colors/transparent noisy line,
                 // 1=arrowheads off/normal colors/opaque noisy line, 2=arrowheads off/uniform green/opaque noisy line.
                 PointsWithLabelGraphSeries.basalToggleIndex += 1
-                // Quick flip-flop shortcut for Carbs Absorption -- same gesture, independent of the
-                // arrowhead cycle above. toggleCarbAbsorption() flips it back and forth each press, so
-                // this is a fast temporary hide/show, not a one-way disable (use the chart menu for that).
-                overviewMenus.toggleCarbAbsorption()
+                // Line1 (Carbs Absorption) quick show/hide: this is a direct push0/1/2 ACTION (this
+                // specific long-press just landed on this value), not a passive read of the counter's
+                // current state -- see carbLine1QuickShow's own doc comment for why that distinction
+                // matters (the IOB icon's long-press also resets basalToggleIndex to 0, but must NOT be
+                // treated as a push0 press for this purpose).
+                PointsWithLabelGraphSeries.carbLine1QuickShow = PointsWithLabelGraphSeries.basalToggleIndex != 0
                 rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
                 true
             }
@@ -1350,11 +1358,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
-        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal]) {
+        // Line1 (empirical Carbs Absorption): checkbox is a master gate (off => always off, regardless
+        // of push state). carbLine1QuickShow is set directly by the relevant long-press ACTIONS (basal
+        // icon push0/push1/push2, IOB icon press) -- not derived by passively reading basalToggleIndex,
+        // since that would wrongly react to the IOB icon's own incidental reset of that counter.
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
             graphData.addCarbAbsorption(0.8)
-            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
-                graphData.addCarbModelCurve(0.8)
-        }
+        // Line2 (carb model curve) is intentionally independent of line1's own checkbox/toggle state --
+        // controlled purely by its own settings switch, never affected by the CARB_ABS checkbox above or
+        // any basal-icon/IOB-icon long-press effect on line1.
+        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+            graphData.addCarbModelCurve(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))

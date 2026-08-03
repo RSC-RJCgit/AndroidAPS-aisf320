@@ -40,6 +40,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         var basalToggleIndex: Int = 0
             set(value) { field = ((value % 3) + 3) % 3 }
 
+        // Line1 (Carbs Absorption) quick show/hide, driven by direct long-press ACTIONS, not by passively
+        // reading basalToggleIndex's current value (that would wrongly react to the IOB long-press's own
+        // incidental reset of that counter to 0). Set explicitly by each relevant long-press handler:
+        // basal icon landing on push0 -> false; basal icon landing on push1/push2 -> true; IOB icon press
+        // -> true (its own reset of basalToggleIndex is a side effect of a DIFFERENT action, not a direct
+        // push0 press, so it must NOT turn this off). Still gated by the CARB_ABS checkbox itself as a
+        // master on/off at the call site -- this flag only matters when that checkbox is already on.
+        var carbLine1QuickShow: Boolean = true
+
         // Shape.SMB's "arrowhead just below the relevant BGL point" and Shape.BOLUS's arrowhead are NOT
         // affected by this — Shape.BOLUS (meal bolus arrows) always draws regardless, and the SMB
         // baseline triangle at the bottom of the graph always draws regardless too.

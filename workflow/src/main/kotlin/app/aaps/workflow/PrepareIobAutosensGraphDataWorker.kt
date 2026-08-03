@@ -178,19 +178,24 @@ class PrepareIobAutosensGraphDataWorker(
         // absorption model. Peak-time and tail-decay-speed aren't independently tunable in this model
         // (a fixed peak forces a fixed tail shape), so this uses the kgri=kabs simplification: an exact
         // Gamma(2) closed form, Ra(tau) = carbs * f * k^2 * tau * e^(-k*tau), tau = minutes since that
-        // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. "240min tail" is a truncation cutoff (stop
-        // summing a meal's contribution beyond that age), not a strict decay target this model can hit
-        // simultaneously with a 90min peak. f=0.9 standard bioavailability. Entirely independent of the
-        // empirical carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a
-        // measurement. Dashed styling (built below) visually marks it as a model, not data.
+        // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. No hard cutoff -- the tail decays purely
+        // mathematically (by ~10h out it's already negligible), and overlapping meals superpose
+        // naturally since every qualifying carb entry's contribution is summed at each point. The
+        // 12-hour lookback below is just a query bound (decay is already negligible well before that),
+        // not a truncation of the curve itself. f=0.9 standard bioavailability. Entirely independent of
+        // the empirical carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a
+        // measurement. Dashed styling (built below) visually marks it as a model, not data. Computed for
+        // the WHOLE display window including future timestamps (unlike carbAbsArrayHist, which can't
+        // know unobserved future deviations) -- this curve only needs already-known carb entries and
+        // elapsed time, both computable for any timestamp, so it isn't restricted to time <= now.
         val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
         val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbModelValue = 0.0
         val carbModelK = 1.0 / 90.0
         val carbModelF = 0.9
-        val carbModelTruncateMs = T.mins(240).msecs()
+        val carbModelQueryLookbackMs = T.hours(12).msecs()
         val recentCarbs: List<CA> = if (showCarbModel)
-            persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - carbModelTruncateMs, endTime, ascending = true)
+            persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - carbModelQueryLookbackMs, endTime, ascending = true)
         else emptyList()
 
         val bgiArrayHist: MutableList<ScaledDataPoint> = ArrayList()
@@ -292,12 +297,15 @@ class PrepareIobAutosensGraphDataWorker(
             rawActPoints.add(iob.activity)
             data.overviewData.maxIAValue = max(data.overviewData.maxIAValue, abs(iob.activity))
 
-            // CARB MODEL CURVE (optional, history only -- see setup comment above)
-            if (showCarbModel && time <= now) {
+            // CARB MODEL CURVE (optional -- see setup comment above). Computed across the whole display
+            // window, past AND future -- no time <= now restriction, unlike carbAbsArrayHist, since this
+            // is a pure calculation from already-known carb entries, not something needing unobserved
+            // future deviations.
+            if (showCarbModel) {
                 var raPer5Min = 0.0
                 for (carbEntry in recentCarbs) {
                     val tauMin = (time - carbEntry.timestamp) / 60_000.0
-                    if (tauMin > 0.0 && tauMin <= 240.0) {
+                    if (tauMin > 0.0) {
                         raPer5Min += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
                     }
                 }
