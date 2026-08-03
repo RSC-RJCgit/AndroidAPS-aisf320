@@ -30,5 +30,10 @@ enum class LongKey(
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.
     ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0, defaultedBySM = true),
+    // Internal-only: timestamp (ms) when the current SMB anti-stacking window started (see the
+    // smbInt5Sec <=70s trim in DetermineBasalAutoISF.kt) — 0 means no active stack. Reset to 0 the
+    // instant stacking stops (avg gap rises above 70s), so a later rapid-fire sequence always starts a
+    // genuinely fresh window rather than inheriting a stale timer from an already-ended stack.
+    ApsAutoIsfSmbStackStart("autoisf_smb_stack_start_ts", 0, defaultedBySM = true),
 
 }

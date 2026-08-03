@@ -919,12 +919,20 @@ class BolusWizard @Inject constructor(
     // given, plus that dose's own amount" (i.e. IOB right AFTER the previous dose joined the pool). At
     // delivery time, iobIncrease = max(0, liveIob - iobBaselineForNextGap) — only a genuine rise counts;
     // if IOB net fell during the gap (decay outpacing anything new), the dose stays at previousPartDose,
-    // never gets boosted. thisDose = previousPartDose - iobIncrease; if that's <=0, the whole remaining
-    // residual is dropped (not just this one part skipped) — matching the old "nil tier" in spirit, now
-    // driven by IOB rather than elapsed time.
+    // never gets boosted. thisDose = previousPartDose - iobIncrease; if that's <=0, this interval is
+    // skipped and retried at the next one (IOB may have risen only temporarily, e.g. from an SMB, and
+    // decayed back down by then) rather than dropping the whole remaining residual outright.
+    //
+    // retryDeadline bounds ALL soft-retry paths (missing data, IOB-rose skip) to 60 minutes from the
+    // FIRST call (computed once, threaded unchanged through every recursive call) — past that, a stale
+    // bolus intent gets abandoned for good rather than firing hours later into a very different
+    // situation. The hard-stop conditions above (explicit cancel, superseded, profile switch, pump
+    // unavailable, superbolus, and a genuinely unsafe BG reading) are NOT subject to this deadline —
+    // those end the schedule immediately, same as before.
     private fun scheduleReducedPartsSplitBolus(
         remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
-        deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs()
+        deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
+        retryDeadline: Long = dateUtil.now() + T.mins(60).msecs()
     ) {
         if (remainingResidual <= 0) return
         val pollMs = T.mins(2).msecs()
@@ -958,15 +966,30 @@ class BolusWizard @Inject constructor(
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
-                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, deliverAt)
+                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, deliverAt, retryDeadline)
+                return@postDelayed
+            }
+            if (dateUtil.now() > retryDeadline) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (60min) exhausted — cancelling remaining ${remainingResidual}U")
+                cancelDoseNote(remainingResidual, "retry timeout exceeded")
                 return@postDelayed
             }
             // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
-            // wizard's own glucoseStatus field (that was only ever captured once, at calc time).
+            // wizard's own glucoseStatus field (that was only ever captured once, at calc time). Split
+            // into two cases: missing/stale data (gs == null, e.g. a sensor gap >7min — see
+            // GlucoseStatusCalculatorAutoIsf's allowOldData cutoff) is a DATA problem, not a safety
+            // veto — retry shortly rather than losing the residual to a transient gap. An actual unsafe
+            // reading (BG low or falling) stays a hard, permanent cancel: retrying to deliver more
+            // insulin while already low/falling would be actively dangerous, unlike the no-data case.
             val gs = glucoseStatusProvider.glucoseStatusData
-            val bgOk = gs != null && gs.glucose >= 126.1 /* 7.0 mmol */ && gs.delta > -0.90 /* -0.05 mmol */ && gs.shortAvgDelta > -0.90 /* -0.05 mmol */
-            if (!bgOk) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta}) — cancelling remaining ${remainingResidual}U")
+            if (gs == null) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: no fresh glucose data — retrying in 2min, remaining ${remainingResidual}U")
+                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(2).msecs(), retryDeadline)
+                return@postDelayed
+            }
+            val bgUnsafe = gs.glucose < 126.1 /* 7.0 mmol */ || gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */
+            if (bgUnsafe) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: BG unsafe (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "BG safety check failed")
                 return@postDelayed
             }
@@ -974,9 +997,8 @@ class BolusWizard @Inject constructor(
             val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
             val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, stopping remaining ${remainingResidual}U")
-                insertZeroDoseTreatment("Reduced split bolus part", iobIncrease)
-                cancelDoseNote(remainingResidual, "IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
+                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
@@ -996,7 +1018,7 @@ class BolusWizard @Inject constructor(
                         else {
                             val newResidual = remainingResidual - thisDose
                             if (newResidual > 0.0)
-                                scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken)
+                                scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                         }
                     }
                 })

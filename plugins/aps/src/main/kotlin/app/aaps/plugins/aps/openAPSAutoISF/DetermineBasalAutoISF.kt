@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.text.DecimalFormat
 import java.time.Instant
@@ -1202,10 +1203,33 @@ class DetermineBasalAutoISF @Inject constructor(
                 // microBolus under ThresholForFastRise so only the 0.9 bites; but if it's still above the
                 // threshold ("still high") the fast-rise multiplier also fires — so the extra shrink only
                 // compounds when still high. Default smbInt5Sec (9999) = no stacking → no-op.
+                //
+                // The trim itself resets every 10 minutes, tracked from the CURRENT stack's own start
+                // (ApsAutoIsfSmbStackStart), not fixed clock times -- same elapsed-time-since-started
+                // pattern as the rest of this file's readyToRun()-style throttles. Previously this was a
+                // continuously-sliding 5-min lookback with no concept of "stack age" at all: it just kept
+                // re-applying x0.9 every cycle for as long as recent SMBs stayed <=70s apart, with no
+                // reset point, so a sustained rapid-fire sequence stayed trimmed indefinitely.
                 if (smbInt5Sec <= 70.0 && microBolus > 0.0) {
-                    microBolus *= 0.9
-                    consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x0.9 = ${microBolus} ")
-                    rT.reason.append("SMB stacking <=70s: microBolus x0.9 = ${microBolus} ")
+                    val stackStart = preferences.get(LongKey.ApsAutoIsfSmbStackStart)
+                    val nowMs = System.currentTimeMillis()
+                    if (stackStart == 0L || nowMs - stackStart >= 10 * 60 * 1000L) {
+                        // No active stack, or the previous stack's 10min window has elapsed -- start a
+                        // fresh one and let this SMB through at full size; the trim resumes on the next
+                        // stacking cycle within this new window.
+                        preferences.put(LongKey.ApsAutoIsfSmbStackStart, nowMs)
+                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> new 10min stack window started, full size this cycle ")
+                        rT.reason.append("SMB stacking <=70s: new 10min stack window, full size ")
+                    } else {
+                        microBolus *= 0.9
+                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x0.9 = ${microBolus} (stack age ${(nowMs - stackStart) / 60000}min) ")
+                        rT.reason.append("SMB stacking <=70s: microBolus x0.9 = ${microBolus} ")
+                    }
+                } else if (preferences.get(LongKey.ApsAutoIsfSmbStackStart) != 0L) {
+                    // Stacking has genuinely stopped (avg gap back above 70s) -- clear the marker so a
+                    // later rapid-fire sequence starts a brand new stack instead of inheriting whatever
+                    // was left of the old window.
+                    preferences.put(LongKey.ApsAutoIsfSmbStackStart, 0L)
                 }
 
                 // Snapshot the full (uncapped) SMB. When the profile is boosted (>100%) all the fast-rise
