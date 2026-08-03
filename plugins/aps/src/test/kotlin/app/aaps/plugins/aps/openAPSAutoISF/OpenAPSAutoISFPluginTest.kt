@@ -83,18 +83,21 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
         whenever(preferences.get(IntKey.ActivityMonitorIdleEnd)).thenReturn(6)
         whenever(preferences.get(BooleanKey.ApsActivityDetection)).thenReturn(false)
 
-        assertThat(openAPSAutoISFPlugin.activityMonitor(true, 80.0, 90.0, 2)).isEqualTo(1.0) // not selected in preferences
+        assertThat(openAPSAutoISFPlugin.activityMonitor(true, 80.0, 90.0, 2, 0.0)).isEqualTo(1.0) // not selected in preferences
 
         whenever(preferences.get(BooleanKey.ApsActivityDetection)).thenReturn(true)
-        assertThat(openAPSAutoISFPlugin.activityMonitor(true, 80.0, 90.0, 2)).isEqualTo(1.0) // Temp Target
-        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 80.0, 90.0, 2)).isEqualTo(1.0) // bg < target
-        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2)).isEqualTo(1.0) // bg > target
+        assertThat(openAPSAutoISFPlugin.activityMonitor(true, 80.0, 90.0, 2, 0.0)).isEqualTo(1.0) // Temp Target
+        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 80.0, 90.0, 2, 0.0)).isEqualTo(1.0) // bg < target
+        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2, 0.0)).isEqualTo(1.0) // bg > target
         //whenever(PhoneMovementDetector.phoneMoved()).thenReturn(true)
-        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2)).isEqualTo(1.0) // sleeping hours
+        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2, 0.0)).isEqualTo(1.0) // sleeping hours
         whenever(preferences.get(IntKey.ActivityMonitorIdleStart)).thenReturn(3)
-        // assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2)).isEqualTo(1.3) // inactivity; disable phoneMoved first for this to work !!
+        // inactivity detection no longer requires phoneMoved (gate split) -- reaches this branch on step count alone
+        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2, 0.0)).isEqualTo(1.3) // inactivity
+        // SDelta below the guard threshold suppresses the inactivity boost even though steps still qualify
+        assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2, -1.0)).isEqualTo(1.0) // inactivity suppressed: BG already falling
         //whenever(StepService.getRecentStepCount5Min()).thenReturn(500)
-        // assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2)).isEqualTo(0.85) // activity
+        // assertThat(openAPSAutoISFPlugin.activityMonitor(false, 99.0, 90.0, 2, 0.0)).isEqualTo(0.85) // activity; still needs phoneMoved mocked true
     }
 
     @Test

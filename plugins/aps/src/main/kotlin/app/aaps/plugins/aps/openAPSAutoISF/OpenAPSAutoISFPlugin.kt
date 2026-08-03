@@ -849,7 +849,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleLog.clear()
         val calendar = Calendar.getInstance()
         val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
-        val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour)
+        val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
         val activityLog = if (consoleLog.size == 0) "Activity Monitor skipped" else consoleLog[0]
         consoleLog.clear()
         var stepActivityDetected = false
@@ -3763,7 +3763,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
-    fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int): Double {
+    fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int, sDelta: Double): Double {
         if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
             val nowMillis = System.currentTimeMillis()
             val stepsCount = SC(
@@ -3805,8 +3805,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleLog.add("Activity monitor disabled in settings")
         } else if (isTempTarget) {
             consoleLog.add("Activity monitor disabled: tempTarget")
-        } else if (!phoneMoved) {
-            consoleLog.add("Activity monitor disabled: Phone seems not to be carried for the last 15m")
         } else {
             if (time_since_start < 60 && recentSteps60Minutes <= 200) {
                 consoleLog.add("Activity monitor initialising for ${60 - time_since_start} more minutes: inactivity detection disabled")
@@ -3817,20 +3815,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes <= 200 && ignore_inactivity_overnight && !existSleepState
             ) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping hours")
-            } else if (recentSteps5Minutes > 300 || recentSteps10Minutes > 300 || recentSteps15Minutes > 300 || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500) {
+            // phoneMoved only gates ACTIVITY detection below: stale/absent motion data could hide real
+            // movement happening elsewhere, so a high step count without phone motion is left unapplied
+            // (falls through to neutral/inactivity checks). It does NOT gate inactivity detection --
+            // a stationary phone doesn't invalidate a low step count, if anything it corroborates it.
+            } else if (phoneMoved && (recentSteps5Minutes > 300 || recentSteps10Minutes > 300 || recentSteps15Minutes > 300 || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500)) {
                 activityRatio = 1 - 0.3 * activity_scale_factor
                 consoleLog.add("Activity monitor detected activity, sensitivity ratio: $activityRatio")
-            } else if (recentSteps5Minutes > 200 || recentSteps10Minutes > 200 || recentSteps15Minutes > 200
-                || recentSteps30Minutes > 500 || recentSteps60Minutes > 800
+            } else if (phoneMoved && (recentSteps5Minutes > 200 || recentSteps10Minutes > 200 || recentSteps15Minutes > 200
+                || recentSteps30Minutes > 500 || recentSteps60Minutes > 800)
             ) {
                 activityRatio = 1 - 0.15 * activity_scale_factor
                 consoleLog.add("Activity monitor detected partial activity, sensitivity ratio: $activityRatio")
             } else if (bg < target_bg && recentSteps60Minutes <= 200) {
                 consoleLog.add("Activity monitor disabled inactivity detection: bg < target")
-            } else if (recentSteps60Minutes < 50) {
+            // Inactivity boost only applies while BG isn't already falling on its own (SDelta not
+            // negative) -- avoids stacking extra insulin on top of an already-adequate downward trend;
+            // it still engages once BG stalls or starts climbing, which is when it's actually needed.
+            } else if (recentSteps60Minutes < 50 && sDelta >= -0.02 * 18) {
                 activityRatio = 1 + 0.2 * inactivity_scale_factor
                 consoleLog.add("Activity monitor detected inactivity, sensitivity ratio: $activityRatio")
-            } else if (recentSteps60Minutes <= 200) {
+            } else if (recentSteps60Minutes <= 200 && sDelta >= -0.02 * 18) {
                 activityRatio = 1 + 0.1 * inactivity_scale_factor
                 consoleLog.add("Activity monitor detected partial inactivity, sensitivity ratio: $activityRatio")
             } else {
