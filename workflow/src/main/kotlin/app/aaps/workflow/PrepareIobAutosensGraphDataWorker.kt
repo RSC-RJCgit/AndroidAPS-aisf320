@@ -160,6 +160,13 @@ class PrepareIobAutosensGraphDataWorker(
         // only (no prediction segment, unlike activity) -- a thin, solid orange line on graph0.
         val carbAbsArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbAbsorptionValue = 0.0
+        // Simple single-pole exponential smoother (same style as the LibreSpecial fsl_exp1 smoother
+        // elsewhere in this codebase, alpha matched to that mechanism's own range floor of 0.1 for
+        // heavier smoothing) -- this5MinAbsorption is a raw per-bucket rate and jumps around a lot
+        // bucket-to-bucket, unlike a level (COB). null until the first real sample seeds it, so the
+        // smoother doesn't start biased toward 0.
+        val carbAbsAlpha = 0.1
+        var carbAbsEma: Double? = null
 
         val bgiArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         val bgiArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
@@ -220,10 +227,15 @@ class PrepareIobAutosensGraphDataWorker(
                 if (autosensData.failOverToMinAbsorptionRate) {
                     minFailOverActiveList.add(AutosensDataPoint(autosensData, data.overviewData.cobScale, time, rh))
                 }
-                // CARBS ABSORPTION (rate, g/5min) -- history only, same split point as activity
+                // CARBS ABSORPTION (rate, g/5min) -- history only, same split point as activity.
+                // Exponentially smoothed (see carbAbsAlpha/carbAbsEma above) -- the raw per-bucket rate
+                // is too jagged to read at a glance.
                 if (time <= now) {
-                    carbAbsArrayHist.add(ScaledDataPoint(time, autosensData.this5MinAbsorption, data.overviewData.carbAbsorptionScale))
-                    data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(autosensData.this5MinAbsorption))
+                    val rawAbs = autosensData.this5MinAbsorption
+                    carbAbsEma = carbAbsEma?.let { it + carbAbsAlpha * (rawAbs - it) } ?: rawAbs
+                    val smoothedAbs = carbAbsEma!!
+                    carbAbsArrayHist.add(ScaledDataPoint(time, smoothedAbs, data.overviewData.carbAbsorptionScale))
+                    data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(smoothedAbs))
                 }
                 // BGI
                 val devBgiScale = overviewMenus.isEnabledIn(OverviewMenus.CharType.DEV) == overviewMenus.isEnabledIn(OverviewMenus.CharType.BGI)
@@ -492,12 +504,12 @@ class PrepareIobAutosensGraphDataWorker(
             data.overviewData.bgParabolaSeries = FixedLineGraphSeries(Array(bgParabolaArrayHist.size) { i -> bgParabolaArrayHist[i] }).also {
                 it.isDrawBackground = false
                 it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.bgParabolaColor)
-                it.thickness = 8
+                it.thickness = 14
             }
             data.overviewData.bgParabolaPredictionSeries = FixedLineGraphSeries(Array(bgParabolaArrayPrediction.size) { i -> bgParabolaArrayPrediction[i] }).also {
                 it.setCustomPaint(Paint().also { paint ->
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 8f
+                    paint.strokeWidth = 14f
                     paint.pathEffect = DashPathEffect(floatArrayOf(6f, 6f), 0f)
                     paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.bgParabolaColor)
                 })
