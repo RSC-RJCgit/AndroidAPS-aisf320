@@ -16,6 +16,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
+import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -83,6 +84,7 @@ class BolusWizard @Inject constructor(
     private val config: Config,
     private val uel: UserEntryLogger,
     private val automation: Automation,
+    private val automationStateService: AutomationStateInterface,
     private val glucoseStatusProvider: GlucoseStatusProvider,
     private val uiInteraction: UiInteraction,
     private val persistenceLayer: PersistenceLayer,
@@ -281,6 +283,19 @@ class BolusWizard @Inject constructor(
         // fat), independent of the immediate bolus and of the carb-split schedule below.
         ic = profile.getIc() * baseScale
         insulinFromCarbsOnly = carbs / ic
+        // Recent50 mechanism: halve ONLY the carbs-driven portion (not protein/fat, correction, BG,
+        // trend, or COB) when either the "LowBG"="50recent" automation state is set, or BG is under
+        // 5.0mmol and not rising (delta <= 0) -- same 50%-then-delayed-check philosophy as the existing
+        // active-profile-at-50% path below, but triggered independently of the profile itself. Guarded
+        // on activeProfileSwitchPct() != 50 so this can never stack with that other path (which already
+        // halves things via a doubled IC) -- without the guard, both conditions being true at once would
+        // silently quarter the dose instead of halving it.
+        if ((automationStateService.inState("LowBG", "50recent") ||
+                (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0)) &&
+            activeProfileSwitchPct() != 50
+        ) {
+            insulinFromCarbsOnly /= 2.0
+        }
         insulinFromProteinOnly = (protein / 25.0) / ic
         insulinFromFatOnly = (fat / 11.0) / ic
         insulinFromCarbs = insulinFromCarbsOnly
@@ -656,11 +671,14 @@ class BolusWizard @Inject constructor(
                                         automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                                     }
                                     // Schedule the DELAYED BOLUS (not the equal-parts split bolus) when enabled and
-                                    // profile is 50%. The SMB preference is deliberately NOT a gate (that was the
-                                    // original spec's error): instead SMBs are actively blocked below for the
-                                    // delayed-check window, so the delayed dose and SMBs can never double-dose.
-                                    // Also scheduled when the immediate dose is 0 but carbs were entered
-                                    // (e.g. IOB swallowed the 50% dose).
+                                    // EITHER profile is 50%, OR the recent50 trigger fired above (LowBG=50recent
+                                    // state, or BG<5.0mmol and not rising) -- re-checked live here rather than
+                                    // carried via a stored flag, same as delayedProfilePct itself is re-derived
+                                    // live rather than remembered from the calc step above. The SMB preference is
+                                    // deliberately NOT a gate (that was the original spec's error): instead SMBs
+                                    // are actively blocked below for the delayed-check window, so the delayed
+                                    // dose and SMBs can never double-dose. Also scheduled when the immediate dose
+                                    // is 0 but carbs were entered (e.g. IOB swallowed the 50% dose).
                                     // Must use activeProfileSwitchPct(), not profile?.percentage directly:
                                     // when the active profile is a ProfileSealed.EPS, .percentage is always
                                     // 100 (baked into the rates) — see activeProfileSwitchPct()'s own comment
@@ -669,12 +687,18 @@ class BolusWizard @Inject constructor(
                                     // because of exactly this — the adjacent EqualSplitBolus log line in the
                                     // same callback correctly read profilePct=50/type=EPS at the same instant).
                                     val delayedProfilePct = activeProfileSwitchPct()
+                                    val recent50Triggered = delayedProfilePct != 50 &&
+                                        (automationStateService.inState("LowBG", "50recent") ||
+                                            (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0))
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-                                        delayedProfilePct == 50
+                                        (delayedProfilePct == 50 || recent50Triggered)
                                     ) {
-                                        // FullRequired uses normal IC (= 2× the 50%-profile IC) and includes IOB correction
-                                        val normalIc = ic / 2.0
+                                        // FullRequired uses normal IC. On the profile-50% path, ic itself is
+                                        // already halved by the profile switch, so normal IC = 2x ic. On the
+                                        // recent50Triggered path, ic was never touched (only insulinFromCarbsOnly
+                                        // was manually halved above), so ic is already the normal one.
+                                        val normalIc = if (delayedProfilePct == 50) ic / 2.0 else ic
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
                                         // Block SMBs for the whole delayed-check window (8 × 10 min + margin).
                                         // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
@@ -682,7 +706,8 @@ class BolusWizard @Inject constructor(
                                         // if this were shorter, SMBs would resume mid-window while the delayed
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
-                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — profile=${delayedProfilePct}% dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
+                                        val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else "recent50Triggered"
+                                        aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                         // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)
                                         // NoteTimestampAllocator.next() — see its own doc comment: guards against

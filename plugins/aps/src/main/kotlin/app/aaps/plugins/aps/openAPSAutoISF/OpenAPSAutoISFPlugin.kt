@@ -3325,7 +3325,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 3.6 /* 0.2 mmol */
                 && mealData.mealCOB >= 16.0
                 && iobData.iob <= 4.0
-                && g >= 90.1 /* 5.0 mmol */) {
+                && g >= 108.0 /* 6.0 mmol */) {
                 startProfilePercentFor(130, 5)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
