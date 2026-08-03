@@ -99,11 +99,11 @@
     <color name="sens">#008585</color>
 
     <!--    AutoISF-->
-    <color name="bgParabolaColor">#8CFFFF00</color>
+    <color name="bgParabolaColor">#8CFF1493</color>
     <color name="acceIsfColor">#4499FF</color>
     <color name="bgIsfColor">#FF0000</color>
     <color name="ppIsfColor">#00FF00</color>
-    <color name="duraIsfColor">#FF8800</color>
+    <color name="duraIsfColor">#D2691E</color>
     <color name="finalIsfColor">#00FFFF</color>
     <color name="iobThColor">#BBFFFF</color>
 

@@ -210,15 +210,17 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // Libre 1-min delta label (green), attached directly to the current Libre graph point (same
-        // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row.
+        // Libre 5-min delta label (green), attached directly to the current Libre graph point (same
+        // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row. Was the raw
+        // Libre 1-min delta (libreDelta) — changed to the 5-min one (libreDelta5); the smoothed AAPS
+        // delta below (a1DeltaSeries) intentionally stays at its own 1-minute value, untouched.
         data.overviewData.l1DeltaSeries =
-            if (latest != null && noisyBg != null && libreDelta != null) {
+            if (latest != null && noisyBg != null && libreDelta5 != null) {
                 // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
                 // sign alone is easy to miss on a small rotated graph label. "L" right before the value
                 // identifies this as the Libre-derived delta (vs the 6-underscore+"A" offset kept for
                 // AAPS below, so the two rotated labels don't land on top of each other).
-                val formatted = formatMmolDelta(libreDelta)
+                val formatted = formatMmolDelta(libreDelta5)
                 val label = "L" + formatted + formatted.first().toString().repeat(4)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
