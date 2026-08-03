@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.rx.events.EventUpdateOverviewGraph
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
@@ -330,8 +331,11 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
-        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal])
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal]) {
             graphData.addCarbAbsorption(0.8)
+            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+                graphData.addCarbModelCurve(0.8)
+        }
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(false, 1.0)
         if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])

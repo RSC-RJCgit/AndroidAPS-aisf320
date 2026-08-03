@@ -7,7 +7,9 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BarGraphSeries
 import app.aaps.core.graph.data.DataPointWithLabelInterface
 import app.aaps.core.graph.data.DeviationDataPoint
@@ -18,6 +20,8 @@ import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.Shape
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -41,6 +45,7 @@ import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -56,6 +61,7 @@ class PrepareIobAutosensGraphDataWorker(
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var overviewMenus: OverviewMenus
     @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
@@ -168,6 +174,25 @@ class PrepareIobAutosensGraphDataWorker(
         val carbAbsAlpha = 0.1
         var carbAbsEma: Double? = null
 
+        // CARB MODEL CURVE (optional overlay, off by default) -- two-compartment (Dalla Man-style) Ra(t)
+        // absorption model. Peak-time and tail-decay-speed aren't independently tunable in this model
+        // (a fixed peak forces a fixed tail shape), so this uses the kgri=kabs simplification: an exact
+        // Gamma(2) closed form, Ra(tau) = carbs * f * k^2 * tau * e^(-k*tau), tau = minutes since that
+        // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. "240min tail" is a truncation cutoff (stop
+        // summing a meal's contribution beyond that age), not a strict decay target this model can hit
+        // simultaneously with a 90min peak. f=0.9 standard bioavailability. Entirely independent of the
+        // empirical carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a
+        // measurement. Dashed styling (built below) visually marks it as a model, not data.
+        val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+        val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxCarbModelValue = 0.0
+        val carbModelK = 1.0 / 90.0
+        val carbModelF = 0.9
+        val carbModelTruncateMs = T.mins(240).msecs()
+        val recentCarbs: List<CA> = if (showCarbModel)
+            persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - carbModelTruncateMs, endTime, ascending = true)
+        else emptyList()
+
         val bgiArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         val bgiArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxBGIValue = Double.MIN_VALUE
@@ -266,6 +291,19 @@ class PrepareIobAutosensGraphDataWorker(
             else actArrayPrediction.add(ScaledDataPoint(time, iob.activity, data.overviewData.actScale))
             rawActPoints.add(iob.activity)
             data.overviewData.maxIAValue = max(data.overviewData.maxIAValue, abs(iob.activity))
+
+            // CARB MODEL CURVE (optional, history only -- see setup comment above)
+            if (showCarbModel && time <= now) {
+                var raPer5Min = 0.0
+                for (carbEntry in recentCarbs) {
+                    val tauMin = (time - carbEntry.timestamp) / 60_000.0
+                    if (tauMin > 0.0 && tauMin <= 240.0) {
+                        raPer5Min += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
+                    }
+                }
+                carbModelArrayHist.add(ScaledDataPoint(time, raPer5Min, data.overviewData.carbModelScale))
+                data.overviewData.maxCarbModelValue = max(data.overviewData.maxCarbModelValue, raPer5Min)
+            }
 
             // RATIO
             if (autosensData != null) {
@@ -420,7 +458,16 @@ class PrepareIobAutosensGraphDataWorker(
             it.thickness = 5
         }
 
-
+        // CARB MODEL CURVE -- dashed, distinct color, to visually mark it as a calculated model overlay
+        // rather than measured data (same convention as activity's own dashed prediction segment).
+        data.overviewData.carbModelSeries = FixedLineGraphSeries(Array(carbModelArrayHist.size) { i -> carbModelArrayHist[i] }).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbModelCurveColor)
+            })
+        }
 
         // BGI
         data.overviewData.minusBgiSeries = FixedLineGraphSeries(Array(bgiArrayHist.size) { i -> bgiArrayHist[i] }).also {

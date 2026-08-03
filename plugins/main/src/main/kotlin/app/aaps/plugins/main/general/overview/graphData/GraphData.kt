@@ -198,6 +198,12 @@ class GraphData @Inject constructor(
             overviewData.carbAbsorptionScale.multiplier = maxY * scale / overviewData.maxCarbAbsorptionValue
     }
 
+    fun addCarbModelCurve(scale: Double) {
+        addSeries(overviewData.carbModelSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        if (overviewData.maxCarbModelValue > 0.0)
+            overviewData.carbModelScale.multiplier = maxY * scale / overviewData.maxCarbModelValue
+    }
+
     fun addRawBg(useForScale: Boolean) {
         if (useForScale) {
             minY = 0.0

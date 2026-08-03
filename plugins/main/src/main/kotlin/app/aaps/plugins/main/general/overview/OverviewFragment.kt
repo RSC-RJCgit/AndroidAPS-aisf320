@@ -1350,8 +1350,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
-        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal])
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal]) {
             graphData.addCarbAbsorption(0.8)
+            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+                graphData.addCarbModelCurve(0.8)
+        }
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))

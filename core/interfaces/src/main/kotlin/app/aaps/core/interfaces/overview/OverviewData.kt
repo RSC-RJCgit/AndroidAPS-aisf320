@@ -76,6 +76,10 @@ interface OverviewData {
     val carbAbsorptionScale: Scale
     var carbAbsorptionSeries: SeriesData
 
+    var maxCarbModelValue: Double
+    val carbModelScale: Scale
+    var carbModelSeries: SeriesData
+
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale
     var bgParabolaSeries: SeriesData

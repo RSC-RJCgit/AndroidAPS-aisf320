@@ -234,6 +234,7 @@
         <item name="ratioColor">@color/ratio</item>
         <item name="activityColor">@color/activity</item>
         <item name="carbAbsorptionColor">@color/carbAbsorption</item>
+        <item name="carbModelCurveColor">@color/carbModelCurve</item>
         <item name="baseBasalColor">@color/baseBasal</item>
         <item name="dotLineColor">@color/black</item>
         <!-- AutoISF graphs specific colors  -->

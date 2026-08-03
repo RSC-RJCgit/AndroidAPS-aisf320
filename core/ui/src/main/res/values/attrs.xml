@@ -216,6 +216,7 @@
     <attr name="ratioColor" format="reference|color" />
     <attr name="activityColor" format="reference|color" />
     <attr name="carbAbsorptionColor" format="reference|color" />
+    <attr name="carbModelCurveColor" format="reference|color" />
     <attr name="baseBasalColor" format="reference|color" />
     <attr name="dotLineColor" format="reference|color" />
     <!---Popupmenu TextColor -->
