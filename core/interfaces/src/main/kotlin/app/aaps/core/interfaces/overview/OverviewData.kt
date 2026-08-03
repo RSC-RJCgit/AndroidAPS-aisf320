@@ -72,6 +72,10 @@ interface OverviewData {
     var activityPredictionSeries: SeriesData
     var activityPeakSeries: SeriesData
 
+    var maxCarbAbsorptionValue: Double
+    val carbAbsorptionScale: Scale
+    var carbAbsorptionSeries: SeriesData
+
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale
     var bgParabolaSeries: SeriesData

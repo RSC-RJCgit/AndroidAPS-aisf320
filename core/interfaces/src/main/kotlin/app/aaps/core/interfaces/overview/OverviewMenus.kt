@@ -18,6 +18,7 @@ interface OverviewMenus {
         SEN,
         VAR_SEN,
         ACT,
+        CARB_ABS,
         DEVSLOPE,
         HR,
         STEPS,

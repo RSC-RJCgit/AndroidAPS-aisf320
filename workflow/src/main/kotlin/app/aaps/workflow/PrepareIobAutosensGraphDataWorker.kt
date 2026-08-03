@@ -154,6 +154,13 @@ class PrepareIobAutosensGraphDataWorker(
         val now = dateUtil.now().toDouble()
         data.overviewData.maxIAValue = 0.0
 
+        // CARBS ABSORPTION -- like activity is to IOB, this is the rate (grams/5min), not the level
+        // (that's COB above). this5MinAbsorption is the algorithm's own live per-bucket estimate, same
+        // AutosensData already fetched once per loop iteration for COB/BGI/deviations below. History
+        // only (no prediction segment, unlike activity) -- a thin, solid orange line on graph0.
+        val carbAbsArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxCarbAbsorptionValue = 0.0
+
         val bgiArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         val bgiArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxBGIValue = Double.MIN_VALUE
@@ -212,6 +219,11 @@ class PrepareIobAutosensGraphDataWorker(
                 }
                 if (autosensData.failOverToMinAbsorptionRate) {
                     minFailOverActiveList.add(AutosensDataPoint(autosensData, data.overviewData.cobScale, time, rh))
+                }
+                // CARBS ABSORPTION (rate, g/5min) -- history only, same split point as activity
+                if (time <= now) {
+                    carbAbsArrayHist.add(ScaledDataPoint(time, autosensData.this5MinAbsorption, data.overviewData.carbAbsorptionScale))
+                    data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(autosensData.this5MinAbsorption))
                 }
                 // BGI
                 val devBgiScale = overviewMenus.isEnabledIn(OverviewMenus.CharType.DEV) == overviewMenus.isEnabledIn(OverviewMenus.CharType.BGI)
@@ -386,6 +398,14 @@ class PrepareIobAutosensGraphDataWorker(
                 paint.pathEffect = DashPathEffect(floatArrayOf(4f, 4f), 0f)
                 paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.activityColor)
             })
+        }
+
+        // CARBS ABSORPTION -- thin (thickness=2, vs activity's 3), solid/firm line (no dashed paint,
+        // same as how activity's own historical segment is solid -- only its prediction segment dashes).
+        data.overviewData.carbAbsorptionSeries = FixedLineGraphSeries(Array(carbAbsArrayHist.size) { i -> carbAbsArrayHist[i] }).also {
+            it.isDrawBackground = false
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbAbsorptionColor)
+            it.thickness = 2
         }
 
 

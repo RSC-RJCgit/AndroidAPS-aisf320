@@ -233,6 +233,7 @@
         <item name="bgiColor">@color/bgi</item>
         <item name="ratioColor">@color/ratio</item>
         <item name="activityColor">@color/activity</item>
+        <item name="carbAbsorptionColor">@color/carbAbsorption</item>
         <item name="baseBasalColor">@color/baseBasal</item>
         <item name="dotLineColor">@color/black</item>
         <!-- AutoISF graphs specific colors  -->

@@ -330,6 +330,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal])
+            graphData.addCarbAbsorption(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(false, 1.0)
         if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
