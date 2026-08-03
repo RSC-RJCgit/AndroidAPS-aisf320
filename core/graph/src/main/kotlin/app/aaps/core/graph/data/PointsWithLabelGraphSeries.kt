@@ -176,11 +176,22 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // SMB stack grouping: same rolling-anchor concept as the note stacks below — a new stack starts
         // only when >=10 real minutes have elapsed since the CURRENT stack's own first SMB, not a fixed
         // epoch-aligned grid (timestamp/10min), which could split two SMBs only a few minutes apart into
-        // different buckets whenever they straddled one of the grid's absolute boundaries. Shared between
-        // Shape.SMB (main graph) and Shape.SMB_GRAPH2 (graph2 stacked labels) — both intentionally agree
-        // on the same stack id for the same SMB event, keeping the two renderings visually consistent.
+        // different buckets whenever they straddled one of the grid's absolute boundaries.
         var smbStackAnchor = Long.MIN_VALUE
         var smbStackId = 0L
+        // Shape.SMB_GRAPH2 (graph2 stacked labels) gets its OWN independent anchor/id/count, deliberately
+        // NOT shared with Shape.SMB's above -- same reasoning as arrowStackAnchor being kept separate
+        // from noteStackAnchor below: Shape.SMB and Shape.SMB_GRAPH2 are separate point series, drawn in
+        // separate passes over this same draw() call, not interleaved per-event. Sharing one counter
+        // meant the SMB_GRAPH2 pass ran on top of whatever count Shape.SMB's own full pass had already
+        // left behind, offsetting every stack index by that entire prior count instead of starting fresh
+        // -- worse the more SMBs there were, i.e. exactly "pushing the previous group higher" as more
+        // SMBs accumulated. The two renderings were never actually kept height-consistent by sharing this
+        // counter (separate passes over a shared cumulative counter doesn't achieve that), so there's no
+        // real intent lost by splitting them.
+        val smbGraph2Stack = HashMap<Long, Int>()
+        var smbGraph2StackAnchor = Long.MIN_VALUE
+        var smbGraph2StackId = 0L
         // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
         // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
         // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
@@ -505,13 +516,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     if (value.label.isNotEmpty()) {
                         val smbBucketMs2 = 10 * 60_000L
                         val smbX2 = value.x.toLong()
-                        if (smbStackAnchor == Long.MIN_VALUE || smbX2 - smbStackAnchor >= smbBucketMs2) {
-                            smbStackAnchor = smbX2
-                            smbStackId++
+                        if (smbGraph2StackAnchor == Long.MIN_VALUE || smbX2 - smbGraph2StackAnchor >= smbBucketMs2) {
+                            smbGraph2StackAnchor = smbX2
+                            smbGraph2StackId++
                         }
-                        val bucket2 = smbStackId
-                        val stackIndex2 = smbStack.getOrDefault(bucket2, 0)
-                        smbStack[bucket2] = stackIndex2 + 1
+                        val bucket2 = smbGraph2StackId
+                        val stackIndex2 = smbGraph2Stack.getOrDefault(bucket2, 0)
+                        smbGraph2Stack[bucket2] = stackIndex2 + 1
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
