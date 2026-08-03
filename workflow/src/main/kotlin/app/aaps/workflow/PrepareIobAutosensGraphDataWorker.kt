@@ -417,7 +417,7 @@ class PrepareIobAutosensGraphDataWorker(
         data.overviewData.carbAbsorptionSeries = FixedLineGraphSeries(Array(carbAbsArrayHist.size) { i -> carbAbsArrayHist[i] }).also {
             it.isDrawBackground = false
             it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbAbsorptionColor)
-            it.thickness = 2
+            it.thickness = 5
         }
 
 

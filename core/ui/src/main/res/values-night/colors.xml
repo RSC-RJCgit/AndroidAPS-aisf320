@@ -162,7 +162,7 @@
     <color name="bolus">#1ea3e5</color>
     <color name="ratio">#FFFFFF</color>
     <color name="activity">#d3f166</color>
-    <color name="carbAbsorption">#FF8800</color>
+    <color name="carbAbsorption">#FFA500</color>
     <color name="bgi">#00EEEE</color>
     <color name="devSlopePos">#FFFFFF00</color>
     <color name="devSlopeNeg">#FFFF00FF</color>

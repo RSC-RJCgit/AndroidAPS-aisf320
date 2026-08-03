@@ -1087,6 +1087,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // Cycles 3 presets: 0=arrowheads on/normal colors/transparent noisy line,
                 // 1=arrowheads off/normal colors/opaque noisy line, 2=arrowheads off/uniform green/opaque noisy line.
                 PointsWithLabelGraphSeries.basalToggleIndex += 1
+                // Quick flip-flop shortcut for Carbs Absorption -- same gesture, independent of the
+                // arrowhead cycle above. toggleCarbAbsorption() flips it back and forth each press, so
+                // this is a fast temporary hide/show, not a one-way disable (use the chart menu for that).
+                overviewMenus.toggleCarbAbsorption()
                 rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
                 true
             }

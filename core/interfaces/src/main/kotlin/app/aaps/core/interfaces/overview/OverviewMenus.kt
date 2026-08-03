@@ -38,4 +38,5 @@ interface OverviewMenus {
     fun scaleString(rangeToDisplay: Int): String
     fun isActiveCharTypeData(graph: Int, m: Int): Boolean
     fun setPredictionsEnabled(enabled: Boolean)
+    fun toggleCarbAbsorption()
 }
