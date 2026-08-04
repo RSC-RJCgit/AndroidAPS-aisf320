@@ -228,6 +228,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
+        val smbBucketMs = 10 * 60_000L
         while (values.hasNext()) {
             val value = values.next() ?: break
             mPaint.color = value.color(graphView.context)
@@ -317,12 +318,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                 } else if (value.shape == Shape.SMB) {
-                    val smbBucketMs = 10 * 60_000L
                     val smbX = value.x.toLong()
                     if (smbStackAnchor == Long.MIN_VALUE || smbX - smbStackAnchor >= smbBucketMs) {
                         smbStackAnchor = smbX
                         smbStackId++
                     }
+                    // No spill-to-next-bucket here (unlike the Notes stack below): with a 1-min minimum
+                    // SMB cadence, a genuine 10-min bucket can hold at most 11 doses (t=0..10 inclusive) --
+                    // that's the natural ceiling, so every SMB in a bucket is real and none should ever be
+                    // treated as "overflow" into a synthetic bucket.
                     val bucket = smbStackId
                     val stackIndex = smbStack.getOrDefault(bucket, 0)
                     smbStack[bucket] = stackIndex + 1
@@ -520,6 +524,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                             smbGraph2StackAnchor = smbX2
                             smbGraph2StackId++
                         }
+                        // No spill (see Shape.SMB above) -- 1-min minimum SMB cadence bounds a genuine
+                        // 10-min bucket at 11 doses max, so nothing here is ever true overflow.
                         val bucket2 = smbGraph2StackId
                         val stackIndex2 = smbGraph2Stack.getOrDefault(bucket2, 0)
                         smbGraph2Stack[bucket2] = stackIndex2 + 1
