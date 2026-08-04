@@ -1687,6 +1687,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset2200UpTT")
         }
 
+        // --- Graph2ToggleTT: manually setting a TT of 5.138 mmol is used as a remote toggle for
+        // ApsAutoIsfShowCarbModelCurve (the "graph2" carb model curve display) — not a real target.
+        // Next value after TodOffset2200UpTT's 5.136 in the settings-nudge TT cluster. Same
+        // activeTtNear()/cancel/notify/toggle pattern as SensorAgeToggleTT/BoostToggleTT above.
+        if (readyToRun("Graph2ToggleTT", 2) && activeTtNear(5.138, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+            preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, newState)
+            cancelCurrentTempTarget()
+            sendSms("Graph2Toggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("G2${if (newState) "On" else "Off"}")
+            markRun("Graph2ToggleTT")
+        }
+
+        // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
+        // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
+        // storage if configured, else email) — for AAPSClient users who have no settings access to
+        // trigger it directly. Next value after Graph2ToggleTT's 5.138. Same
+        // activeTtNear()/cancel/notify pattern as the other remote-signal TTs above; no toggle state,
+        // just fires once per TT-set.
+        if (readyToRun("CloudLogsUploadTT", 2) && activeTtNear(5.140, 0.0001)) {
+            importExportPrefs.sendLogs()
+            cancelCurrentTempTarget()
+            sendSms("CloudLogsUpload: triggered")
+            addCarePortalNote("CLup")
+            markRun("CloudLogsUploadTT")
+        }
+
         // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
         // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.

@@ -128,8 +128,11 @@ class ImportExportPrefsImpl @Inject constructor(
     private val configBuilder: ConfigBuilder,
     private val cloudStorageManager: CloudStorageManager,
     private val exportOptionsDialog: ExportOptionsDialog,
-    private val importSourceDialog: ImportSourceDialog
+    private val importSourceDialog: ImportSourceDialog,
+    private val maintenancePlugin: MaintenancePlugin
 ) : ImportExportPrefs {
+
+    override fun sendLogs() = maintenancePlugin.sendLogs()
 
     companion object {
         /** Cloud preference files loaded from the active cloud provider for the import list. */

@@ -71,7 +71,7 @@ enum class BooleanKey(
     // Extra optional carbs-graph overlay: a theoretical two-compartment (Dalla Man-style) Ra(t) carb
     // absorption model curve, peak fixed at 90min, truncated at 240min -- purely a calculated overlay,
     // off by default, independent of the empirical Carbs Absorption line (this5MinAbsorption-based).
-    ApsAutoIsfShowCarbModelCurve("show_carb_model_curve", false, defaultedBySM = true),
+    ApsAutoIsfShowCarbModelCurve("show_carb_model_curve", true, defaultedBySM = true),
     // When enabled, bypasses the entire varOffset/targetBgOffset derivation (smb_delivery_ratio_max as a
     // base, carbsReqThreshold-encoded offset1/2/3 flags, hour-of-day and delta_accl adjustments) in favor
     // of a single fixed mmol value (DoubleKey.ApsAutoIsfSmbOffsetOverride) — see DetermineBasalAutoISF.kt.

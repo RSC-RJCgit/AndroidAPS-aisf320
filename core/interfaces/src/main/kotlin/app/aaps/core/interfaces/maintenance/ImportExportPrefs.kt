@@ -21,6 +21,12 @@ interface ImportExportPrefs {
     fun exportApsResult(algorithm: String?, input: JSONObject, output: JSONObject?)
 
     /**
+     * Zip current logs and send them (cloud storage if configured, else email) -- same action as the
+     * "Send logs" button on the Maintenance screen.
+     */
+    fun sendLogs()
+
+    /**
      * Store for selected file from UI
      */
     var selectedImportFile: PrefsFile?
