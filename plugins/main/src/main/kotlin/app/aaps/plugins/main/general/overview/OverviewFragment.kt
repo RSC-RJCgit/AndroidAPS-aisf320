@@ -931,7 +931,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     // select_dialog_item row — that one reserves ~48dp min height per row plus its own
                     // vertical padding, which wastes a lot of space on a narrow phone with this many
                     // entries. No functional difference, just tighter rows with no gap between them.
-                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.first }) {
+                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
                         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                             val tv = convertView as? TextView ?: TextView(act).apply {
                                 setPadding(24, 2, 24, 2)
@@ -944,14 +944,24 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     androidx.appcompat.app.AlertDialog.Builder(act)
                         .setTitle("TT remote-trigger codes — tap to set")
                         .setAdapter(adapter) { _, which ->
-                            // Confirm before actually setting the TT — a single mistap on a dense,
-                            // gapless list would otherwise silently nudge the wrong setting.
-                            val (label, mmol) = entries[which]
-                            androidx.appcompat.app.AlertDialog.Builder(act)
-                                .setTitle(label)
-                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> setTt(mmol) }
-                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                                .show()
+                            // The mmol number (and, for Stepped, which direction) only ever surface here,
+                            // never in the outer list -- picking a button both chooses and confirms.
+                            when (val entry = entries[which]) {
+                                is TtCode.Single  ->
+                                    androidx.appcompat.app.AlertDialog.Builder(act)
+                                        .setTitle(entry.label)
+                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> setTt(entry.value) }
+                                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                                        .show()
+
+                                is TtCode.Stepped ->
+                                    androidx.appcompat.app.AlertDialog.Builder(act)
+                                        .setTitle(entry.label)
+                                        .setNegativeButton("−") { _, _ -> setTt(entry.down) }
+                                        .setPositiveButton("+") { _, _ -> setTt(entry.up) }
+                                        .setNeutralButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                                        .show()
+                            }
                         }
                         .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
                         .show()
@@ -1158,64 +1168,53 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolusIob().iob) + "\n" +
             rh.gs(app.aaps.core.ui.R.string.basal) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, basalIob().basaliob)
 
-    // Tappable list for the IOB icon's double-tap — matches the *TT blocks in OpenAPSAutoISFPlugin.kt
-    // exactly. Tapping an entry creates a real TT at that mmol value (see setTt() below) rather than
-    // applying the change directly — the AutoISF cycle picks it up and cancels the TT itself, same as
-    // manually typing the value into AAPS's own TT-entry UI. Setting a real TT (not a direct preference
-    // write from here) is deliberate: it's the only mechanism that also works remotely from an
-    // AAPSClient follower device, since preferences themselves never sync but a TT does.
+    // One row per SETTING (not per TT code) — the outer double-tap list now shows only the setting
+    // name, never the raw mmol number or which direction it nudges. Single: one-shot/toggle action,
+    // tapping opens a plain "Set <name>?" confirm. Stepped: a -/+ pair, tapping opens a confirm with
+    // both directions offered as buttons (pick one = confirm), so the mmol number/direction only ever
+    // surface at that final step, never in the scannable list itself.
+    private sealed class TtCode(val label: String) {
+        class Single(label: String, val value: Double) : TtCode(label)
+        class Stepped(label: String, val down: Double, val up: Double) : TtCode(label)
+    }
+
+    // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. Tapping an entry creates a real TT at
+    // that mmol value (see setTt() below) rather than applying the change directly — the AutoISF cycle
+    // picks it up and cancels the TT itself, same as manually typing the value into AAPS's own TT-entry
+    // UI. Setting a real TT (not a direct preference write from here) is deliberate: it's the only
+    // mechanism that also works remotely from an AAPSClient follower device, since preferences
+    // themselves never sync but a TT does.
     // Abbreviated for narrow-phone display: weight->Wt, SMB delivery->SMBdel, boost->Bst, normal->N,
     // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
-    private fun ttCodesList(): List<Pair<String, Double>> = listOf(
-        "5.002 — SMBdel base + mild-Bst, -0.01" to 5.002,
-        "5.004 — SMBdel base + mild-Bst, +0.01" to 5.004,
-        "5.006 — Tog Libre sens on/off" to 5.006,
-        "5.008 — Tog Bst autos(all) on/off" to 5.008,
-        "5.012 — pp ISF Wt (Or), -0.01" to 5.012,
-        "5.014 — pp ISF Wt (Or), +0.01" to 5.014,
-        "5.016 — acce ISF Wt (Or), -0.05" to 5.016,
-        "5.018 — acce ISF Wt (Or), +0.05" to 5.018,
-        "5.022 — dura ISF Wt (Or), -0.1" to 5.022,
-        "5.024 — dura ISF Wt (Or), +0.1" to 5.024,
-        "5.026 — Libre slope (Or), -0.01" to 5.026,
-        "5.028 — Libre slope (Or), +0.01" to 5.028,
-        "5.032 — Libre Offset (Or), -0.05" to 5.032,
-        "5.034 — Libre Offset (Or), +0.05" to 5.034,
-        "5.036 — SMB offset HARD, -0.10" to 5.036,
-        "5.038 — SMB offset HARD, +0.10" to 5.038,
-        "5.042 — clean grph view" to 5.042,
-        "5.046 — Wizard bolus %, -5" to 5.046,
-        "5.048 — Wizard bolus %, +5" to 5.048,
-        "5.052 — MildBst ratio, -0.01" to 5.052,
-        "5.054 — MildBst ratio, +0.01" to 5.054,
-        "5.056 — pp ISF Wt (High), -0.01" to 5.056,
-        "5.058 — pp ISF Wt (High), +0.01" to 5.058,
-        "5.062 — acce ISF Wt (High), -0.01" to 5.062,
-        "5.064 — acce ISF Wt (High), +0.01" to 5.064,
-        "5.068 — higher ISF range Wt, -0.1" to 5.068,
-        "5.070 — higher ISF range Wt, +0.1" to 5.070,
-        "5.074 — peak insulin time, -5 min" to 5.074,
-        "5.076 — peak insulin time, +5 min" to 5.076,
-        "5.080 — autoISF max (lowBG), -0.1" to 5.080,
-        "5.082 — autoISF max (lowBG), +0.1" to 5.082,
-        "5.086 — autoISF max (N), -0.1" to 5.086,
-        "5.088 — autoISF max (N), +0.1" to 5.088,
-        "5.092 — T1 tod offset 00-02h, -0.1" to 5.092,
-        "5.094 — T1 tod offset 00-02h, +0.1" to 5.094,
-        "5.098 — T2 tod offset 02-04h, -0.1" to 5.098,
-        "5.100 — T2 tod offset 02-04h, +0.1" to 5.100,
-        "5.104 — T3 tod offset 04-06h, -0.1" to 5.104,
-        "5.106 — T3 tod offset 04-06h, +0.1" to 5.106,
-        "5.110 — T4 tod offset 06-09h, -0.1" to 5.110,
-        "5.112 — T4 tod offset 06-09h, +0.1" to 5.112,
-        "5.116 — T5 tod offset 09-12h, -0.1" to 5.116,
-        "5.118 — T5 tod offset 09-12h, +0.1" to 5.118,
-        "5.122 — T6 tod offset 12-18h, -0.1" to 5.122,
-        "5.124 — T6 tod offset 12-18h, +0.1" to 5.124,
-        "5.128 — T7 tod offset 18-22h, -0.1" to 5.128,
-        "5.130 — T7 tod offset 18-22h, +0.1" to 5.130,
-        "5.134 — T8 tod offset 22-00h, -0.1" to 5.134,
-        "5.136 — T8 tod offset 22-00h, +0.1" to 5.136
+    private fun ttCodesList(): List<TtCode> = listOf(
+        TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004),
+        TtCode.Single("Tog Libre sens on/off", 5.006),
+        TtCode.Single("Tog Bst autos(all) on/off", 5.008),
+        TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014),
+        TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018),
+        TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024),
+        TtCode.Stepped("Libre slope (Or)", 5.026, 5.028),
+        TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034),
+        TtCode.Stepped("SMB offset HARD", 5.036, 5.038),
+        TtCode.Single("clean grph view", 5.042),
+        TtCode.Stepped("Wizard bolus %", 5.046, 5.048),
+        TtCode.Stepped("MildBst ratio", 5.052, 5.054),
+        TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058),
+        TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064),
+        TtCode.Stepped("higher ISF range Wt", 5.068, 5.070),
+        TtCode.Stepped("peak insulin time", 5.074, 5.076),
+        TtCode.Stepped("autoISF max (lowBG)", 5.080, 5.082),
+        TtCode.Stepped("autoISF max (N)", 5.086, 5.088),
+        TtCode.Stepped("T1 tod offset 00-02h", 5.092, 5.094),
+        TtCode.Stepped("T2 tod offset 02-04h", 5.098, 5.100),
+        TtCode.Stepped("T3 tod offset 04-06h", 5.104, 5.106),
+        TtCode.Stepped("T4 tod offset 06-09h", 5.110, 5.112),
+        TtCode.Stepped("T5 tod offset 09-12h", 5.116, 5.118),
+        TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124),
+        TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130),
+        TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136),
+        TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
+        TtCode.Single("Cloud logs upload", 5.140)
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
