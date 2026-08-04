@@ -17,6 +17,7 @@ import androidx.core.graphics.withSave
 import androidx.core.graphics.withRotation
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.IdentityHashMap
 import java.util.Locale
 
 /**
@@ -156,7 +157,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             maxY = graphView.viewport.getMaxY(false)
             minY = graphView.viewport.getMinY(false)
         }
-        val values = getValues(minX, maxX)
+        val values = getValues(minX, maxX).asSequence().filterNotNull().toList()
 
         // draw background
         // draw data
@@ -172,13 +173,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val graphLeft = graphView.graphContentLeft.toFloat()
         val graphTop = graphView.graphContentTop.toFloat()
         val scaleX = (graphWidth / diffX).toFloat()
-        val smbStack = HashMap<Long, Int>() // stack id -> count of SMBs drawn at this height
         // SMB stack grouping: same rolling-anchor concept as the note stacks below — a new stack starts
         // only when >=10 real minutes have elapsed since the CURRENT stack's own first SMB, not a fixed
         // epoch-aligned grid (timestamp/10min), which could split two SMBs only a few minutes apart into
         // different buckets whenever they straddled one of the grid's absolute boundaries.
-        var smbStackAnchor = Long.MIN_VALUE
-        var smbStackId = 0L
         // Shape.SMB_GRAPH2 (graph2 stacked labels) gets its OWN independent anchor/id/count, deliberately
         // NOT shared with Shape.SMB's above -- same reasoning as arrowStackAnchor being kept separate
         // from noteStackAnchor below: Shape.SMB and Shape.SMB_GRAPH2 are separate point series, drawn in
@@ -189,9 +187,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // SMBs accumulated. The two renderings were never actually kept height-consistent by sharing this
         // counter (separate passes over a shared cumulative counter doesn't achieve that), so there's no
         // real intent lost by splitting them.
-        val smbGraph2Stack = HashMap<Long, Int>()
-        var smbGraph2StackAnchor = Long.MIN_VALUE
-        var smbGraph2StackId = 0L
+        // Reverse offsets are calculated per 10-minute group so bottom-insertion in the active group
+        // cannot move labels belonging to an earlier, completed group.
+        val smbStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB)
+        val smbGraph2StackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_GRAPH2)
         // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
         // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
         // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
@@ -228,9 +227,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
-        val smbBucketMs = 10 * 60_000L
-        while (values.hasNext()) {
-            val value = values.next() ?: break
+        for (value in values) {
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
             val ratY = valY / diffY
@@ -318,18 +315,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                 } else if (value.shape == Shape.SMB) {
-                    val smbX = value.x.toLong()
-                    if (smbStackAnchor == Long.MIN_VALUE || smbX - smbStackAnchor >= smbBucketMs) {
-                        smbStackAnchor = smbX
-                        smbStackId++
-                    }
                     // No spill-to-next-bucket here (unlike the Notes stack below): with a 1-min minimum
                     // SMB cadence, a genuine 10-min bucket can hold at most 11 doses (t=0..10 inclusive) --
                     // that's the natural ceiling, so every SMB in a bucket is real and none should ever be
                     // treated as "overflow" into a synthetic bucket.
-                    val bucket = smbStackId
-                    val stackIndex = smbStack.getOrDefault(bucket, 0)
-                    smbStack[bucket] = stackIndex + 1
+                    val stackIndex = smbStackReverseIndex[value] ?: 0
                     val size = value.size * scaledPxSize * 1.2f
                     val bgValY = value.labelY - minY
                     val bgRatY = bgValY / diffY
@@ -518,17 +508,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                 } else if (value.shape == Shape.SMB_GRAPH2) {
                     if (value.label.isNotEmpty()) {
-                        val smbBucketMs2 = 10 * 60_000L
-                        val smbX2 = value.x.toLong()
-                        if (smbGraph2StackAnchor == Long.MIN_VALUE || smbX2 - smbGraph2StackAnchor >= smbBucketMs2) {
-                            smbGraph2StackAnchor = smbX2
-                            smbGraph2StackId++
-                        }
                         // No spill (see Shape.SMB above) -- 1-min minimum SMB cadence bounds a genuine
                         // 10-min bucket at 11 doses max, so nothing here is ever true overflow.
-                        val bucket2 = smbGraph2StackId
-                        val stackIndex2 = smbGraph2Stack.getOrDefault(bucket2, 0)
-                        smbGraph2Stack[bucket2] = stackIndex2 + 1
+                        val stackIndex2 = smbGraph2StackReverseIndex[value] ?: 0
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
@@ -689,6 +671,33 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawLabel45Right(endX, labelEndY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                     mPaint.color = savedColor
                 }
+            }
+        }
+    }
+
+    private fun calculateSmbStackIndices(values: List<E>, shape: Shape): IdentityHashMap<E, Int> {
+        val bucketByValue = IdentityHashMap<E, Long>()
+        val bucketTotals = HashMap<Long, Int>()
+        var anchor = Long.MIN_VALUE
+        var bucket = 0L
+
+        values.filter { it.shape == shape }.forEach { value ->
+            val timestamp = value.x.toLong()
+            if (anchor == Long.MIN_VALUE || timestamp - anchor >= 10 * 60_000L) {
+                anchor = timestamp
+                bucket++
+            }
+            bucketByValue[value] = bucket
+            bucketTotals[bucket] = bucketTotals.getOrDefault(bucket, 0) + 1
+        }
+
+        val seen = HashMap<Long, Int>()
+        return IdentityHashMap<E, Int>().also { indices ->
+            values.filter { it.shape == shape }.forEach { value ->
+                val valueBucket = bucketByValue.getValue(value)
+                val chronologicalIndex = seen.getOrDefault(valueBucket, 0)
+                seen[valueBucket] = chronologicalIndex + 1
+                indices[value] = bucketTotals.getValue(valueBucket) - chronologicalIndex - 1
             }
         }
     }
