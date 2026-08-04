@@ -3191,12 +3191,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "MoreMJ": advances MJ state to MJ3 when acce weight is very low, activity is
         // low, glucose is falling low on the 50% profile with no carbs and IOB still present. No
         // live-pump gate: the original's Note field was empty.
+        // Outer window 06:00-00:00 (isTimeBetween(6,0,0,0) = 6am through end of day): MoreMJ should not
+        // apply overnight 00:00-06:00 at all -- this is the structural fix for the flip against MJoff's
+        // midnight block (00:00-01:00), since MoreMJ now simply cannot fire in that window regardless of
+        // the noRecentHighTrigger OR-path below (which has no time-of-day/BG gate of its own).
         // Hysteresis: also locked out for 65 min after MJoff last fired (readyToRun on the "MJoff"
-        // timestamp), so the noRecentHighTrigger OR-path below -- which has no time-of-day/BG gate of
-        // its own -- can't immediately re-set MJ3 right after MJoff's midnight block (00:00-01:00) has
-        // just reset MJ to NOMJremains. 65 min safely spans that 60-min block. Same pattern as the
-        // 50SetRecent/PP50Off flap fix above.
-        if (readyToRun("MoreMJ", 5) && readyToRun("MJoff", 65)) {
+        // timestamp) -- kept as a second line of defense for MJoff's OTHER block (12:00-21:04, high BG),
+        // which is inside this 06:00-00:00 window and so isn't covered by the gate above. Same pattern as
+        // the 50SetRecent/PP50Off flap fix elsewhere in this file.
+        if (readyToRun("MoreMJ", 5) && readyToRun("MJoff", 65) && isTimeBetween(6, 0, 0, 0)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val existingConditionsMet = acceW <= 0.11

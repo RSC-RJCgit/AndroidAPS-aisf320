@@ -20,6 +20,7 @@ import android.view.View
 import android.view.View.OnLongClickListener
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.TextView
@@ -954,13 +955,40 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                         .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
                                         .show()
 
-                                is TtCode.Stepped ->
+                                // Selection (checkbox) is decoupled from confirmation (OK/Cancel) here,
+                                // unlike Single above -- picking a direction no longer immediately applies
+                                // it, so a stray tap on the wrong direction can be corrected before
+                                // confirming. Checkboxes behave as a mutually-exclusive pair (same idiom
+                                // as OverviewMenusImpl.createCustomMenuItemView's per-row checkboxes) —
+                                // ticking one clears the other. Labeled with the generic direction symbols
+                                // (not a literal magnitude like "-0.1"/"+0.1") since the actual per-tap
+                                // step size differs per entry and isn't tracked in TtCode itself — see the
+                                // matching *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt for the real
+                                // delta this entry applies.
+                                is TtCode.Stepped -> {
+                                    val downBox = CheckBox(act).apply { text = "− (down)" }
+                                    val upBox = CheckBox(act).apply { text = "+ (up)" }
+                                    downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
+                                    upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
+                                    val container = LinearLayout(act).apply {
+                                        orientation = LinearLayout.VERTICAL
+                                        setPadding(48, 24, 48, 0)
+                                        addView(downBox)
+                                        addView(upBox)
+                                    }
                                     androidx.appcompat.app.AlertDialog.Builder(act)
                                         .setTitle(entry.label)
-                                        .setNegativeButton("−") { _, _ -> setTt(entry.down) }
-                                        .setPositiveButton("+") { _, _ -> setTt(entry.up) }
-                                        .setNeutralButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                                        .setView(container)
+                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                            when {
+                                                downBox.isChecked -> setTt(entry.down)
+                                                upBox.isChecked   -> setTt(entry.up)
+                                                // Neither checked: OK with no selection is a no-op, not an error.
+                                            }
+                                        }
+                                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
                                         .show()
+                                }
                             }
                         }
                         .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)

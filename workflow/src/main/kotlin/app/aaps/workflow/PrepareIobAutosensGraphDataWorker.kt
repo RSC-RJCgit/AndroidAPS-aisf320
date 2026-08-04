@@ -178,22 +178,27 @@ class PrepareIobAutosensGraphDataWorker(
         // absorption model. Peak-time and tail-decay-speed aren't independently tunable in this model
         // (a fixed peak forces a fixed tail shape), so this uses the kgri=kabs simplification: an exact
         // Gamma(2) closed form, Ra(tau) = carbs * f * k^2 * tau * e^(-k*tau), tau = minutes since that
-        // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. No hard cutoff -- the tail decays purely
-        // mathematically (by ~10h out it's already negligible), and overlapping meals superpose
-        // naturally since every qualifying carb entry's contribution is summed at each point. The
-        // 12-hour lookback below is just a query bound (decay is already negligible well before that),
-        // not a truncation of the curve itself. f=0.9 standard bioavailability. Entirely independent of
-        // the empirical carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a
-        // measurement. Dashed styling (built below) visually marks it as a model, not data. Computed for
-        // the WHOLE display window including future timestamps (unlike carbAbsArrayHist, which can't
-        // know unobserved future deviations) -- this curve only needs already-known carb entries and
-        // elapsed time, both computable for any timestamp, so it isn't restricted to time <= now.
+        // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. Hard cutoff at carbModelCutoffMin (6h) --
+        // beyond that a meal contributes nothing at all, regardless of how many hours of lookback were
+        // queried. This matters for maxCarbModelValue's scaling: that's computed per-refresh from only
+        // whatever's inside the current [fromTime, endTime] window, and without a cutoff, an older/larger
+        // meal well outside a short (3h/6h) window could still contribute a long, slowly-decaying tail
+        // into that window's points -- inconsistent with how the same meal reads once the window widens
+        // back out to 12h and the tail becomes a small fraction of the visible range instead. Overlapping
+        // meals still superpose naturally since every qualifying (non-cutoff) carb entry's contribution is
+        // summed at each point. f=0.9 standard bioavailability. Entirely independent of the empirical
+        // carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a measurement.
+        // Dashed styling (built below) visually marks it as a model, not data. Computed for the WHOLE
+        // display window including future timestamps (unlike carbAbsArrayHist, which can't know unobserved
+        // future deviations) -- this curve only needs already-known carb entries and elapsed time, both
+        // computable for any timestamp, so it isn't restricted to time <= now.
         val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
         val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbModelValue = 0.0
         val carbModelK = 1.0 / 70.0
         val carbModelF = 0.9
-        val carbModelQueryLookbackMs = T.hours(12).msecs()
+        val carbModelCutoffMin = 360.0 // 6h hard cutoff -- see comment above
+        val carbModelQueryLookbackMs = T.hours(6).msecs() // matches carbModelCutoffMin -- no point querying further back
         val recentCarbs: List<CA> = if (showCarbModel)
             persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - carbModelQueryLookbackMs, endTime, ascending = true)
         else emptyList()
@@ -305,7 +310,7 @@ class PrepareIobAutosensGraphDataWorker(
                 var raPer5Min = 0.0
                 for (carbEntry in recentCarbs) {
                     val tauMin = (time - carbEntry.timestamp) / 60_000.0
-                    if (tauMin > 0.0) {
+                    if (tauMin > 0.0 && tauMin <= carbModelCutoffMin) {
                         raPer5Min += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
                     }
                 }
