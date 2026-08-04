@@ -191,7 +191,7 @@ class PrepareIobAutosensGraphDataWorker(
         val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
         val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbModelValue = 0.0
-        val carbModelK = 1.0 / 90.0
+        val carbModelK = 1.0 / 70.0
         val carbModelF = 0.9
         val carbModelQueryLookbackMs = T.hours(12).msecs()
         val recentCarbs: List<CA> = if (showCarbModel)

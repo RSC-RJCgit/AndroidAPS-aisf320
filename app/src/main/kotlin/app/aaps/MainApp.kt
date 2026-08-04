@@ -238,6 +238,17 @@ class MainApp : DaggerApplication() {
 
     private fun doMigrations() {
         // set values for different builds
+
+        val carbModelCurveClientMigration =
+            "migration_aapsclient_carb_model_curve_enabled"
+
+        if (
+            config.AAPSCLIENT &&
+            !sp.getBoolean(carbModelCurveClientMigration, false)
+        ) {
+            preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, true)
+            sp.putBoolean(carbModelCurveClientMigration, true)
+        }
         // 3.3
         if (preferences.get(IntKey.OverviewEatingSoonDuration) == 0) preferences.remove(IntKey.OverviewEatingSoonDuration)
         if (preferences.get(UnitDoubleKey.OverviewEatingSoonTarget) == 0.0) preferences.remove(UnitDoubleKey.OverviewEatingSoonTarget)
