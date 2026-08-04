@@ -212,7 +212,15 @@ class GraphData @Inject constructor(
         // Split into color-banded segments (red / yellow low / yellow high) rather than one series —
         // see PrepareBgDataWorker.kt.
         overviewData.rawBgSeries.forEach { addSeries(it as LineGraphSeries<*>) }
-        // UKF-smoothed companion trace over the same raw values — see PrepareBgDataWorker.kt.
+    }
+
+    // UKF-smoothed trace of the same raw/noise values as addRawBg() — own checkbox (RAW_BG_SMOOTHED),
+    // independently selectable from RAW_BG. See PrepareBgDataWorker.kt.
+    fun addRawBgSmoothed(useForScale: Boolean) {
+        if (useForScale) {
+            minY = 0.0
+            maxY = overviewData.maxBgValue
+        }
         addSeries(overviewData.rawBgSmoothedSeries as LineGraphSeries<*>)
     }
 

@@ -1214,7 +1214,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130),
         TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136),
         TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
-        TtCode.Single("Cloud logs upload", 5.140)
+        TtCode.Single("Cloud logs upload", 5.140),
+        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142)
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
@@ -1372,6 +1373,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
             graphData.addRawBg(false)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
+            graphData.addRawBgSmoothed(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
         graphData.addTargetLine()
@@ -1419,6 +1422,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 graph5Data.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], 1.0)
             if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
                 graph5Data.addRawBg(false)
+            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
+                graph5Data.addRawBgSmoothed(false)
             // No addBasals() call — this graph is deliberately BG/graphs-only, no basal.
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
@@ -1474,7 +1479,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal)     -> useBG_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal)     -> usePP_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)    -> useDURA_ISFForScale = true
-                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)     -> useRAWBGForScale = true
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) -> useRAWBGForScale = true
             }
 
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
@@ -1532,6 +1538,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             // CarePortal notes: swapped from graph2 to graph4 (g==3) — was on graph2, swapped positions
             // with the SMB stacked labels below. Same TREAT toggle source as before.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
@@ -1593,7 +1600,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)
                     //menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.COB.ordinal] ||

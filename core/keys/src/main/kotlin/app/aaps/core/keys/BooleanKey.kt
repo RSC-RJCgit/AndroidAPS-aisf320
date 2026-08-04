@@ -75,9 +75,10 @@ enum class BooleanKey(
     // 5th graph: a fixed clone of the main graph's content (BG line, predictions, bucketed/smoothed
     // trend, treatments/therapy events, activity, carb absorption + model curve, BG parabola, raw BG +
     // its UKF-smoothed trace) but WITHOUT basal -- not independently configurable per-series like the
-    // secondary graphs 1-4, just one on/off switch. Off by default. See OverviewFragment.updateGraph()
-    // and Graph5ToggleTT (OpenAPSAutoISFPlugin.kt) for the remote toggle, same pattern as
-    // ApsAutoIsfShowCarbModelCurve/Graph2ToggleTT above.
+    // secondary graphs 1-4, just one on/off switch. Off by default. Two ways to flip it, both writing
+    // this same key so they stay in sync: a real Preferences checkbox (OverviewPlugin.kt) and the
+    // Graph5ToggleTT remote TT-signal (OpenAPSAutoISFPlugin.kt, TT=5.142, same pattern as
+    // ApsAutoIsfShowCarbModelCurve/Graph2ToggleTT above). See OverviewFragment.updateGraph().
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
     // When enabled, bypasses the entire varOffset/targetBgOffset derivation (smb_delivery_ratio_max as a
     // base, carbsReqThreshold-encoded offset1/2/3 flags, hour-of-day and delta_accl adjustments) in favor

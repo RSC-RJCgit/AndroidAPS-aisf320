@@ -283,6 +283,9 @@ class OverviewPlugin @Inject constructor(
             })
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShortTabTitles, title = R.string.short_tabtitles))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowNotesInDialogs, title = R.string.overview_show_notes_field_in_dialogs_title))
+            // Real checkbox alongside the existing Graph5ToggleTT (TT=5.142) remote signal — both write
+            // the same BooleanKey, so either one works and they stay in sync.
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowGraph5, title = R.string.overview_show_graph5))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 val pump = activePlugin.activePump
                 key = "statuslights_overview_advanced"

@@ -84,6 +84,9 @@ class OverviewMenusImpl @Inject constructor(
         PP_ISF(R.string.overview_show_pp_isf, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_isf_shortname),
         DUR_ISF(R.string.overview_show_dura_isf, app.aaps.core.ui.R.attr.duraIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.dura_isf_shortname),
         RAW_BG(R.string.overview_show_raw_bg, app.aaps.core.ui.R.attr.rawBgColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.raw_bg_shortname),
+        // Own checkbox next to RAW_BG — independently selectable, no longer implicitly tied to RAW_BG's
+        // own on/off state. See PrepareBgDataWorker.kt (rawBgSmoothedSeries) / GraphData.addRawBgSmoothed().
+        RAW_BG_SMOOTHED(R.string.overview_show_raw_bg_smoothed, app.aaps.core.ui.R.attr.rawBgColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.raw_bg_smoothed_shortname),
     }
 
     private val runningAutoIsf: Boolean

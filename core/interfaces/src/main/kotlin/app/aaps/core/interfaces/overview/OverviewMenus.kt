@@ -28,6 +28,12 @@ interface OverviewMenus {
         PP_ISF,
         DUR_ISF,
         RAW_BG,
+        // UKF-smoothed trace of the same raw/noise values as RAW_BG — independently selectable, own
+        // checkbox next to RAW_BG in the chart menu. Appended at the end (not inserted) so existing
+        // saved graph configs' CharType ordinals don't shift; NOTE: adding any new CharType still
+        // trips OverviewMenusImpl.loadGraphConfig()'s "reset when new CharType added" size-mismatch
+        // guard, resetting per-graph chart selections to defaults once on first load after this change.
+        RAW_BG_SMOOTHED,
     }
 
     val setting: List<Array<Boolean>>

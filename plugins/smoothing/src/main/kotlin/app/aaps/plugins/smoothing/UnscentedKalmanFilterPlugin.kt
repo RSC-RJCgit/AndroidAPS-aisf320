@@ -1265,7 +1265,13 @@ private fun savePersistedParameters() {
             var end = idx
             while (end + 1 < points.size) {
                 val dt = (points[end].first - points[end + 1].first) / (1000.0 * 60.0)
-                if (dt > MAJOR_GAP_THRESHOLD || dt < 2.0) break
+                // Only break on large gaps or non-increasing/duplicate timestamps -- unlike the live
+                // pipeline's bucketed (clean 5-min grid) input, raw/noise readings aren't bucketed and
+                // can legitimately arrive well under 5 min apart (e.g. Libre native ~1-min cadence).
+                // The live pipeline's "dt < 2.0" break doesn't apply here: it was a corrupt/duplicate-
+                // bucket guard, and reusing it against real sub-5-min raw samples fragmented almost the
+                // entire series into singleton segments that got copied through unsmoothed.
+                if (dt > MAJOR_GAP_THRESHOLD || dt <= 0.0) break
                 end++
             }
             if (end - idx + 1 < 2) {
