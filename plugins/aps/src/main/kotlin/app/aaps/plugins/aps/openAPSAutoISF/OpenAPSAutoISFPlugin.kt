@@ -475,6 +475,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return (dateUtil.now() - last.timestamp) / 3_600_000.0
     }
 
+    // Whether raw Libre BGL has been observed over 12.0mmol within the last [hours]. false if never
+    // observed (ApsAutoIsfLibreOver12Ts == 0). Shared by OldSensorAdj (24h) and the pod-boost/MJ/PPrevert
+    // gates below (48h) -- same underlying tracked timestamp, just compared against different windows
+    // depending on which automation is asking.
+    private fun recentLibreOver12(hours: Int): Boolean {
+        val ts = preferences.get(LongKey.ApsAutoIsfLibreOver12Ts)
+        return ts != 0L && (dateUtil.now() - ts) <= T.hours(hours.toLong()).msecs()
+    }
+
     // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
     // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
     // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
@@ -1031,7 +1040,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MJ2")
             setAutomationState("MJ", "MJ2")
             addCarePortalNote("MJ2")
-            setAutomationState("MJstate", "MJon")
+            //setAutomationState("MJstate", "MJon")
             markRun("MJ2old")
         }
 
@@ -1040,7 +1049,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MJ3")
             setAutomationState("MJ", "MJ3")
             addCarePortalNote("MJ3")
-            setAutomationState("MJstate", "MJon")
+            //setAutomationState("MJstate", "MJon")
             markRun("MJ3old")
         }
 
@@ -1055,7 +1064,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("MJoff [b$mjBlock]: g=${String.format("%.1f", g / 18.016)}")
                 setAutomationState("MJ", "NOMJremains")
                 addCarePortalNote("MJoff-$mjBlock")
-                setAutomationState("MJstate", "MJoff")
+                //setAutomationState("MJstate", "MJoff")
                 markRun("MJoff")
             }
         }
@@ -1121,6 +1130,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // delivery ratio). No readyToRun throttle — deliberately checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
+            // Track the last time raw Libre BGL was seen over 12.0mmol -- updated every cycle it's
+            // observed (not a "since it started" latch like OldPodHighSinceTs above; just "when did this
+            // last happen"). Gates OldSensorAdj below: the tier compensation is calibrated against
+            // genuine high-BGL Libre-vs-reference divergence, so if that hasn't actually been seen
+            // recently, the compensation is blocked and slope/offset revert to baseline instead.
+            val rawGForOver12 = rawGlucoseMgdl()
+            if (rawGForOver12 != null && rawGForOver12 > 216.2 /* 12.0 mmol raw */) {
+                preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, dateUtil.now())
+            }
+            val recentHighBglSeen = recentLibreOver12(24)
+
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
@@ -1142,8 +1162,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             // Only active while the pod/cannula is 6-72h old — avoids applying this alongside the very
-            // early (<=6h, not yet settled) or very late (>=72h, unreliable delivery) pod states.
-            if (oldSensorEnabled && oldSensorTier != null && cannulaH > 6.0 && cannulaH < 72.0) {
+            // early (<=6h, not yet settled) or very late (>=72h, unreliable delivery) pod states. Also
+            // requires recentHighBglSeen (see above) — without a genuine high-BGL reading in the last
+            // 24h, there's nothing to confirm the compensation is still warranted, so it's blocked and
+            // falls through to the same revert-to-baseline branch below as any other disqualified case.
+            if (oldSensorEnabled && oldSensorTier != null && cannulaH > 6.0 && cannulaH < 72.0 && recentHighBglSeen) {
                 if (!oldSensorActive) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
@@ -1354,13 +1377,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
             val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
             val activeMovement = recentSteps5Minutes > 100 || recentSteps30Minutes > 200 || recentSteps60Minutes > 300
-            val trigger = lowBg || activeMovement
+            // No genuine recent high (raw Libre >12.0mmol within 48h) is also grounds to revert -- the
+            // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
+            val noRecentHigh = !recentLibreOver12(48)
+            val trigger = lowBg || activeMovement || noRecentHigh
             val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger
             val acceNeedsRevert = currentAcce > baselineAcce && trigger
             if (ppNeedsRevert || acceNeedsRevert) {
                 if (ppNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
                 if (acceNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, baselineAcce)
-                val reason = if (lowBg) "BG<8.5mmol" else "activity"
+                val reason = if (lowBg) "BG<8.5mmol" else if (activeMovement) "activity" else "noRecentHigh48h"
                 val what = when {
                     ppNeedsRevert && acceNeedsRevert -> "ppISFwt=${round(baselinePp, 2)} acceISFwt=${round(baselineAcce, 2)}"
                     ppNeedsRevert                    -> "ppISFwt=${round(baselinePp, 2)}"
@@ -1887,7 +1913,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
                     uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     addGraphAnnouncement("________________Gentle5")
-                    setAutomationState("MJstate", "MJon")
+                    //setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
                     aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }}")
@@ -3127,7 +3153,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MoreMJ", 5)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            if (acceW <= 0.11
+            val existingConditionsMet = acceW <= 0.11
                 && StepService.getRecentStepCount180Min() <= 400
                 && recentSteps60Minutes <= 200
                 && checkAutomationState("MJ", "NOMJremains")
@@ -3137,7 +3163,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && mealData.mealCOB <= 0.0
                 && lastBolusMin > 210
                 && checkAutomationState("BGLstate", "BGLlastLOW")
-                && iobData.iob >= 0.2) {
+                && iobData.iob >= 0.2
+            // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
+            // state still allowing it -- ignores all the other existingConditionsMet checks above.
+            val noRecentHighTrigger = !recentLibreOver12(48) && checkAutomationState("MJ", "NOMJremains")
+            if (existingConditionsMet || noRecentHighTrigger) {
                 sendSms("MoreMJ")
                 setAutomationState("MJ", "MJ3")
                 addCarePortalNote("MoreMJ")
@@ -3149,8 +3179,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // with controlled delta and a low/no temp target tolerance. Note: "TT now <=4.2 tolerant".
         // Precondition: profile=100%. Daytime-only outer gate (09:00-21:00) — each branch below still
         // has its own (narrower or equal) window, so this just bounds all three to the same daytime
-        // range without changing their individual per-branch windows. 30-min floor throttle.
-        if (readyToRun("High6PP", 30) && profile_percentage == 100 && isTimeBetween(9, 0, 21, 0)) {
+        // range without changing their individual per-branch windows. 30-min floor throttle. Also
+        // requires recentLibreOver12(48): this boost increases insulin delivery in response to a
+        // perceived high, so it's gated on genuine confirmation (raw Libre >12.0mmol) within the last
+        // 48h -- without that, a borderline/moderate reading isn't enough on its own to warrant it.
+        if (readyToRun("High6PP", 30) && profile_percentage == 100 && isTimeBetween(9, 0, 21, 0) && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -3190,9 +3223,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "PodChangeHighPP130": brief 130% profile boost around a pod change (fresh
         // <=2h or stale >=78h) when BGL is high and rising, 10am-6pm. Live-pump-only, matching the
-        // original's note. Precondition: profile=100%.
+        // original's note. Precondition: profile=100%. Also requires a genuine recent high (raw Libre
+        // >12.0mmol within 48h) -- without that recent confirmation the boost isn't warranted.
         if (readyToRun("PodChangeHighPP130", 5) && activePlugin.activePump !is VirtualPump
-            && profile_percentage == 100) {
+            && profile_percentage == 100 && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
@@ -3315,9 +3349,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "RecentPod": brief 130% profile boost + 4.2mmol TT when cannula is very
         // fresh/stale, carbs are up, and BGL is rising with headroom on IOB. Live-pump-only, matching
-        // the original's note. Preconditions: profile=100%, no TT.
+        // the original's note. Preconditions: profile=100%, no TT. Also requires a genuine recent high
+        // (raw Libre >12.0mmol within 48h) -- without that recent confirmation the boost isn't warranted.
         if (readyToRun("RecentPod", 5) && activePlugin.activePump !is VirtualPump
-            && profile_percentage == 100 && activeTtMgdl() == null) {
+            && profile_percentage == 100 && activeTtMgdl() == null && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0

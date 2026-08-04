@@ -437,13 +437,19 @@ class PrepareBgDataWorker(
     }
 
     // Same as libreFiveMinuteDelta above, just a 15-minute window instead of 5.
+    // Rate-normalized to a 5-minute-equivalent (matches AutoIsfHistoryExporter.kt's own rawDeltaStr()
+    // convention for minutesBack>5: the 15-min window is used only for a more stable rate estimate, not
+    // returned as a raw 15-min magnitude -- returning the raw magnitude here previously made this label
+    // read ~3x too high compared to the AIV table's own "15" column for the same moment.
     private fun libreFifteenMinuteDelta(readings: List<GV>): Double? {
         val newest = readings.firstOrNull() ?: return null
         val newestNoise = newest.noise ?: return null
         val target = newest.timestamp - 15 * 60_000L
         val prior = readings.filter { it.timestamp <= target && it.noise != null }.maxByOrNull { it.timestamp } ?: return null
         val priorNoise = prior.noise ?: return null
-        return newestNoise - priorNoise
+        val actualMin = (newest.timestamp - prior.timestamp) / 60_000.0
+        if (actualMin <= 0.0) return null
+        return (newestNoise - priorNoise) / actualMin * 5.0
     }
 
     // Average gap in SECONDS between readings in the trailing 5 minutes (newest.timestamp-5min ..

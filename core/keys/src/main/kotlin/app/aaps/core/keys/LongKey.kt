@@ -35,5 +35,11 @@ enum class LongKey(
     // instant stacking stops (avg gap rises above 70s), so a later rapid-fire sequence always starts a
     // genuinely fresh window rather than inheriting a stale timer from an already-ended stack.
     ApsAutoIsfSmbStackStart("autoisf_smb_stack_start_ts", 0, defaultedBySM = true),
+    // Internal-only: timestamp (ms) raw Libre BGL was last observed over 12.0mmol -- 0 means never (or
+    // not since this was added). Used to gate OldSensorAdj (the sensor-age slope/offset compensation):
+    // if BGL hasn't exceeded 12.0 in the last 24h, that adjustment is blocked and Libre slope/offset
+    // revert to baseline, on the reasoning that the compensation is calibrated against genuine high-BGL
+    // Libre-vs-reference divergence, which this checks is actually still occurring recently.
+    ApsAutoIsfLibreOver12Ts("autoisf_libre_over_12_ts", 0, defaultedBySM = true),
 
 }
