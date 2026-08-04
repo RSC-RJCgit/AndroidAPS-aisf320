@@ -21,6 +21,8 @@ dependencies {
     implementation(project(":core:objects"))
     implementation(project(":core:ui"))
     implementation(project(":core:utils"))
+    // UnscentedKalmanFilterPlugin.smoothForDisplay() -- see PrepareBgDataWorker.kt raw BG smoothed line
+    implementation(project(":plugins:smoothing"))
 
     testImplementation(project(":shared:tests"))
 

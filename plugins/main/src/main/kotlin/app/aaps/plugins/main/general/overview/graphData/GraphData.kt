@@ -212,6 +212,8 @@ class GraphData @Inject constructor(
         // Split into color-banded segments (red / yellow low / yellow high) rather than one series —
         // see PrepareBgDataWorker.kt.
         overviewData.rawBgSeries.forEach { addSeries(it as LineGraphSeries<*>) }
+        // UKF-smoothed companion trace over the same raw values — see PrepareBgDataWorker.kt.
+        addSeries(overviewData.rawBgSmoothedSeries as LineGraphSeries<*>)
     }
 
     fun addBgParabola(addPredictions: Boolean, scale: Double) {

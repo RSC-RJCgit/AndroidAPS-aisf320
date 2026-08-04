@@ -1231,4 +1231,114 @@ private fun savePersistedParameters() {
             reading.trendArrow = TrendArrow.NONE
         }
     }
+
+    // ============================================================
+    // DISPLAY-ONLY ONE-SHOT SMOOTHING (e.g. Raw BG graph line)
+    // ============================================================
+
+    /**
+     * One-shot UKF smoothing for a display-only series (currently: the Raw BG graph line).
+     *
+     * Deliberately does NOT touch this plugin's persisted/adaptive state (learnedR, sensor session
+     * tracking, innovation history, lastProcessedTimestamp) -- that state belongs exclusively to the
+     * live BG smoothing pipeline (LoadBgDataWorker -> AutosensDataStore.smoothData ->
+     * activeSmoothing.smooth()), which feeds real dosing decisions when this plugin is the active
+     * smoothing algorithm. Calling smooth() a second time here with a different data stream (raw/noise
+     * values instead of calibrated BG) would corrupt that shared, persisted state. Every call below
+     * starts from a fresh, non-adaptive R (R_INIT) instead, and nothing is written to SharedPreferences.
+     *
+     * Runs the same Merwe-scaled UKF predict/update + RTS backward smoother math as the live pipeline
+     * (segmented at the same gap thresholds), just without outlier-driven R/Q inflation or persistence,
+     * since those exist to protect adaptive learning across calls -- not relevant for a fresh pass.
+     *
+     * @param points (timestamp, raw value in mg/dL) pairs, newest first -- same ordering convention
+     *   as the InMemoryGlucoseValue lists passed to [smooth]
+     * @return smoothed values in mg/dL, same order/length as [points]
+     */
+    fun smoothForDisplay(points: List<Pair<Long, Double>>): List<Double> {
+        if (points.isEmpty()) return emptyList()
+        if (points.size < 2) return points.map { max(it.second, 39.0) }
+
+        val result = DoubleArray(points.size)
+        var idx = 0
+        while (idx < points.size) {
+            var end = idx
+            while (end + 1 < points.size) {
+                val dt = (points[end].first - points[end + 1].first) / (1000.0 * 60.0)
+                if (dt > MAJOR_GAP_THRESHOLD || dt < 2.0) break
+                end++
+            }
+            if (end - idx + 1 < 2) {
+                result[idx] = max(points[idx].second, 39.0)
+            } else {
+                smoothSegmentForDisplay(points, idx, end, result)
+            }
+            idx = end + 1
+        }
+        return result.toList()
+    }
+
+    private fun smoothSegmentForDisplay(points: List<Pair<Long, Double>>, startIdx: Int, endIdx: Int, result: DoubleArray) {
+        val segmentSize = endIdx - startIdx + 1
+
+        val initialGlucose = points[endIdx].second
+        var initialRate = 0.0
+        if (endIdx > 0) {
+            val dt = (points[endIdx - 1].first - points[endIdx].first) / (1000.0 * 60.0)
+            if (dt in 3.0..7.0) {
+                initialRate = ((points[endIdx - 1].second - points[endIdx].second) / dt).coerceIn(-4.0, 4.0)
+            }
+        }
+
+        val x = doubleArrayOf(initialGlucose, initialRate)
+        val P = doubleArrayOf(16.0, 0.0, 0.0, 1.0)
+        val R = R_INIT // fresh, non-adaptive for every call -- no persisted learnedR involved
+
+        val forwardResults = DoubleArray(segmentSize)
+        forwardResults[segmentSize - 1] = x[0]
+        val forwardStates = ArrayList<FilterState>(segmentSize)
+
+        for (i in (endIdx - 1) downTo startIdx) {
+            val dt = (points[i].first - points[i + 1].first) / (1000.0 * 60.0)
+
+            if (dt > MINOR_GAP_THRESHOLD && dt <= MAJOR_GAP_THRESHOLD) {
+                val qScale = dt / 5.0
+                P[0] = min(P[0] + Q_FIXED[0] * qScale, MAX_GLUCOSE_VARIANCE)
+                P[3] = min(P[3] + Q_FIXED[3] * qScale, MAX_RATE_VARIANCE)
+                x[1] *= exp(-dt / RATE_DECAY_TIME_CONSTANT)
+            }
+
+            P[0] = P[0].coerceIn(0.1, MAX_GLUCOSE_VARIANCE)
+            P[3] = P[3].coerceIn(0.001, MAX_RATE_VARIANCE)
+
+            val dtClamped = dt.coerceIn(3.5, 6.5)
+            val (xPred, PPred) = predict(x, P, Q_FIXED, dtClamped)
+            val stateBefore = FilterState(x.copyOf(), P.copyOf(), xPred.copyOf(), PPred.copyOf(), dtClamped)
+
+            update(xPred, PPred, points[i].second, R, x, P)
+
+            val resultIdx = i - startIdx
+            forwardResults[resultIdx] = x[0]
+            forwardStates.add(0, stateBefore)
+        }
+
+        val smoothedResults = forwardResults.copyOf()
+        if (segmentSize >= 3 && forwardStates.isNotEmpty()) {
+            val maxSmoothSteps = min(segmentSize - 1, forwardStates.size)
+            var xSmooth = doubleArrayOf(forwardResults[0], x[1])
+            for (i in 1..maxSmoothSteps) {
+                val state = forwardStates[i - 1]
+                val C = computeSmootherGain(state.P, state.PPred, state.dt)
+                val dx0 = xSmooth[0] - state.xPred[0]
+                val dx1 = xSmooth[1] - state.xPred[1]
+                xSmooth[0] = forwardResults[i] + C[0] * dx0 + C[1] * dx1
+                xSmooth[1] = state.x[1] + C[2] * dx0 + C[3] * dx1
+                smoothedResults[i] = xSmooth[0]
+            }
+        }
+
+        for (i in startIdx..endIdx) {
+            result[i] = max(smoothedResults[i - startIdx], 39.0)
+        }
+    }
 }

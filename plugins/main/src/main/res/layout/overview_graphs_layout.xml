@@ -48,4 +48,21 @@
         android:layout_height="wrap_content"
         android:orientation="vertical" />
 
+    <!-- 5th graph: fixed clone of bg_graph above (minus basal), gated by BooleanKey.ApsAutoIsfShowGraph5.
+         Visibility is toggled at runtime in OverviewFragment.updateGraph() -- gone by default. -->
+    <RelativeLayout
+        android:id="@+id/graph5_container"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:visibility="gone">
+
+        <com.jjoe64.graphview.GraphView
+            android:id="@+id/graph5"
+            android:layout_width="wrap_content"
+            android:layout_height="200dp"
+            android:contentDescription="@string/a11y_graph" />
+
+    </RelativeLayout>
+
 </LinearLayout>

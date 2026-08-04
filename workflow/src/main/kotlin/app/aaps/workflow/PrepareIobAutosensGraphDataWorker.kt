@@ -167,11 +167,11 @@ class PrepareIobAutosensGraphDataWorker(
         val carbAbsArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbAbsorptionValue = 0.0
         // Simple single-pole exponential smoother (same style as the LibreSpecial fsl_exp1 smoother
-        // elsewhere in this codebase, alpha matched to that mechanism's own range floor of 0.1 for
-        // heavier smoothing) -- this5MinAbsorption is a raw per-bucket rate and jumps around a lot
-        // bucket-to-bucket, unlike a level (COB). null until the first real sample seeds it, so the
-        // smoother doesn't start biased toward 0.
-        val carbAbsAlpha = 0.1
+        // elsewhere in this codebase) -- this5MinAbsorption is a raw per-bucket rate and jumps around
+        // a lot bucket-to-bucket, unlike a level (COB). null until the first real sample seeds it, so
+        // the smoother doesn't start biased toward 0. Reverted from 0.1 back to 0.3 (0.1 smoothed too
+        // heavily / lagged too far behind the raw rate).
+        val carbAbsAlpha = 0.3
         var carbAbsEma: Double? = null
 
         // CARB MODEL CURVE (optional overlay, off by default) -- two-compartment (Dalla Man-style) Ra(t)

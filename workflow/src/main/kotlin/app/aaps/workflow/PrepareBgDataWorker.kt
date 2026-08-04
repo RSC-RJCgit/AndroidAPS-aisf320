@@ -37,6 +37,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
+import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import kotlinx.coroutines.Dispatchers
 import java.util.Locale
 import javax.inject.Inject
@@ -54,6 +55,10 @@ class PrepareBgDataWorker(
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var automationStateService: AutomationStateInterface
+    // Display-only smoothing for the Raw BG line below -- see UnscentedKalmanFilterPlugin.smoothForDisplay().
+    // Injected directly (not via activePlugin.activeSmoothing) since we want UKF specifically here
+    // regardless of which smoothing algorithm the user has selected for the real BG pipeline.
+    @Inject lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
 
     // Themed context for rh.gac() theme-attribute color lookups (acce/bg/dura ISF colors in
     // isfIndicesSeries below) — applicationContext alone doesn't carry the app's light/dark theme,
@@ -144,6 +149,25 @@ class PrepareBgDataWorker(
             rawSegments.add(LineGraphSeries(currentPoints.toTypedArray()).also { it.color = currentColor; it.thickness = 4 })
         }
         data.overviewData.rawBgSeries = rawSegments
+
+        // UKF-smoothed companion trace over the same raw/noise values above -- a single continuous
+        // line (no color-banding needed) drawn alongside rawBgSeries. Uses UnscentedKalmanFilterPlugin
+        // directly (not activePlugin.activeSmoothing) so this is always UKF regardless of which
+        // smoothing algorithm is active for the real BG pipeline, and via smoothForDisplay() so it
+        // never touches that pipeline's persisted/adaptive state. See GraphData.addRawBg().
+        data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
+            val newestFirst = rawReadings.sortedByDescending { it.timestamp }
+            val smoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
+            val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
+                DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
+            }.asReversed() // back to ascending time order for the line series
+            LineGraphSeries(smoothedPoints.toTypedArray()).also {
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.rawBgColor)
+                it.thickness = 6
+            }
+        } else {
+            LineGraphSeries<DataPoint>()
+        }
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.

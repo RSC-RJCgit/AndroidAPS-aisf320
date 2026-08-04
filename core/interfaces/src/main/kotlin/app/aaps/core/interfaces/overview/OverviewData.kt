@@ -141,6 +141,10 @@ interface OverviewData {
     // low / yellow high) since GraphView's line series can't vary color within itself — see
     // PrepareBgDataWorker.kt.
     var rawBgSeries: List<SeriesData>
+    // UKF-smoothed trace of the same raw/noise values as rawBgSeries -- a single continuous line
+    // (unlike rawBgSeries, doesn't need color-banding) drawn alongside it. See PrepareBgDataWorker.kt
+    // and UnscentedKalmanFilterPlugin.smoothForDisplay().
+    var rawBgSmoothedSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
     // Libre 1-min delta label attached to the current Libre graph point — see L1DeltaDataPoint/Shape.L1_DELTA_POINT.
     var l1DeltaSeries: SeriesData

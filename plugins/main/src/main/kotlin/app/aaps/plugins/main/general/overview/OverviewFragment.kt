@@ -1392,6 +1392,47 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         graphData.performUpdate()
 
+        // 5th graph: fixed clone of the main graph above, minus basal. Not part of the
+        // CharTypeData/secondary-graphs menu system (that only lets primary types target graph 0) --
+        // just one on/off switch. See BooleanKey.ApsAutoIsfShowGraph5.
+        if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
+            binding.graphsLayout.graph5Container.visibility = View.VISIBLE
+            val graph5Data = graphDataProvider.get().with(binding.graphsLayout.graph5, overviewData)
+            graph5Data.addInRangeArea(
+                overviewData.fromTime, overviewData.endTime,
+                preferences.get(UnitDoubleKey.OverviewLowMark),
+                preferences.get(UnitDoubleKey.OverviewHighMark)
+            )
+            graph5Data.addBgReadings(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], context)
+            graph5Data.addBucketedData()
+            graph5Data.addTreatments(context)
+            graph5Data.addEps(context, 0.95)
+            if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
+                graph5Data.addTherapyEvents()
+            if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
+                graph5Data.addActivity(0.8)
+            if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
+                graph5Data.addCarbAbsorption(0.8)
+            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+                graph5Data.addCarbModelCurve(0.8)
+            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
+                graph5Data.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], 1.0)
+            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
+                graph5Data.addRawBg(false)
+            // No addBasals() call — this graph is deliberately BG/graphs-only, no basal.
+            graph5Data.addTargetLine()
+            graph5Data.addRunningModes()
+            graph5Data.addNowLine(dateUtil.now())
+            // L1/A1 delta annotations and the hypo-prediction row stay on the real BG graph only (see
+            // comment on graphData's own calls above) — deliberately not duplicated here.
+            graph5Data.setNumVerticalLabels()
+            graph5Data.formatAxis(overviewData.fromTime, overviewData.endTime)
+            graph5Data.applyFontScale(skinProvider.activeSkin().graphFontScale)
+            graph5Data.performUpdate()
+        } else {
+            binding.graphsLayout.graph5Container.visibility = View.GONE
+        }
+
         // 2nd graphs
         prepareGraphsIfNeeded(menuChartSettings.size)
         val secondaryGraphsData: ArrayList<GraphData> = ArrayList()

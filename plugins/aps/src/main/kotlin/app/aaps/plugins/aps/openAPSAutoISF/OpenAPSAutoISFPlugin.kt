@@ -1700,6 +1700,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("Graph2ToggleTT")
         }
 
+        // --- Graph5ToggleTT: manually setting a TT of 5.142 mmol is used as a remote toggle for
+        // ApsAutoIsfShowGraph5 (the 5th graph — a fixed clone of the main graph, minus basal) — not a
+        // real target. Next value after Graph2ToggleTT's 5.138 / CloudLogsUploadTT's 5.140. Same
+        // activeTtNear()/cancel/notify/toggle pattern as Graph2ToggleTT above. Independent switch —
+        // deliberately does not touch graphs 2/3/4's own settings.
+        if (readyToRun("Graph5ToggleTT", 2) && activeTtNear(5.142, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowGraph5)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraph5, newState)
+            cancelCurrentTempTarget()
+            sendSms("Graph5Toggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("G5${if (newState) "On" else "Off"}")
+            markRun("Graph5ToggleTT")
+        }
+
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
         // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
         // storage if configured, else email) — for AAPSClient users who have no settings access to
@@ -3177,7 +3191,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of "MoreMJ": advances MJ state to MJ3 when acce weight is very low, activity is
         // low, glucose is falling low on the 50% profile with no carbs and IOB still present. No
         // live-pump gate: the original's Note field was empty.
-        if (readyToRun("MoreMJ", 5)) {
+        // Hysteresis: also locked out for 65 min after MJoff last fired (readyToRun on the "MJoff"
+        // timestamp), so the noRecentHighTrigger OR-path below -- which has no time-of-day/BG gate of
+        // its own -- can't immediately re-set MJ3 right after MJoff's midnight block (00:00-01:00) has
+        // just reset MJ to NOMJremains. 65 min safely spans that 60-min block. Same pattern as the
+        // 50SetRecent/PP50Off flap fix above.
+        if (readyToRun("MoreMJ", 5) && readyToRun("MJoff", 65)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val existingConditionsMet = acceW <= 0.11
