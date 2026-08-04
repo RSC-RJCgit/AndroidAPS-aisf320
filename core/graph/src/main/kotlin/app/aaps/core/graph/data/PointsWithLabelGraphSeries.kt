@@ -676,12 +676,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
     }
 
     private fun calculateSmbStackIndices(values: List<E>, shape: Shape): IdentityHashMap<E, Int> {
+        // BaseSeries iteration order can be newest-first. Stack windows must be built in timestamp
+        // order; otherwise timestamp-anchor stays negative and consecutive windows merge into one.
+        val smbValues = values.filter { it.shape == shape }.sortedBy { it.x }
         val bucketByValue = IdentityHashMap<E, Long>()
         val bucketTotals = HashMap<Long, Int>()
         var anchor = Long.MIN_VALUE
         var bucket = 0L
 
-        values.filter { it.shape == shape }.forEach { value ->
+        smbValues.forEach { value ->
             val timestamp = value.x.toLong()
             if (anchor == Long.MIN_VALUE || timestamp - anchor >= 10 * 60_000L) {
                 anchor = timestamp
@@ -693,7 +696,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
         val seen = HashMap<Long, Int>()
         return IdentityHashMap<E, Int>().also { indices ->
-            values.filter { it.shape == shape }.forEach { value ->
+            smbValues.forEach { value ->
                 val valueBucket = bucketByValue.getValue(value)
                 val chronologicalIndex = seen.getOrDefault(valueBucket, 0)
                 seen[valueBucket] = chronologicalIndex + 1
