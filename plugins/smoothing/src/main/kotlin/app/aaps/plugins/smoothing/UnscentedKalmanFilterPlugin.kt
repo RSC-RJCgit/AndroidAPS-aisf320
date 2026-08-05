@@ -1236,6 +1236,17 @@ private fun savePersistedParameters() {
     // DISPLAY-ONLY ONE-SHOT SMOOTHING (e.g. Raw BG graph line)
     // ============================================================
 
+    // Own tuning, deliberately NOT reusing R_INIT/Q_FIXED above -- those were tuned for the live
+    // pipeline's CALIBRATED BG stream, which is already fairly clean. The Raw BG line's source (gv.noise,
+    // uncalibrated/unfiltered) is noisier than that, so trusting it as much as R_INIT=25 assumed produced
+    // barely-visible smoothing in practice (the filter tracked the noise almost as closely as a straight
+    // copy). DISPLAY_R is set much higher (trust each individual raw reading far less) and DISPLAY_Q's
+    // rate term is set lower (don't let the estimated slope itself whip around with the noise either) --
+    // both push toward heavier smoothing / slower response. Adjust these two if it's still not enough, or
+    // is now over-smoothed/laggy for your signal.
+    private val DISPLAY_R = 225.0                          // ~15 mg/dL std dev assumed measurement noise (vs R_INIT's ~5)
+    private val DISPLAY_Q = doubleArrayOf(1.0, 0.0, 0.0, 0.15) // rate process noise cut from Q_FIXED's 0.40 to 0.15
+
     /**
      * One-shot UKF smoothing for a display-only series (currently: the Raw BG graph line).
      *
@@ -1245,11 +1256,12 @@ private fun savePersistedParameters() {
      * activeSmoothing.smooth()), which feeds real dosing decisions when this plugin is the active
      * smoothing algorithm. Calling smooth() a second time here with a different data stream (raw/noise
      * values instead of calibrated BG) would corrupt that shared, persisted state. Every call below
-     * starts from a fresh, non-adaptive R (R_INIT) instead, and nothing is written to SharedPreferences.
+     * starts from a fresh, non-adaptive DISPLAY_R instead, and nothing is written to SharedPreferences.
      *
      * Runs the same Merwe-scaled UKF predict/update + RTS backward smoother math as the live pipeline
      * (segmented at the same gap thresholds), just without outlier-driven R/Q inflation or persistence,
-     * since those exist to protect adaptive learning across calls -- not relevant for a fresh pass.
+     * since those exist to protect adaptive learning across calls -- not relevant for a fresh pass. Uses
+     * its own DISPLAY_R/DISPLAY_Q tuning (see above), not the live pipeline's R_INIT/Q_FIXED.
      *
      * @param points (timestamp, raw value in mg/dL) pairs, newest first -- same ordering convention
      *   as the InMemoryGlucoseValue lists passed to [smooth]
@@ -1298,7 +1310,7 @@ private fun savePersistedParameters() {
 
         val x = doubleArrayOf(initialGlucose, initialRate)
         val P = doubleArrayOf(16.0, 0.0, 0.0, 1.0)
-        val R = R_INIT // fresh, non-adaptive for every call -- no persisted learnedR involved
+        val R = DISPLAY_R // fresh, non-adaptive for every call -- no persisted learnedR involved
 
         val forwardResults = DoubleArray(segmentSize)
         forwardResults[segmentSize - 1] = x[0]
@@ -1309,8 +1321,8 @@ private fun savePersistedParameters() {
 
             if (dt > MINOR_GAP_THRESHOLD && dt <= MAJOR_GAP_THRESHOLD) {
                 val qScale = dt / 5.0
-                P[0] = min(P[0] + Q_FIXED[0] * qScale, MAX_GLUCOSE_VARIANCE)
-                P[3] = min(P[3] + Q_FIXED[3] * qScale, MAX_RATE_VARIANCE)
+                P[0] = min(P[0] + DISPLAY_Q[0] * qScale, MAX_GLUCOSE_VARIANCE)
+                P[3] = min(P[3] + DISPLAY_Q[3] * qScale, MAX_RATE_VARIANCE)
                 x[1] *= exp(-dt / RATE_DECAY_TIME_CONSTANT)
             }
 
@@ -1318,7 +1330,7 @@ private fun savePersistedParameters() {
             P[3] = P[3].coerceIn(0.001, MAX_RATE_VARIANCE)
 
             val dtClamped = dt.coerceIn(3.5, 6.5)
-            val (xPred, PPred) = predict(x, P, Q_FIXED, dtClamped)
+            val (xPred, PPred) = predict(x, P, DISPLAY_Q, dtClamped)
             val stateBefore = FilterState(x.copyOf(), P.copyOf(), xPred.copyOf(), PPred.copyOf(), dtClamped)
 
             update(xPred, PPred, points[i].second, R, x, P)

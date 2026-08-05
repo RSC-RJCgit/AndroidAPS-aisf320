@@ -2254,8 +2254,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- HighNight00AM: overnight high BGL (>=9.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
+        // --- HighNight00AM: overnight high BGL (>=7.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
         // Fires 01:00–05:45 when glucose elevated and gently rising/flat, iobTH<=50 OR old cannula + MJ state.
+        // Threshold lowered from 9.0 to 7.0 mmol (least-invasive first step on the overnight 6-6.5mmol
+        // plateau): NightAcce backs off at <=6.0mmol and OffHighProf reverts this automation's own
+        // ProfileReal switch once BG falls under 7.5mmol falling, so 7.0 sits with working room on both
+        // sides of that existing pair -- low enough to actually engage before BG settles into the
+        // 6.0-9.0mmol dead zone where nothing else in this file corrects, high enough to leave NightAcce's
+        // own floor and OffHighProf's own revert gate alone. Revisit the exact number after a few nights.
         // 60-min floor throttle added on top of the preconditions (see readyToRun() usage note).
         if (readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
             val g       = glucoseStatus.glucose
@@ -2264,10 +2270,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ld      = glucoseStatus.longAvgDelta
             val iobTH   = iobThresholdPercent
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val baseOk  = isTimeBetween(1, 0, 5, 45) && g >= 162.1 /* 9.0 mmol */
+            val baseOk  = isTimeBetween(1, 0, 5, 45) && g >= 126.1 /* 7.0 mmol */
                 && d >= 0.0 && d <= 14.4 /* 0.8 mmol */ && sd >= 0.0 && ld >= 0.0 && ld <= 6.3 /* 0.35 mmol */
             val branch1 = baseOk && iobTH <= 50
-            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 162.1 && cannulaH >= 60.0
+            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH >= 60.0
             if (branch1 || branch2) {
                 switchProfileIfNeeded("Current ProfileReal", 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)

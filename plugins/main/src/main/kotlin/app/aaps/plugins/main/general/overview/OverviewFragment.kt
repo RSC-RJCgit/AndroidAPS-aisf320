@@ -234,6 +234,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         binding.graphsLayout.bgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
         binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
 
+        // Graph5 sized the same as the main graph (skin's mainGraphHeight, not secondaryGraphHeight) —
+        // it's a main-graph-like panel, not one of the small secondary graphs.
+        binding.graphsLayout.graph5.gridLabelRenderer?.gridColor = rh.gac(context, app.aaps.core.ui.R.attr.graphGrid)
+        binding.graphsLayout.graph5.gridLabelRenderer?.reloadStyles()
+        binding.graphsLayout.graph5.gridLabelRenderer?.labelVerticalWidth = axisWidth
+        binding.graphsLayout.graph5.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
+
         carbAnimation = binding.infoLayout.carbsIcon.background as AnimationDrawable?
         carbAnimation?.setEnterFadeDuration(1200)
         carbAnimation?.setExitFadeDuration(1200)
@@ -960,14 +967,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 // it, so a stray tap on the wrong direction can be corrected before
                                 // confirming. Checkboxes behave as a mutually-exclusive pair (same idiom
                                 // as OverviewMenusImpl.createCustomMenuItemView's per-row checkboxes) —
-                                // ticking one clears the other. Labeled with the generic direction symbols
-                                // (not a literal magnitude like "-0.1"/"+0.1") since the actual per-tap
-                                // step size differs per entry and isn't tracked in TtCode itself — see the
-                                // matching *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt for the real
-                                // delta this entry applies.
+                                // ticking one clears the other. Labeled with the real magnitude each
+                                // direction applies (entry.downLabel/upLabel, e.g. "-0.1"/"+0.1"), pulled
+                                // from the matching *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt — see
+                                // the comment on TtCode.Stepped above.
                                 is TtCode.Stepped -> {
-                                    val downBox = CheckBox(act).apply { text = "− (down)" }
-                                    val upBox = CheckBox(act).apply { text = "+ (up)" }
+                                    val downBox = CheckBox(act).apply { text = entry.downLabel }
+                                    val upBox = CheckBox(act).apply { text = entry.upLabel }
                                     downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
                                     upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
                                     val container = LinearLayout(act).apply {
@@ -1203,7 +1209,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // surface at that final step, never in the scannable list itself.
     private sealed class TtCode(val label: String) {
         class Single(label: String, val value: Double) : TtCode(label)
-        class Stepped(label: String, val down: Double, val up: Double) : TtCode(label)
+        // downLabel/upLabel: the actual magnitude each direction applies, pulled from the matching
+        // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt (not derivable from down/up themselves — those
+        // are just this TT-signal's own mmol trigger values, unrelated in magnitude to the real setting
+        // delta). Shown on the checkboxes in the confirm dialog below instead of a generic "down"/"up".
+        class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String) : TtCode(label)
     }
 
     // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. Tapping an entry creates a real TT at
@@ -1215,32 +1225,34 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // Abbreviated for narrow-phone display: weight->Wt, SMB delivery->SMBdel, boost->Bst, normal->N,
     // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
     private fun ttCodesList(): List<TtCode> = listOf(
-        TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004),
+        // SmbDeliveryDownTT/UpTT nudges BOTH ApsAutoIsfSmbDeliveryBaseline and ApsAutoIsfMildBoostRatio, both by the same ±0.01.
+        TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004, "-0.01", "+0.01"),
         TtCode.Single("Tog Libre sens on/off", 5.006),
         TtCode.Single("Tog Bst autos(all) on/off", 5.008),
-        TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014),
-        TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018),
-        TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024),
-        TtCode.Stepped("Libre slope (Or)", 5.026, 5.028),
-        TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034),
-        TtCode.Stepped("SMB offset HARD", 5.036, 5.038),
+        TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01"),
+        TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018, "-0.05", "+0.05"),
+        TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1"),
+        TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01"),
+        TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05"),
+        TtCode.Stepped("SMB offset HARD", 5.036, 5.038, "-0.10", "+0.10"),
         TtCode.Single("clean grph view", 5.042),
-        TtCode.Stepped("Wizard bolus %", 5.046, 5.048),
-        TtCode.Stepped("MildBst ratio", 5.052, 5.054),
-        TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058),
-        TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064),
-        TtCode.Stepped("higher ISF range Wt", 5.068, 5.070),
-        TtCode.Stepped("peak insulin time", 5.074, 5.076),
-        TtCode.Stepped("autoISF max (lowBG)", 5.080, 5.082),
-        TtCode.Stepped("autoISF max (N)", 5.086, 5.088),
-        TtCode.Stepped("T1 tod offset 00-02h", 5.092, 5.094),
-        TtCode.Stepped("T2 tod offset 02-04h", 5.098, 5.100),
-        TtCode.Stepped("T3 tod offset 04-06h", 5.104, 5.106),
-        TtCode.Stepped("T4 tod offset 06-09h", 5.110, 5.112),
-        TtCode.Stepped("T5 tod offset 09-12h", 5.116, 5.118),
-        TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124),
-        TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130),
-        TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136),
+        TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%"),
+        // MildBoostDownTT/UpTT nudges ApsAutoIsfMildBoostRatio ALONE (unlike SMBdel base + mild-Bst above, which nudges it together with the baseline).
+        TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.01", "+0.01"),
+        TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058, "-0.01", "+0.01"),
+        TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064, "-0.01", "+0.01"),
+        TtCode.Stepped("higher ISF range Wt", 5.068, 5.070, "-0.1", "+0.1"),
+        TtCode.Stepped("peak insulin time", 5.074, 5.076, "-5 min", "+5 min"),
+        TtCode.Stepped("autoISF max (lowBG)", 5.080, 5.082, "-0.1", "+0.1"),
+        TtCode.Stepped("autoISF max (N)", 5.086, 5.088, "-0.1", "+0.1"),
+        TtCode.Stepped("T1 tod offset 00-02h", 5.092, 5.094, "-0.1", "+0.1"),
+        TtCode.Stepped("T2 tod offset 02-04h", 5.098, 5.100, "-0.1", "+0.1"),
+        TtCode.Stepped("T3 tod offset 04-06h", 5.104, 5.106, "-0.1", "+0.1"),
+        TtCode.Stepped("T4 tod offset 06-09h", 5.110, 5.112, "-0.1", "+0.1"),
+        TtCode.Stepped("T5 tod offset 09-12h", 5.116, 5.118, "-0.1", "+0.1"),
+        TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124, "-0.1", "+0.1"),
+        TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130, "-0.1", "+0.1"),
+        TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136, "-0.1", "+0.1"),
         TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
         TtCode.Single("Cloud logs upload", 5.140),
         TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142)
@@ -1423,9 +1435,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         graphData.performUpdate()
 
-        // 5th graph: fixed clone of the main graph above, minus basal. Not part of the
-        // CharTypeData/secondary-graphs menu system (that only lets primary types target graph 0) --
-        // just one on/off switch. See BooleanKey.ApsAutoIsfShowGraph5.
+        // 5th graph: always-on bgl/carb/insulin-activity picture, minus basal. Deliberately NOT gated by
+        // the main graph's own checkboxes/quick-toggles (menuChartSettings[0][...], isActiveCharTypeData,
+        // carbLine1QuickShow) -- graph5 shows all of these regardless of what's switched off on graph 0.
+        // Not part of the CharTypeData/secondary-graphs menu system (that only lets primary types target
+        // graph 0) -- just one on/off switch for the whole panel. See BooleanKey.ApsAutoIsfShowGraph5.
+        // No treatments/therapy-events/notes/delta-annotations/hypo-prediction row -- those are
+        // label/marker-bearing (bolus doses, carb grams, note text); this panel is plain data lines only.
         if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
             binding.graphsLayout.graph5Container.visibility = View.VISIBLE
             val graph5Data = graphDataProvider.get().with(binding.graphsLayout.graph5, overviewData)
@@ -1434,30 +1450,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 preferences.get(UnitDoubleKey.OverviewLowMark),
                 preferences.get(UnitDoubleKey.OverviewHighMark)
             )
-            graph5Data.addBgReadings(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], context)
+            graph5Data.addBgReadings(true, context) // predictions always on here, regardless of graph 0's PRE checkbox
             graph5Data.addBucketedData()
-            graph5Data.addTreatments(context)
-            graph5Data.addEps(context, 0.95)
-            if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
-                graph5Data.addTherapyEvents()
-            if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
-                graph5Data.addActivity(0.8)
-            if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
-                graph5Data.addCarbAbsorption(0.8)
-            if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
-                graph5Data.addCarbModelCurve(0.8)
-            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
-                graph5Data.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], 1.0)
-            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
-                graph5Data.addRawBg(false)
-            if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
-                graph5Data.addRawBgSmoothed(false)
+            graph5Data.addActivity(0.8)             // insulin activity
+            graph5Data.addCarbAbsorption(0.8)        // empirical carb absorption
+            graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
+                                                      // globally on for there to be any data -- that's a data-availability
+                                                      // flag, not a "switched off on graph 0" toggle, so it's left alone)
+            graph5Data.addBgParabola(true, 1.0)
+            graph5Data.addRawBg(false)
+            graph5Data.addRawBgSmoothed(false)
             // No addBasals() call — this graph is deliberately BG/graphs-only, no basal.
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
             graph5Data.addNowLine(dateUtil.now())
-            // L1/A1 delta annotations and the hypo-prediction row stay on the real BG graph only (see
-            // comment on graphData's own calls above) — deliberately not duplicated here.
             graph5Data.setNumVerticalLabels()
             graph5Data.formatAxis(overviewData.fromTime, overviewData.endTime)
             graph5Data.applyFontScale(skinProvider.activeSkin().graphFontScale)
