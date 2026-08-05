@@ -35,6 +35,9 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.utils.CodedAutomationNames
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import app.aaps.core.validators.preferences.AdaptiveListPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.automation.actions.Action
@@ -358,6 +361,41 @@ class AutomationPlugin @Inject constructor(
             automationEvents.add(AutomationEventObject(injector).fromJSON(EMPTY_EVENT))
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Coded-automation name-match decisions (see CodedAutomationNames.kt) -- persisted as a JSON
+    // {eventTitle: accepted} map in AutomationStringKey.CodedAutomationDecisions. Read by
+    // processActions() above for the live suppression check; read/written by the on-update review
+    // popup (OverviewFragment.kt) for the user's actual accept/deny choices.
+    // ---------------------------------------------------------------------------------------------
+
+    private fun loadCodedAutomationDecisions(): Map<String, Boolean> {
+        val json = preferences.get(AutomationStringKey.CodedAutomationDecisions)
+        if (json.isEmpty()) return emptyMap()
+        return try {
+            val type = object : TypeToken<Map<String, Boolean>>() {}.type
+            Gson().fromJson<Map<String, Boolean>>(json, type) ?: emptyMap()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.AUTOMATION, "Failed to parse coded automation decisions", e)
+            emptyMap()
+        }
+    }
+
+    override fun pendingCodedAutomationReviews(): List<String> {
+        val decisions = loadCodedAutomationDecisions()
+        return synchronized(this) { automationEvents.toList() }
+            .filter { !it.userAction && CodedAutomationNames.classify(it.title) == CodedAutomationNames.MatchType.CLOSE }
+            .map { it.title }
+            .distinct()
+            .filter { it !in decisions }
+    }
+
+    // `accepted[title] == true` lets that CLOSE-matching event run alongside the coded automations
+    // toggle; `false` (or simply not accepting) keeps it suppressed.
+    override fun saveCodedAutomationDecisions(accepted: Map<String, Boolean>) {
+        val merged = loadCodedAutomationDecisions() + accepted
+        preferences.put(AutomationStringKey.CodedAutomationDecisions, Gson().toJson(merged))
+    }
+
     internal fun processActions() {
         if (!config.appInitialized) return
         /**
@@ -395,16 +433,29 @@ class AutomationPlugin @Inject constructor(
         }
 
         aapsLogger.debug(LTag.AUTOMATION, "processActions")
-        // While the AutoISF ported-automations toggle is on, suppress every native auto-firing
-        // event (userAction/button events are unaffected — they're already excluded by
-        // !event.userAction above). Live check, not a persisted change: nothing here touches
-        // event.isEnabled, so each event's own checkbox state is untouched and instantly resumes
-        // controlling firing the moment the toggle goes back off — no state to save/restore.
-        val portedAutomationsSuppressing = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
+        // While the AutoISF ported-automations toggle is on, suppress native auto-firing events whose
+        // title plausibly duplicates a coded automation (userAction/button events are unaffected —
+        // they're already excluded by !event.userAction above). EXACT title matches (case/punctuation-
+        // insensitive) are always suppressed, no exceptions. CLOSE matches (one name contains the other)
+        // are suppressed UNLESS the user has explicitly accepted that exact title via the on-update
+        // review popup. Events with no name relationship to any coded automation at all are never
+        // touched by this toggle — this is the actual change from the old behaviour, which blocked
+        // every native event unconditionally regardless of name. Live check, not a persisted change:
+        // nothing here touches event.isEnabled, so each event's own checkbox state is untouched and
+        // instantly resumes controlling firing the moment the toggle goes back off — no state to
+        // save/restore (the per-title accept/deny decisions ARE persisted, separately, in
+        // AutomationStringKey.CodedAutomationDecisions).
+        val portedAutomationsEnabled = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
+        val codedAutomationDecisions = if (portedAutomationsEnabled) loadCodedAutomationDecisions() else emptyMap()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         while (iterator.hasNext()) {
             val event = iterator.next()
-            if (event.isEnabled && !event.userAction && event.shouldRun() && !portedAutomationsSuppressing)
+            val suppressedByCodedAutomations = portedAutomationsEnabled && when (CodedAutomationNames.classify(event.title)) {
+                CodedAutomationNames.MatchType.EXACT -> true
+                CodedAutomationNames.MatchType.CLOSE -> codedAutomationDecisions[event.title] != true
+                CodedAutomationNames.MatchType.NONE  -> false
+            }
+            if (event.isEnabled && !event.userAction && event.shouldRun() && !suppressedByCodedAutomations)
                 if (event.systemAction || commonEventsEnabled) {
                     processEvent(event)
                     if (event.hasStopProcessing()) break

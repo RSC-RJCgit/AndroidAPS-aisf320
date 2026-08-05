@@ -372,7 +372,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Temporary percentage-only profile boost for a fixed duration, at profileName (defaults to
     // whatever profile is currently active — pass an explicit name only when the original action
-    // targeted a specific named profile, e.g. HighOldPod/BolusGiven71's "Current ProfileReal").
+    // targeted a specific named profile, e.g. HighOldPod/BolusGiven71's Standard profile).
     // Replaces the former startProfile50For360/180, startProfile110For5/10, startProfile120For5,
     // startProfile130For60 — all identical apart from percentage/duration/profileName.
     // Default to the ORIGINAL (base) profile name, not getProfileName() — see applyCurrentProfileAt100:
@@ -1014,7 +1014,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of the "Test2" automation (MJ=MJ5): also switches to Current ProfileReal for 30 min.
         if (readyToRun("MJ5", 5) && checkAutomationState("MJ", "MJ5")) {
             addCarePortalNote("A1")
-            switchProfileIfNeeded("Current ProfileReal", 30)
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
             setAutomationState("MJ", "NOMJremains")
             markRun("MJ5")
         }
@@ -1103,7 +1103,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline: hypo protection must not
                                             // keep BolusGiven's strengthened SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
-                startProfilePercentFor(50, 360, "Current Profile")   // force onto the MJ/night profile, then hold 50% for 360 min as usual
+                startProfilePercentFor(50, 360, preferences.get(StringKey.ApsAutoIsfLowProfileName))   // force onto the MJ/night profile, then hold 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("Set50-$p50block")
@@ -2143,13 +2143,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
-        // Fires when NOT on "Current Profile" (i.e. on a named high/steroid profile), Steroids Off, no TT.
+        // Fires when NOT on the Low profile (i.e. on a named high/steroid profile), Steroids Off, no TT.
         // 5-min floor throttle added (see readyToRun() usage note).
         run {
             if (!readyToRun("OffHighProf", 5)) return@run
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
-            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val noTT = activeTtMgdl() == null
             val steroidOff = checkAutomationState("Steroids", "Steroids Off")
             // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
@@ -2160,7 +2160,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
             if (ohBlock != null) {
-                switchProfileIfNeeded("Current Profile", 30)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
@@ -2200,7 +2200,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("BatteryOver1pc", 5)
             && profileFunction.getProfileName() == "Current Profile50"
             && receiverStatusStore.batteryLevel > 1) {
-            switchProfileIfNeeded("Current ProfileReal", 0)
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 0)
             sendSms("AllOK Batt")
             setAutomationState("Profile", "AllOK")
             addCarePortalNote("AOK")
@@ -2222,7 +2222,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (g >= 180.2 /* 10.0 mmol */ && d in 1.8..5.4 /* 0.1–0.3 mmol */
                 && sd >= 1.8 /* 0.1 mmol */ && ld >= 0.0
                 && lastBolusMin >= 90 && oldOrNew) {
-                val targetProfile = "Current ProfileReal"
+                val targetProfile = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
                 switchProfileIfNeeded(targetProfile, 30)
                 startProfilePercentFor(110, 5, targetProfile)
@@ -2275,7 +2275,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val branch1 = baseOk && iobTH <= 50
             val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH >= 60.0
             if (branch1 || branch2) {
-                switchProfileIfNeeded("Current ProfileReal", 30)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)
                 setBgAccelIsfWeight(0.50)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
@@ -2331,7 +2331,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val aoB3 = lastBolusMin <= 10 && !delayedBolusPending
             if (aoB1 || aoB2 || aoB3) {
                 cancelCurrentTempTarget()
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 sendSms("Activity 70_0.70 0.35 Acce")
@@ -2444,7 +2444,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
                 && rawDelta5 >= 7.2 && rawDelta1 >= 7.2 /* 0.4 mmol raw confirmation */
             val profileName = profileFunction.getProfileName()
-            val onNormalProfile = profileName == "Current ProfileReal" || profileName == "Current Profile"
+            val onNormalProfile = profileName == preferences.get(StringKey.ApsAutoIsfStandardProfileName) || profileName == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
                 && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
                 && (lastBolusMin <= 120 || cob >= 10)
@@ -2505,7 +2505,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
-                && profileName != "Current Profile"                  // not on the MJ/night profile
+                && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName)                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses (BS.Type.NORMAL),
                 // never SMB — so mild firing doesn't touch that gate and couldn't otherwise block bg3 here.
@@ -2535,7 +2535,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 cancelCurrentTempTarget()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
-                switchProfileIfNeeded("Current ProfileReal", 30)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
@@ -2545,7 +2545,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.03)
                                             // strengthen SMB delivery during the post-bolus boost;
                                             // recovery/protective autos restore it to baseline (see below)
-                startProfilePercentFor(110, 2, "Current ProfileReal")//WAS duration = 10,
+                startProfilePercentFor(110, 2, preferences.get(StringKey.ApsAutoIsfStandardProfileName))//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
         }
@@ -2591,7 +2591,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
-                && profileFunction.getProfileName() != "Current Profile"   // not on the MJ/night profile
+                && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName)   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
                 // lastCarbMin don't see either automation's own SMB delivery, so without this a bg3 fire's
@@ -2703,7 +2703,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
-                && g <= 171.2 && profileName != "Current Profile" && !mjActive()
+                && g <= 171.2 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenMild", 10) && movementOk
                 && recentSteps60Minutes < 300 && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
@@ -2713,7 +2713,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
-                && profileName != "Current Profile" && !mjActive()
+                && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenBg3", 10) && movementOk
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
             val mildDeliveryRatioWould = when {
@@ -2810,7 +2810,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
-                profileFunction.getProfileName() != "Current Profile" &&
+                profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
                 readyToRun("BolusGivenBg3", 10) &&
                 recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
@@ -3058,7 +3058,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ctBlock = when { ctB1 -> "1"; ctB2 -> "2"; else -> null }
             if (ctBlock != null) {
                 setBgAccelIsfWeight(0.50)
-                switchProfileIfNeeded("Current ProfileReal", 30)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime recovery restores delivery baseline
@@ -3120,7 +3120,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
                 addGraphAnnouncement("_____POD2")
                 setAutomationState("Profile", "PP130")
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 sendSms("POD 78 hours")
                 sendSmsToNumbers("POD 78 hours", StringKey.SmsPod2Numbers)
                 markRun("Pod2")
@@ -3149,7 +3149,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             if ((g <= 144.1 /* 8.0 mmol */ || d <= 1.8 /* 0.1 mmol */)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && cannulaH < 72.0
@@ -3159,7 +3159,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && isTimeBetween(0, 0, 8, 0)
                 && !onCurrentProfile) {
                 sendSms("MJ recent CurrProf Acce")
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 addCarePortalNote("MJrec")
@@ -3169,13 +3169,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "BasalUp": raises acce weight back to neutral (0.50) and switches to Current
         // ProfileReal when glucose is stable/rising outside a pod/MJ/afternoon guard window, low
-        // activity, and currently on "Current Profile". No live-pump gate: the original's Note field
+        // activity, and currently on the Low profile. No live-pump gate: the original's Note field
         // was empty.
         if (readyToRun("BasalUp", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val onCurrentProfile = profileFunction.getProfileName() == "Current Profile"
+            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val cannulaOrStateOk = cannulaH >= 72.0 || cannulaH <= 6.0 ||
                 checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
             if (g >= 81.1 /* 4.5 mmol */
@@ -3186,7 +3186,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
                 && onCurrentProfile) {
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setBgAccelIsfWeight(0.50)
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
@@ -3269,7 +3269,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val off2 = isTimeBetween(21, 0, 0, 0) && g <= 144.1 /* 8.0 mmol */
                 && profile_percentage == 120 && d <= 3.6 /* 0.2 mmol */
             if (off1 || off2) {
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 sendSms("High6PPoff Acce")
                 addCarePortalNote("off120")
                 markRun("High6PPoff")
@@ -3291,7 +3291,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 3.6 /* 0.2 mmol */
                 && cannulaH <= 80.0
                 && isTimeBetween(10, 0, 18, 0)) {
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setAutomationState("Profile", "C100")
                 startProfilePercentFor(130, 60)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
@@ -3326,7 +3326,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (off1 || off2 || off3) {
                 sendSms("HighPP130Off")
                 setAutomationState("Profile", "C100")
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 addCarePortalNote("130Off")
                 setAutomationState("LowBG", "NO50rec")
                 markRun("HighPP130Off")
@@ -3364,7 +3364,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("OldPod2")
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 startProfilePercentFor(130, 5)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 markRun("OldPod2")
@@ -3382,7 +3382,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // fire (acce stuck at its boosted level). Same float trap as the DelOff reset.
             if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 sendSms("RecentPodOff Acce")
                 addCarePortalNote("pTTOff")
                 markRun("RecentPodOff")
@@ -3439,7 +3439,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (podActivatedSinceExport) {
                 sendSms("ExportSettingsPodActivation")
                 exportSettingsFor("NewPod")
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 cancelCurrentTempTarget()
                 setAutomationState("Profile", "PP130")
                 markRun("ExportSettingsPodActivation")
@@ -3454,7 +3454,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val onCurrentProfileEither = profileFunction.getProfileName() == "Current Profile" || profileFunction.getProfileName() == "Current ProfileReal"
+            val onCurrentProfileEither = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName) || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfStandardProfileName)
             val evB1 = isTimeBetween(20, 0, 1, 0) && g <= 135.1 /* 7.5 mmol */ && iobThresholdPercent < 50
                 && mealData.mealCOB <= 0.0 && d <= 3.6 /* 0.2 mmol */ && activeTtMgdl() == null
                 && lastBolusMin >= 90 && !checkAutomationState("MJ", "MJ active")
@@ -3468,7 +3468,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (evB1 || evB2 || evB3) {
                 setBgAccelIsfWeight(0.45)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("EveningTH CurrProf 50_0.45 Acce")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
@@ -3491,7 +3491,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d <= 0.0) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 15)
                 setBgAccelIsfWeight(0.50)
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("TwilightTH15Acce0.50")
                 addCarePortalNote("TWi")
                 markRun("TwilightTH15Acce")
@@ -3512,7 +3512,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && checkAutomationState("Steroids", "Steroids Off")
                 && acceW >= 0.08) {
                 setBgAccelIsfWeight(0.35)
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
@@ -3694,7 +3694,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")
-                switchProfileIfNeeded("Current Profile")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 addCarePortalNote("Steps Steroids OFF")

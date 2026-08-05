@@ -68,4 +68,11 @@ enum class StringKey(
 
     PumpCommonBolusStorage("pump_sync_storage_bolus", ""),
     PumpCommonTbrStorage("pump_sync_storage_tbr", ""),
+
+    // Coded-profile indirection: OpenAPSAutoISFPlugin.kt's ~36 switchProfileIfNeeded("Current Profile"/
+    // "Current ProfileReal") call sites read these instead of the literal names, so any locally-named
+    // profile can fill either role. Defaults match the original hardcoded literals, so nothing changes
+    // until you actively repick via the on-update profile-selection popup (or here directly).
+    ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", "Current ProfileReal"),
+    ApsAutoIsfLowProfileName("autoisf_low_profile_name", "Current Profile"),
 }

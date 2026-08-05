@@ -3,6 +3,8 @@ package app.aaps.plugins.automation
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionProfileSwitch
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
@@ -33,6 +35,7 @@ import javax.inject.Singleton
 class AutomationPresets @Inject constructor(
     private val injector: HasAndroidInjector,
     private val aapsLogger: AAPSLogger,
+    private val preferences: Preferences,
 ) {
 
     fun registerAll(plugin: AutomationPlugin) {
@@ -98,7 +101,7 @@ class AutomationPresets @Inject constructor(
                 }
             })
             actions.add(ActionProfileSwitch(injector).apply {
-                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
+                fromJSON("""{"profileToSwitchTo":"${preferences.get(StringKey.ApsAutoIsfLowProfileName)}","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 //fromJSON("""{"cpEvent":"NOTE","note":"Skit4"}""")
@@ -204,7 +207,7 @@ class AutomationPresets @Inject constructor(
                 }
             })
             actions.add(ActionProfileSwitch(injector).apply {
-                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
+                fromJSON("""{"profileToSwitchTo":"${preferences.get(StringKey.ApsAutoIsfLowProfileName)}","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 //fromJSON("""{"cpEvent":"NOTE","note":"Skit"}""")
@@ -326,7 +329,7 @@ class AutomationPresets @Inject constructor(
                 }
             })
             actions.add(ActionProfileSwitch(injector).apply {
-                fromJSON("""{"profileToSwitchTo":"Current Profile","durationInMinutes":0}""")
+                fromJSON("""{"profileToSwitchTo":"${preferences.get(StringKey.ApsAutoIsfLowProfileName)}","durationInMinutes":0}""")
             })
             actions.add(ActionCarePortalEvent(injector).apply {
                 //fromJSON("""{"cpEvent":"NOTE","note":"Skit3"}""")

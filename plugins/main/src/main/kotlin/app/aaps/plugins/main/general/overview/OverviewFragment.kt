@@ -23,6 +23,8 @@ import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
+import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -114,6 +116,7 @@ import app.aaps.core.ui.extensions.toVisibilityKeepSpace
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
+import app.aaps.plugins.main.general.overview.keys.OverviewStringKey
 import app.aaps.plugins.main.general.overview.notifications.NotificationStore
 import app.aaps.plugins.main.general.overview.notifications.events.EventUpdateOverviewNotification
 import app.aaps.plugins.main.general.overview.ui.StatusLightHandler
@@ -302,6 +305,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     override fun onResume() {
         super.onResume()
+        checkOnUpdatePopups()
         disposable += activePlugin.activeOverview.overviewBus
             .toObservable(EventUpdateOverviewCalcProgress::class.java)
             .observeOn(aapsSchedulers.main)
@@ -1359,6 +1363,116 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // On-update popups: coded-profile-name selection + native-automation close-match review. Neither
+    // is gated on an actual app-version comparison -- both just check "is there pending work" on each
+    // Overview resume, which naturally covers "on update" (new coded automations/keys introduced by an
+    // update show up as new pending reviews) without needing separate version-tracking plumbing.
+    // popupsShownThisSession avoids re-prompting every single fragment resume within one process
+    // lifetime (e.g. switching tabs and back); a fresh app launch re-checks, so a dismissed-without-
+    // deciding popup naturally reappears next full start.
+    // ---------------------------------------------------------------------------------------------
+
+    private var popupsShownThisSession = false
+
+    private fun checkOnUpdatePopups() {
+        if (popupsShownThisSession) return
+        popupsShownThisSession = true
+        val act = activity ?: return
+        if (preferences.get(OverviewStringKey.ApsAutoIsfProfileNamesReviewed).isEmpty())
+            showProfileNamesPopup(act) { checkCodedAutomationReviewPopup(act) }
+        else
+            checkCodedAutomationReviewPopup(act)
+    }
+
+    private fun checkCodedAutomationReviewPopup(act: androidx.fragment.app.FragmentActivity) {
+        val pending = automation.pendingCodedAutomationReviews()
+        if (pending.isNotEmpty()) showCodedAutomationReviewPopup(act, pending)
+    }
+
+    // Lets the user pick which of their actual configured profiles fills each of the two coded roles
+    // (StandardProfile/LowProfile) that OpenAPSAutoISFPlugin.kt's ~36 switchProfileIfNeeded() call sites
+    // read via StringKey.ApsAutoIsfStandardProfileName/LowProfileName, instead of the original hardcoded
+    // "Current ProfileReal"/"Current Profile" literals. Not cancelable (no tap-outside-to-dismiss) since
+    // Cancel/OK are both handled explicitly below and either one marks the flag reviewed.
+    private fun showProfileNamesPopup(act: androidx.fragment.app.FragmentActivity, onDone: () -> Unit) {
+        val profileNames = activePlugin.activeProfileSource.profile?.getProfileList()?.map { it.toString() } ?: emptyList()
+        if (profileNames.isEmpty()) {
+            // No profiles configured yet (e.g. very first run) -- nothing to pick from; skip silently
+            // and let it re-check next resume rather than marking reviewed on incomplete data.
+            onDone()
+            return
+        }
+        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+
+        fun spinnerFor(current: String): Spinner {
+            val spinner = Spinner(act)
+            val adapter = ArrayAdapter(act, android.R.layout.simple_spinner_item, profileNames)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinner.adapter = adapter
+            spinner.setSelection(profileNames.indexOf(current).let { if (it >= 0) it else 0 })
+            return spinner
+        }
+
+        val standardSpinner = spinnerFor(currentStandard)
+        val lowSpinner = spinnerFor(currentLow)
+        val container = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(TextView(act).apply { text = "Standard profile (stronger — used for corrections/highs):" })
+            addView(standardSpinner)
+            addView(TextView(act).apply { text = "Low profile (weaker — used to back off/reduce insulin):"; setPadding(0, 32, 0, 0) })
+            addView(lowSpinner)
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(act)
+            .setTitle("Select coded profiles")
+            .setMessage("Pick which of your profiles fill the two roles the AutoISF ported automations switch between.")
+            .setView(container)
+            .setCancelable(false)
+            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileNames[standardSpinner.selectedItemPosition])
+                preferences.put(StringKey.ApsAutoIsfLowProfileName, profileNames[lowSpinner.selectedItemPosition])
+                preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
+                onDone()
+            }
+            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ ->
+                // Skip: leave the current (possibly still-default) preference values untouched, but
+                // still mark reviewed so this doesn't nag on every single launch -- change later via
+                // Preferences if needed.
+                preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
+                onDone()
+            }
+            .show()
+    }
+
+    // Checklist of native Automation-tab events whose titles are CLOSE (but not EXACT) matches against
+    // the coded automation registry (see CodedAutomationNames.kt) and have no stored decision yet.
+    // Unchecked by default (matches the prior blanket-suppress behaviour until explicitly opted in).
+    // EXACT matches never appear here — those stay auto-denied unconditionally, no prompt at all.
+    private fun showCodedAutomationReviewPopup(act: androidx.fragment.app.FragmentActivity, pending: List<String>) {
+        val checkBoxes = pending.map { title -> CheckBox(act).apply { text = title; isChecked = false } }
+        val container = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            checkBoxes.forEach { addView(it) }
+        }
+        androidx.appcompat.app.AlertDialog.Builder(act)
+            .setTitle("Review native automations")
+            .setMessage(
+                "These Automation-tab events have names close to a coded (ported) automation, so they're " +
+                    "currently suppressed while custom automations are enabled. Check any you want to allow to run anyway."
+            )
+            .setView(ScrollView(act).apply { addView(container) })
+            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                automation.saveCodedAutomationDecisions(pending.indices.associate { pending[it] to checkBoxes[it].isChecked })
+            }
+            // Cancel: no decisions saved at all -- these stay pending and the checklist reappears next launch.
+            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+            .show()
     }
 
     private fun setRibbon(view: TextView, attrResText: Int, attrResBack: Int, text: String) {
