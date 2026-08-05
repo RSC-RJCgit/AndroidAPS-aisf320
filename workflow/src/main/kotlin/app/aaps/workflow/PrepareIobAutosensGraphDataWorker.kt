@@ -307,7 +307,16 @@ class PrepareIobAutosensGraphDataWorker(
                         uamCarbImpactArrayHist.add(ScaledDataPoint(time, smoothedUam, data.overviewData.uamCarbImpactScale))
                         data.overviewData.maxUamCarbImpactValue = max(data.overviewData.maxUamCarbImpactValue, abs(smoothedUam))
 
-                        val combined = smoothedAbs + smoothedUam
+                        // uci (source of uamCarbImpact) is the SAME deviation formula as ci, but kept as
+                        // a separate unclamped copy in DetermineBasalAutoISF.kt -- ci gets capped to
+                        // maxCI (30g/h -> 2.5g/5min) before it ever reaches the empirical absorption
+                        // line, uci never does. Left uncapped on the standalone UAM line above (a large
+                        // spike there is itself useful diagnostic info), but capped here to that same
+                        // 2.5g/5min ceiling for the SUM specifically -- otherwise one big unclamped
+                        // deviation dominates the total and the empirical (clamped, physiologically-
+                        // bounded) component becomes visually negligible next to it.
+                        val uamContribution = smoothedUam.coerceAtMost(2.5)
+                        val combined = smoothedAbs + uamContribution
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
                     }

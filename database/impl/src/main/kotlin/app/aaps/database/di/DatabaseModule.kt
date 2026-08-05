@@ -269,7 +269,18 @@ open class DatabaseModule {
         }
     }
 
+    // UKF-smoothed Raw BG (mg/dL), computed once per cycle in OpenAPSAutoISFPlugin.kt and persisted here
+    // so the graph (PrepareBgDataWorker.kt) and the AIV history exporter/dialog's delta columns can both
+    // read the same value instead of each independently recomputing the UKF smoothing pass.
+    // See AIV.kt / RT.autoIsfUkfRawBgl.
+    internal val migration38to39 = object : Migration(38, 39) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `ukfRawBgl` DOUBLE NOT NULL DEFAULT 0.0")
+            dropCustomIndexes(db)
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37, migration37to38)
+    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37, migration37to38, migration38to39)
 }

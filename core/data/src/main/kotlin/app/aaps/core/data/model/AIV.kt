@@ -29,6 +29,9 @@ data class AIV(
     /** UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams per 5min (converted from uci's
      *  native mg/dL/5min BG-impact via csf). See RT.autoIsfUamCarbImpact. */
     var uamCarbImpact: Double = 0.0,
+    /** UKF-smoothed Raw BG, mg/dL -- computed once per cycle, reused by both the graph and the AIV
+     *  history exporter/dialog's delta columns. See RT.autoIsfUkfRawBgl. */
+    var ukfRawBgl: Double = 0.0,
     /** Average minutes between BG/Libre readings in the 5 min before [timestamp], computed on the
      *  device actually running AutoISF (the master) from its own locally-connected sensor feed — NOT
      *  recomputed from a follower's own local (NS-synced) GV table, since NS's own upload/sync cadence
@@ -65,6 +68,7 @@ data class AIV(
                 acceIsfWeight == other.acceIsfWeight &&
                 fslCalSlope == other.fslCalSlope &&
                 uamCarbImpact == other.uamCarbImpact &&
+                ukfRawBgl == other.ukfRawBgl &&
                 isValid == other.isValid)
     }
 }

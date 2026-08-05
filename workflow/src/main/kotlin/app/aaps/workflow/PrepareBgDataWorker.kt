@@ -163,18 +163,14 @@ class PrepareBgDataWorker(
         // smoothing algorithm is active for the real BG pipeline, and via smoothForDisplay() so it
         // never touches that pipeline's persisted/adaptive state. See GraphData.addRawBg().
         //
-        // Calibrated the same way XdripSourcePlugin calibrates gv.noise into gv.raw (raw*slope+offset,
-        // offset in display units converted to mg/dL) before smoothing -- noise is pre-calibration data,
-        // so feeding it straight into the filter would smooth an uncalibrated signal. Deliberately offset
-        // from the live FslCalSlope/FslCalOffset settings (+0.10 slope, -0.5 offset in display units)
-        // rather than reusing them as-is, so this line reads as "what the raw trace looks like under a
-        // slightly different calibration" for comparison, not a duplicate of the real calibration.
-        val ukfRawSlope = preferences.get(DoubleKey.FslCalSlope) + 0.10
-        val ukfRawOffsetUnits = preferences.get(DoubleKey.FslCalOffset) - 0.5
-        val ukfRawOffsetMgdl = ukfRawOffsetUnits * (if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0)
+        // No calibration (slope=1.0, offset=0.0) -- was previously calibrated with a +0.10 slope/-0.5
+        // offset deliberately different from the live FslCalSlope/FslCalOffset settings, for a "what
+        // does raw look like under a different calibration" comparison; reverted to smoothing the raw
+        // noise value completely as-is instead. Same removal in OpenAPSAutoISFPlugin.kt's
+        // computeUkfRawBgl() (the persisted AIV value/exporter delta columns), for consistency.
         data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
             val newestFirst = rawReadings.sortedByDescending { it.timestamp }
-            val calibratedPoints = newestFirst.map { it.timestamp to (it.noise!! * ukfRawSlope + ukfRawOffsetMgdl) }
+            val calibratedPoints = newestFirst.map { it.timestamp to it.noise!! }
             val smoothedMgdl = ukfSmoothing.smoothForDisplay(calibratedPoints)
             val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))

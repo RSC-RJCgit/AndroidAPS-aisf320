@@ -20,6 +20,8 @@ dependencies {
     implementation(project(":core:utils"))
     implementation(project(":core:ui"))
     implementation(project(":core:validators"))
+    // UnscentedKalmanFilterPlugin.smoothForDisplay() -- see OpenAPSAutoISFPlugin.kt ukfRawBgl persistence
+    implementation(project(":plugins:smoothing"))
 
     testImplementation(project(":pump:virtual"))
     testImplementation(project(":shared:tests"))

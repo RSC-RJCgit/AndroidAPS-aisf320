@@ -219,7 +219,12 @@ class NSDeviceStatusHandler @Inject constructor(
                                 fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0,
                                 // Direct RT property (unlike the regex-parsed reason-text fields above) --
                                 // uci is a genuine top-level @Serializable RT field, no fallback needed.
-                                uamCarbImpact  = rt.autoIsfUamCarbImpact ?: 0.0
+                                uamCarbImpact  = rt.autoIsfUamCarbImpact ?: 0.0,
+                                // Also a direct RT property. The master's own computeUkfRawBgl() already
+                                // used the master's own raw/noise readings -- a follower reconstructing
+                                // its own value from its own locally-synced GV table could disagree
+                                // slightly, so this reuses the master's already-computed number instead.
+                                ukfRawBgl      = rt.autoIsfUkfRawBgl ?: 0.0
                             )
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }

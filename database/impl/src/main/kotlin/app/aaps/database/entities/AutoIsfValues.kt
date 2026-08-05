@@ -41,6 +41,9 @@ data class AutoIsfValues(
     /** UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams per 5min (converted from uci's
      *  native mg/dL/5min BG-impact via csf). See RT.autoIsfUamCarbImpact. */
     var uamCarbImpact: Double = 0.0,
+    /** UKF-smoothed Raw BG, mg/dL -- computed once per cycle, reused by both the graph and the AIV
+     *  history exporter/dialog's delta columns. See RT.autoIsfUkfRawBgl. */
+    var ukfRawBgl: Double = 0.0,
     override var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,

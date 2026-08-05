@@ -94,6 +94,7 @@ import app.aaps.core.validators.preferences.AdaptiveIntentPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.validators.preferences.AdaptiveUnitPreference
 import app.aaps.plugins.aps.OpenAPSFragment
+import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
@@ -142,7 +143,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val tddCalculator: TddCalculator,
     private val context: Context,
     private val importExportPrefs: ImportExportPrefs,
-    private val exportPasswordDataStore: ExportPasswordDataStore
+    private val exportPasswordDataStore: ExportPasswordDataStore,
+    private val ukfSmoothing: UnscentedKalmanFilterPlugin
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -3817,6 +3819,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // this plugin, so it flows FROM rt (set in DetermineBasalAutoISF.kt) INTO autoIsfValues
                 // here, for local persistence below.
                 autoIsfValues.uamCarbImpact = rt.autoIsfUamCarbImpact ?: 0.0
+                // Same direction as autoIsfAcce/Bg/Pp/Dura/Final above -- computed here, copied into rt
+                // for outbound sync. See computeUkfRawBgl() below.
+                autoIsfValues.ukfRawBgl = computeUkfRawBgl()
+                rt.autoIsfUkfRawBgl = autoIsfValues.ukfRawBgl
                 // Dedicated, unconditional reason lines for the client-sync fallback (see
                 // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
                 // same values (which is conditional on which branch fired, and consoleLog doesn't
@@ -3830,6 +3836,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
         rxBus.send(EventOpenAPSUpdateGui())
+    }
+
+    // UKF-smoothed Raw BG (mg/dL), computed once per cycle and persisted into autoIsfValues.ukfRawBgl /
+    // rt.autoIsfUkfRawBgl -- so PrepareBgDataWorker.kt (the graph) and AutoIsfHistoryExporter.kt (the
+    // delta columns) can both just READ this value instead of each independently recomputing the UKF
+    // smoothing pass over the raw signal, same reuse-not-recalculate intent as everything else that
+    // already reads off autoIsfValues rather than redoing its own work.
+    //
+    // No calibration (slope=1.0, offset=0.0) -- was previously calibrated with a +0.10/-0.5 offset from
+    // the live FslCalSlope/FslCalOffset settings, matching PrepareBgDataWorker.kt's graph line; both
+    // reverted together to smoothing the raw noise value completely as-is. 60-min lookback: enough
+    // context for the UKF's forward pass to settle and its RTS backward pass to have something to smooth
+    // against, without querying more history than a single "what's the current smoothed raw value" call
+    // actually needs. Uses smoothForDisplay() -- the same stateless, non-adaptive entry point the graph
+    // uses -- so this never touches the live BG smoothing pipeline's own persisted/adaptive state either.
+    private fun computeUkfRawBgl(): Double {
+        val lookbackMs = T.mins(60).msecs()
+        val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(dateUtil.now() - lookbackMs, dateUtil.now(), false)
+            .filter { it.noise != null && it.noise!! > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (rawReadings.isEmpty()) return 0.0
+        val calibratedPoints = rawReadings.map { it.timestamp to it.noise!! }
+        // Newest-first in, newest-first out (see smoothForDisplay()'s own contract) -- index 0 is the
+        // smoothed value for the most recent reading, i.e. "right now."
+        return ukfSmoothing.smoothForDisplay(calibratedPoints).firstOrNull() ?: 0.0
     }
 
     override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)

@@ -59,6 +59,11 @@ data class RT(
     // afterward, since uci has no
     // independent computation elsewhere.
     var autoIsfUamCarbImpact: Double? = null,
+    // UKF-smoothed Raw BG, mg/dL. Same direction as autoIsfAcce/Bg/Pp/Dura/Final above (computed in
+    // OpenAPSAutoISFPlugin.kt, copied INTO rt here for outbound NS sync, then autoIsfValues.ukfRawBgl
+    // gets persisted locally from that same computed value) -- unlike autoIsfUamCarbImpact, which flows
+    // the other way since its source computation lives in DetermineBasalAutoISF.kt instead.
+    var autoIsfUkfRawBgl: Double? = null,
 
 
     var consoleLog: MutableList<String>? = null,

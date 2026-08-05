@@ -84,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "ukfD5", "ukfD15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -116,6 +116,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             rawDeltaStr(r.timestamp, rawReadings, 1),
             rawDeltaStr(r.timestamp, rawReadings, 5),
             rawDeltaStr(r.timestamp, rawReadings, 15),
+            if (r.ukfRawBgl > 0.0) df1.format(r.ukfRawBgl / MGDL_TO_MMOL) else "--",
+            ukfDeltaStr(r, allRecords, 5),
+            ukfDeltaStr(r, allRecords, 15),
             readingIntervalStr(r.timestamp, rawReadings),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
@@ -359,6 +362,27 @@ class AutoIsfHistoryExporter @Inject constructor(
         val newest = inWindow.firstOrNull() ?: return "--"
         val n = newest.noise ?: return "--"
         return df1.format(n / MGDL_TO_MMOL)
+    }
+
+    /** Same idea as rawDeltaStr's 5-min/15-min windows above, but differenced from the persisted
+     *  UKF-smoothed raw value (r.ukfRawBgl, computed once per cycle in OpenAPSAutoISFPlugin.kt --
+     *  see computeUkfRawBgl()) instead of the raw noise field directly: steadier, since differencing an
+     *  already-smoothed trace doesn't amplify noise the way differencing two raw points does.
+     *  Deliberately ADDITIONAL columns, not a replacement for rawDeltaStr's rΔ5/rΔ15 above -- those
+     *  intentionally mirror the exact raw signal the live dosing gates read (an earlier version of THIS
+     *  file differenced a smoothed series once before and reverted it, for exactly that reason -- see
+     *  rawDeltaStr's own comment). No 1-min variant: AIV rows land roughly every ~5min (one per
+     *  calculation cycle), too coarse for a meaningful 1-min delta. `allRecords` is the full (unfiltered)
+     *  set, same convention as iob5MinChangeStr. "--" if no record sits within 3 min of the target time,
+     *  or ukfRawBgl wasn't computed for either row (0.0, e.g. rows from before this feature existed). */
+    fun ukfDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String {
+        if (r.ukfRawBgl <= 0.0) return "--"
+        val target = r.timestamp - minutesBack * 60_000L
+        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
+        if (kotlin.math.abs(prior.timestamp - target) > 3 * 60_000L || prior.ukfRawBgl <= 0.0) return "--"
+        val actualMin = (r.timestamp - prior.timestamp) / 60_000.0
+        if (actualMin <= 0.0) return "--"
+        return df2.format((r.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0 / MGDL_TO_MMOL)
     }
 
     /** Average gap in SECONDS between BG/Libre readings in the 5 min BEFORE this record's timestamp —
