@@ -69,10 +69,10 @@ enum class BooleanKey(
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),
     // Extra optional carbs-graph overlay: a theoretical two-compartment (Dalla Man-style) Ra(t) carb
-    // absorption model curve, peak fixed at 70min, hard cutoff at 360min (6h) -- purely a calculated
+    // absorption model curve, peak fixed at 90min, hard cutoff at 360min (6h) -- purely a calculated
     // overlay, off by default, independent of the empirical Carbs Absorption line (this5MinAbsorption-
-    // based). See carbModelK/carbModelCutoffMin in PrepareIobAutosensGraphDataWorker.kt (this comment
-    // previously said 90min/240min, which never matched the actual implementation).
+    // based). See carbModelK/carbModelCutoffMin in PrepareIobAutosensGraphDataWorker.kt (was briefly
+    // 70min -- an old mismatch between this comment and the code -- reverted back to 90min).
     ApsAutoIsfShowCarbModelCurve("show_carb_model_curve", true, defaultedBySM = true),
     // 5th graph: a fixed clone of the main graph's content (BG line, predictions, bucketed/smoothed
     // trend, treatments/therapy events, activity, carb absorption + model curve, BG parabola, raw BG +

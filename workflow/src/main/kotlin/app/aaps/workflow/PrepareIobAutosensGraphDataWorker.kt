@@ -219,7 +219,7 @@ class PrepareIobAutosensGraphDataWorker(
         val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
         val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxCarbModelValue = 0.0
-        val carbModelK = 1.0 / 70.0
+        val carbModelK = 1.0 / 90.0 // t_peak = 1/k = 90min, matching the comment above (was 70min)
         val carbModelF = 0.9
         val carbModelCutoffMin = 360.0 // 6h hard cutoff -- see comment above
         val carbModelQueryLookbackMs = T.hours(6).msecs() // matches carbModelCutoffMin -- no point querying further back

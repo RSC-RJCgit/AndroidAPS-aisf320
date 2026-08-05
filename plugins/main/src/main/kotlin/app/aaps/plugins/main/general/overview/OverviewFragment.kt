@@ -1460,13 +1460,22 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             setPadding(48, 24, 48, 0)
             checkBoxes.forEach { addView(it) }
         }
+        // Height-capped (not wrap_content) -- with enough pending items the checklist can grow taller
+        // than the screen, which otherwise pushes the dialog's own OK/Cancel button row off-screen with
+        // no way to reach it (a real lockout, not just a scroll inconvenience). Capped to 50% of screen
+        // height so the buttons always stay visible below it; the list itself still scrolls internally.
+        val maxHeightPx = (act.resources.displayMetrics.heightPixels * 0.5).toInt()
+        val scrollView = ScrollView(act).apply {
+            addView(container)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, maxHeightPx)
+        }
         androidx.appcompat.app.AlertDialog.Builder(act)
             .setTitle("Review native automations")
             .setMessage(
                 "These Automation-tab events have names close to a coded (ported) automation, so they're " +
                     "currently suppressed while custom automations are enabled. Check any you want to allow to run anyway."
             )
-            .setView(ScrollView(act).apply { addView(container) })
+            .setView(scrollView)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 automation.saveCodedAutomationDecisions(pending.indices.associate { pending[it] to checkBoxes[it].isChecked })
             }
