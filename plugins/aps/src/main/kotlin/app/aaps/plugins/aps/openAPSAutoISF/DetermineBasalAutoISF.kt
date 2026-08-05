@@ -1546,6 +1546,37 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${microBolus} ")
                 }
 // =====================================================
+// LOW-STEPS-THRESHOLD FAST-RISE EXTRA CUT (daytime, low HP only)
+// =====================================================
+                // User-requested additional trim on top of the fast-rise caps above. Tighter step
+                // thresholds than the HIGH STEPS block above (that one's a coarse catch-all at
+                // 1500/600/1500 over 30/60/180min) -- these are meant to catch smaller amounts of
+                // movement specifically while HP (hypo-prediction) says a real hypo risk is present.
+                // HP here mirrors hpStr()'s formula in AutoIsfHistoryExporter.kt: (bglMmol - IOB) +
+                // 0.25*SDeltaMmol + 0.25*rawDelta5Mmol + COB/12 -- computed live here instead of from
+                // a historical AIV row. "Daytime" deliberately NARROWER than isDaytime elsewhere in
+                // this codebase (01:01-22:00) -- per user request this excludes both TWILIGHT/OTHER
+                // HOURS (6-8am) and the EARLY MORNING FAST RISE GUARD (6-10am) above by simply not
+                // overlapping their hour windows at all, rather than tracking which named branch fired.
+                // 09:00-21:00 (nowHour 9..20). Gated on microBolus != microBolusFullUncapped so this
+                // only trims an SMB the fast-rise logic above already reduced, not an otherwise-uncapped
+                // one. NOT validated against real data yet -- the 300/100/30/10 step thresholds and 6.5
+                // HP cutoff are first guesses from the user; revisit if too aggressive or too loose.
+                val isDaytimeForStepsCut = nowHour in 9..20
+                if (microBolus != microBolusFullUncapped &&
+                    isDaytimeForStepsCut &&
+                    ((Steps60M ?: 0) > 300 ||
+                        (Steps30M ?: 0) > 100 ||
+                        (Steps15M ?: 0) > 30 ||
+                        (Steps5M ?: 0) > 10)
+                ) {
+                    val hpNow = (bg / 18.0 - IOB) + 0.25 * (SDelta / 18.0) + 0.25 * (rawDelta5Mgdl / 18.0) + COB / 12.0
+                    if (hpNow <= 6.5) {
+                        microBolus = microBolus * 0.75
+                        rT.reason.append("microBolus = microBolus * 0.75 low-steps fast-rise extra cut (HP=${round(hpNow, 2)}); microBolus = ${microBolus} ")
+                    }
+                }
+// =====================================================
 // RECENT DELIVERY BOOST: SKIP ALL FAST-RISE CAPS
 // =====================================================
                 // If BolusGiven bg3 or BolusGivenMild fired within the last 30 min, restore the full

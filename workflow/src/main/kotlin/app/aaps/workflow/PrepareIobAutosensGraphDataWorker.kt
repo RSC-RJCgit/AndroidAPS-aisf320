@@ -204,13 +204,14 @@ class PrepareIobAutosensGraphDataWorker(
         // Gamma(2) closed form, Ra(tau) = carbs * f * k^2 * tau * e^(-k*tau), tau = minutes since that
         // meal, k = 1/90 giving t_peak = 1/k = EXACTLY 90min. Hard cutoff at carbModelCutoffMin (6h) --
         // beyond that a meal contributes nothing at all, regardless of how many hours of lookback were
-        // queried. This matters for maxCarbModelValue's scaling: that's computed per-refresh from only
-        // whatever's inside the current [fromTime, endTime] window, and without a cutoff, an older/larger
-        // meal well outside a short (3h/6h) window could still contribute a long, slowly-decaying tail
-        // into that window's points -- inconsistent with how the same meal reads once the window widens
-        // back out to 12h and the tail becomes a small fraction of the visible range instead. Overlapping
-        // meals still superpose naturally since every qualifying (non-cutoff) carb entry's contribution is
-        // summed at each point. f=0.9 standard bioavailability. Entirely independent of the empirical
+        // queried. maxCarbModelValue's scale is computed ANALYTICALLY (see below, right after
+        // recentCarbs) from each entry's own theoretical peak time, not empirically from whatever the
+        // main loop happens to observe inside [fromTime, endTime] -- otherwise the same meal renders at
+        // a different visual height depending on which window you're viewing it from (e.g. only its
+        // declining tail visible on a narrower/later window, whose own smaller max would otherwise
+        // become the scale reference and visually exaggerate that tail). Overlapping meals still
+        // superpose naturally since every qualifying (non-cutoff) carb entry's contribution is summed at
+        // each point. f=0.9 standard bioavailability. Entirely independent of the empirical
         // carbAbsArrayHist above (this5MinAbsorption-based) -- a calculated overlay, not a measurement.
         // Dashed styling (built below) visually marks it as a model, not data. Computed for the WHOLE
         // display window including future timestamps (unlike carbAbsArrayHist, which can't know unobserved
@@ -226,6 +227,30 @@ class PrepareIobAutosensGraphDataWorker(
         val recentCarbs: List<CA> = if (showCarbModel)
             persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - carbModelQueryLookbackMs, endTime, ascending = true)
         else emptyList()
+
+        // maxCarbModelValue computed analytically here, BEFORE the main bucket loop below, from every
+        // relevant carb entry's own theoretical peak time (entry.timestamp + 90min) -- not empirically
+        // from whatever the loop happens to observe inside [fromTime, endTime]. Without this, the same
+        // meal renders at a different visual height depending on which window you're viewing it from:
+        // e.g. a meal eaten 4h ago on a 3h view only shows its declining tail, whose own (smaller) max
+        // would otherwise become the scale reference and visually exaggerate that tail. Evaluating the
+        // full summed curve (every entry's contribution, matching the main loop's own formula exactly)
+        // at each entry's own peak candidate time captures the true combined peak, including overlapping
+        // meals, since the dominant case for a combined maximum is at (or very near) one of the
+        // individual meals' own peak times.
+        if (showCarbModel) {
+            for (candidate in recentCarbs) {
+                val tPeak = candidate.timestamp + (90.0 * 60_000.0).toLong()
+                var sumAtPeak = 0.0
+                for (carbEntry in recentCarbs) {
+                    val tauMin = (tPeak - carbEntry.timestamp) / 60_000.0
+                    if (tauMin > 0.0 && tauMin <= carbModelCutoffMin) {
+                        sumAtPeak += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
+                    }
+                }
+                data.overviewData.maxCarbModelValue = max(data.overviewData.maxCarbModelValue, sumAtPeak)
+            }
+        }
 
         val bgiArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         val bgiArrayPrediction: MutableList<ScaledDataPoint> = ArrayList()
@@ -311,11 +336,14 @@ class PrepareIobAutosensGraphDataWorker(
                         // a separate unclamped copy in DetermineBasalAutoISF.kt -- ci gets capped to
                         // maxCI (30g/h -> 2.5g/5min) before it ever reaches the empirical absorption
                         // line, uci never does. Left uncapped on the standalone UAM line above (a large
-                        // spike there is itself useful diagnostic info), but capped here to that same
-                        // 2.5g/5min ceiling for the SUM specifically -- otherwise one big unclamped
-                        // deviation dominates the total and the empirical (clamped, physiologically-
-                        // bounded) component becomes visually negligible next to it.
-                        val uamContribution = smoothedUam.coerceAtMost(2.5)
+                        // spike there is itself useful diagnostic info). A hard ceiling (coerceAtMost)
+                        // was tried here for the SUM but does nothing for a systematic magnitude
+                        // mismatch below the ceiling -- switched to a flat multiplicative scale per
+                        // user request. 0.20 is a first guess, NOT validated against real magnitude
+                        // data -- revisit if the combined line still looks off relative to the
+                        // empirical (orange) carb absorption line it's added to.
+                        val uamCombinedScaleFactor = 0.20
+                        val uamContribution = smoothedUam * uamCombinedScaleFactor
                         val combined = smoothedAbs + uamContribution
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
@@ -363,8 +391,9 @@ class PrepareIobAutosensGraphDataWorker(
                         raPer5Min += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
                     }
                 }
+                // maxCarbModelValue is NOT updated here anymore -- precomputed analytically above,
+                // window-independently, before this loop runs (see that comment for why).
                 carbModelArrayHist.add(ScaledDataPoint(time, raPer5Min, data.overviewData.carbModelScale))
-                data.overviewData.maxCarbModelValue = max(data.overviewData.maxCarbModelValue, raPer5Min)
             }
 
             // RATIO
