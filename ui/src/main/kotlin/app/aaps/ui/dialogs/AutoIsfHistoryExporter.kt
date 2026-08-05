@@ -84,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "HP2", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -127,6 +127,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             basalStr(r),
             cobStr(r),
             hpStr(r, rawReadings),
+            hp2Str(r, allRecords),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
@@ -375,14 +376,22 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  calculation cycle), too coarse for a meaningful 1-min delta. `allRecords` is the full (unfiltered)
      *  set, same convention as iob5MinChangeStr. "--" if no record sits within 3 min of the target time,
      *  or ukfRawBgl wasn't computed for either row (0.0, e.g. rows from before this feature existed). */
-    fun ukfDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String {
-        if (r.ukfRawBgl <= 0.0) return "--"
+    fun ukfDeltaStr(r: AIV, allRecords: List<AIV>, minutesBack: Int): String =
+        ukfDeltaMmol(r, allRecords, minutesBack)?.let { df2.format(it) } ?: "--"
+
+    /** Same computation as ukfDeltaStr above, returning the raw mmol/5min Double instead of a
+     *  formatted string, for use in hp2Str's own arithmetic -- mirrors rawDelta5Mmol's relationship
+     *  to rawDeltaStr for the same reason (kept separate rather than parsing ukfDeltaStr's own
+     *  "--"-or-formatted-number output back into a Double). Null under the same conditions
+     *  ukfDeltaStr returns "--". */
+    private fun ukfDeltaMmol(r: AIV, allRecords: List<AIV>, minutesBack: Int): Double? {
+        if (r.ukfRawBgl <= 0.0) return null
         val target = r.timestamp - minutesBack * 60_000L
-        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return "--"
-        if (kotlin.math.abs(prior.timestamp - target) > 3 * 60_000L || prior.ukfRawBgl <= 0.0) return "--"
+        val prior = allRecords.minByOrNull { kotlin.math.abs(it.timestamp - target) } ?: return null
+        if (kotlin.math.abs(prior.timestamp - target) > 3 * 60_000L || prior.ukfRawBgl <= 0.0) return null
         val actualMin = (r.timestamp - prior.timestamp) / 60_000.0
-        if (actualMin <= 0.0) return "--"
-        return df2.format((r.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0 / MGDL_TO_MMOL)
+        if (actualMin <= 0.0) return null
+        return (r.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0 / MGDL_TO_MMOL
     }
 
     /** Average gap in SECONDS between BG/Libre readings in the 5 min BEFORE this record's timestamp —
@@ -473,5 +482,20 @@ class AutoIsfHistoryExporter @Inject constructor(
         val cob = historicalCob(r.timestamp)
         val hp = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
         return df1.format(hp)
+    }
+
+    /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta,
+     *  and heavier weights on both delta terms (0.5 vs hpStr's 0.25) -- an experiment to compare
+     *  against hpStr's column side by side, NOT a replacement (hpStr is untouched above). Formula:
+     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] + COB/12. Same historicalCob()
+     *  source as hpStr for the COB term. "--" if ukfRawBgl wasn't computed for this row or the row
+     *  5min back (same conditions ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
+    fun hp2Str(r: AIV, allRecords: List<AIV>): String {
+        val ukfDelta5Mmol = ukfDeltaMmol(r, allRecords, 5) ?: return "--"
+        val bglMmol = r.glucose / MGDL_TO_MMOL
+        val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
+        val cob = historicalCob(r.timestamp)
+        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol + cob / 12.0
+        return df1.format(hp2)
     }
 }

@@ -189,7 +189,7 @@ class PrepareIobAutosensGraphDataWorker(
         val uamCarbImpactArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxUamCarbImpactValue = 0.0
 
-        // Combined Carbs -- smoothedAbs (empirical) + smoothed UAM impact, both already grams/5min at
+        // Combined Carbs -- smoothedCarbAbs (empirical) + smoothed UAM impact, both already grams/5min at
         // this same bucket timestamp, simply added together. Not a third independent measurement, just
         // an "everything carbs-shaped happening right now" view without eyeballing two separate lines.
         // Deliberately excludes the carb model curve below -- that's a theoretical forward prediction
@@ -315,11 +315,11 @@ class PrepareIobAutosensGraphDataWorker(
                 // Exponentially smoothed (see carbAbsAlpha/carbAbsEma above) -- the raw per-bucket rate
                 // is too jagged to read at a glance.
                 if (time <= now) {
-                    val rawAbs = autosensData.this5MinAbsorption
-                    carbAbsEma = carbAbsEma?.let { it + carbAbsAlpha * (rawAbs - it) } ?: rawAbs
-                    val smoothedAbs = carbAbsEma!!
-                    carbAbsArrayHist.add(ScaledDataPoint(time, smoothedAbs, data.overviewData.carbAbsorptionScale))
-                    data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(smoothedAbs))
+                    val rawCarbAbs = autosensData.this5MinAbsorption
+                    carbAbsEma = carbAbsEma?.let { it + carbAbsAlpha * (rawCarbAbs - it) } ?: rawCarbAbs
+                    val smoothedCarbAbs = carbAbsEma!!
+                    carbAbsArrayHist.add(ScaledDataPoint(time, smoothedCarbAbs, data.overviewData.carbAbsorptionScale))
+                    data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(smoothedCarbAbs))
 
                     // UAM Carb Impact + Combined Carbs (see setup comment above) -- nearest AIV row to
                     // this bucket within 4 min; skipped (not zero-filled) if none found, same as a
@@ -339,12 +339,21 @@ class PrepareIobAutosensGraphDataWorker(
                         // spike there is itself useful diagnostic info). A hard ceiling (coerceAtMost)
                         // was tried here for the SUM but does nothing for a systematic magnitude
                         // mismatch below the ceiling -- switched to a flat multiplicative scale per
-                        // user request. 0.20 is a first guess, NOT validated against real magnitude
-                        // data -- revisit if the combined line still looks off relative to the
-                        // empirical (orange) carb absorption line it's added to.
-                        val uamCombinedScaleFactor = 0.20
-                        val uamContribution = smoothedUam * uamCombinedScaleFactor
-                        val combined = smoothedAbs + uamContribution
+                        // user request. Two knobs, both still first guesses, NOT validated against real
+                        // magnitude data, and deliberately pulling in opposite directions:
+                        //  - uamShareOfSumFactor shrinks the UAM line's OWN weight within the sum, i.e.
+                        //    how much of smoothedUam actually counts toward "combined". 0.04 = the
+                        //    original 0.20 first guess, then trimmed by another 0.2x on top per user
+                        //    request (0.20 * 0.2 = 0.04) -- smaller than the original because the UAM
+                        //    line was judged to still be adding too much even at 0.20.
+                        //  - combinedPeakBoostFactor scales the WHOLE (already-summed) total back up
+                        //    afterward, to bring the combined line's peak/height up to something visible
+                        //    relative to the empirical (orange) carb absorption line it's added to.
+                        // Revisit both together if the combined line still looks off.
+                        val uamShareOfSumFactor = 0.04
+                        val combinedPeakBoostFactor = 3.3
+                        val uamContribution = smoothedUam * uamShareOfSumFactor
+                        val combined = (smoothedCarbAbs + uamContribution) * combinedPeakBoostFactor
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
                     }
