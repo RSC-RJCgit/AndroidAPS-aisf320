@@ -1422,16 +1422,29 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
+            // Message inlined here rather than setMessage(), and the whole thing wrapped in a
+            // WRAP_CONTENT ScrollView below -- same reasoning as showCodedAutomationReviewPopup()'s
+            // layout note. This dialog previously had NO scroll container at all, so on a short screen
+            // (or with large system font / display scaling, which inflates both labels and the two
+            // spinners) its content could exceed the window and push the OK button out of reach, with
+            // setCancelable(false) below meaning there was then no way to dismiss it either.
+            addView(TextView(act).apply {
+                text = "Pick which of your profiles fill the two roles the AutoISF ported automations switch between."
+                setPadding(0, 0, 0, 24)
+            })
             addView(TextView(act).apply { text = "Standard profile (stronger — used for corrections/highs):" })
             addView(standardSpinner)
             addView(TextView(act).apply { text = "Low profile (weaker — used to back off/reduce insulin):"; setPadding(0, 32, 0, 0) })
             addView(lowSpinner)
         }
+        val scrollView = ScrollView(act).apply {
+            addView(container)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
 
         androidx.appcompat.app.AlertDialog.Builder(act)
             .setTitle("Select coded profiles")
-            .setMessage("Pick which of your profiles fill the two roles the AutoISF ported automations switch between.")
-            .setView(container)
+            .setView(scrollView)
             .setCancelable(false)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileNames[standardSpinner.selectedItemPosition])
@@ -1458,22 +1471,31 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
+            // Explanatory text lives INSIDE the scrolling content rather than in setMessage() -- see
+            // the layout note below; setMessage() adds a second, separately-measured block competing
+            // with the list for vertical space, which is part of what pushed the buttons off-screen.
+            addView(TextView(act).apply {
+                text = "Names close to a coded automation, currently suppressed. Check any to allow."
+                setPadding(0, 0, 0, 24)
+            })
             checkBoxes.forEach { addView(it) }
         }
-        // Height-capped (not wrap_content) -- with enough pending items the checklist can grow taller
-        // than the screen, which otherwise pushes the dialog's own OK/Cancel button row off-screen with
-        // no way to reach it (a real lockout, not just a scroll inconvenience). 50% still wasn't enough
-        // headroom once the title + message + button row overhead was accounted for -- dropped to 30%,
-        // clearly conservative rather than tuned to the edge, so the buttons stay visible with real
-        // margin on small/notched screens too; the list itself still scrolls internally regardless.
-        val maxHeightPx = (act.resources.displayMetrics.heightPixels * 0.3).toInt()
+        // WRAP_CONTENT, deliberately NOT a fixed pixel height. Earlier attempts capped this at a
+        // fraction of screen height (50%, then 30%) via ViewGroup.LayoutParams(_, maxHeightPx) -- but
+        // that sets an EXACT height, not a maximum, so the ScrollView claimed that slab unconditionally
+        // and "title + message + slab + button row" could still exceed the window, pushing the OK/Cancel
+        // row off-screen with no way to reach it (a real lockout, not a scroll inconvenience). Tuning
+        // the fraction only moves the item count at which it breaks; it never removes the failure mode,
+        // which is why 30% still reproduced it. With WRAP_CONTENT the AlertDialog measures this view
+        // against the space remaining AFTER reserving title and buttons, and a ScrollView shrinks to
+        // whatever it is given -- so the buttons are structurally guaranteed to stay visible at any item
+        // count, on any screen size, and the list simply scrolls internally when it doesn't all fit.
         val scrollView = ScrollView(act).apply {
             addView(container)
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, maxHeightPx)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         androidx.appcompat.app.AlertDialog.Builder(act)
             .setTitle("Review native automations")
-            .setMessage("Names close to a coded automation, currently suppressed. Check any to allow.")
             .setView(scrollView)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 automation.saveCodedAutomationDecisions(pending.indices.associate { pending[it] to checkBoxes[it].isChecked })

@@ -3147,21 +3147,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // dropped here since the actual condition tree has no steps-count check at all — confirmed
         // against the current automation dialog). No live-pump gate: the original's Note field was
         // empty (no "not virtual pump" restriction specified for this one).
-        if (readyToRun("MJrecentCurrProfAcce", 5)) {
+        // Throttle raised 5 -> 480 min (8h) to serve as this block's SELF-LATCH, replacing the removed
+        // "!onCurrentProfile" gate. That gate was doing double duty: the switchProfileIfNeeded call below
+        // used to satisfy it, which is what stopped the block re-firing every 5 min for the rest of the
+        // 00:00-08:00 window. Dropping the profile switch (see below) removes that latch with it.
+        // A settings-based latch (acce == 0.50 && iobTH == 70) was tried instead and is WRONG here: it
+        // overlaps NightAcce (01:00-06:00), which deliberately writes acce 0.35 / iobTH 18 -- each block
+        // would then falsify the other's latch and they would ping-pong those settings every 5 minutes
+        // all night. 480 min means this can fire at most once per 00:00-08:00 window regardless of what
+        // else rewrites those settings afterwards, which reproduces the old outcome exactly: MJrec applies
+        // early, NightAcce overwrites later, and neither fights back.
+        if (readyToRun("MJrecentCurrProfAcce", 480)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             if ((g <= 144.1 /* 8.0 mmol */ || d <= 1.8 /* 0.1 mmol */)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && cannulaH < 72.0
                 && !checkAutomationState("MJ", "NOMJremains")
                 && activeTtMgdl() == null
                 && profile_percentage == 100
-                && isTimeBetween(0, 0, 8, 0)
-                && !onCurrentProfile) {
+                && isTimeBetween(0, 0, 8, 0)) {
                 sendSms("MJ recent CurrProf Acce")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)) -- same
+                // rationale as EveningTH above: parking on the low/MJ-night profile suppresses overnight
+                // corrections, and since BasalUp (the only switch back to Standard) is gated from 07:00,
+                // there was no automated route off it before morning. The acce-weight and iobTH actions
+                // below still run unchanged, so the MJ-night tuning this block exists for is preserved.
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 addCarePortalNote("MJrec")
@@ -3470,7 +3482,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (evB1 || evB2 || evB3) {
                 setBgAccelIsfWeight(0.45)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)): parking on
+                // the low/MJ-night profile here from 20:00 was judged to be suppressing overnight
+                // corrections. Two separate effects were in play -- (a) the low profile's own weaker
+                // basal/ISF, which persists all night once switched, and (b) the explicit
+                // "profileName != LowProfileName" guards on BolusGivenBg3/BolusGivenMild, though those
+                // two are themselves isTimeBetween(8,30,22,0) so that guard only ever bit during the
+                // 20:00-22:00 overlap. Removed rather than repointed at StandardProfileName: leaving the
+                // active profile untouched avoids forcing a strengthening overnight (a hypo-risk
+                // direction) and keeps this automation to what its name describes -- the evening
+                // acce-weight/iobTH adjustment above, which still runs unchanged.
                 sendSms("EveningTH CurrProf 50_0.45 Acce")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
@@ -3514,7 +3535,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && checkAutomationState("Steroids", "Steroids Off")
                 && acceW >= 0.08) {
                 setBgAccelIsfWeight(0.35)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)) -- same
+                // rationale as EveningTH/MJrec above. No self-latch concern here, unlike MJrec: this
+                // block's own "(iobTH >= 19 || iobTH <= 17)" trigger already latches it (setting iobTH
+                // to 18 below falsifies that condition), so it still applies once and stops without
+                // depending on the profile change to hold it off.
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
