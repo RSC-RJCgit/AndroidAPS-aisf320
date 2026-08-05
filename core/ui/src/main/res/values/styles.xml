@@ -236,6 +236,7 @@
         <item name="carbAbsorptionColor">@color/carbAbsorption</item>
         <item name="carbModelCurveColor">@color/carbModelCurve</item>
         <item name="uamCarbImpactColor">@color/uamCarbImpact</item>
+        <item name="combinedCarbsColor">@color/combinedCarbs</item>
         <item name="baseBasalColor">@color/baseBasal</item>
         <item name="dotLineColor">@color/black</item>
         <!-- AutoISF graphs specific colors  -->

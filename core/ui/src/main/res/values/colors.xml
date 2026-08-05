@@ -167,6 +167,7 @@
     <color name="carbAbsorption">#FFA500</color>
     <color name="carbModelCurve">#9C27B0</color>
     <color name="uamCarbImpact">#009688</color>
+    <color name="combinedCarbs">#4CAF50</color>
     <color name="bgi">#00EEEE</color>
     <color name="devSlopePos">#FFFFFF00</color>
     <color name="devSlopeNeg">#FFFF00FF</color>

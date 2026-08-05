@@ -218,6 +218,7 @@
     <attr name="carbAbsorptionColor" format="reference|color" />
     <attr name="carbModelCurveColor" format="reference|color" />
     <attr name="uamCarbImpactColor" format="reference|color" />
+    <attr name="combinedCarbsColor" format="reference|color" />
     <attr name="baseBasalColor" format="reference|color" />
     <attr name="dotLineColor" format="reference|color" />
     <!---Popupmenu TextColor -->

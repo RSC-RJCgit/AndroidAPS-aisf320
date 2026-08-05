@@ -81,12 +81,20 @@ interface OverviewData {
     var carbModelSeries: SeriesData
 
     // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams/5min (converted from uci's
-    // native mg/dL/5min BG-impact via csf), from the AIV table. Same physical unit as
-    // carbAbsorptionScale now, but kept on its own independent scale by choice, not necessity — still
-    // its own line/auto-fit range. See PrepareBgDataWorker.kt.
+    // native mg/dL/5min BG-impact via csf), from the AIV table, EMA-smoothed to match
+    // carbAbsorptionScale's own smoothing. Same physical unit as carbAbsorptionScale now, but kept on
+    // its own independent scale by choice, not necessity — still its own line/auto-fit range. See
+    // PrepareIobAutosensGraphDataWorker.kt.
     var maxUamCarbImpactValue: Double
     val uamCarbImpactScale: Scale
     var uamCarbImpactSeries: SeriesData
+
+    // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
+    // timestamps. Deliberately excludes carbModelSeries (a forward prediction from entered carbs, not
+    // a live activity measurement). See PrepareIobAutosensGraphDataWorker.kt.
+    var maxCombinedCarbsValue: Double
+    val combinedCarbsScale: Scale
+    var combinedCarbsSeries: SeriesData
 
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale

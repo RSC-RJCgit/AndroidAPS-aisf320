@@ -90,6 +90,9 @@ class OverviewMenusImpl @Inject constructor(
         // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams/5min, from the AIV table.
         // See PrepareBgDataWorker.kt (uamCarbImpactSeries) / GraphData.addUamCarbImpact().
         UAM_CARB_IMPACT(R.string.overview_show_uam_carb_impact, app.aaps.core.ui.R.attr.uamCarbImpactColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.uam_carb_impact_shortname),
+        // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
+        // timestamps. See PrepareIobAutosensGraphDataWorker.kt (combinedCarbsSeries) / GraphData.addCombinedCarbs().
+        COMBINED_CARBS(R.string.overview_show_combined_carbs, app.aaps.core.ui.R.attr.combinedCarbsColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.combined_carbs_shortname),
     }
 
     private val runningAutoIsf: Boolean

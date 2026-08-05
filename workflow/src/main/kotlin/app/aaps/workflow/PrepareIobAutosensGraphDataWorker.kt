@@ -175,6 +175,29 @@ class PrepareIobAutosensGraphDataWorker(
         val carbAbsAlpha = 0.1
         var carbAbsEma: Double? = null
 
+        // UAM Carb Impact (uci -> grams-equivalent, see DetermineBasalAutoISF.kt/RT.autoIsfUamCarbImpact)
+        // -- same EMA smoothing/alpha as carbAbsArrayHist above. Computed HERE (moved from
+        // PrepareBgDataWorker.kt, which used to own this line) so it shares this loop's 5-min buckets
+        // with the empirical carb absorption line, letting both be summed into a Combined Carbs line at
+        // matching timestamps -- PrepareBgDataWorker.kt's own discrete per-AIV-row timestamps couldn't
+        // give it that alignment. autoIsfResults (fetched here, reused below for IOB_TH -- one query, not
+        // two) is matched to each bucket by nearest timestamp within 4 min: AIV rows land roughly on the
+        // same ~5-min cycle cadence as these buckets but aren't guaranteed exactly aligned to them.
+        val autoIsfResults = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime).sortedBy { it.timestamp }
+        val uamCarbAlpha = 0.1
+        var uamCarbEma: Double? = null
+        val uamCarbImpactArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxUamCarbImpactValue = 0.0
+
+        // Combined Carbs -- smoothedAbs (empirical) + smoothed UAM impact, both already grams/5min at
+        // this same bucket timestamp, simply added together. Not a third independent measurement, just
+        // an "everything carbs-shaped happening right now" view without eyeballing two separate lines.
+        // Deliberately excludes the carb model curve below -- that's a theoretical forward prediction
+        // from entered carbs, not a live activity measurement, so summing it in wouldn't mean the same
+        // thing as combining these two.
+        val combinedCarbsArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        data.overviewData.maxCombinedCarbsValue = 0.0
+
         // CARB MODEL CURVE (optional overlay, off by default) -- two-compartment (Dalla Man-style) Ra(t)
         // absorption model. Peak-time and tail-decay-speed aren't independently tunable in this model
         // (a fixed peak forces a fixed tail shape), so this uses the kgri=kabs simplification: an exact
@@ -272,6 +295,22 @@ class PrepareIobAutosensGraphDataWorker(
                     val smoothedAbs = carbAbsEma!!
                     carbAbsArrayHist.add(ScaledDataPoint(time, smoothedAbs, data.overviewData.carbAbsorptionScale))
                     data.overviewData.maxCarbAbsorptionValue = max(data.overviewData.maxCarbAbsorptionValue, abs(smoothedAbs))
+
+                    // UAM Carb Impact + Combined Carbs (see setup comment above) -- nearest AIV row to
+                    // this bucket within 4 min; skipped (not zero-filled) if none found, same as a
+                    // missing bucket anywhere else in this file, rather than dragging the EMA toward 0.
+                    val nearestAiv = autoIsfResults.minByOrNull { abs(it.timestamp - time) }
+                    if (nearestAiv != null && abs(nearestAiv.timestamp - time) <= 4 * 60 * 1000L) {
+                        val rawUam = nearestAiv.uamCarbImpact
+                        uamCarbEma = uamCarbEma?.let { it + uamCarbAlpha * (rawUam - it) } ?: rawUam
+                        val smoothedUam = uamCarbEma!!
+                        uamCarbImpactArrayHist.add(ScaledDataPoint(time, smoothedUam, data.overviewData.uamCarbImpactScale))
+                        data.overviewData.maxUamCarbImpactValue = max(data.overviewData.maxUamCarbImpactValue, abs(smoothedUam))
+
+                        val combined = smoothedAbs + smoothedUam
+                        combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
+                        data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
+                    }
                 }
                 // BGI
                 val devBgiScale = overviewMenus.isEnabledIn(OverviewMenus.CharType.DEV) == overviewMenus.isEnabledIn(OverviewMenus.CharType.BGI)
@@ -337,11 +376,11 @@ class PrepareIobAutosensGraphDataWorker(
             time += 5 * 60 * 1000L
         }
 
-        // IOB_TH
+        // IOB_TH -- reuses autoIsfResults fetched earlier (above the main loop, for the UAM/combined
+        // carbs bucket lookups) rather than querying the same range twice.
         val iobThArray: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxIobThValueFound = Double.MIN_VALUE
         data.overviewData.minIobThValueFound = Double.MAX_VALUE
-        val autoIsfResults = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
         autoIsfResults.forEach {
             it.iobThEffective.let { iobThEffective ->
                 iobThArray.add(ScaledDataPoint(it.timestamp, iobThEffective, data.overviewData.iobThScale))
@@ -484,6 +523,26 @@ class PrepareIobAutosensGraphDataWorker(
                 paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
                 paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbModelCurveColor)
             })
+        }
+
+        // UAM CARB IMPACT -- dashed, distinct color, to mark it as inferred/calculated (deviation-based)
+        // rather than measured or logged, same convention as the carb model curve above.
+        data.overviewData.uamCarbImpactSeries = FixedLineGraphSeries(Array(uamCarbImpactArrayHist.size) { i -> uamCarbImpactArrayHist[i] }).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
+            })
+        }
+
+        // COMBINED CARBS -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
+        // timestamps (see setup comment near carbAbsAlpha above). Solid (not dashed), distinct color --
+        // it's a derived total of the two component lines above, not itself another inferred model.
+        data.overviewData.combinedCarbsSeries = FixedLineGraphSeries(Array(combinedCarbsArrayHist.size) { i -> combinedCarbsArrayHist[i] }).also {
+            it.isDrawBackground = false
+            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.combinedCarbsColor)
+            it.thickness = 5
         }
 
         // BGI

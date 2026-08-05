@@ -14,7 +14,6 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.A1DeltaDataPoint
 import app.aaps.core.graph.data.DataPointWithLabelInterface
-import app.aaps.core.graph.data.FixedLineGraphSeries
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.HPDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
@@ -23,7 +22,6 @@ import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
-import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
@@ -121,29 +119,10 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
-        // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent (grams/5min, converted from uci's
-        // native mg/dL/5min BG-impact via csf at the point of computation -- see DetermineBasalAutoISF.kt/
-        // RT.autoIsfUamCarbImpact), one point per AIV row (aivList, already fetched above for the
-        // dominant-ISF-weight coloring). Same physical unit as carbAbsorptionScale now, but still drawn
-        // on its own separate scale (uamCarbImpactScale) rather than sharing it -- own line, own
-        // auto-fit range, just comparable magnitude now instead of raw mg/dL. Dashed, like
-        // carbModelSeries, to mark it as inferred/calculated rather than measured or logged.
-        data.overviewData.maxUamCarbImpactValue = 0.0
-        val uamCarbImpactArray = aivList
-            .filter { it.timestamp in fromTime..toTime }
-            .sortedBy { it.timestamp }
-            .map { aiv ->
-                data.overviewData.maxUamCarbImpactValue = kotlin.math.max(data.overviewData.maxUamCarbImpactValue, kotlin.math.abs(aiv.uamCarbImpact))
-                ScaledDataPoint(aiv.timestamp, aiv.uamCarbImpact, data.overviewData.uamCarbImpactScale)
-            }
-        data.overviewData.uamCarbImpactSeries = FixedLineGraphSeries(Array(uamCarbImpactArray.size) { i -> uamCarbImpactArray[i] }).also {
-            it.setCustomPaint(Paint().also { paint ->
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4f
-                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
-                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
-            })
-        }
+        // UAM Carb Impact / combined carbs: moved to PrepareIobAutosensGraphDataWorker.kt, alongside the
+        // empirical carb absorption line -- both now share the same 5-min-bucket loop and EMA smoothing
+        // there, and the combined (summed) line needs both available at matching bucket timestamps,
+        // which this worker's discrete per-AIV-row timestamps couldn't give it.
 
         // Raw BG line — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration
         // when OFF. Split into color-banded segments (red normally, yellow below 3.0mmol or above

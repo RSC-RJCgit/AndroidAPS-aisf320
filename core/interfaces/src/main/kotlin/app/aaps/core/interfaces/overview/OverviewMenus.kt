@@ -38,6 +38,9 @@ interface OverviewMenus {
         // Appended at the end for the same ordinal-stability reason as RAW_BG_SMOOTHED above (same
         // migration-reset caveat applies).
         UAM_CARB_IMPACT,
+        // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
+        // timestamps. Same ordinal-stability/migration-reset notes as above.
+        COMBINED_CARBS,
     }
 
     val setting: List<Array<Boolean>>

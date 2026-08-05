@@ -1525,6 +1525,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addCarbModelCurve(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal))
             graphData.addUamCarbImpact(0.8)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.COMBINED_CARBS.ordinal))
+            graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
@@ -1574,6 +1576,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                                       // globally on for there to be any data -- that's a data-availability
                                                       // flag, not a "switched off on graph 0" toggle, so it's left alone)
             graph5Data.addUamCarbImpact(0.8)         // UAM assumed carbs
+            graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
             graph5Data.addBgParabola(true, 1.0)
             graph5Data.addRawBg(false)
             graph5Data.addRawBgSmoothed(false)
@@ -1614,6 +1617,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             var useDURA_ISFForScale = false
             var useRAWBGForScale = false
             var useUAMForScale = false
+            var useCombinedCarbsForScale = false
             when {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal)        -> useABSForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)        -> useIobForScale = true
@@ -1634,6 +1638,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) -> useRAWBGForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) -> useUAMForScale = true
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal) -> useCombinedCarbsForScale = true
             }
 
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
@@ -1693,6 +1698,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)) secondGraphData.addCombinedCarbs(if (useCombinedCarbsForScale) 1.0 else 0.8)
             // CarePortal notes: swapped from graph2 to graph4 (g==3) — was on graph2, swapped positions
             // with the SMB stacked labels below. Same TREAT toggle source as before.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
@@ -1756,7 +1762,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)
                     //menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.COB.ordinal] ||
