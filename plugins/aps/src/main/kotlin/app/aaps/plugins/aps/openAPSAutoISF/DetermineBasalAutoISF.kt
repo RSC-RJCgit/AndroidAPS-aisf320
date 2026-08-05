@@ -606,9 +606,15 @@ class DetermineBasalAutoISF @Inject constructor(
 
         // Always set (uci is computed unconditionally above, not gated by enableUAM) -- read back into
         // autoIsfValues.uamCarbImpact for persistence in OpenAPSAutoISFPlugin.kt, for the Raw/UAM-carbs
-        // graph line.
-        rT.autoIsfUamCarbImpact = uci
-        consoleError.add("UAM Impact: $uci mg/dL per 5m; UAM Duration: $UAMduration hours")
+        // graph line. Converted from uci's native mg/dL/5min BG-impact into a grams/5min carbs-
+        // equivalent via csf (mg/dL per gram, already computed above and used the same way for maxCI's
+        // own grams-based clamp a few lines up) -- same live per-cycle csf, not a separate/staler
+        // approximation, so this is exactly as fresh as the real ci/maxCI dosing math right next to it.
+        // Graphed on its own separate scale (uamCarbImpactScale), not shared with carbAbsorptionScale --
+        // still its own line, just now in comparable grams/5min units instead of raw mg/dL.
+        val uciGramsEquivalent = if (csf > 0.0) round(uci / csf, 2) else 0.0
+        rT.autoIsfUamCarbImpact = uciGramsEquivalent
+        consoleError.add("UAM Impact: $uci mg/dL per 5m ($uciGramsEquivalent g/5m); UAM Duration: $UAMduration hours")
         consoleError.add("EventualBG is ${convert_bg(eventualBG)} ;")
 
         minIOBPredBG = max(39.0, minIOBPredBG)

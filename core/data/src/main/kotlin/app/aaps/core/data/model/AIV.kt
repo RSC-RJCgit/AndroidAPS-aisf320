@@ -26,7 +26,8 @@ data class AIV(
     var iob: Double = 0.0,
     var acceIsfWeight: Double = 0.0,
     var fslCalSlope: Double = 0.0,
-    /** UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min. See RT.autoIsfUamCarbImpact. */
+    /** UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams per 5min (converted from uci's
+     *  native mg/dL/5min BG-impact via csf). See RT.autoIsfUamCarbImpact. */
     var uamCarbImpact: Double = 0.0,
     /** Average minutes between BG/Libre readings in the 5 min before [timestamp], computed on the
      *  device actually running AutoISF (the master) from its own locally-connected sensor feed — NOT

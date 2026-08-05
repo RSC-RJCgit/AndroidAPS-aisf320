@@ -121,12 +121,13 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
-        // UAM Carb Impact (uci) -- deviation-derived BG-impact rate (mg/dL per 5min), one point per AIV
-        // row (aivList, already fetched above for the dominant-ISF-weight coloring). NOT converted to a
-        // grams-equivalent (native mg/dL units, per user preference) -- own scale (uamCarbImpactScale),
-        // a different physical quantity from carbAbsorptionScale's grams/5min, not directly comparable on
-        // the same axis. Dashed, like carbModelSeries, to mark it as inferred/calculated rather than
-        // measured or logged.
+        // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent (grams/5min, converted from uci's
+        // native mg/dL/5min BG-impact via csf at the point of computation -- see DetermineBasalAutoISF.kt/
+        // RT.autoIsfUamCarbImpact), one point per AIV row (aivList, already fetched above for the
+        // dominant-ISF-weight coloring). Same physical unit as carbAbsorptionScale now, but still drawn
+        // on its own separate scale (uamCarbImpactScale) rather than sharing it -- own line, own
+        // auto-fit range, just comparable magnitude now instead of raw mg/dL. Dashed, like
+        // carbModelSeries, to mark it as inferred/calculated rather than measured or logged.
         data.overviewData.maxUamCarbImpactValue = 0.0
         val uamCarbImpactArray = aivList
             .filter { it.timestamp in fromTime..toTime }
@@ -200,8 +201,14 @@ class PrepareBgDataWorker(
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
             }.asReversed() // back to ascending time order for the line series
             LineGraphSeries(smoothedPoints.toTypedArray()).also {
-                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.rawBgColor)
-                it.thickness = 6
+                // Light blue + dashed -- was rawBgColor (orange), same as the carb absorption/model
+                // lines; switched so it's visually distinct from those rather than blending in.
+                it.setCustomPaint(Paint().also { paint ->
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 6f
+                    paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                    paint.color = android.graphics.Color.parseColor("#4FC3F7") // Material Light Blue 300
+                })
             }
         } else {
             LineGraphSeries<DataPoint>()

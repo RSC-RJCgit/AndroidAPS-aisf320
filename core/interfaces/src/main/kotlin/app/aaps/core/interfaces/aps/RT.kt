@@ -51,10 +51,12 @@ data class RT(
     var autoIsfPp: Double? = null,
     var autoIsfDura: Double? = null,
     var autoIsfFinal: Double? = null,
-    // UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min. Unlike the autoIsfAcce/
-    // Bg/Pp/Dura/Final fields above (populated FROM autoIsfValues in OpenAPSAutoISFPlugin.kt, for
-    // outbound NS sync), this one flows the OTHER way: set directly in DetermineBasalAutoISF.kt (where
-    // uci is computed) and read back into autoIsfValues.uamCarbImpact afterward, since uci has no
+    // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams per 5min (converted from uci's
+    // native mg/dL/5min BG-impact via csf, at the point of computation -- see DetermineBasalAutoISF.kt).
+    // Unlike the autoIsfAcce/Bg/Pp/Dura/Final fields above (populated FROM autoIsfValues in
+    // OpenAPSAutoISFPlugin.kt, for outbound NS sync), this one flows the OTHER way: set directly in
+    // DetermineBasalAutoISF.kt (where uci is computed) and read back into autoIsfValues.uamCarbImpact
+    // afterward, since uci has no
     // independent computation elsewhere.
     var autoIsfUamCarbImpact: Double? = null,
 

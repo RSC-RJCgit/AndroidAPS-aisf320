@@ -445,7 +445,19 @@ class AutomationPlugin @Inject constructor(
         // instantly resumes controlling firing the moment the toggle goes back off — no state to
         // save/restore (the per-title accept/deny decisions ARE persisted, separately, in
         // AutomationStringKey.CodedAutomationDecisions).
-        val portedAutomationsEnabled = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
+        //
+        // ALSO requires AutoISF to actually be the selected APS algorithm, not just the preference
+        // toggle being on: ApsAutoIsfCustomAutomationsEnabled is a plain stored boolean, independent of
+        // which APS plugin is active -- OpenAPSAutoISFPlugin.invoke() (and therefore every coded
+        // automation) simply never runs when a different algorithm is selected. Without this check,
+        // switching away from AutoISF would silently leave native automations suppressed for names that
+        // no longer have any real coded counterpart running at all -- neither side would work.
+        val runningAutoIsf = try {
+            activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
+        } catch (e: Exception) {
+            false
+        }
+        val portedAutomationsEnabled = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled) && runningAutoIsf
         val codedAutomationDecisions = if (portedAutomationsEnabled) loadCodedAutomationDecisions() else emptyMap()
         val iterator = synchronized(this) { automationEvents.toMutableList().iterator() }
         while (iterator.hasNext()) {

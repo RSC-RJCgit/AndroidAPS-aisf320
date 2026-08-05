@@ -169,9 +169,10 @@ class PrepareIobAutosensGraphDataWorker(
         // Simple single-pole exponential smoother (same style as the LibreSpecial fsl_exp1 smoother
         // elsewhere in this codebase) -- this5MinAbsorption is a raw per-bucket rate and jumps around
         // a lot bucket-to-bucket, unlike a level (COB). null until the first real sample seeds it, so
-        // the smoother doesn't start biased toward 0. Reverted from 0.1 back to 0.3 (0.1 smoothed too
-        // heavily / lagged too far behind the raw rate).
-        val carbAbsAlpha = 0.3
+        // the smoother doesn't start biased toward 0. History: 0.1 -> 0.3 -> briefly 1.0 (no smoothing,
+        // as a raw baseline) -> back to 0.1 for heavier smoothing, now that the line itself is dashed
+        // (see GraphData/PrepareIobAutosensGraphDataWorker styling).
+        val carbAbsAlpha = 0.1
         var carbAbsEma: Double? = null
 
         // CARB MODEL CURVE (optional overlay, off by default) -- two-compartment (Dalla Man-style) Ra(t)
@@ -463,12 +464,15 @@ class PrepareIobAutosensGraphDataWorker(
             })
         }
 
-        // CARBS ABSORPTION -- thin (thickness=2, vs activity's 3), solid/firm line (no dashed paint,
-        // same as how activity's own historical segment is solid -- only its prediction segment dashes).
+        // CARBS ABSORPTION -- dashed (trying this alongside the already-dashed carb model curve below,
+        // rather than solid -- easier to trace visually against the grid at a glance).
         data.overviewData.carbAbsorptionSeries = FixedLineGraphSeries(Array(carbAbsArrayHist.size) { i -> carbAbsArrayHist[i] }).also {
-            it.isDrawBackground = false
-            it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbAbsorptionColor)
-            it.thickness = 5
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 5f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbAbsorptionColor)
+            })
         }
 
         // CARB MODEL CURVE -- dashed, distinct color, to visually mark it as a calculated model overlay

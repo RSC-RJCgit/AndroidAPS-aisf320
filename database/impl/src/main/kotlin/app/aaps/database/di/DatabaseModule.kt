@@ -259,8 +259,9 @@ open class DatabaseModule {
         }
     }
 
-    // UAM Carb Impact (uci from DetermineBasalAutoISF.kt) -- deviation-derived BG-impact rate in
-    // mg/dL/5min, for the new Raw/UAM-carbs graph line. See AIV.kt / RT.autoIsfUamCarbImpact.
+    // UAM Carb Impact (uci from DetermineBasalAutoISF.kt) -- deviation-derived carbs-equivalent in
+    // grams/5min (converted from uci's native mg/dL/5min via csf), for the Raw/UAM-carbs graph line.
+    // See AIV.kt / RT.autoIsfUamCarbImpact.
     internal val migration37to38 = object : Migration(37, 38) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `uamCarbImpact` DOUBLE NOT NULL DEFAULT 0.0")
