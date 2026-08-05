@@ -1359,4 +1359,96 @@ private fun savePersistedParameters() {
             result[i] = max(smoothedResults[i - startIdx], 39.0)
         }
     }
+
+    // ============================================================
+    // INCREMENTAL REALTIME UKF (raw Libre ingestion -- e.g. NsIncomingDataProcessor's FSL pipeline)
+    // ============================================================
+
+    /**
+     * One-sample-at-a-time UKF smoothing for a live ingestion pipeline that processes raw readings
+     * as they arrive (e.g. NsIncomingDataProcessor's FSL calibration/smoothing block, which currently
+     * runs a single-pole EMA per new sample). Unlike [smoothForDisplay] (stateless batch recompute)
+     * this genuinely needs state that persists across calls -- and across app restarts, since Android
+     * can kill the process between NS syncs -- so it's saved to SharedPreferences, same pattern as the
+     * live [smooth] pipeline's learnedR/session persistence above.
+     *
+     * Deliberately isolated from BOTH other UKF code paths: separate SharedPreferences keys from
+     * [smooth]'s (that state belongs to whichever BG stream is actually selected as Config Builder's
+     * active smoothing plugin -- reusing it here with a different, raw/uncalibrated input would
+     * corrupt it), and obviously separate from [smoothForDisplay]'s (which keeps no state at all).
+     *
+     * Uses DISPLAY_R/DISPLAY_Q (same tuning as [smoothForDisplay] -- same kind of noisy, uncalibrated
+     * raw input), not R_INIT/Q_FIXED. R is NOT adaptively learned here (kept fixed at DISPLAY_R, same
+     * as smoothForDisplay) -- deliberately simple, no persisted-R drift to reason about for a value
+     * that feeds real dosing.
+     *
+     * Resets to a fresh, unsmoothed start on the first-ever call, a backwards timestamp, or a gap
+     * bigger than MAJOR_GAP_THRESHOLD (60min) -- same reset conditions as the batch/live paths use.
+     * Smaller gaps (MINOR_GAP_THRESHOLD..MAJOR_GAP_THRESHOLD) bridge via the same covariance-inflation
+     * + rate-decay approach [processSegment] uses. Unlike the batch paths, dt is NOT clamped to
+     * 3.5..6.5min -- that clamp exists to normalize occasional jitter around a *5-min bucketed* grid,
+     * which doesn't apply here: this runs on genuine ~1-min raw samples, so the real dt is the
+     * physically correct timestep for the predict step. Only guarded against zero/negative (handled
+     * above via the reset branch) and pathologically large values (capped at MAJOR_GAP_THRESHOLD).
+     *
+     * Falls back to returning the raw value unsmoothed (and does not touch persisted state) on error,
+     * so a bug here degrades to "no smoothing" rather than corrupting the BG stream.
+     *
+     * @param timestamp reading time (ms epoch)
+     * @param rawValue raw glucose value in mg/dL (pre-calibration or post-calibration -- caller's
+     *   choice; this function just smooths whatever series it's fed consistently over time)
+     * @return smoothed value in mg/dL
+     */
+    fun smoothRawRealtime(timestamp: Long, rawValue: Double): Double {
+        try {
+            val lastTimestamp = sp.getLong("ukf_rawrt_last_timestamp", 0L)
+            val dtMin = if (lastTimestamp > 0) (timestamp - lastTimestamp) / 60000.0 else -1.0
+
+            if (lastTimestamp <= 0L || dtMin <= 0.0 || dtMin > MAJOR_GAP_THRESHOLD) {
+                val fresh = max(rawValue, 39.0)
+                persistRawRealtimeState(fresh, 0.0, 16.0, 0.0, 0.0, 1.0, timestamp)
+                return fresh
+            }
+
+            val x = doubleArrayOf(
+                sp.getDouble("ukf_rawrt_x0", rawValue),
+                sp.getDouble("ukf_rawrt_x1", 0.0)
+            )
+            val P = doubleArrayOf(
+                sp.getDouble("ukf_rawrt_p0", 16.0),
+                sp.getDouble("ukf_rawrt_p1", 0.0),
+                sp.getDouble("ukf_rawrt_p2", 0.0),
+                sp.getDouble("ukf_rawrt_p3", 1.0)
+            )
+
+            if (dtMin > MINOR_GAP_THRESHOLD) {
+                val qScale = dtMin / 5.0
+                P[0] = min(P[0] + DISPLAY_Q[0] * qScale, MAX_GLUCOSE_VARIANCE)
+                P[3] = min(P[3] + DISPLAY_Q[3] * qScale, MAX_RATE_VARIANCE)
+                x[1] *= exp(-dtMin / RATE_DECAY_TIME_CONSTANT)
+            }
+            P[0] = P[0].coerceIn(0.1, MAX_GLUCOSE_VARIANCE)
+            P[3] = P[3].coerceIn(0.001, MAX_RATE_VARIANCE)
+
+            val (xPred, PPred) = predict(x, P, DISPLAY_Q, dtMin)
+            update(xPred, PPred, rawValue, DISPLAY_R, x, P)
+
+            val smoothed = max(x[0], 39.0)
+            persistRawRealtimeState(smoothed, x[1], P[0], P[1], P[2], P[3], timestamp)
+            return smoothed
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.GLUCOSE, "UKF: Error during raw realtime smoothing, falling back to raw value", e)
+            return max(rawValue, 39.0)
+        }
+    }
+
+    private fun persistRawRealtimeState(x0: Double, x1: Double, p0: Double, p1: Double, p2: Double, p3: Double, timestamp: Long) {
+        sp.putDouble("ukf_rawrt_x0", x0)
+        sp.putDouble("ukf_rawrt_x1", x1)
+        sp.putDouble("ukf_rawrt_p0", p0)
+        sp.putDouble("ukf_rawrt_p1", p1)
+        sp.putDouble("ukf_rawrt_p2", p2)
+        sp.putDouble("ukf_rawrt_p3", p3)
+        sp.putLong("ukf_rawrt_last_timestamp", timestamp)
+    }
 }

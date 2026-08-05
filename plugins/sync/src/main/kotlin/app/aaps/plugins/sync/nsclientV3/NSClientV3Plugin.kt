@@ -850,6 +850,7 @@ class NSClientV3Plugin @Inject constructor(
                     cat.title = rh.gs(R.string.aapsclient_libre_settings)
                     addPreference(cat)
                     cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
+                    cat.addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslUseUkfSmoothing, title = R.string.fsl_use_ukf_smoothing_title, summary = R.string.fsl_use_ukf_smoothing_summary))
                     cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))
                     cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, title = R.string.fsl_cal_slope_title, dialogMessage = R.string.fsl_cal_slope_summary))
                     cat.addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, title = R.string.fsl_smooth_alpha_title, dialogMessage = R.string.fsl_smooth_alpha_summary))

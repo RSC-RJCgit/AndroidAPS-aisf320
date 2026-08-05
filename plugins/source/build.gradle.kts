@@ -22,6 +22,8 @@ dependencies {
     implementation(project(":core:utils"))
     implementation(project(":core:validators"))
     implementation(project(":shared:impl"))
+    // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- see XdripSourcePlugin.kt FSL smoothing block
+    implementation(project(":plugins:smoothing"))
 
     testImplementation(libs.androidx.work.testing)
 

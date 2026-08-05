@@ -21,6 +21,8 @@ dependencies {
     implementation(project(":core:utils"))
     implementation(project(":core:validators"))
     implementation(project(":shared:impl"))
+    // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- see NsIncomingDataProcessor.kt FSL ingestion
+    implementation(project(":plugins:smoothing"))
 
 
     testImplementation(libs.kotlinx.coroutines.test)

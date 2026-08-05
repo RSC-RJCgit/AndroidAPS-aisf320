@@ -40,6 +40,7 @@ import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
+import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -84,6 +85,7 @@ class XdripSourcePlugin @Inject constructor(
             title = rh.gs(R.string.libre_special_settings)
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslUseUkfSmoothing, title = R.string.fsl_use_ukf_smoothing_title, summary = R.string.fsl_use_ukf_smoothing_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, title = R.string.fsl_cal_slope_title, dialogMessage = R.string.fsl_cal_slope_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, title = R.string.fsl_smooth_alpha_title, dialogMessage = R.string.fsl_smooth_alpha_summary))
@@ -127,6 +129,7 @@ class XdripSourcePlugin @Inject constructor(
         @Inject lateinit var preferences: Preferences
         @Inject lateinit var profileUtil: ProfileUtil
         @Inject lateinit var automationStateService: AutomationStateInterface
+        @Inject lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
 
         fun getSensorStartTime(bundle: Bundle): Long? {
             val now = dateUtil.now()
@@ -181,22 +184,32 @@ class XdripSourcePlugin @Inject constructor(
                 // If extraRaw is non-zero (Juggluco etc.), use the sensor raw directly for calibration.
                 if (extraRaw == 0.0) extraRaw = extraBgEstimate
                 extraBgEstimate = max(40.0, extraRaw * slope + offset * (if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0))
-                val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
-                val cgmDelta = if (sourceCGM == "G7") 5.0 else 1.0
-                val effectiveAlpha = if (calibrationDuration - calibrationMinutes < 2 && !preferences.get(BooleanKey.FslCalibrationEnd)) 1.0
-                    else min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - cgmDelta) / (maxGap - cgmDelta)).pow(2.0)))
-                if (lastSmooth > 0.0) {
-                    // exponential smoothing, see https://en.wikipedia.org/wiki/Exponential_smoothing
-                    smooth = lastSmooth + effectiveAlpha * (extraBgEstimate - lastSmooth)
+                if (preferences.get(BooleanKey.FslUseUkfSmoothing)) {
+                    // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- incremental, own persisted
+                    // state (see that function's doc comment), replaces the fsl_exp1 EMA below
+                    // entirely when this toggle is on. Same calibrated extraBgEstimate input either
+                    // way; mirrors the NS ingestion wiring in NsIncomingDataProcessor.kt.
+                    smooth = ukfSmoothing.smoothRawRealtime(thisTimeRaw, extraBgEstimate)
+                    preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
+                    aapsLogger.debug(LTag.BGSOURCE, "FSL xDrip calibration (UKF): raw=$extraRaw calibrated=$extraBgEstimate smooth=$smooth")
+                } else {
+                    val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+                    val cgmDelta = if (sourceCGM == "G7") 5.0 else 1.0
+                    val effectiveAlpha = if (calibrationDuration - calibrationMinutes < 2 && !preferences.get(BooleanKey.FslCalibrationEnd)) 1.0
+                        else min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - cgmDelta) / (maxGap - cgmDelta)).pow(2.0)))
+                    if (lastSmooth > 0.0) {
+                        // exponential smoothing, see https://en.wikipedia.org/wiki/Exponential_smoothing
+                        smooth = lastSmooth + effectiveAlpha * (extraBgEstimate - lastSmooth)
+                    }
+                    preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
+                    preferences.put(DoubleKey.FslLastSmooth, smooth)
+                    preferences.put(LongKey.FslSmoothLastTimeRaw, thisTimeRaw)
+                    val calibrationMsg = "Calibration json: {\"calibration_offset\":$offset,\"calibration_slope\":$slope," +
+                        "\"smoothFactor\":$factor,\"effectiveAlpha\":$effectiveAlpha," +
+                        "\"calibrationStart\":${preferences.get(LongKey.FslCalibrationStart)}," +
+                        "\"calibrationIgnore\":${preferences.get(BooleanKey.FslCalibrationEnd)}}"
+                    aapsLogger.debug(LTag.BGSOURCE, calibrationMsg)
                 }
-                preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
-                preferences.put(DoubleKey.FslLastSmooth, smooth)
-                preferences.put(LongKey.FslSmoothLastTimeRaw, thisTimeRaw)
-                val calibrationMsg = "Calibration json: {\"calibration_offset\":$offset,\"calibration_slope\":$slope," +
-                    "\"smoothFactor\":$factor,\"effectiveAlpha\":$effectiveAlpha," +
-                    "\"calibrationStart\":${preferences.get(LongKey.FslCalibrationStart)}," +
-                    "\"calibrationIgnore\":${preferences.get(BooleanKey.FslCalibrationEnd)}}"
-                aapsLogger.debug(LTag.BGSOURCE, calibrationMsg)
             }
             glucoseValues += GV(
                 timestamp = thisTimeRaw,        // bundle.getLong(Intents.EXTRA_TIMESTAMP, 0),
