@@ -206,8 +206,20 @@ class GraphData @Inject constructor(
 
     fun addCombinedCarbs(scale: Double) {
         addSeries(overviewData.combinedCarbsSeries as FixedLineGraphSeries<ScaledDataPoint>)
-        if (overviewData.maxCombinedCarbsValue > 0.0)
-            overviewData.combinedCarbsScale.multiplier = maxY * scale / overviewData.maxCombinedCarbsValue
+        // Deliberately normalised against maxCarbAbsorptionValue (the ORANGE empirical carb line's
+        // own max), NOT against maxCombinedCarbsValue like every other series here. Combined Carbs
+        // exists to be read AGAINST that orange line ("how much does UAM add on top of empirical?"),
+        // and self-normalising defeats that entirely: dividing by its own max forces the combined
+        // line to peak at exactly the same height as the carb line no matter what it contains, so
+        // any constant multiplier applied upstream in PrepareIobAutosensGraphDataWorker.kt cancels
+        // out exactly ((K*v)/(K*max) == v/max) and the UAM contribution is invisible by construction.
+        // Sharing the carb line's denominator makes the vertical gap between the two lines mean
+        // something real -- it IS the (scaled) UAM contribution -- and makes combinedPeakBoostFactor
+        // an actually functional knob. Falls back to its own max if the carb line has no data.
+        val denominator = if (overviewData.maxCarbAbsorptionValue > 0.0) overviewData.maxCarbAbsorptionValue
+        else overviewData.maxCombinedCarbsValue
+        if (denominator > 0.0)
+            overviewData.combinedCarbsScale.multiplier = maxY * scale / denominator
     }
 
     fun addCarbModelCurve(scale: Double) {

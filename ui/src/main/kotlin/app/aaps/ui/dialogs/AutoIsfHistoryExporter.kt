@@ -84,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "HP", "HP2", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "carbAbs", "HP", "HP2", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -126,6 +126,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
             cobStr(r),
+            carbAbsStr(r),
             hpStr(r, rawReadings),
             hp2Str(r, allRecords),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
@@ -465,6 +466,15 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  computes internally, exposed directly so COB can be filtered/analyzed on its own (e.g. "was there
      *  COB onboard when HP predicted X") without having to reverse-engineer it out of the HP number. */
     fun cobStr(r: AIV): String = df1.format(historicalCob(r.timestamp))
+
+    /** Historically-accurate empirical carb absorption rate (g/5min) at [timestamp] -- the SAME source
+     *  (autosensData.this5MinAbsorption, oref1 model) PrepareIobAutosensGraphDataWorker.kt EMA-smooths
+     *  into the orange "carbs" graph line and sums with the (scaled) UAM line into Combined Carbs. NOT
+     *  smoothed here (this is the raw per-bucket rate, not the graph's EMA-smoothed value) -- exposed so
+     *  a real meal's actual peak magnitude can be compared directly against UAMci's peak from the same
+     *  export, instead of guessing the Combined Carbs scaling factors blind. 0.0 if no autosens data
+     *  covers that time (same fallback as historicalCob). */
+    fun carbAbsStr(r: AIV): String = df2.format(iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.this5MinAbsorption ?: 0.0)
 
     /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/12 — same
      *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes from

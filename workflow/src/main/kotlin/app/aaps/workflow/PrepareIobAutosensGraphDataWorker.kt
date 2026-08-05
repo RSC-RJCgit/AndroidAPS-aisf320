@@ -338,20 +338,34 @@ class PrepareIobAutosensGraphDataWorker(
                         // line, uci never does. Left uncapped on the standalone UAM line above (a large
                         // spike there is itself useful diagnostic info). A hard ceiling (coerceAtMost)
                         // was tried here for the SUM but does nothing for a systematic magnitude
-                        // mismatch below the ceiling -- switched to a flat multiplicative scale per
-                        // user request. Two knobs, both still first guesses, NOT validated against real
-                        // magnitude data, and deliberately pulling in opposite directions:
+                        // mismatch below the ceiling -- switched to a flat multiplicative scale. Two
+                        // knobs, pulling in opposite directions:
                         //  - uamShareOfSumFactor shrinks the UAM line's OWN weight within the sum, i.e.
-                        //    how much of smoothedUam actually counts toward "combined". 0.04 = the
-                        //    original 0.20 first guess, then trimmed by another 0.2x on top per user
-                        //    request (0.20 * 0.2 = 0.04) -- smaller than the original because the UAM
-                        //    line was judged to still be adding too much even at 0.20.
-                        //  - combinedPeakBoostFactor scales the WHOLE (already-summed) total back up
-                        //    afterward, to bring the combined line's peak/height up to something visible
-                        //    relative to the empirical (orange) carb absorption line it's added to.
+                        //    how much of smoothedUam actually counts toward "combined". Earlier values
+                        //    (0.20, then 0.04) were blind guesses; 0.4 is derived from real exported
+                        //    data instead. Empirical carb absorption measured off COB decay in
+                        //    aiv_VirtualBolusWS (20.0->18.1g over ~17min, 8.4->6.2g over ~19min,
+                        //    2.7->0.2g over ~22min) runs a consistent ~0.6 g/5min, while UAMci over the
+                        //    same meal ran 0.06-0.90 -- i.e. COMPARABLE magnitude, not orders apart as
+                        //    the early guesses assumed. At 0.04 UAM contributed ~0.02 against ~0.6
+                        //    (~3%, invisible); 0.4 puts it near a third of the combined line, which is
+                        //    the point of drawing the line at all. 0.3-0.5 is the sensible range.
+                        //  - combinedPeakBoostFactor scales the WHOLE (already-summed) total, lifting the
+                        //    combined line relative to the empirical (orange) carb absorption line.
+                        //    NOTE: this knob was a NO-OP until GraphData.addCombinedCarbs() was changed to
+                        //    normalise against maxCarbAbsorptionValue instead of maxCombinedCarbsValue --
+                        //    while self-normalising, any constant K here cancelled out exactly
+                        //    ((K*v)/(K*max) == v/max) and nothing moved on screen. Earlier values (3.3,
+                        //    then 1.5) were set while it was inert, chasing "make the combined peak clear
+                        //    the carb peak" -- which the scale fix itself now delivers, so they are
+                        //    obsolete rather than merely untuned. Held at 1.0 deliberately: combined is
+                        //    then drawn on exactly the carb line's scale, so where UAM contributes nothing
+                        //    the two lines coincide and the visible gap elsewhere IS the UAM contribution.
+                        //    Anything >1.0 floats the line above the carb line even where UAM is zero,
+                        //    which reads as a contribution that isn't there.
                         // Revisit both together if the combined line still looks off.
-                        val uamShareOfSumFactor = 0.04
-                        val combinedPeakBoostFactor = 3.3
+                        val uamShareOfSumFactor = 0.4
+                        val combinedPeakBoostFactor = 1.0
                         val uamContribution = smoothedUam * uamShareOfSumFactor
                         val combined = (smoothedCarbAbs + uamContribution) * combinedPeakBoostFactor
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
