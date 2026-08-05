@@ -423,6 +423,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return newest - (ref.noise ?: return null)
     }
 
+    // Hypo prediction (mmol). Identical formula to AutoIsfHistoryExporter.hpStr() — the "HP" column in
+    // the AIV history table and CSV export — so a threshold chosen by reading that column means exactly
+    // the same thing when used as a live gate here: (BGL - IOB) + 0.25*SDelta + 0.25*rawLibreDelta5 +
+    // COB/12, all in mmol. Divisor 18.0182 matches the exporter's MGDL_TO_MMOL rather than the plain 18
+    // used for inline mmol comments elsewhere in this file, so the two agree to the decimal shown.
+    // Null (not a sentinel) when the raw Libre 5-min delta is unavailable, so each caller decides
+    // explicitly whether missing data should fail open or closed for its own action rather than
+    // inheriting a silent default. Parameters are passed in rather than read from the enclosing
+    // automations scope because that state (glucoseStatus/iobData/mealData) is local to it.
+    private fun hypoPredictionMmol(glucoseMgdl: Double, shortAvgDeltaMgdl: Double, iob: Double, cob: Double): Double? {
+        val rawD5 = rawDelta5MinMgdl() ?: return null
+        return (glucoseMgdl / 18.0182 - iob) + 0.25 * (shortAvgDeltaMgdl / 18.0182) + 0.25 * (rawD5 / 18.0182) + cob / 12.0
+    }
+
     // Raw 15-min delta (.noise), normalised down to a per-5-min rate (÷3) so it stays on the same
     // mmol/5min scale as rawDelta5MinMgdl/rawDelta1MinMgdl — matches AutoIsfHistoryExporter's rΔ15
     // table column convention exactly, so a live gate reading this lines up with what's shown in the
@@ -2154,6 +2168,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val noTT = activeTtMgdl() == null
             val steroidOff = checkAutomationState("Steroids", "Steroids Off")
+            // Hypo-prediction gate: only back off (drop to the low profile + acce 0.18 / iobTH 18) when a
+            // low is actually predicted, not merely because BGL happens to be under 7.5 and drifting down
+            // overnight. Without this the two blocks below fire on most quiet nights, and since the profile
+            // switch re-arms every time its own 30-min duration expires (the "!onCurrentProfile" gate goes
+            // true again on revert), that kept the low profile in place for much of 01:00-06:00 in 30-min
+            // chunks -- while acce/iobTH, which are NOT reverted with it, stayed suppressed throughout.
+            // Fails OPEN (allows the block to fire) when HP can't be evaluated -- see hypoPredictionMmol().
+            // This is a hypo-protective action, so the safe default on missing data is the pre-existing
+            // behaviour rather than silently withholding a back-off that might be warranted.
+            val hpNow = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+            val hypoPredicted = hpNow == null || hpNow < 5.5
             // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
             val ohb1 = isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9
                 && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
@@ -2161,11 +2186,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
-            if (ohBlock != null) {
+            if (ohBlock != null && hypoPredicted) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
-                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("OffP-$ohBlock")
                 markRun("OffHighProf")
             }
@@ -3168,12 +3193,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && activeTtMgdl() == null
                 && profile_percentage == 100
                 && isTimeBetween(0, 0, 8, 0)) {
-                sendSms("MJ recent CurrProf Acce")
-                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)) -- same
-                // rationale as EveningTH above: parking on the low/MJ-night profile suppresses overnight
-                // corrections, and since BasalUp (the only switch back to Standard) is gated from 07:00,
-                // there was no automated route off it before morning. The acce-weight and iobTH actions
-                // below still run unchanged, so the MJ-night tuning this block exists for is preserved.
+                // Profile switch now HP-GATED rather than unconditional -- same rationale and same
+                // fail-closed choice as EveningTH above (permanent switch, no revert before BasalUp's
+                // 07:00 window, so skipping is far cheaper than switching unnecessarily). The acce-weight
+                // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
+                // exists for is preserved whether or not a low is predicted.
+                val hpMj = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+                if (hpMj != null && hpMj < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                sendSms("MJ recent CurrProf Acce HP=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 addCarePortalNote("MJrec")
@@ -3352,7 +3379,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // is clear or steroids are on. No live-pump gate: the original's Note field was empty.
         if (readyToRun("AcceUp0.5", 5)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            // Daytime gate (8:00-22:00) ADDED -- the source automation had none. Overnight this block was
+            // fighting every acce-lowering block in this file: OffHighProf (0.18), NightAcce (0.35),
+            // EveningTH (0.45), MJrec and TwilightTH15Acce (0.50) all land at or under this block's
+            // "acceW <= 0.5" trigger, so each deliberate overnight back-off immediately re-armed it. It
+            // then raised acce to High, which armed RecentPodOff (acce == acceHigh && no TT), which reset
+            // acce AND switched the profile to Standard -- which in turn re-armed OffHighProf's
+            // "!onCurrentProfile" gate, producing the observed Acce -> OffP-1 -> Acce -> pTTOff cycle
+            // repeating all night. Confining this to daytime leaves the overnight blocks' acce values
+            // standing, which is what they were chosen for. Note it was already dormant on MJ-active
+            // nights via the MJ/Steroids condition below; this extends that to non-MJ nights too.
             if (acceW <= 0.5
+                && isTimeBetween(8, 0, 22, 0)
                 && glucoseStatus.glucose >= 108.1 /* 6.0 mmol */
                 && profile_percentage == 100
                 && activeTtMgdl() == null
@@ -3394,7 +3432,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // fuzzyEquals, not ==: acceHigh has no exact float representation at values like 0.95, so
             // "acceW == acceHigh" could read false after the round-trip and this recovery would never
             // fire (acce stuck at its boosted level). Same float trap as the DelOff reset.
-            if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null) {
+            // Requires that a pod boost ACTUALLY happened, which this block never checked despite its
+            // name and the comment above both describing it as undoing RecentPod/OldPod2. Its only real
+            // condition was "acce is at High and no TT is running" -- a state AcceUp0.5 produces exactly
+            // (it sets acce to High and starts no TT), so this fired immediately after every AcceUp0.5
+            // and undid it. AcceUp0.5's effect could therefore never survive at all, and because this
+            // block ALSO switches the profile to Standard, each spurious fire re-armed OffHighProf's
+            // "!onCurrentProfile" gate -- the profile half of the overnight flip-flop. !readyToRun(k, 60)
+            // reads as "k fired within the last 60 min" (same idiom as smbBoostRecent's bypass gate);
+            // 60 min comfortably covers the short safety TT those two start plus its aftermath, while
+            // still being far too short to catch an unrelated AcceUp0.5 hours later.
+            val podBoostRecent = !readyToRun("RecentPod", 60) || !readyToRun("OldPod2", 60)
+            if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null && podBoostRecent) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 sendSms("RecentPodOff Acce")
@@ -3482,17 +3531,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (evB1 || evB2 || evB3) {
                 setBgAccelIsfWeight(0.45)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
-                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)): parking on
-                // the low/MJ-night profile here from 20:00 was judged to be suppressing overnight
-                // corrections. Two separate effects were in play -- (a) the low profile's own weaker
-                // basal/ISF, which persists all night once switched, and (b) the explicit
-                // "profileName != LowProfileName" guards on BolusGivenBg3/BolusGivenMild, though those
-                // two are themselves isTimeBetween(8,30,22,0) so that guard only ever bit during the
-                // 20:00-22:00 overlap. Removed rather than repointed at StandardProfileName: leaving the
-                // active profile untouched avoids forcing a strengthening overnight (a hypo-risk
-                // direction) and keeps this automation to what its name describes -- the evening
-                // acce-weight/iobTH adjustment above, which still runs unchanged.
-                sendSms("EveningTH CurrProf 50_0.45 Acce")
+                // Profile switch now HP-GATED rather than unconditional. Parking on the low/MJ-night
+                // profile from 20:00 was suppressing overnight corrections: the low profile's weaker
+                // basal/ISF persists all night once switched, and BasalUp (the only switch back to
+                // Standard) is gated from 07:00, so there was no automated route off it before morning.
+                // Gating on a genuinely predicted low keeps the hypo protection this switch exists for
+                // while stopping it parking there on quiet nights. Fails CLOSED (no switch) when HP is
+                // unavailable -- opposite of OffHighProf's fail-open, and deliberately so: this switch is
+                // permanent (duration 0) with no automatic revert before 07:00, so the cost of switching
+                // when it wasn't warranted is much higher than skipping one evening adjustment.
+                val hpEve = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+                if (hpEve != null && hpEve < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                sendSms("EveningTH CurrProf 50_0.45 Acce HP=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
             }
@@ -3535,16 +3585,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && checkAutomationState("Steroids", "Steroids Off")
                 && acceW >= 0.08) {
                 setBgAccelIsfWeight(0.35)
-                // Profile switch REMOVED (was switchProfileIfNeeded(ApsAutoIsfLowProfileName)) -- same
-                // rationale as EveningTH/MJrec above. No self-latch concern here, unlike MJrec: this
-                // block's own "(iobTH >= 19 || iobTH <= 17)" trigger already latches it (setting iobTH
-                // to 18 below falsifies that condition), so it still applies once and stops without
-                // depending on the profile change to hold it off.
+                // Profile switch now HP-GATED rather than unconditional -- same rationale and same
+                // fail-closed choice as EveningTH/MJrec above. No self-latch concern here, unlike MJrec:
+                // this block's own "(iobTH >= 19 || iobTH <= 17)" trigger already latches it (setting
+                // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
+                // whether the profile switch happened.
+                val hpNight = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+                if (hpNight != null && hpNight < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
-                sendSms("NightAcce_0.35TH18")
+                sendSms("NightAcce_0.35TH18 HP=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Night")
                 markRun("NightAcce")
             }
