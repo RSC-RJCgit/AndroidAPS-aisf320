@@ -34,6 +34,10 @@ interface OverviewMenus {
         // trips OverviewMenusImpl.loadGraphConfig()'s "reset when new CharType added" size-mismatch
         // guard, resetting per-graph chart selections to defaults once on first load after this change.
         RAW_BG_SMOOTHED,
+        // UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min, from the AIV table.
+        // Appended at the end for the same ordinal-stability reason as RAW_BG_SMOOTHED above (same
+        // migration-reset caveat applies).
+        UAM_CARB_IMPACT,
     }
 
     val setting: List<Array<Boolean>>

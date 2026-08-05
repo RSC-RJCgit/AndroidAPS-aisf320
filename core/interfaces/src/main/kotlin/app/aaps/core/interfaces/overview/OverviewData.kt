@@ -80,6 +80,13 @@ interface OverviewData {
     val carbModelScale: Scale
     var carbModelSeries: SeriesData
 
+    // UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min, from the AIV table.
+    // Own scale: a different physical quantity from carbAbsorptionScale's grams/5min, not directly
+    // comparable, so it gets its own independent Y-axis multiplier. See PrepareBgDataWorker.kt.
+    var maxUamCarbImpactValue: Double
+    val uamCarbImpactScale: Scale
+    var uamCarbImpactSeries: SeriesData
+
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale
     var bgParabolaSeries: SeriesData

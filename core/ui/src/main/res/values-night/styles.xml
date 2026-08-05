@@ -232,6 +232,7 @@
         <item name="activityColor">@color/activity</item>
         <item name="carbAbsorptionColor">@color/carbAbsorption</item>
         <item name="carbModelCurveColor">@color/carbModelCurve</item>
+        <item name="uamCarbImpactColor">@color/uamCarbImpact</item>
         <item name="baseBasalColor">@color/baseBasal</item>
         <item name="dotLineColor">@color/white</item>
         <!-- AutoISf specific colors  -->

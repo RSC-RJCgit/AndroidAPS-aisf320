@@ -604,6 +604,10 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.eventualBG = eventualBG
         }
 
+        // Always set (uci is computed unconditionally above, not gated by enableUAM) -- read back into
+        // autoIsfValues.uamCarbImpact for persistence in OpenAPSAutoISFPlugin.kt, for the Raw/UAM-carbs
+        // graph line.
+        rT.autoIsfUamCarbImpact = uci
         consoleError.add("UAM Impact: $uci mg/dL per 5m; UAM Duration: $UAMduration hours")
         consoleError.add("EventualBG is ${convert_bg(eventualBG)} ;")
 

@@ -1,6 +1,8 @@
 package app.aaps.workflow
 
 import android.content.Context
+import android.graphics.DashPathEffect
+import android.graphics.Paint
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.configuration.Constants
@@ -12,6 +14,7 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.A1DeltaDataPoint
 import app.aaps.core.graph.data.DataPointWithLabelInterface
+import app.aaps.core.graph.data.FixedLineGraphSeries
 import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.HPDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
@@ -20,6 +23,7 @@ import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.ScaledDataPoint
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
 import com.jjoe64.graphview.series.DataPoint
@@ -117,6 +121,29 @@ class PrepareBgDataWorker(
             data.overviewData.maxBgValue = preferences.get(UnitDoubleKey.OverviewHighMark)
         data.overviewData.maxBgValue = addUpperChartMargin(data.overviewData.maxBgValue)
 
+        // UAM Carb Impact (uci) -- deviation-derived BG-impact rate (mg/dL per 5min), one point per AIV
+        // row (aivList, already fetched above for the dominant-ISF-weight coloring). NOT converted to a
+        // grams-equivalent (native mg/dL units, per user preference) -- own scale (uamCarbImpactScale),
+        // a different physical quantity from carbAbsorptionScale's grams/5min, not directly comparable on
+        // the same axis. Dashed, like carbModelSeries, to mark it as inferred/calculated rather than
+        // measured or logged.
+        data.overviewData.maxUamCarbImpactValue = 0.0
+        val uamCarbImpactArray = aivList
+            .filter { it.timestamp in fromTime..toTime }
+            .sortedBy { it.timestamp }
+            .map { aiv ->
+                data.overviewData.maxUamCarbImpactValue = kotlin.math.max(data.overviewData.maxUamCarbImpactValue, kotlin.math.abs(aiv.uamCarbImpact))
+                ScaledDataPoint(aiv.timestamp, aiv.uamCarbImpact, data.overviewData.uamCarbImpactScale)
+            }
+        data.overviewData.uamCarbImpactSeries = FixedLineGraphSeries(Array(uamCarbImpactArray.size) { i -> uamCarbImpactArray[i] }).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
+            })
+        }
+
         // Raw BG line — gv.noise: NS unfiltered (xDrip raw) when FslSmoothing ON, or NS mgdl pre-calibration
         // when OFF. Split into color-banded segments (red normally, yellow below 3.0mmol or above
         // 12.5mmol — fixed thresholds, independent of the user's Overview low/high marks) since
@@ -155,9 +182,20 @@ class PrepareBgDataWorker(
         // directly (not activePlugin.activeSmoothing) so this is always UKF regardless of which
         // smoothing algorithm is active for the real BG pipeline, and via smoothForDisplay() so it
         // never touches that pipeline's persisted/adaptive state. See GraphData.addRawBg().
+        //
+        // Calibrated the same way XdripSourcePlugin calibrates gv.noise into gv.raw (raw*slope+offset,
+        // offset in display units converted to mg/dL) before smoothing -- noise is pre-calibration data,
+        // so feeding it straight into the filter would smooth an uncalibrated signal. Deliberately offset
+        // from the live FslCalSlope/FslCalOffset settings (+0.10 slope, -0.5 offset in display units)
+        // rather than reusing them as-is, so this line reads as "what the raw trace looks like under a
+        // slightly different calibration" for comparison, not a duplicate of the real calibration.
+        val ukfRawSlope = preferences.get(DoubleKey.FslCalSlope) + 0.10
+        val ukfRawOffsetUnits = preferences.get(DoubleKey.FslCalOffset) - 0.5
+        val ukfRawOffsetMgdl = ukfRawOffsetUnits * (if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0)
         data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
             val newestFirst = rawReadings.sortedByDescending { it.timestamp }
-            val smoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
+            val calibratedPoints = newestFirst.map { it.timestamp to (it.noise!! * ukfRawSlope + ukfRawOffsetMgdl) }
+            val smoothedMgdl = ukfSmoothing.smoothForDisplay(calibratedPoints)
             val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
             }.asReversed() // back to ascending time order for the line series

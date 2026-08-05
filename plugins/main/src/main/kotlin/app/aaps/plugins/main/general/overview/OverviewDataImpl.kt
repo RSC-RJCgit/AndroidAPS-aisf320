@@ -83,6 +83,8 @@ class OverviewDataImpl @Inject constructor(
         carbAbsorptionSeries = FixedLineGraphSeries<ScaledDataPoint>()
         maxCarbModelValue = 0.0
         carbModelSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        maxUamCarbImpactValue = 0.0
+        uamCarbImpactSeries = FixedLineGraphSeries<ScaledDataPoint>()
         maxBgParabolaValue = 280.0
         bgParabolaSeries = FixedLineGraphSeries<ScaledDataPoint>()
         bgParabolaPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -263,6 +265,9 @@ class OverviewDataImpl @Inject constructor(
     override var maxCarbModelValue = 0.0
     override val carbModelScale = Scale()
     override var carbModelSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+    override var maxUamCarbImpactValue = 0.0
+    override val uamCarbImpactScale = Scale()
+    override var uamCarbImpactSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
 
     override var maxBgParabolaValue = 0.0
     override val bgParabolaScale = Scale()

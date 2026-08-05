@@ -373,6 +373,8 @@
     <string name="raw_bg_shortname">RAW</string>
     <string name="overview_show_raw_bg_smoothed">Raw BG (UKF smoothed)</string>
     <string name="raw_bg_smoothed_shortname">RAWsm</string>
+    <string name="overview_show_uam_carb_impact">UAM Carb Impact (assumed carbs)</string>
+    <string name="uam_carb_impact_shortname">UAMci</string>
     <string name="simple_mode_enabled">Simple mode enabled</string>
 
 </resources>

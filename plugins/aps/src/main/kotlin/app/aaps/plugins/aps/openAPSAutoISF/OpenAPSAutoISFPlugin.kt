@@ -3813,6 +3813,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 rt.autoIsfPp    = autoIsfValues.ppIsf
                 rt.autoIsfDura  = autoIsfValues.duraIsf
                 rt.autoIsfFinal = autoIsfValues.finalIsf
+                // Opposite direction from the four fields above: uci has no independent computation in
+                // this plugin, so it flows FROM rt (set in DetermineBasalAutoISF.kt) INTO autoIsfValues
+                // here, for local persistence below.
+                autoIsfValues.uamCarbImpact = rt.autoIsfUamCarbImpact ?: 0.0
                 // Dedicated, unconditional reason lines for the client-sync fallback (see
                 // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
                 // same values (which is conditional on which branch fired, and consoleLog doesn't

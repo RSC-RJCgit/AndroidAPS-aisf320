@@ -342,6 +342,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         // any basal-icon long-press effect on line1.
         if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
             graphData.addCarbModelCurve(0.8)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal))
+            graphData.addUamCarbImpact(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(false, 1.0)
         if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
@@ -386,6 +388,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             var usePP_ISFForScale = false
             var useDURA_ISFForScale = false
             var useRAWBGForScale = false
+            var useUAMForScale = false
             when {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal)      -> useABSForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)      -> useIobForScale = true
@@ -405,7 +408,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal)  -> useDURA_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) -> useRAWBGForScale = true
-
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) -> useUAMForScale = true
             }
             val alignDevBgiScale = menuChartSettings[g + 1][OverviewMenus.CharType.DEV.ordinal] && menuChartSettings[g + 1][OverviewMenus.CharType.BGI.ordinal]
             val alignAbsScale = menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal] && overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB_TH.ordinal)
@@ -467,6 +470,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
             if (g == 0) secondGraphData.addSmbLabels()
 
             // set manual x bounds to have nice steps
@@ -494,7 +498,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.PP_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DUR_ISF.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)
                 ).toVisibility()
             secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()

@@ -216,7 +216,10 @@ class NSDeviceStatusHandler @Inject constructor(
                                 smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
                                 iob            = rt.IOB ?: 0.0,
                                 acceIsfWeight  = firstMatch(acceIsfWeightRegex, reasonText) ?: 0.0,
-                                fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0
+                                fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0,
+                                // Direct RT property (unlike the regex-parsed reason-text fields above) --
+                                // uci is a genuine top-level @Serializable RT field, no fallback needed.
+                                uamCarbImpact  = rt.autoIsfUamCarbImpact ?: 0.0
                             )
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }

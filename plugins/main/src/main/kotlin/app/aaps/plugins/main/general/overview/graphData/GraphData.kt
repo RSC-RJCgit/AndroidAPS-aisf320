@@ -198,6 +198,12 @@ class GraphData @Inject constructor(
             overviewData.carbAbsorptionScale.multiplier = maxY * scale / overviewData.maxCarbAbsorptionValue
     }
 
+    fun addUamCarbImpact(scale: Double) {
+        addSeries(overviewData.uamCarbImpactSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        if (overviewData.maxUamCarbImpactValue > 0.0)
+            overviewData.uamCarbImpactScale.multiplier = maxY * scale / overviewData.maxUamCarbImpactValue
+    }
+
     fun addCarbModelCurve(scale: Double) {
         addSeries(overviewData.carbModelSeries as FixedLineGraphSeries<ScaledDataPoint>)
         if (overviewData.maxCarbModelValue > 0.0)

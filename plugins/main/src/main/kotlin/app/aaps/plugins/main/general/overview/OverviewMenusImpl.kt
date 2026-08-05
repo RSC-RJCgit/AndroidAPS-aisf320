@@ -87,6 +87,9 @@ class OverviewMenusImpl @Inject constructor(
         // Own checkbox next to RAW_BG — independently selectable, no longer implicitly tied to RAW_BG's
         // own on/off state. See PrepareBgDataWorker.kt (rawBgSmoothedSeries) / GraphData.addRawBgSmoothed().
         RAW_BG_SMOOTHED(R.string.overview_show_raw_bg_smoothed, app.aaps.core.ui.R.attr.rawBgColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.raw_bg_smoothed_shortname),
+        // UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min, from the AIV table.
+        // See PrepareBgDataWorker.kt (uamCarbImpactSeries) / GraphData.addUamCarbImpact().
+        UAM_CARB_IMPACT(R.string.overview_show_uam_carb_impact, app.aaps.core.ui.R.attr.uamCarbImpactColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.uam_carb_impact_shortname),
     }
 
     private val runningAutoIsf: Boolean

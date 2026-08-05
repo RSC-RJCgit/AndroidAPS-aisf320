@@ -38,6 +38,8 @@ data class AutoIsfValues(
     var iob: Double = 0.0,
     var acceIsfWeight: Double = 0.0,
     var fslCalSlope: Double = 0.0,
+    /** UAM Carb Impact (uci) -- deviation-derived BG-impact rate, mg/dL per 5min. See RT.autoIsfUamCarbImpact. */
+    var uamCarbImpact: Double = 0.0,
     override var utcOffset: Long = TimeZone.getDefault().getOffset(timestamp).toLong(),
     override var version: Int = 0,
     override var dateCreated: Long = -1,

@@ -30,6 +30,7 @@ fun AutoIsfValues.fromDb(): AIV =
         iob = this.iob,
         acceIsfWeight = this.acceIsfWeight,
         fslCalSlope = this.fslCalSlope,
+        uamCarbImpact = this.uamCarbImpact,
         ids = this.interfaceIDs.fromDb()
     )
 
@@ -60,5 +61,6 @@ fun AIV.toDb(): AutoIsfValues =
         iob = this.iob,
         acceIsfWeight = this.acceIsfWeight,
         fslCalSlope = this.fslCalSlope,
+        uamCarbImpact = this.uamCarbImpact,
         interfaceIDs_backing = this.ids.toDb()
     )
