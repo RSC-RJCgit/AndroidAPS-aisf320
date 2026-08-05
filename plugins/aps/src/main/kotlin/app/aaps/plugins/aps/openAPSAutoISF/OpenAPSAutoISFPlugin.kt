@@ -2178,7 +2178,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // This is a hypo-protective action, so the safe default on missing data is the pre-existing
             // behaviour rather than silently withholding a back-off that might be warranted.
             val hpNow = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-            val hypoPredicted = hpNow == null || hpNow < 5.5
+            val hypoPredicted = hpNow == null || hpNow < 5.0
             // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
             val ohb1 = isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9
                 && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
@@ -3199,7 +3199,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
                 // exists for is preserved whether or not a low is predicted.
                 val hpMj = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpMj != null && hpMj < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (hpMj != null && hpMj < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("MJ recent CurrProf Acce HP=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
@@ -3541,7 +3541,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // permanent (duration 0) with no automatic revert before 07:00, so the cost of switching
                 // when it wasn't warranted is much higher than skipping one evening adjustment.
                 val hpEve = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpEve != null && hpEve < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (hpEve != null && hpEve < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("EveningTH CurrProf 50_0.45 Acce HP=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
@@ -3591,7 +3591,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
                 val hpNight = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpNight != null && hpNight < 5.5) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (hpNight != null && hpNight < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
