@@ -358,14 +358,17 @@ class PrepareIobAutosensGraphDataWorker(
                         //    ((K*v)/(K*max) == v/max) and nothing moved on screen. Earlier values (3.3,
                         //    then 1.5) were set while it was inert, chasing "make the combined peak clear
                         //    the carb peak" -- which the scale fix itself now delivers, so they are
-                        //    obsolete rather than merely untuned. Held at 1.0 deliberately: combined is
-                        //    then drawn on exactly the carb line's scale, so where UAM contributes nothing
-                        //    the two lines coincide and the visible gap elsewhere IS the UAM contribution.
-                        //    Anything >1.0 floats the line above the carb line even where UAM is zero,
-                        //    which reads as a contribution that isn't there.
+                        //    obsolete rather than merely untuned. 1.0 is the NEUTRAL point: combined drawn
+                        //    on exactly the carb line's scale, so where UAM contributes nothing the two
+                        //    lines coincide and the gap elsewhere IS the UAM contribution. Set to 1.25
+                        //    from observation of the built graph -- a deliberate 25% lift above neutral.
+                        //    Trade-off accepted knowingly: since it multiplies the whole sum, it also
+                        //    raises the line slightly above the carb line in stretches where UAM is
+                        //    contributing nothing, so the two no longer coincide there. Return to 1.0 if
+                        //    that separation ever reads as a UAM contribution that isn't real.
                         // Revisit both together if the combined line still looks off.
                         val uamShareOfSumFactor = 0.4
-                        val combinedPeakBoostFactor = 1.0
+                        val combinedPeakBoostFactor = 1.25
                         val uamContribution = smoothedUam * uamShareOfSumFactor
                         val combined = (smoothedCarbAbs + uamContribution) * combinedPeakBoostFactor
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
