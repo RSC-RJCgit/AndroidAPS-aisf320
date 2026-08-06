@@ -206,20 +206,24 @@ class GraphData @Inject constructor(
 
     fun addCombinedCarbs(scale: Double) {
         addSeries(overviewData.combinedCarbsSeries as FixedLineGraphSeries<ScaledDataPoint>)
-        // Deliberately normalised against maxCarbAbsorptionValue (the ORANGE empirical carb line's
-        // own max), NOT against maxCombinedCarbsValue like every other series here. Combined Carbs
-        // exists to be read AGAINST that orange line ("how much does UAM add on top of empirical?"),
-        // and self-normalising defeats that entirely: dividing by its own max forces the combined
-        // line to peak at exactly the same height as the carb line no matter what it contains, so
-        // any constant multiplier applied upstream in PrepareIobAutosensGraphDataWorker.kt cancels
-        // out exactly ((K*v)/(K*max) == v/max) and the UAM contribution is invisible by construction.
-        // Sharing the carb line's denominator makes the vertical gap between the two lines mean
-        // something real -- it IS the (scaled) UAM contribution -- and makes combinedPeakBoostFactor
-        // an actually functional knob. Falls back to its own max if the carb line has no data.
-        val denominator = if (overviewData.maxCarbAbsorptionValue > 0.0) overviewData.maxCarbAbsorptionValue
-        else overviewData.maxCombinedCarbsValue
-        if (denominator > 0.0)
-            overviewData.combinedCarbsScale.multiplier = maxY * scale / denominator
+        // Self-normalised against its own max, same as every other series here (activity, carb
+        // absorption, ...). The point is that EVERY line's peak lands at the same height (maxY*scale),
+        // so lines can be read against each other for SHAPE and TIMING -- when each rises, where it
+        // peaks, how fast it decays -- without differing magnitudes dominating the picture. That is
+        // what makes a g/5min carb line and a U/min activity line legible on one panel at all: they
+        // have no common unit, so only their profiles over time are meaningfully comparable.
+        //
+        // Was briefly normalised against maxCarbAbsorptionValue instead, to make the UAM contribution
+        // show up as a vertical gap above the orange carb line. That works, but it is the opposite
+        // trade: it fixes this line's height relative to the carb line and so breaks the equal-peaks
+        // property against everything else on the panel. Reverted deliberately -- shape/timing
+        // comparison across all lines was preferred over magnitude comparison against one of them.
+        // Consequence to be aware of: with equal peaks restored, any constant multiplier applied to
+        // the value upstream cancels out exactly ((K*v)/(K*max) == v/max), so uamShareOfSumFactor in
+        // PrepareIobAutosensGraphDataWorker.kt is now the only knob that changes what is drawn -- it
+        // alters the line's SHAPE (the mix of the two components) rather than its height.
+        if (overviewData.maxCombinedCarbsValue > 0.0)
+            overviewData.combinedCarbsScale.multiplier = maxY * scale / overviewData.maxCombinedCarbsValue
     }
 
     fun addCarbModelCurve(scale: Double) {

@@ -350,27 +350,21 @@ class PrepareIobAutosensGraphDataWorker(
                         //    the early guesses assumed. At 0.04 UAM contributed ~0.02 against ~0.6
                         //    (~3%, invisible); 0.4 puts it near a third of the combined line, which is
                         //    the point of drawing the line at all. 0.3-0.5 is the sensible range.
-                        //  - combinedPeakBoostFactor scales the WHOLE (already-summed) total, lifting the
-                        //    combined line relative to the empirical (orange) carb absorption line.
-                        //    NOTE: this knob was a NO-OP until GraphData.addCombinedCarbs() was changed to
-                        //    normalise against maxCarbAbsorptionValue instead of maxCombinedCarbsValue --
-                        //    while self-normalising, any constant K here cancelled out exactly
-                        //    ((K*v)/(K*max) == v/max) and nothing moved on screen. Earlier values (3.3,
-                        //    then 1.5) were set while it was inert, chasing "make the combined peak clear
-                        //    the carb peak" -- which the scale fix itself now delivers, so they are
-                        //    obsolete rather than merely untuned. 1.0 is the NEUTRAL point: combined drawn
-                        //    on exactly the carb line's scale, so where UAM contributes nothing the two
-                        //    lines coincide and the gap elsewhere IS the UAM contribution. Set to 1.25
-                        //    from observation of the built graph -- a deliberate 25% lift above neutral.
-                        //    Trade-off accepted knowingly: since it multiplies the whole sum, it also
-                        //    raises the line slightly above the carb line in stretches where UAM is
-                        //    contributing nothing, so the two no longer coincide there. Return to 1.0 if
-                        //    that separation ever reads as a UAM contribution that isn't real.
-                        // Revisit both together if the combined line still looks off.
-                        val uamShareOfSumFactor = 0.4
-                        val combinedPeakBoostFactor = 1.25
+                        // There is deliberately NO overall height/boost multiplier here, though several were
+                        // tried (3.3, 1.5, 4.95, 1.25). GraphData.addCombinedCarbs() self-normalises this
+                        // series against its own max, so that every line on the panel peaks at the same
+                        // height and can be read against the others for SHAPE and TIMING -- which is the
+                        // only comparison available between a g/5min carb line and a U/min activity line,
+                        // since they share no unit. Under that normalisation any constant K applied to
+                        // every point here cancels exactly ((K*v)/(K*max) == v/max) and changes nothing on
+                        // screen. A boost only ever did anything during the brief period the series was
+                        // normalised against the carb line's max instead; that was reverted (see the note
+                        // in addCombinedCarbs), so re-adding one would be a silent no-op and a trap for
+                        // whoever next tries to tune it. uamShareOfSumFactor above survives normalisation
+                        // precisely because it is NOT a constant multiple of the sum -- it re-weights one
+                        // component against the other, changing the line's shape rather than its height.
                         val uamContribution = smoothedUam * uamShareOfSumFactor
-                        val combined = (smoothedCarbAbs + uamContribution) * combinedPeakBoostFactor
+                        val combined = smoothedCarbAbs + uamContribution
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
                     }
