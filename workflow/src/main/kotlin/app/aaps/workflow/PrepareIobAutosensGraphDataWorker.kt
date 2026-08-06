@@ -372,7 +372,10 @@ class PrepareIobAutosensGraphDataWorker(
                         val uamContribution = smoothedUam * uamShareOfSumFactor
                         val combined = smoothedCarbAbs + uamContribution
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
-                        data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, abs(combined))
+                        // Scale against the positive peak drawn above the graph baseline. Using abs()
+                        // allowed a larger negative UAM trough to become the scale reference, which
+                        // made the visible CarbComb peak substantially shorter than IA/CarbsAbs/model.
+                        data.overviewData.maxCombinedCarbsValue = max(data.overviewData.maxCombinedCarbsValue, combined)
                     }
                 }
                 // BGI
@@ -567,14 +570,18 @@ class PrepareIobAutosensGraphDataWorker(
             })
         }
 
-        // CARBS ABSORPTION -- dashed (trying this alongside the already-dashed carb model curve below,
-        // rather than solid -- easier to trace visually against the grid at a glance).
+        // CARBS ABSORPTION -- SOLID, paired with UAM CARB IMPACT below which is the same colour but
+        // DOTTED. The two are deliberately one visual family distinguished only by line style, since
+        // they measure the same quantity by different routes: this one is the empirical (oref1-derived)
+        // absorption, UAM is the deviation-inferred estimate of the same thing. Solid = measured,
+        // dotted = inferred, which is the convention the carb model curve below also follows.
+        // Previously dashed orange while UAM was dashed teal -- two dashed lines in different colours,
+        // which read as unrelated rather than as two views of one thing.
         data.overviewData.carbAbsorptionSeries = FixedLineGraphSeries(Array(carbAbsArrayHist.size) { i -> carbAbsArrayHist[i] }).also {
             it.setCustomPaint(Paint().also { paint ->
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 5f
-                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
-                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.carbAbsorptionColor)
+                paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
             })
         }
 
@@ -589,15 +596,17 @@ class PrepareIobAutosensGraphDataWorker(
             })
         }
 
-        // UAM CARB IMPACT -- SOLID red. Was dashed teal, following the "dashed = inferred/calculated"
-        // convention shared with the carb model curve; changed on request because teal-dashed was too
-        // easily confused with the other carb-family lines on the same panel (dashed orange carb
-        // absorption, green combined carbs). Solid red separates it on both axes of the convention at
-        // once, which is the point -- legibility here beat consistency with the dashed-means-inferred rule.
+        // UAM CARB IMPACT -- DOTTED, same colour as CARBS ABSORPTION above (see the note there). Same
+        // quantity, different derivation: this is the deviation-inferred estimate, that one the empirical
+        // measurement, so they share a colour and are separated by line style alone -- dotted = inferred,
+        // solid = measured, matching the carb model curve's own dashed-because-modelled treatment.
+        // Dotted (2f on, 4f off) rather than the 6f/4f dash used elsewhere, so it stays distinguishable
+        // from the dashed carb model curve as well as from the solid line it pairs with.
         data.overviewData.uamCarbImpactSeries = FixedLineGraphSeries(Array(uamCarbImpactArrayHist.size) { i -> uamCarbImpactArrayHist[i] }).also {
             it.setCustomPaint(Paint().also { paint ->
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 4f
+                paint.pathEffect = DashPathEffect(floatArrayOf(2f, 4f), 0f)
                 paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
             })
         }
