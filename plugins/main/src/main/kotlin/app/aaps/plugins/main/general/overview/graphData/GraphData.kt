@@ -57,15 +57,17 @@ class GraphData @Inject constructor(
         addSeries(overviewData.bucketedGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
-    fun addBgReadings(addPredictions: Boolean, context: Context?) {
+    fun addBgReadings(addPredictions: Boolean, context: Context?, drawSeries: Boolean = true) {
         maxY = if (overviewData.bgReadingsArray.isEmpty()) {
             if (units == GlucoseUnit.MGDL) 180.0 else 10.0
         } else overviewData.maxBgValue
         minY = 0.0
-        addSeries(overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        if (addPredictions) addSeries(overviewData.predictionsGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        (overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
-            if (dataPoint is GlucoseValueDataPoint) ToastUtils.infoToast(context, dataPoint.label)
+        if (drawSeries) {
+            addSeries(overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+            if (addPredictions) addSeries(overviewData.predictionsGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+            (overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
+                if (dataPoint is GlucoseValueDataPoint) ToastUtils.infoToast(context, dataPoint.label)
+            }
         }
     }
 

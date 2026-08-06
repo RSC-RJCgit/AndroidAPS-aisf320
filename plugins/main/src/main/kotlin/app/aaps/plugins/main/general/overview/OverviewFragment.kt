@@ -1608,18 +1608,25 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 preferences.get(UnitDoubleKey.OverviewLowMark),
                 preferences.get(UnitDoubleKey.OverviewHighMark)
             )
-            graph5Data.addBgReadings(true, context) // predictions always on here, regardless of graph 0's PRE checkbox
-            graph5Data.addBucketedData()
+            // Basal preset 2 temporarily removes ISF colouring on the main graph. During that same
+            // temporary state, hide graph5's BGL traces and standalone UAMci line. addBgReadings still
+            // initializes graph5's glucose Y scale when drawSeries=false so the remaining curves retain
+            // their normal height; the next basal press (or IOB reset) restores everything.
+            val hideGraph5BglAndUam = PointsWithLabelGraphSeries.uniformGreenBg
+            graph5Data.addBgReadings(true, context, drawSeries = !hideGraph5BglAndUam)
+            if (!hideGraph5BglAndUam) graph5Data.addBucketedData()
             graph5Data.addActivity(0.8)             // insulin activity
             graph5Data.addCarbAbsorption(0.8)        // empirical carb absorption
             graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
                                                       // globally on for there to be any data -- that's a data-availability
                                                       // flag, not a "switched off on graph 0" toggle, so it's left alone)
-            graph5Data.addUamCarbImpact(0.8)         // UAM assumed carbs
+            if (!hideGraph5BglAndUam) graph5Data.addUamCarbImpact(0.8) // UAM assumed carbs
             graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
-            graph5Data.addBgParabola(true, 1.0)
-            graph5Data.addRawBg(false)
-            graph5Data.addRawBgSmoothed(false)
+            if (!hideGraph5BglAndUam) {
+                graph5Data.addBgParabola(true, 1.0)
+                graph5Data.addRawBg(false)
+                graph5Data.addRawBgSmoothed(false)
+            }
             // No addBasals() call — this graph is deliberately BG/graphs-only, no basal.
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
