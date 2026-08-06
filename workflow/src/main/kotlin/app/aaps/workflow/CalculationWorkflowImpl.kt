@@ -143,8 +143,15 @@ class CalculationWorkflowImpl @Inject constructor(
                     .setInputData(dataWorkerStorage.storeInputData(PrepareIobAutosensGraphDataWorker.PrepareIobAutosensData(iobCobCalculator, overviewData)))
                     .build()
             )
+            // runIf = job == MAIN_CALCULATION REMOVED from this pass (deliberately kept on the widget and
+            // predictions steps below, which really are main-screen-only). This is the redraw that fires
+            // AFTER PrepareIobAutosensGraphDataWorker above, and it is what sends EventUpdateOverviewGraph
+            // -> updateGUI. Gating it meant History Browse computed every IOB/autosens-derived series
+            // (IOB, activity, carb absorption, deviations, ratio, UAM carb impact, combined carbs) and
+            // then never repainted: its secondary graphs were drawn by the earlier DRAW_BG/DRAW_TT passes,
+            // both of which run BEFORE that data exists, so the bottom panels stayed permanently empty or
+            // stale there. Cost of ungating is one extra redraw per history load.
             .then(
-                runIf = job == MAIN_CALCULATION,
                 OneTimeWorkRequest.Builder(UpdateGraphWorker::class.java)
                     .setInputData(Data.Builder().putString(JOB, job).putInt(PASS, CalculationWorkflow.ProgressData.DRAW_IOB.pass).build())
                     .build()

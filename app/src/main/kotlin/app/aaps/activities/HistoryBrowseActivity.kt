@@ -476,7 +476,25 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)) secondGraphData.addCombinedCarbs(if (useCombinedCarbsForScale) 1.0 else 0.8)
-            if (g == 0) secondGraphData.addSmbLabels()
+            // Bottom-row annotations, ported from OverviewFragment's secondary-graph loop (which had
+            // acquired all of these while this copy was left behind) so the two screens show the same
+            // thing. Placement conditions and ordering are kept identical to that loop rather than
+            // tidied, so the two can still be diffed against each other. Note the indexing: the main
+            // graph is index 0 and is NOT in this loop, so panel number == g + 1 -- g==0 is graph1,
+            // g==1 is graph2, g==2 is graph3, g==3 is graph4.
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
+            if (g == 0) {
+                secondGraphData.addStepsStackedAnnotation()
+                secondGraphData.addStepsExtra()
+                secondGraphData.addNoisyBgDeltaAnnotation()
+                secondGraphData.addIsfIndices()
+            }
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
+            // Was g == 0 (graph1) here while OverviewFragment had already swapped this to g == 1 (graph2),
+            // trading places with the CarePortal notes now on graph4 above. History Browse never got that
+            // swap, which is why SMB labels appeared on a different panel in the two screens.
+            if (g == 1) secondGraphData.addSmbLabels()
+            if (g == 2) secondGraphData.addIsfWeightsRow()
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
