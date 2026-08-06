@@ -97,11 +97,11 @@ enum class BooleanKey(
     FslUseUkfSmoothing("fsl_use_ukf_smoothing", false, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
-    // Master on/off for OldSensorAdj (the 12-15 day aging-sensor FslCalSlope/FslCalOffset override).
+    // Master on/off for OldSensorAdj (the 11-15 elapsed-day aging-sensor FslCalSlope/FslCalOffset override).
     // Off = stay at whatever's configured in Libre special settings as usual, no override ever applied.
     ApsAutoIsfOldSensorAdjEnabled("autoisf_old_sensor_adj_enabled", true, defaultedBySM = true),
     // Internal-only: tracks whether OldSensorAdj currently has FslCalSlope/FslCalOffset overridden, so
-    // it knows whether to snapshot (first activation) or restore (once the 12-15 day window or MJ
+    // it knows whether to snapshot (first activation) or restore (once the 11-15 day window or MJ
     // condition ends, or the toggle above is turned off). Not shown in any preference screen.
     ApsAutoIsfOldSensorAdjActive("autoisf_old_sensor_adj_active", false, defaultedBySM = true, exportable = false),
 

@@ -117,7 +117,7 @@ enum class DoubleKey(
     FslLastRaw("fsl_last_raw", -1.0, 40.0, 400.0, defaultedBySM = true),
     FslLastSmooth("fsl_last_smooth", -1.0, 40.0, 400.0, defaultedBySM = true),
     // Internal-only snapshot of the user's own FslCalSlope/FslCalOffset, taken the moment
-    // OldSensorAdj first overrides them (12-15 day aging-sensor compensation) so they can be restored
+    // OldSensorAdj first overrides them (11-15 elapsed-day aging-sensor compensation) so they can be restored
     // exactly afterwards — same reasoning as ApsAutoIsfSmbDeliveryBaseline above: the live keys get
     // overwritten transiently, so the "what to revert to" value has to live somewhere else. Not shown
     // in any preference screen; defaults just mirror FslCalSlope/FslCalOffset's own defaults.
