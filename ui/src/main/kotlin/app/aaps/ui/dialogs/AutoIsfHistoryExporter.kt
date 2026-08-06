@@ -84,7 +84,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "carbAbs", "HP", "HP2", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -129,6 +129,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             carbAbsStr(r),
             hpStr(r, rawReadings),
             hp2Str(r, allRecords),
+            lowBgRecentStr(r.timestamp, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
@@ -248,6 +249,20 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (full != null) return String.format(Locale.US, "%.3f", full).replace(".", "").trimStart('0').ifEmpty { "0" }
         val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return Math.round(factor * 10).toString()
+    }
+
+    /** "LowBGrecent: Y|N ;" written into RT.reason every cycle (OpenAPSAutoISFPlugin.kt) -- the LowBG
+     *  automation state, i.e. whether a recent low is still flagged. Same reason-text mechanism as
+     *  ppWeight/AcceIsfWeight below rather than a persisted AIV field. Shown for EVERY row, not just
+     *  rows where the recent-low rebound guard actually reduced an SMB, so a low can be reviewed
+     *  afterwards to see whether the guard was armed in the run-up -- which is what validates it.
+     *  "--" when the marker is absent (rows from before this existed, or a build without it). */
+    private val lowBgRecentRegex = Regex("""LowBGrecent:\s*([YN])""")
+
+    fun lowBgRecentStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        return lowBgRecentRegex.find(nearest.reason)?.groupValues?.get(1) ?: "--"
     }
 
     // "pp_ISF_weight is <value> ;;" written into RT.reason every determineBasal cycle (see

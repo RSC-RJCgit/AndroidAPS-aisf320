@@ -191,7 +191,13 @@ class DetermineBasalAutoISF @Inject constructor(
         // /3 convention AutoIsfHistoryExporter's rΔ15 table column uses). Default 9999.0 = "no data" —
         // only consumed by the early-AM raw-rise guard below, whose own check treats this sentinel as
         // "skip the rΔ15 corroboration, fall back to rΔ5 alone" rather than "fail the whole condition".
-        rawDelta15Mgdl: Double = 9999.0
+        rawDelta15Mgdl: Double = 9999.0,
+        // True when the LowBG automation state is "50recent" -- i.e. a low happened recently and hasn't
+        // been cleared yet. Read from the SAME state BolusWizard already uses to halve carb insulin, so
+        // both dosing paths now respond to one shared, already-maintained signal rather than each having
+        // its own notion of "recent low". Default false = unchanged behaviour for callers that don't
+        // pass it (tests, replay), consistent with the other optional params above.
+        recentLowActive: Boolean = false
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1588,6 +1594,39 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (smbBoostRecent && microBolus != microBolusFullUncapped) {
                     rT.reason.append(" fast-rise caps skipped (BolusGiven/Mild boost within 30 min): microBolus ${microBolus} -> ${microBolusFullUncapped} ")
                     microBolus = microBolusFullUncapped
+                }
+// =====================================================
+// RECENT-LOW REBOUND GUARD
+// =====================================================
+                // Halves the SMB when a low happened recently AND there is carb activity -- the signature
+                // of correcting a REBOUND rather than a fresh excursion. Motivated by a real overnight
+                // episode (28 Jul): BG fell 11.7 -> 5.6 on ~4.9U IOB, rescue carbs were taken, BG rebounded
+                // to 9.6, ~2.3U was delivered against that rebound over 40 min, and BG then went to 3.8.
+                // At the moment of that dosing every signal looked benign -- BG 9.0-9.6 and rising, HP 7.2
+                // -- so no BGL/HP threshold could have caught it. Only the CONTEXT (a low, then carbs, then
+                // a rise) distinguishes it, which is what this reads.
+                //
+                // Placed deliberately AFTER the smbBoostRecent restore above: that restore undoes the
+                // fast-rise caps, and a recent low should outrank a recent boost, so this must not be
+                // something the boost can bypass. Before the rounding below so the result still lands on a
+                // valid pump increment.
+                //
+                // Carb evidence is COB **or** uci, not COB alone: rescue carbs are frequently under-logged
+                // or not logged at all, which is exactly when COB reads zero while the rebound is real.
+                // uci is this file's own unclamped deviation-based carb-impact estimate (the same value
+                // exported as UAMci and drawn as the UAM line), converted to g/5min via csf so the
+                // threshold is readable in grams. 0.3 g/5min sits just above the observed noise floor
+                // (UAMci idles at roughly +/-0.2 in the exports) and well below a real absorption rate
+                // (~0.6 measured off COB decay), so it distinguishes genuine carb action from baseline
+                // drift. Both that threshold and the 0.5 factor are first estimates -- the reason string
+                // logs COB, uci and the factor so they can be tuned against real fires.
+                if (recentLowActive && microBolus > 0.0) {
+                    val uciGrams = if (csf > 0.0) uci / csf else 0.0
+                    if (COB > 0.0 || uciGrams >= 0.3) {
+                        val beforeLowGuard = microBolus
+                        microBolus = microBolus * 0.5
+                        rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 3)} -> ${round(microBolus, 3)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
+                    }
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB

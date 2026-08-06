@@ -185,6 +185,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.carbAbsStr(r),      colorInsulin),
                     Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings), colorInsulin),
                     Cell(autoIsfHistoryExporter.hp2Str(r, allRecords),  colorInsulin),
+                    Cell(autoIsfHistoryExporter.lowBgRecentStr(r.timestamp, apsResults), colorInsulin),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 5)?.toString()   ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 15)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),
@@ -253,7 +254,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 3, bold = true),
                 Cell("BG", colorGlucose, span = 10, bold = true),
-                Cell("Insulin", colorInsulin, span = 7, bold = true),
+                // span 7 -> 10: carbAbs, HP2 and LowBG were added to this group without the span being
+                // updated with them, so the section headers had drifted out of alignment with the columns
+                // beneath. Group is now Req/TBR/IOB/IOBd5/Basal/COB/carbAbs/HP/HP2/LowBG.
+                Cell("Insulin", colorInsulin, span = 10, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
                 Cell("MJ", colorTime, bold = true)
             )
@@ -298,6 +302,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("carbAbs", colorInsulin, bold = true),
                 Cell("HP",     colorInsulin, bold = true),
                 Cell("HP2",    colorInsulin, bold = true),
+                Cell("LowBG",  colorInsulin, bold = true),
                 Cell("S5",     colorHeader, bold = true),
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),

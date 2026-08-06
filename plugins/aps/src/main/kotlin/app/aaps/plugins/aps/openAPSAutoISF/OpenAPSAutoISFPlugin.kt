@@ -3327,7 +3327,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 50
                 && mealData.mealCOB <= 0.0
                 && lastBolusMin > 210
-                && checkAutomationState("BGLstate", "BGLlastLOW")
+                // Was checkAutomationState("BGLstate", "BGLlastLOW"). BGLstate is set to BGLlastLOW in
+                // three places (GentleHypoRisk, AlarmHypo1, and one more) and cleared in NONE -- it is a
+                // one-way latch, so after the first hypo alert the device ever fires it reads BGLlastLOW
+                // permanently. As a "recent low" signal it is therefore a constant: always true once any
+                // alert has fired, always false if none ever has. Either way it carried no information
+                // here. Swapped to LowBG=50recent, which is genuinely maintained (set on lows, cleared by
+                // Not50Recently on recovery, with its own anti-flap throttle) and is the same flag
+                // BolusWizard and the new recent-low rebound guard in DetermineBasalAutoISF.kt both read,
+                // so all three now agree on what "recent low" means. BGLstate itself is left in place
+                // rather than repaired: adding a cleared-value would mean calling setState with a value
+                // that may not be declared for it (values are configured at runtime in the
+                // automation-state plugin, not in code) and setAutomationState does not catch the
+                // IllegalStateException that an undeclared value raises.
+                && checkAutomationState("LowBG", "50recent")
                 && iobData.iob >= 0.2
             // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
             // state still allowing it -- ignores all the other existingConditionsMet checks above.
@@ -3926,7 +3939,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             rawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
             rawDelta1Mgdl = rawDelta1Raw ?: 9999.0,
             aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0,
-            rawDelta15Mgdl = rawDelta15Raw ?: 9999.0
+            rawDelta15Mgdl = rawDelta15Raw ?: 9999.0,
+            // Same LowBG state BolusWizard reads to halve carb insulin -- see the recent-low rebound
+            // guard in DetermineBasalAutoISF.kt. Reusing the existing, already-maintained flag (set on
+            // lows, cleared on recovery, with its own anti-flap throttle) rather than adding a second
+            // recent-low detector that could disagree with it.
+            recentLowActive = checkAutomationState("LowBG", "50recent")
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
@@ -3978,6 +3996,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 rt.reason.append("iobThEffectiveU: ${round(autoIsfValues.iobThEffective, 2)} ;")
                 rt.reason.append("FslCalSlope: ${round(preferences.get(DoubleKey.FslCalSlope), 2)} ;")
                 rt.reason.append("AcceIsfWeight: ${round(bgAccel_ISF_weight, 2)} ;")
+                // LowBG state, logged EVERY cycle (not only when the recent-low rebound guard in
+                // DetermineBasalAutoISF.kt actually fires) so the exporter's LowBG column shows whether
+                // the guard was armed at any given row, not merely where it bit. That distinction is the
+                // whole point of the column: it lets a low be reviewed afterwards to see whether the
+                // guard WOULD have applied, which is what validates the threshold. Written into reason
+                // rather than persisted as a new AIV field, following the same precedent as the ppWeight
+                // and AcceIsfWeight lines above -- reason text survives the NS round-trip and is already
+                // regex-parsed on client builds, so no DB column or migration is needed for it.
+                rt.reason.append("LowBGrecent: ${if (checkAutomationState("LowBG", "50recent")) "Y" else "N"} ;")
             }
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
