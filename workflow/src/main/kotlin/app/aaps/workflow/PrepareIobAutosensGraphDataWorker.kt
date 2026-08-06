@@ -338,18 +338,19 @@ class PrepareIobAutosensGraphDataWorker(
                         // line, uci never does. Left uncapped on the standalone UAM line above (a large
                         // spike there is itself useful diagnostic info). A hard ceiling (coerceAtMost)
                         // was tried here for the SUM but does nothing for a systematic magnitude
-                        // mismatch below the ceiling -- switched to a flat multiplicative scale. Two
-                        // knobs, pulling in opposite directions:
-                        //  - uamShareOfSumFactor shrinks the UAM line's OWN weight within the sum, i.e.
-                        //    how much of smoothedUam actually counts toward "combined". Earlier values
-                        //    (0.20, then 0.04) were blind guesses; 0.4 is derived from real exported
-                        //    data instead. Empirical carb absorption measured off COB decay in
-                        //    aiv_VirtualBolusWS (20.0->18.1g over ~17min, 8.4->6.2g over ~19min,
-                        //    2.7->0.2g over ~22min) runs a consistent ~0.6 g/5min, while UAMci over the
-                        //    same meal ran 0.06-0.90 -- i.e. COMPARABLE magnitude, not orders apart as
-                        //    the early guesses assumed. At 0.04 UAM contributed ~0.02 against ~0.6
-                        //    (~3%, invisible); 0.4 puts it near a third of the combined line, which is
-                        //    the point of drawing the line at all. 0.3-0.5 is the sensible range.
+                        // mismatch below the ceiling -- switched to a flat multiplicative scale.
+                        //
+                        // uamShareOfSumFactor shrinks the UAM line's OWN weight within the sum, i.e. how
+                        // much of smoothedUam actually counts toward "combined". Earlier values (0.20,
+                        // then 0.04) were blind guesses; 0.4 is derived from real exported data instead.
+                        // Empirical carb absorption measured off COB decay in aiv_VirtualBolusWS
+                        // (20.0->18.1g over ~17min, 8.4->6.2g over ~19min, 2.7->0.2g over ~22min) runs a
+                        // consistent ~0.6 g/5min, while UAMci over the same meal ran 0.06-0.90 -- i.e.
+                        // COMPARABLE magnitude, not orders apart as the early guesses assumed. At 0.04 UAM
+                        // contributed ~0.02 against ~0.6 (~3%, invisible); 0.4 puts it near a third of the
+                        // combined line, which is the point of drawing the line at all. 0.3-0.5 is the
+                        // sensible range.
+                        val uamShareOfSumFactor = 0.4
                         // There is deliberately NO overall height/boost multiplier here, though several were
                         // tried (3.3, 1.5, 4.95, 1.25). GraphData.addCombinedCarbs() self-normalises this
                         // series against its own max, so that every line on the panel peaks at the same
