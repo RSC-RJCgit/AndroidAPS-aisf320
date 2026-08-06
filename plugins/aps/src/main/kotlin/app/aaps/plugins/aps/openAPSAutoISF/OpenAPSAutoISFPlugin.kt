@@ -3595,6 +3595,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // while MJ is still clear, then flips to a higher iobTH floor once MJ goes active overnight.
         // No live-pump gate: the original's Note field described a recent MJ-state change, not a
         // virtual-pump restriction.
+        // --- EveningIobCeiling: caps iobTH at 45% through the evening, independent of BGL direction ---
+        // Motivated by 27 Jul 2026 21:48-21:59: nine SMBs ~60s apart took IOB 3.02 -> 4.56 at BG 10.7-11.3,
+        // and BG then fell to 3.8 by 04:38. Nothing stopped it -- the iobTH actually in force was 6.65-7.32U
+        // (~70-77% of max_iob), roughly 2U above where the harm occurred, and EveningTH could not fire
+        // because all its branches gate on a LOW BGL (<=7.5mmol) or on 22:00+.
+        //
+        // Deliberately separate from EveningTH rather than raising that block's BGL guard: EveningTH also
+        // sets acce 0.45 and (HP-gated) switches to the low profile, and both of those are back-off actions
+        // that would be wrong applied to a genuine high -- blunting the acceleration response and weakening
+        // basal/ISF while BG is climbing risks trading an overnight low for an overnight high. This block
+        // therefore touches iobTH and nothing else.
+        //
+        // A true CEILING, not a setter: gated on iobThresholdPercent > 45 so it only ever lowers. That
+        // means it cannot fight the overnight blocks that set iobTH far lower (NightAcce 18, TwilightTH15
+        // 15) by raising it back up. Window ends at midnight rather than running into the small hours,
+        // specifically to avoid overlapping MJrec (00:00-08:00), which sets iobTH to 70 -- the two would
+        // otherwise contradict each other every cycle in the 00:00-01:00 overlap.
+        if (readyToRun("EveningIobCeiling", 5) && isTimeBetween(20, 0, 0, 0) && iobThresholdPercent > 45) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
+            sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> 45")
+            addCarePortalNote("EvCap")
+            markRun("EveningIobCeiling")
+        }
+
         if (readyToRun("EveningTH", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -3612,7 +3636,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && iobThresholdPercent >= 51 && checkAutomationState("MJ", "MJ active")
             if (evB1 || evB2 || evB3) {
                 setBgAccelIsfWeight(0.45)
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+                // 50 -> 45 as a secondary backstop only (~4.28U at max_iob 9.5, vs 4.75 at 50). NOT the
+                // primary fix for the 27 Jul 2026 evening stacking episode: this block's own BG gates
+                // (evB1/evB2 need <=7.5mmol, evB3 needs 22:00+) meant it could not fire during that burst
+                // at BG 10.7-11.3 anyway, so the lower value only takes effect in the low-side evening
+                // cases where this automation already ran. The stacking itself is addressed by the
+                // escalating anti-stack trim in DetermineBasalAutoISF.kt.
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
                 // Profile switch now HP-GATED rather than unconditional. Parking on the low/MJ-night
                 // profile from 20:00 was suppressing overnight corrections: the low profile's weaker
                 // basal/ISF persists all night once switched, and BasalUp (the only switch back to

@@ -350,7 +350,12 @@ class PrepareIobAutosensGraphDataWorker(
                         // contributed ~0.02 against ~0.6 (~3%, invisible); 0.4 puts it near a third of the
                         // combined line, which is the point of drawing the line at all. 0.3-0.5 is the
                         // sensible range.
-                        val uamShareOfSumFactor = 0.4
+                        // 0.4 -> 0.8 (doubled) for graph legibility. Survives the self-normalisation in
+                        // addCombinedCarbs() because it re-weights one component against the other rather
+                        // than scaling the sum, so it changes the line's SHAPE: at 0.8 the combined line
+                        // leans noticeably further toward the UAM signal's timing and away from the
+                        // empirical absorption curve. Purely a display choice -- nothing here feeds dosing.
+                        val uamShareOfSumFactor = 0.8
                         // There is deliberately NO overall height/boost multiplier here, though several were
                         // tried (3.3, 1.5, 4.95, 1.25). GraphData.addCombinedCarbs() self-normalises this
                         // series against its own max, so that every line on the panel peaks at the same
@@ -584,13 +589,15 @@ class PrepareIobAutosensGraphDataWorker(
             })
         }
 
-        // UAM CARB IMPACT -- dashed, distinct color, to mark it as inferred/calculated (deviation-based)
-        // rather than measured or logged, same convention as the carb model curve above.
+        // UAM CARB IMPACT -- SOLID red. Was dashed teal, following the "dashed = inferred/calculated"
+        // convention shared with the carb model curve; changed on request because teal-dashed was too
+        // easily confused with the other carb-family lines on the same panel (dashed orange carb
+        // absorption, green combined carbs). Solid red separates it on both axes of the convention at
+        // once, which is the point -- legibility here beat consistency with the dashed-means-inferred rule.
         data.overviewData.uamCarbImpactSeries = FixedLineGraphSeries(Array(uamCarbImpactArrayHist.size) { i -> uamCarbImpactArrayHist[i] }).also {
             it.setCustomPaint(Paint().also { paint ->
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 4f
-                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
                 paint.color = rh.gac(ctx, app.aaps.core.ui.R.attr.uamCarbImpactColor)
             })
         }

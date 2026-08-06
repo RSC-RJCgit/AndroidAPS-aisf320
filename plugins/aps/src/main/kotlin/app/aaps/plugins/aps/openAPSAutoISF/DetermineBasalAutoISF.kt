@@ -1237,9 +1237,48 @@ class DetermineBasalAutoISF @Inject constructor(
                         consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> new 10min stack window started, full size this cycle ")
                         rT.reason.append("SMB stacking <=70s: new 10min stack window, full size ")
                     } else {
-                        microBolus *= 0.9
-                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x0.9 = ${microBolus} (stack age ${(nowMs - stackStart) / 60000}min) ")
-                        rT.reason.append("SMB stacking <=70s: microBolus x0.9 = ${microBolus} ")
+                        // Two tiers. Below 0.35*max_iob the original flat x0.9 is kept unchanged -- brief
+                        // stacking at modest IOB was never the problem, and weakening nothing keeps this
+                        // change purely additive. At or above 0.35*max_iob (~3.3U at max_iob 9.5) the trim
+                        // escalates with stack age instead.
+                        //
+                        // Measured against a real failure (27 Jul 2026, 21:50-21:59): nine SMBs ~60s apart
+                        // delivered ~1.55U and took IOB 3.02 -> 4.55 while this guard was active the whole
+                        // time. x0.9 cannot bite against a sustained sequence -- it just shaves each of
+                        // nine deliveries by a tenth. Escalation targets exactly that shape: a brief burst
+                        // is barely touched, a run that keeps going gets progressively choked, and the IOB
+                        // gate means it only engages once there is already enough on board to matter.
+                        // 25% base, +10% per completed 3-min block, capped at 55% so this always remains a
+                        // trim rather than a silent block (a hard zero would be indistinguishable in the
+                        // logs from "no SMB was wanted"). Over the 10-min window: x0.75 (0-3min) -> x0.65
+                        // (3-6) -> x0.55 (6-9) -> x0.45 (9-10); then the window resets and the next stack
+                        // starts at full size again, unchanged from before.
+                        // 4-MINUTE GRACE before any escalation. Measured justification: across recent
+                        // exports 73% of all SMBi5 readings are <=70s (median 61s, min 50s), because at
+                        // 1-minute sensor readings ~60s between SMBs IS the normal maximum rate -- one per
+                        // reading. The <=70s entry test was calibrated when readings arrived every ~2min,
+                        // where a 60s gap really did mean rapid-fire; it now fires during ordinary
+                        // operation. Escalating straight from window start would therefore have run
+                        // 25->55% almost continuously above the IOB gate, suppressing normal post-meal
+                        // dosing -- the same failure inverted. At 1-min cadence interval can no longer
+                        // distinguish "9 SMBs in 9 min" from "2 SMBs in 2 min" (both average ~60s), so
+                        // DURATION is the only usable discriminator, which is what the grace encodes.
+                        //
+                        // Within the grace the pre-existing flat 10% still applies, so this change is
+                        // purely additive -- it is never weaker than the previous behaviour at any stack
+                        // age, it only adds bite to runs that genuinely persist. After the grace: 25%,
+                        // +10% per completed 2-min block, capped at 45% by the 10-min window itself.
+                        // Against 27 Jul 2026 that engages from ~21:54, covering the worst five minutes
+                        // (~1.10U of the 1.55U burst) while leaving ordinary 2-3 SMB sequences untouched.
+                        val stackAgeMin = (nowMs - stackStart) / 60000.0
+                        val stackGraceMin = 4.0
+                        val highIobStack = IOB >= 0.35 * profile.max_iob
+                        val trimFraction = if (highIobStack && stackAgeMin >= stackGraceMin)
+                            (0.25 + 0.10 * ((stackAgeMin - stackGraceMin) / 2.0).toInt()).coerceAtMost(0.45)
+                        else 0.10
+                        microBolus *= (1.0 - trimFraction)
+                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x${round(1.0 - trimFraction, 2)} = ${microBolus} (stack age ${round(stackAgeMin, 1)}min, trim ${round(trimFraction * 100, 0)}%, IOB ${round(IOB, 2)} vs gate ${round(0.35 * profile.max_iob, 2)}) ")
+                        rT.reason.append("SMB stacking <=70s: microBolus x${round(1.0 - trimFraction, 2)} (age ${round(stackAgeMin, 1)}min, IOB ${round(IOB, 2)}) = ${microBolus} ")
                     }
                 } else if (preferences.get(LongKey.ApsAutoIsfSmbStackStart) != 0L) {
                     // Stacking has genuinely stopped (avg gap back above 70s) -- clear the marker so a
