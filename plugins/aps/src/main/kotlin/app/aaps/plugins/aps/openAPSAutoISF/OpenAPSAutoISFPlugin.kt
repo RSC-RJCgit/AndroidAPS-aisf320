@@ -3484,26 +3484,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Code port of "OldPod2": brief 130% profile boost + hypo-safety 5.0mmol TT when BGL is very
-        // high and stable/rising with MJ clear. Live-pump-only, matching the original's note.
-        // Preconditions: no TT, profile=100%.
-        if (readyToRun("OldPod2", 10) && activePlugin.activePump !is VirtualPump
-            && activeTtMgdl() == null && profile_percentage == 100) {
-            val g = glucoseStatus.glucose
-            val d = glucoseStatus.delta
-            if (g >= 234.2 /* 13.0 mmol */
-                && d >= -1.8 /* -0.1 mmol */
-                && checkAutomationState("MJ", "NOMJremains")) {
-                addCarePortalNote("Old2")
-                sendSms("OldPod2")
-                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
-                setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
-                startProfilePercentFor(130, 5)
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
-                markRun("OldPod2")
-            }
-        }
+        // OldPod2 disabled: its 130% profile boost was too strong. Keep its run-history name intact
+        // elsewhere so RecentPodOff can still unwind a boost made by an older build after an upgrade.
 
         // Code port of "RecentPodOff": relaxes acce weight back to baseline once the RecentPod/OldPod2
         // safety TT has ended and acce weight is still at its boosted (ApsAutoIsfBgAccelWeightHigh)
