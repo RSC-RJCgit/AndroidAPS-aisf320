@@ -1730,6 +1730,64 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("Graph5ToggleTT")
         }
 
+        // --- MjStateNoMjTT / MjStateMj3TT: manually setting a TT of 5.144 / 5.146 mmol sets the MJ
+        // automation state directly to NOMJremains / MJ3 — not real targets. Next values after
+        // Graph5ToggleTT's 5.142. Paired in ttCodesList() as a single TtCode.Stepped row ("MJ state"),
+        // so the two land as the pair of mutually-exclusive checkboxes in that row's confirm dialog
+        // rather than as two separate scannable entries.
+        //
+        // A manual override, deliberately unconditional: every other writer of this state is gated on
+        // time and/or BGL (MJ2old 02:10-03:10, MJ3old 01:05-02:05, MoreMJ 06:00-23:59 plus its own
+        // condition tree), which is exactly why a stuck state can't always be corrected from within the
+        // automations. Same activeTtNear()/cancel/notify pattern as the other remote-signal TTs above;
+        // no toggle state, each fires once per TT-set. Kept as two one-way setters rather than one
+        // toggling TT so the resulting state is always known from which code was sent, never dependent
+        // on what the state happened to be beforehand.
+        if (readyToRun("MjStateNoMjTT", 2) && activeTtNear(5.144, 0.0001)) {
+            setAutomationState("MJ", "NOMJremains")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: NOMJremains")
+            addCarePortalNote("MJsNO")
+            markRun("MjStateNoMjTT")
+        }
+
+        if (readyToRun("MjStateMj3TT", 2) && activeTtNear(5.146, 0.0001)) {
+            setAutomationState("MJ", "MJ3")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ3")
+            addCarePortalNote("MJs3")
+            markRun("MjStateMj3TT")
+        }
+
+        // --- ProfileStandardTT / ProfileLowTT: manually setting a TT of 5.148 / 5.150 mmol switches the
+        // profile straight to Standard / Low — not real targets. Next values after MjStateMj3TT's 5.146.
+        // Paired in ttCodesList() as one TtCode.Stepped row ("Profile"), same as the MJ pair above.
+        //
+        // Permanent switches (switchProfileIfNeeded's default duration 0), matching what the automations
+        // themselves use, so a manual override isn't silently undone by a timer. It CAN still be undone
+        // by another automation though: BasalUp switches back to Standard on a rise (no longer time-gated),
+        // and TwilightTH15Acce (06:00-08:00) plus ExportSettingsPodActivation (any time, on pod change)
+        // switch to Low without an HP gate. So this is a "set it now" control, not a lock — if a switch
+        // gets reverted within minutes, one of those three is the thing to look at, not this block.
+        // Two one-way setters rather than one toggling TT, same reasoning as the MJ pair: the resulting
+        // profile is always known from which code was sent, never dependent on what it was beforehand
+        // (which matters precisely because the automations above can change it underneath you).
+        if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+            cancelCurrentTempTarget()
+            sendSms("Profile: Standard")
+            addCarePortalNote("PrfS")
+            markRun("ProfileStandardTT")
+        }
+
+        if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+            cancelCurrentTempTarget()
+            sendSms("Profile: Low")
+            addCarePortalNote("PrfL")
+            markRun("ProfileLowTT")
+        }
+
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
         // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
         // storage if configured, else email) — for AAPSClient users who have no settings access to
@@ -3219,11 +3277,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val cannulaOrStateOk = cannulaH >= 72.0 || cannulaH <= 6.0 ||
                 checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
+            // Time gate REMOVED (was isTimeBetween(7, 0, 0, 0) = 07:00-23:59). This was the ONLY automated
+            // route off the low/MJ-night profile, so anything that switched to it overnight kept you there
+            // until morning with no recovery path -- the core of the "overnight corrections blocked"
+            // problem. Left undamped deliberately: this block already self-limits hard, since it requires
+            // onCurrentProfile (it can only ever undo a switch something else made), so with the HP < 5.0
+            // gates now on EveningTH/MJrec/NightAcce/OffHighProf it should rarely have anything to undo.
+            // The one pairing to watch is OffHighProf (01:00-06:00), which is this block's mirror image --
+            // it switches TO low on a fall, this switches back on a rise -- so a wobbling BGL could
+            // alternate them at the 5-min throttle. That is observable directly as alternating BsUp /
+            // OffP-1 careportal notes; damping (longer overnight throttle, or a stronger rise than
+            // d >= 0.2) is deliberately NOT pre-applied, to avoid adding another unvalidated constant
+            // against an oscillation that may never materialise now the HP gates are in place.
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && recentSteps60Minutes <= 1000
                 && recentSteps30Minutes <= 600
-                && isTimeBetween(7, 0, 0, 0)
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
                 && onCurrentProfile) {

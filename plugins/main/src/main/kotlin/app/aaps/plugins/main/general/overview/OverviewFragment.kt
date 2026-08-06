@@ -1259,7 +1259,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136, "-0.1", "+0.1"),
         TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
         TtCode.Single("Cloud logs upload", 5.140),
-        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142)
+        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142),
+        // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
+        // MJ state), so they belong behind one label as a mutually-exclusive checkbox pair — same shape
+        // as the -0.1/+0.1 rows above, just with named states instead of a numeric delta. downLabel/
+        // upLabel are the states themselves, matching MjStateNoMjTT/MjStateMj3TT in OpenAPSAutoISFPlugin.kt.
+        TtCode.Stepped("MJ state (manual override)", 5.144, 5.146, "NOMJremains", "MJ3"),
+        // Same Stepped shape as the MJ row above: one label, the two profiles as a mutually-exclusive
+        // checkbox pair. Labels are the two ROLES (Standard/Low), not the profiles' actual configured
+        // names — those are user-picked via StringKey.ApsAutoIsfStandardProfileName/...LowProfileName,
+        // so naming them here would go stale the moment either is repointed.
+        TtCode.Stepped("Profile (manual override)", 5.148, 5.150, "Standard", "Low")
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
