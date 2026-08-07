@@ -189,9 +189,9 @@ class PrepareIobAutosensGraphDataWorker(
         val uamCarbImpactArrayHist: MutableList<ScaledDataPoint> = ArrayList()
         data.overviewData.maxUamCarbImpactValue = 0.0
 
-        // Combined Carbs -- smoothedCarbAbs (empirical) + smoothed UAM impact, both already grams/5min at
-        // this same bucket timestamp, simply added together. Not a third independent measurement, just
-        // an "everything carbs-shaped happening right now" view without eyeballing two separate lines.
+        // Combined Carbs -- smoothed empirical absorption plus only the UAM impact above that already-
+        // explained rate, both in grams/5min at the same timestamp. This captures extra/unannounced
+        // carbs while known COB remains without counting the known absorption signal twice.
         // Deliberately excludes the carb model curve below -- that's a theoretical forward prediction
         // from entered carbs, not a live activity measurement, so summing it in wouldn't mean the same
         // thing as combining these two.
@@ -336,41 +336,14 @@ class PrepareIobAutosensGraphDataWorker(
                         // a separate unclamped copy in DetermineBasalAutoISF.kt -- ci gets capped to
                         // maxCI (30g/h -> 2.5g/5min) before it ever reaches the empirical absorption
                         // line, uci never does. Left uncapped on the standalone UAM line above (a large
-                        // spike there is itself useful diagnostic info). A hard ceiling (coerceAtMost)
-                        // was tried here for the SUM but does nothing for a systematic magnitude
-                        // mismatch below the ceiling -- switched to a flat multiplicative scale.
-                        //
-                        // uamShareOfSumFactor shrinks the UAM line's OWN weight within the sum, i.e. how
-                        // much of smoothedUam actually counts toward "combined". Earlier values (0.20,
-                        // then 0.04) were blind guesses; 0.4 is derived from real exported data instead.
-                        // Empirical carb absorption measured off COB decay in aiv_VirtualBolusWS
-                        // (20.0->18.1g over ~17min, 8.4->6.2g over ~19min, 2.7->0.2g over ~22min) runs a
-                        // consistent ~0.6 g/5min, while UAMci over the same meal ran 0.06-0.90 -- i.e.
-                        // COMPARABLE magnitude, not orders apart as the early guesses assumed. At 0.04 UAM
-                        // contributed ~0.02 against ~0.6 (~3%, invisible); 0.4 puts it near a third of the
-                        // combined line, which is the point of drawing the line at all. 0.3-0.5 is the
-                        // sensible range.
-                        // 0.4 -> 0.8 (doubled) for graph legibility. Survives the self-normalisation in
-                        // addCombinedCarbs() because it re-weights one component against the other rather
-                        // than scaling the sum, so it changes the line's SHAPE: at 0.8 the combined line
-                        // leans noticeably further toward the UAM signal's timing and away from the
-                        // empirical absorption curve. Purely a display choice -- nothing here feeds dosing.
-                        val uamShareOfSumFactor = 0.8
-                        // There is deliberately NO overall height/boost multiplier here, though several were
-                        // tried (3.3, 1.5, 4.95, 1.25). GraphData.addCombinedCarbs() self-normalises this
-                        // series against its own max, so that every line on the panel peaks at the same
-                        // height and can be read against the others for SHAPE and TIMING -- which is the
-                        // only comparison available between a g/5min carb line and a U/min activity line,
-                        // since they share no unit. Under that normalisation any constant K applied to
-                        // every point here cancels exactly ((K*v)/(K*max) == v/max) and changes nothing on
-                        // screen. A boost only ever did anything during the brief period the series was
-                        // normalised against the carb line's max instead; that was reverted (see the note
-                        // in addCombinedCarbs), so re-adding one would be a silent no-op and a trap for
-                        // whoever next tries to tune it. uamShareOfSumFactor above survives normalisation
-                        // precisely because it is NOT a constant multiple of the sum -- it re-weights one
-                        // component against the other, changing the line's shape rather than its height.
-                        val uamContribution = smoothedUam * uamShareOfSumFactor
-                        val combined = smoothedCarbAbs + uamContribution
+                        // spike there is itself useful diagnostic info). Combined Carbs below treats
+                        // the empirical rate as already-explained known carbs and adds only excess UAM.
+                        // Live rate counterpart of the historical COBt calculation. carbAbs explains
+                        // known-carb absorption; only UAMci ABOVE that rate counts as extra/unannounced
+                        // carb impact. This retains extra carbs while COB > 0 without double-counting the
+                        // known meal. Equivalent to max(smoothedCarbAbs, smoothedUam). Display only.
+                        val excessUam = (smoothedUam - smoothedCarbAbs).coerceAtLeast(0.0)
+                        val combined = smoothedCarbAbs + excessUam
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         // Scale against the positive peak drawn above the graph baseline. Using abs()
                         // allowed a larger negative UAM trough to become the scale reference, which

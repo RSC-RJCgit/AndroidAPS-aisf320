@@ -144,6 +144,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             return
         }
 
+        val cobTByTimestamp = autoIsfHistoryExporter.calculatedCobT(allRecords)
         for (r in records) {
             val sc = autoIsfHistoryExporter.stepsAt(r.timestamp, stepsCountList)
             // Cell 0 (Time) goes into the frozen left column; cells 1.. into the scrolling body.
@@ -182,6 +183,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.iob5MinChangeStr(r, allRecords), colorInsulin),
                     Cell(autoIsfHistoryExporter.basalStr(r),        colorInsulin),
                     Cell(autoIsfHistoryExporter.cobStr(r),          colorInsulin),
+                    Cell(autoIsfHistoryExporter.cobTStr(r, cobTByTimestamp), colorInsulin),
                     Cell(autoIsfHistoryExporter.carbAbsStr(r),      colorInsulin),
                     Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings), colorInsulin),
                     Cell(autoIsfHistoryExporter.hp2Str(r, allRecords),  colorInsulin),
@@ -254,10 +256,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 3, bold = true),
                 Cell("BG", colorGlucose, span = 10, bold = true),
-                // span 7 -> 10: carbAbs, HP2 and LowBG were added to this group without the span being
-                // updated with them, so the section headers had drifted out of alignment with the columns
-                // beneath. Group is now Req/TBR/IOB/IOBd5/Basal/COB/carbAbs/HP/HP2/LowBG.
-                Cell("Insulin", colorInsulin, span = 10, bold = true),
+                // COBt is included in this group with the other calculated insulin/carb context fields.
+                // Group is Req/TBR/IOB/IOBd5/Basal/COB/COBt/carbAbs/HP/HP2/LowBG.
+                Cell("Insulin", colorInsulin, span = 11, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
                 Cell("MJ", colorTime, bold = true)
             )
@@ -299,6 +300,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("IOBΔ5",  colorInsulin, bold = true),
                 Cell("Basal",  colorInsulin, bold = true),
                 Cell("COB",    colorInsulin, bold = true),
+                Cell("COBt",   colorInsulin, bold = true),
                 Cell("carbAbs", colorInsulin, bold = true),
                 Cell("HP",     colorInsulin, bold = true),
                 Cell("HP2",    colorInsulin, bold = true),

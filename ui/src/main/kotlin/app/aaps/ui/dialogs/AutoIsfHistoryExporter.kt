@@ -84,13 +84,13 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>): List<String> {
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -126,6 +126,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             iob5MinChangeStr(r, allRecords),
             basalStr(r),
             cobStr(r),
+            cobTStr(r, cobTByTimestamp),
             carbAbsStr(r),
             hpStr(r, rawReadings),
             hp2Str(r, allRecords),
@@ -160,7 +161,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             }
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes, rawReadings) }
+            val cobTByTimestamp = calculatedCobT(records)
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes, rawReadings, cobTByTimestamp) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -490,6 +492,41 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  export, instead of guessing the Combined Carbs scaling factors blind. 0.0 if no autosens data
      *  covers that time (same fallback as historicalCob). */
     fun carbAbsStr(r: AIV): String = df2.format(iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.this5MinAbsorption ?: 0.0)
+
+    /** Historical interpreted total COB for display/export analysis only; never used by dosing. */
+    fun calculatedCobT(records: List<AIV>): Map<Long, Double> {
+        if (records.isEmpty()) return emptyMap()
+        val result = records.associate { it.timestamp to historicalCob(it.timestamp) }.toMutableMap()
+        val positive = records.sortedBy { it.timestamp }.mapNotNull { r ->
+            val carbAbs = iobCobCalculator.ads.getAutosensDataAtTime(r.timestamp)?.this5MinAbsorption ?: 0.0
+            val excess = (r.uamCarbImpact - carbAbs).coerceAtLeast(0.0)
+            if (excess > 0.05) r.timestamp to excess else null
+        }
+
+        val episodes = mutableListOf<MutableList<Pair<Long, Double>>>()
+        for (point in positive) {
+            val current = episodes.lastOrNull()
+            if (current == null || point.first - current.last().first > 15 * 60_000L)
+                episodes.add(mutableListOf(point))
+            else
+                current.add(point)
+        }
+        for (episode in episodes) {
+            var remainingExtra = 0.0
+            for (i in episode.indices.reversed()) {
+                val minutes = if (i < episode.lastIndex)
+                    ((episode[i + 1].first - episode[i].first) / 60_000.0).coerceIn(0.0, 5.0)
+                else 1.0
+                remainingExtra += episode[i].second * minutes / 5.0
+                val timestamp = episode[i].first
+                result[timestamp] = (result[timestamp] ?: 0.0) + remainingExtra
+            }
+        }
+        return result
+    }
+
+    fun cobTStr(r: AIV, cobTByTimestamp: Map<Long, Double>): String =
+        df1.format(cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp))
 
     /** Hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] + COB/12 — same
      *  formula as the graph rows (PrepareBgDataWorker.kt), but historically accurate here: COB comes from
