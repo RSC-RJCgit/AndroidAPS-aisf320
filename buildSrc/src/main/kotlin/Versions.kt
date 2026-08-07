@@ -11,7 +11,7 @@ object Versions {
     const val minSdk = 31
     const val targetSdk = 32
     const val wearMinSdk = 30
-    const val wearTargetSdk = 30
+    const val wearTargetSdk = 38
 
     val javaVersion = JavaVersion.VERSION_21
     val jvmTarget = JvmTarget.JVM_21
