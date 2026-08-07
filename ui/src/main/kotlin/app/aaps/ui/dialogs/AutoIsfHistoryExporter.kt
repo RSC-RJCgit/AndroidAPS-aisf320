@@ -129,7 +129,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             cobTStr(r, cobTByTimestamp),
             carbAbsStr(r),
             hpStr(r, rawReadings),
-            hp2Str(r, allRecords),
+            hp2Str(r, allRecords, cobTByTimestamp),
             lowBgRecentStr(r.timestamp, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
@@ -549,15 +549,16 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta,
      *  and heavier weights on both delta terms (0.5 vs hpStr's 0.25) -- an experiment to compare
      *  against hpStr's column side by side, NOT a replacement (hpStr is untouched above). Formula:
-     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] + COB/12. Same historicalCob()
-     *  source as hpStr for the COB term. "--" if ukfRawBgl wasn't computed for this row or the row
+     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] + COBt/15. COBt is the
+     *  comparison-only interpreted total from calculatedCobT(); HP1 and dosing remain unchanged.
+     *  "--" if ukfRawBgl wasn't computed for this row or the row
      *  5min back (same conditions ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
-    fun hp2Str(r: AIV, allRecords: List<AIV>): String {
+    fun hp2Str(r: AIV, allRecords: List<AIV>, cobTByTimestamp: Map<Long, Double>): String {
         val ukfDelta5Mmol = ukfDeltaMmol(r, allRecords, 5) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
-        val cob = historicalCob(r.timestamp)
-        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol + cob / 12.0
+        val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
+        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol + cobT / 15.0
         return df1.format(hp2)
     }
 }
