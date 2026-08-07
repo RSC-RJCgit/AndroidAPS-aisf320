@@ -1593,7 +1593,22 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         graphData.performUpdate()
 
-        // 5th graph: always-on bgl/carb/insulin-activity picture, minus basal. Deliberately NOT gated by
+        // ScaledDataPoints share these Scale instances across every graph. Preserve the main graph's
+        // values because graph5/secondary graph setup below may otherwise overwrite them; client and
+        // full AAPS often have different secondary selections, which made ComboCarbs peak at different
+        // heights (about 65% on the client) despite both main-graph calls requesting scale 0.8.
+        val mainActivityScaleMultiplier = overviewData.actScale.multiplier.takeIf {
+            menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal]
+        }
+        val mainCombinedCarbsScaleMultiplier = overviewData.combinedCarbsScale.multiplier.takeIf {
+            overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.COMBINED_CARBS.ordinal)
+        }
+        val mainBasalScaleMultiplier = overviewData.basalScale.multiplier.takeIf {
+            (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) &&
+                menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        }
+
+        // 5th graph: always-on BGL/carb/insulin-activity/basal picture. Deliberately NOT gated by
         // the main graph's own checkboxes/quick-toggles (menuChartSettings[0][...], isActiveCharTypeData,
         // carbLine1QuickShow) -- graph5 shows all of these regardless of what's switched off on graph 0.
         // Not part of the CharTypeData/secondary-graphs menu system (that only lets primary types target
@@ -1616,7 +1631,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graph5Data.addBgReadings(true, context, drawSeries = !hideGraph5BglAndUam)
             if (!hideGraph5BglAndUam) graph5Data.addBucketedData()
             graph5Data.addActivity(0.8)             // insulin activity
-            graph5Data.addCarbAbsorption(0.8)        // empirical carb absorption
             graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
                                                       // globally on for there to be any data -- that's a data-availability
                                                       // flag, not a "switched off on graph 0" toggle, so it's left alone)
@@ -1627,7 +1641,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 graph5Data.addRawBg(false)
                 graph5Data.addRawBgSmoothed(false)
             }
-            // No addBasals() call — this graph is deliberately BG/graphs-only, no basal.
+            if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
             graph5Data.addNowLine(dateUtil.now())
@@ -1831,6 +1845,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()
         }
+        // Restore the main-graph normalization after all shared scale mutations above. Rendering reads
+        // Scale dynamically, so this final value is what keeps IA and ComboCarbs aligned on graph 0.
+        mainActivityScaleMultiplier?.let { overviewData.actScale.multiplier = it }
+        mainCombinedCarbsScaleMultiplier?.let { overviewData.combinedCarbsScale.multiplier = it }
+        mainBasalScaleMultiplier?.let { overviewData.basalScale.multiplier = it }
     }
 
     private fun updateCalcProgress() {

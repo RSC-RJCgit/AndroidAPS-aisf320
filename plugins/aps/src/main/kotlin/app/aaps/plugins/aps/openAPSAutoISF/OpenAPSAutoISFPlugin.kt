@@ -423,6 +423,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return newest - (ref.noise ?: return null)
     }
 
+    // One UKF-smoothed view of the raw/noise signal for GentleHypo and both AlarmHypo automations. Computing all three values from
+    // the same smoothing pass keeps rawG/rawD1/rawD5 internally consistent and matches the ukfRaw line
+    // shown on the graphs rather than mixing that line with unsmoothed raw trigger values.
+    private fun ukfRawMetrics(): Triple<Double?, Double?, Double?> {
+        val now = dateUtil.now()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
+            .filter { it.noise != null && it.noise!! > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return Triple(null, null, null)
+
+        val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        if (smoothed.isEmpty()) return Triple(null, null, null)
+        val rawG = smoothed[0]
+        val rawD1 = if (smoothed.size >= 2) {
+            val minutes = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
+            if (minutes > 0.0) (smoothed[0] - smoothed[1]) / minutes * 5.0 else null
+        } else null
+        val fiveMinAgo = now - T.mins(5).msecs()
+        val refIndex = readings.indices.minByOrNull { kotlin.math.abs(readings[it].timestamp - fiveMinAgo) }
+        val rawD5 = refIndex?.takeIf { it != 0 }?.let { rawG - smoothed[it] }
+        return Triple(rawG, rawD1, rawD5)
+    }
+
     // Hypo prediction (mmol). Identical formula to AutoIsfHistoryExporter.hpStr() — the "HP" column in
     // the AIV history table and CSV export — so a threshold chosen by reading that column means exactly
     // the same thing when used as a live gate here: (BGL - IOB) + 0.25*SDelta + 0.25*rawLibreDelta5 +
@@ -2008,9 +2031,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val g    = glucoseStatus.glucose
                 val d    = glucoseStatus.delta
                 val sd   = glucoseStatus.shortAvgDelta
-                val rawG  = rawGlucoseMgdl()
-                val rawD1 = rawDelta1MinMgdl()
-                val rawD5 = rawDelta5MinMgdl()
+                val (rawG, rawD1, rawD5) = ukfRawMetrics()
+                val hp = rawD5?.let {
+                    (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
+                }
 
                 // Block 1: AAPS BGL ≤ 5.3 + raw BGL ≤ 4.0 + OR(raw ≤ 3.5, raw-1min < 0, raw-5min < 0)
                 val rawLow = rawG != null && rawG <= 72.1 /* 4.0 mmol */
@@ -2027,11 +2051,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val ghB2 = g <= 99.1 /* 5.5 */ && profile_percentage == 50 &&
                     d <= -5.40 /* -0.30 */ && sd <= -3.60 /* -0.20 */ && rawOr2
 
-                val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; else -> null }
+                // Block 3: the same hypo-prediction shown as HP, using GentleHypo's UKF raw 5-minute
+                // delta so every raw-derived input in this automation comes from one consistent source.
+                val ghB3 = hp != null && hp <= 4.1
+
+                val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; ghB3 -> "HP"; else -> null }
 
                 // Extra gate on top of the above (does not replace it): only actually fire if
-                // Libre glucose < 4.0 mmol OR step60 > 200, AND Libre delta-1min <= 0, AND Libre delta-5min <= 0.
-                val ghExtraLow = (rawG != null && rawG < 72.1 /* 4.0 mmol */) || recentSteps60Minutes > 200
+                // UKF raw glucose < 4.0 mmol OR HP <= 4.1 OR step60 > 200, AND UKF raw delta-1min <= 0,
+                // AND UKF raw delta-5min <= 0.
+                val ghExtraLow = (rawG != null && rawG < 72.1 /* 4.0 mmol */) ||
+                    (hp != null && hp <= 4.1) || recentSteps60Minutes > 200
                 val ghExtraD1  = rawD1 != null && rawD1 <= 0.0
                 val ghExtraD5  = rawD5 != null && rawD5 <= 0.0
                 val ghExtraOk  = ghExtraLow && ghExtraD1 && ghExtraD5
@@ -2043,6 +2073,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                         " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                         " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                        " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                         " iob=${String.format("%.2f", iobData.iob)}"
                     // Silenced in quiet hours (see gentleHypoQuiet above) -- enacted either way, so the
                     // acce/iobTH changes and the BGLstate write below still happen overnight.
@@ -2055,7 +2086,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     //setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
-                    aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }}")
+                    aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }} HP=${hp?.let { String.format("%.1f", it) }}")
                 }
             }
         }
@@ -3893,6 +3924,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val (rawG, rawD1, rawD5) = ukfRawMetrics()
+            val hp = rawD5?.let {
+                (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
+            }
             // ah1b1's 07:30-23:30 gate REMOVED so this branch also covers the small hours. It exists to
             // catch a slow decline into hypo, and that is no less real at 04:00 -- on 6->7 Aug 2026 BGL sat
             // at 3.5 from 04:00-05:30 and this block could not fire at all, because ah1b1 was outside its
@@ -3910,15 +3945,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ah1b2 = g < 54.0 /* 3.0 mmol */
             val ah1b3 = isTimeBetween(7, 0, 23, 0) && d <= -0.9 /* -0.05 mmol */
                 && recentSteps60Minutes >= 102 && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
-            if (ah1b1 || ah1b2 || ah1b3) {
+            val ah1b4 = hp != null && hp <= 3.8 && acceW <= 0.08
+            if (ah1b1 || ah1b2 || ah1b3 || ah1b4) {
                 setBgAccelIsfWeight(0.10)
-                val rawG = rawGlucoseMgdl()
-                val rawD1 = rawDelta1MinMgdl()
-                val rawD5 = rawDelta5MinMgdl()
                 val ah1SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
                     " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 // Alerting only outside quiet hours. The URGENT notification is what actually wakes you,
                 // and the SMS likewise, so both are gated -- but the state writes and acce drop below are
@@ -3947,7 +3981,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val lowOk = g <= 77.5 /* 4.3 mmol */ || (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000)
+            val (rawG, rawD1, rawD5) = ukfRawMetrics()
+            val hp = rawD5?.let {
+                (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
+            }
+            val lowOk = g <= 77.5 /* 4.3 mmol */ ||
+                (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000) ||
+                (hp != null && hp <= 3.8)
             // 07:30-23:30 gate REMOVED, alerting silenced in quiet hours instead -- same treatment and
             // reasoning as AlarmHypo1 above and GentleHypoRisk. This one matters most of the three for
             // the LowBG=50recent write, since that is what arms the recent-low rebound guard in
@@ -3955,13 +3995,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val alarmHypo2Quiet = isTimeBetween(22, 0, 7, 30)
             if (d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
                 setBgAccelIsfWeight(0.10)
-                val rawG = rawGlucoseMgdl()
-                val rawD1 = rawDelta1MinMgdl()
-                val rawD5 = rawDelta5MinMgdl()
                 val ah2SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
                     " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 if (!alarmHypo2Quiet) {
                     sendSms(ah2SmsText)
@@ -5110,5 +5148,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_512
+OpenAPSAutoISFPlugin.ktaisf321_514
 */
