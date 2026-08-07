@@ -3722,14 +3722,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val onCurrentProfileEither = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName) || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-            val evB1 = isTimeBetween(20, 0, 1, 0) && g <= 135.1 /* 7.5 mmol */ && iobThresholdPercent < 50
+            // TWO FIXES, both from the careportal trail on the night of 7->8 Aug 2026, which showed "Eve"
+            // firing every 5-6 min from 23:08 to 00:18 and alternating with "NtCap" from midnight:
+            //
+            // 1) SELF-LATCH RESTORED. evB1 latched on "iobThresholdPercent < 50" back when this block set
+            //    iobTH to 50 -- after firing, 50 < 50 was false and it stopped. Changing the action to 45
+            //    (as a backstop) silently broke that: 45 < 45 is false but 45 < 50 is TRUE, so the block
+            //    re-armed itself on its own output and re-fired every cycle for the rest of its window.
+            //    The latch value must track whatever this block actually writes -- they are now both 45.
+            //
+            // 2) WINDOWS END AT MIDNIGHT (were 20:00-01:00 / 22:00-05:00). Even with the latch fixed, this
+            //    overlapped NightIobCeiling (00:00-06:00, sets iobTH 18): NtCap would write 18, evB1 would
+            //    then see 18 < 45 and write 45 straight back, NtCap would write 18 again, and so on every
+            //    ~6 min. That was the observed Eve/NtCap alternation, and it is why iobTH still read 5.13
+            //    at 00:20 instead of the intended 1.71. It resolved by itself at 01:00 only because evB1's
+            //    old window happened to end there. Confining the evening blocks to before midnight gives
+            //    NightIobCeiling sole ownership of 00:00-06:00.
+            val evB1 = isTimeBetween(20, 0, 0, 0) && g <= 135.1 /* 7.5 mmol */ && iobThresholdPercent < 45
                 && mealData.mealCOB <= 0.0 && d <= 3.6 /* 0.2 mmol */ && activeTtMgdl() == null
                 && lastBolusMin >= 90 && !checkAutomationState("MJ", "MJ active")
             val evB2 = iobThresholdPercent >= 51 && g <= 135.1 /* 7.5 mmol */ && mealData.mealCOB <= 0.0
-                && isTimeBetween(20, 0, 1, 0) && activeTtMgdl() == null && d <= -1.8 /* -0.1 mmol */
+                && isTimeBetween(20, 0, 0, 0) && activeTtMgdl() == null && d <= -1.8 /* -0.1 mmol */
                 && onCurrentProfileEither && lastBolusMin >= 90 && profile_percentage == 100
                 && !checkAutomationState("MJ", "MJ active")
-            val evB3 = isTimeBetween(22, 0, 5, 0) && g >= 122.5 /* 6.8 mmol */ && d >= 1.8 /* 0.1 mmol */
+            val evB3 = isTimeBetween(22, 0, 0, 0) && g >= 122.5 /* 6.8 mmol */ && d >= 1.8 /* 0.1 mmol */
                 && onCurrentProfileEither && lastBolusMin >= 90 && profile_percentage == 100
                 && iobThresholdPercent >= 51 && checkAutomationState("MJ", "MJ active")
             if (evB1 || evB2 || evB3) {
