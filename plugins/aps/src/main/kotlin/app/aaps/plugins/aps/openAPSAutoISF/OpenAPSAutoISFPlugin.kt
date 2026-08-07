@@ -2268,7 +2268,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
-            if (ohBlock != null && hypoPredicted) {
+            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted)) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
@@ -3290,7 +3290,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
                 // exists for is preserved whether or not a low is predicted.
                 val hpMj = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpMj != null && hpMj < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("MJ recent CurrProf Acce HP=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
@@ -3328,6 +3328,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps30Minutes <= 600
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
+                // BLOCKED 22:00-06:00. Earlier today this block's original isTimeBetween(7, 0, 0, 0) gate
+                // was removed so it could recover from an overnight low-profile switch -- but that was
+                // before the four profile-switch blocks were made unconditional across the same hours,
+                // and the two now directly contradict: they switch TO the weak profile, this switches
+                // straight back on any rise. The Logs1 export caught it happening on 6 Aug -- Current
+                // Profile at 23:01/23:02 with delta +0.12/+0.09, then ProfileReal at 23:08 as soon as
+                // delta reached +0.22, two minutes before the SMB burst. So it was actively putting the
+                // STRONGER profile in place exactly when BG was rising and SMBs were about to be sized,
+                // which is the worst possible moment. Recovery from the weak profile is left to the
+                // morning; overnight it must not undo the protection.
+                && !isTimeBetween(22, 0, 6, 0)
                 && onCurrentProfile) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setBgAccelIsfWeight(0.50)
@@ -3709,7 +3720,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // permanent (duration 0) with no automatic revert before 07:00, so the cost of switching
                 // when it wasn't warranted is much higher than skipping one evening adjustment.
                 val hpEve = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpEve != null && hpEve < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                // 22:00-06:00 makes this switch UNCONDITIONAL; outside those hours the HP < 5.0 gate still
+                // applies. Same added condition on MJrec, NightAcce and OffHighProf. Reason: HP contains
+                // IOB ((BGL - IOB) + ...), so it only falls below a threshold once insulin is already on
+                // board -- it confirms an overdose rather than anticipating one. Verified against the
+                // 6->7 Aug 2026 night: HP was 7.1 at 23:09 and 6.9 at 01:06, crossing 6.5 only ~4 minutes
+                // into each SMB burst, by which point most of the dose had gone. Gating a PREVENTIVE
+                // action on a REACTIVE measure cannot work, so overnight it is dropped entirely.
+                // The Logs1 export confirmed the profile in force at 23:08 and 02:33 was ProfileReal (the
+                // stronger one) through both bursts -- the weak profile has to be in place BEFORE a burst
+                // starts, which is what an unconditional overnight switch achieves. Window starts at 22:00
+                // rather than midnight because the first burst began at 23:10.
+                if (isTimeBetween(22, 0, 6, 0) || (hpEve != null && hpEve < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("EveningTH CurrProf 50_0.45 Acce HP=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
@@ -3759,7 +3781,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
                 val hpNight = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (hpNight != null && hpNight < 5.0) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
