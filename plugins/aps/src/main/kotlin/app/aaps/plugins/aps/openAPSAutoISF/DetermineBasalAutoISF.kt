@@ -197,7 +197,12 @@ class DetermineBasalAutoISF @Inject constructor(
         // both dosing paths now respond to one shared, already-maintained signal rather than each having
         // its own notion of "recent low". Default false = unchanged behaviour for callers that don't
         // pass it (tests, replay), consistent with the other optional params above.
-        recentLowActive: Boolean = false
+        recentLowActive: Boolean = false,
+        // Total units of SMB delivered in the last 10 min (see smbSum10Min() in OpenAPSAutoISFPlugin.kt).
+        // Default 0.0 = "no data supplied" -> the cumulative cap below is trivially satisfied and
+        // behaviour is unchanged for callers that don't pass it (tests, replay), same convention as the
+        // other optional params above.
+        smbSum10Min: Double = 0.0
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -841,7 +846,11 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
 
-        val nowHour = LocalDateTime.now().hour
+        val nowLocalDateTime = LocalDateTime.now()
+        val nowHour = nowLocalDateTime.hour
+        // Minute-of-day, needed because the cumulative SMB cap's window starts at 00:30 -- hour
+        // granularity alone cannot express that.
+        val nowMinsOfDay = nowHour * 60 + nowLocalDateTime.minute
         // Omnipod Dash requires durationInMinutes divisible by 30; 15-min temps are rejected.
         val standardTempDuration = 30
 
@@ -1270,14 +1279,26 @@ class DetermineBasalAutoISF @Inject constructor(
                         // +10% per completed 2-min block, capped at 45% by the 10-min window itself.
                         // Against 27 Jul 2026 that engages from ~21:54, covering the worst five minutes
                         // (~1.10U of the 1.55U burst) while leaving ordinary 2-3 SMB sequences untouched.
+                        // IOB gate is TIME-OF-DAY dependent. 0.35 was calibrated against 27 Jul 2026, an
+                        // evening episode where IOB reached 4.5U with carbs on board -- the wrong context
+                        // for overnight. On 6->7 Aug two overnight bursts (23:10-23:18: IOB 0.36 -> 2.00;
+                        // 01:08-01:15: 1.43 -> 2.71) drove BGL from 8.6 to a sustained 3.5, and NEITHER
+                        // reached 0.35*max_iob (3.33U at max_iob 9.5), so the escalation never engaged and
+                        // only the flat 10% applied. With COB at 0 overnight there is nothing for that IOB
+                        // to cover, so the level that warrants a brake is far lower: 0.15*max_iob (~1.43U)
+                        // engages part-way through the first of those bursts and from the outset of the
+                        // second. Window 22:00-08:00 -- starts at 22:00 rather than midnight because the
+                        // 23:10 burst would otherwise be missed.
                         val stackAgeMin = (nowMs - stackStart) / 60000.0
                         val stackGraceMin = 4.0
-                        val highIobStack = IOB >= 0.35 * profile.max_iob
+                        val overnightStackWindow = nowHour >= 22 || nowHour < 8
+                        val stackIobGateFraction = if (overnightStackWindow) 0.15 else 0.35
+                        val highIobStack = IOB >= stackIobGateFraction * profile.max_iob
                         val trimFraction = if (highIobStack && stackAgeMin >= stackGraceMin)
                             (0.25 + 0.10 * ((stackAgeMin - stackGraceMin) / 2.0).toInt()).coerceAtMost(0.45)
                         else 0.10
                         microBolus *= (1.0 - trimFraction)
-                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x${round(1.0 - trimFraction, 2)} = ${microBolus} (stack age ${round(stackAgeMin, 1)}min, trim ${round(trimFraction * 100, 0)}%, IOB ${round(IOB, 2)} vs gate ${round(0.35 * profile.max_iob, 2)}) ")
+                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x${round(1.0 - trimFraction, 2)} = ${microBolus} (stack age ${round(stackAgeMin, 1)}min, trim ${round(trimFraction * 100, 0)}%, IOB ${round(IOB, 2)} vs gate ${round(stackIobGateFraction * profile.max_iob, 2)} @${if (overnightStackWindow) "night" else "day"}) ")
                         rT.reason.append("SMB stacking <=70s: microBolus x${round(1.0 - trimFraction, 2)} (age ${round(stackAgeMin, 1)}min, IOB ${round(IOB, 2)}) = ${microBolus} ")
                     }
                 } else if (preferences.get(LongKey.ApsAutoIsfSmbStackStart) != 0L) {
@@ -1666,6 +1687,46 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.5
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 3)} -> ${round(microBolus, 3)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
                     }
+                }
+// =====================================================
+// CUMULATIVE SMB CAP (rolling 10 min)
+// =====================================================
+                // Limits TOTAL SMB units delivered in any rolling 10-min window. This is the only control
+                // here that measures cumulative delivery rather than a level (iobTH, the IOB gate) or a
+                // rate (the anti-stack interval test), and the 6->7 Aug 2026 night is why it exists: both
+                // damaging bursts ran at ~60s intervals, which at 1-minute sensor cadence is simply normal
+                // operation and so invisible to an interval test, and both started from low IOB, which a
+                // level ceiling cannot restrain -- it only caps the endpoint. Cumulative amount is the one
+                // dimension that separates them from routine dosing.
+                //
+                // Values are measured, not guessed: across recent exports the 10-min SMB total runs a
+                // median of 0.20U with the 90th percentile at 0.60U, while the two bursts were 1.50U and
+                // 1.10U. So the tight cap of 0.6U sits exactly at p90 -- it leaves ~90% of normal
+                // operation completely untouched and clips only the top decile. Outside the window it is
+                // 1.5U, a pure backstop just under the 1.95U maximum ever observed, since meals
+                // legitimately need more.
+                //
+                // Window is 00:30-04:00, NOT the 22:00-08:00 used by the stack trim's IOB gate. That is
+                // deliberate and narrower: of the two bursts on 6->7 Aug, only the 01:08 one was harmful.
+                // The 23:10 burst was appropriate -- BGL rose to 8.9 afterwards and held 8.5-8.9, so it
+                // was matching a real rise, and a cap covering it would have left the night higher for no
+                // benefit. A cumulative limiter cannot tell the two apart on size or rate (1.50U vs 1.10U,
+                // both ~60s apart); they differed only in the residual IOB underneath. Restricting the
+                // window to the hours when eating is implausible and a stack-on-residue is the likely
+                // explanation is the way to separate them.
+                //
+                // Placed LAST, after every other modifier including the smbBoostRecent restore, so nothing
+                // can bypass it -- a cumulative safety limit should outrank any single-cycle boost.
+                // Trims to the remaining allowance rather than zeroing outright, so a partial dose still
+                // goes out when only part of the budget is left.
+                val inDeepNightSmbWindow = nowMinsOfDay >= 30 && nowMinsOfDay < 240   // 00:30 - 04:00
+                val smbCap10Min = if (inDeepNightSmbWindow) 0.6 else 1.5
+                val smbAllowanceLeft = smbCap10Min - smbSum10Min
+                if (microBolus > smbAllowanceLeft) {
+                    val beforeCumCap = microBolus
+                    microBolus = if (smbAllowanceLeft > 0.0) smbAllowanceLeft else 0.0
+                    rT.reason.append(" 10min SMB cap: ${round(beforeCumCap, 3)} -> ${round(microBolus, 3)} (last10min ${round(smbSum10Min, 2)}U of ${round(smbCap10Min, 2)}U cap) ")
+                    consoleError.add("Cumulative SMB cap: ${round(smbSum10Min, 2)}U already delivered in last 10min vs ${round(smbCap10Min, 2)}U cap -> microBolus ${round(beforeCumCap, 3)} trimmed to ${round(microBolus, 3)} ")
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB

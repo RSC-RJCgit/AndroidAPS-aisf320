@@ -536,6 +536,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .count { it.type == BS.Type.SMB }
     }
 
+    // Total UNITS of SMB delivered in the last 10 minutes -- deliberately a sum, not a count or an
+    // interval, unlike the two helpers either side of it. The 6->7 Aug 2026 bursts showed why: both were
+    // ~60s apart (so indistinguishable from normal 1-min-cadence operation by interval) and delivered
+    // 1.50U and 1.10U respectively. Only the cumulative amount separates them from routine dosing --
+    // measured across recent exports, the median 10-min total is 0.20U and the 90th percentile 0.60U, so
+    // those bursts sit far out in the tail. Feeds the cumulative SMB cap in DetermineBasalAutoISF.kt.
+    private fun smbSum10Min(): Double {
+        val now = dateUtil.now()
+        return persistenceLayer.getBolusesFromTimeToTime(now - 10 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+            .sumOf { it.amount }
+    }
+
     // Count of SMBs delivered in the last 20 minutes. Deliberately a much longer window than
     // smbCount5Min() -- used by BolusGivenMildFailsafe to detect genuine delivery silence (sensor
     // dropout, pod disconnect, etc.), not just the normal gap between doses that a 5-min window
@@ -1985,7 +1998,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 30-min throttle via readyToRun/markRun. Uses Raw CGM (gv.noise) for additional safety checks.
         if (readyToRun("GentleHypoRisk", 30)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            if (acceW > 0.03 && acceW <= 0.08 && isTimeBetween(7, 30, 22, 0)) {
+            // 07:30-22:00 gate REMOVED so this also runs overnight -- same reasoning as AlarmHypo1 below:
+            // the value of running it at 03:00 is the BGLstate write, not the alert, and the alert is
+            // silenced in quiet hours instead (see gentleHypoQuiet). The acceW 0.03-0.08 band is
+            // deliberately left alone: it is what makes this a staged alarm, firing only once something
+            // else has already dropped acce, and is intended behaviour rather than an oversight.
+            val gentleHypoQuiet = isTimeBetween(22, 0, 7, 30)
+            if (acceW > 0.03 && acceW <= 0.08) {
                 val g    = glucoseStatus.glucose
                 val d    = glucoseStatus.delta
                 val sd   = glucoseStatus.shortAvgDelta
@@ -2025,9 +2044,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                         " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                         " iob=${String.format("%.2f", iobData.iob)}"
-                    sendSms(ghSmsText)
-                    sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
-                    uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
+                    // Silenced in quiet hours (see gentleHypoQuiet above) -- enacted either way, so the
+                    // acce/iobTH changes and the BGLstate write below still happen overnight.
+                    if (!gentleHypoQuiet) {
+                        sendSms(ghSmsText)
+                        sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
+                        uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
+                    }
                     addGraphAnnouncement("________________Gentle5")
                     //setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
@@ -2349,7 +2372,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 6.0-9.0mmol dead zone where nothing else in this file corrects, high enough to leave NightAcce's
         // own floor and OffHighProf's own revert gate alone. Revisit the exact number after a few nights.
         // 60-min floor throttle added on top of the preconditions (see readyToRun() usage note).
-        if (readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
+        // DISABLED. This block sets iobTH to 51 (and acce 0.50) between 01:00-05:45 to permit correcting a
+        // genuine overnight high -- which directly contradicts NightIobCeiling above, added after the
+        // 6->7 Aug 2026 hypo, which pins iobTH to 18 and acce to 0.35 across the same hours. With both
+        // active they would fight every cycle: this raises, that lowers ~5 min later. Turned off rather
+        // than left to lose that race, so the behaviour is explicit instead of emergent.
+        // Accepted consequence: overnight highs now go largely uncorrected between 01:00 and 05:45.
+        // Flip this back to true to restore it -- and if you do, reconsider NightIobCeiling at the same
+        // time, because the two cannot both be right.
+        val highNight00AmEnabled = false
+        if (highNight00AmEnabled && readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
             val g       = glucoseStatus.glucose
             val d       = glucoseStatus.delta
             val sd      = glucoseStatus.shortAvgDelta
@@ -3602,6 +3634,47 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("EveningIobCeiling")
         }
 
+        // --- NightIobCeiling: caps iobTH at 18% from midnight to 06:00, independent of BGL ---
+        // Companion to EveningIobCeiling above, same ceiling-not-setter shape (only ever lowers), but a
+        // far tighter value because overnight there are no carbs to cover -- IOB that would be routine
+        // after a meal is dangerous at 03:00.
+        //
+        // Motivated by the night of 6->7 Aug 2026, where BGL reached 3.5 and stayed there 04:00-05:30.
+        // Two SMB bursts caused it: 23:10-23:18 (~1.50U, IOB 0.36 -> 2.00) and 01:08-01:15 (~1.30U, IOB
+        // 1.43 -> 2.71), both at ~60s intervals with COB already decayed to 0 and BGL only 7.2-8.6.
+        // NightAcce covers 01:00-06:00 and sets iobTH to 18 already, but could not fire for either burst
+        // because it requires BGL <= 6.0mmol -- and BGL was 8.5. That BGL gate is the reason the overnight
+        // protection was unreachable, which is why this block deliberately has NO BGL condition at all.
+        // Starting at 00:00 rather than 01:00 also closes the midnight-to-01:00 gap.
+        //
+        // KNOWN CONFLICT, deliberate: HighNight00AM (01:00-05:45, 60-min throttle) sets iobTH to 51 to
+        // permit correcting a genuine overnight high, and this will pull it back to 18 within ~5 min.
+        // That is the intended precedence given the episode above -- an uncorrected overnight high is the
+        // accepted cost of not repeating a sustained 3.5 -- but it does mean HighNight00AM is now largely
+        // neutered between 01:00 and 05:45. Revisit that pairing if overnight highs start persisting.
+        // Caps BOTH iobTH (18%) and acce weight (0.35) -- the two settings NightAcce would have lowered
+        // had it been able to fire. Checked against the 6->7 Aug data: SmbRatio sat at 0.14 and ppWt at
+        // 0.08 all night, already their configured baselines (ApsAutoIsfSmbDeliveryBaseline /
+        // ApsAutoIsfPpWeightNormal), so resetting those two would be a no-op and they are deliberately
+        // not touched here. acce weight was the one genuinely carried in elevated: 0.50 from 23:00 through
+        // 02:20 -- i.e. across BOTH SMB bursts -- only falling to 0.07 after 02:40, once BGL was already
+        // collapsing. At 0.50 the acceleration term amplifies the ISF response to a rise, and both bursts
+        // occurred during rises (7.2->7.9 and 8.3->8.6), so it was actively compounding them.
+        // Each cap is independent and only ever lowers, so neither can raise a value some other overnight
+        // block has already set tighter (e.g. TwilightTH15Acce's iobTH 15).
+        if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0)) {
+            val nightAcceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val capIob = iobThresholdPercent > 18
+            val capAcce = nightAcceW > 0.35
+            if (capIob || capAcce) {
+                if (capIob) preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                if (capAcce) setBgAccelIsfWeight(0.35)
+                sendSms("NightIobCeiling: iobTH ${iobThresholdPercent}->${if (capIob) "18" else "unchanged"} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
+                addCarePortalNote("NtCap")
+                markRun("NightIobCeiling")
+            }
+        }
+
         if (readyToRun("EveningTH", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -3798,7 +3871,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val ah1b1 = isTimeBetween(7, 30, 23, 30) && d < -0.36 /* -0.02 mmol */ && sd < -0.36
+            // ah1b1's 07:30-23:30 gate REMOVED so this branch also covers the small hours. It exists to
+            // catch a slow decline into hypo, and that is no less real at 04:00 -- on 6->7 Aug 2026 BGL sat
+            // at 3.5 from 04:00-05:30 and this block could not fire at all, because ah1b1 was outside its
+            // window and ah1b2's emergency floor is 3.0. The point of running it overnight is less the
+            // alert than the two state writes below: LowBG=50recent is what arms the recent-low rebound
+            // guard in DetermineBasalAutoISF.kt, and without it that guard is unreachable after any
+            // overnight low. acce is also dropped to 0.10, which is protective in its own right.
+            //
+            // Alerting is suppressed during quiet hours instead (see alarmHypoQuiet below) -- the block is
+            // enacted, but silently, so it cannot wake you. The graph annotation still lands so the event
+            // is visible in the morning.
+            val alarmHypoQuiet = isTimeBetween(22, 0, 7, 30)
+            val ah1b1 = d < -0.36 /* -0.02 mmol */ && sd < -0.36
                 && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
             val ah1b2 = g < 54.0 /* 3.0 mmol */
             val ah1b3 = isTimeBetween(7, 0, 23, 0) && d <= -0.9 /* -0.05 mmol */
@@ -3813,9 +3898,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
-                sendSms(ah1SmsText)
-                sendSmsToNumbers(ah1SmsText, StringKey.SmsAlarmHypo1Numbers)
-                uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
+                // Alerting only outside quiet hours. The URGENT notification is what actually wakes you,
+                // and the SMS likewise, so both are gated -- but the state writes and acce drop below are
+                // NOT, since those are the parts that need to happen overnight. ah1b2 (the <3.0mmol
+                // emergency floor) is deliberately NOT exempted from the quiet window: if you would rather
+                // be woken for a genuine severe low regardless of the hour, change this to
+                // (!alarmHypoQuiet || ah1b2).
+                if (!alarmHypoQuiet) {
+                    sendSms(ah1SmsText)
+                    sendSmsToNumbers(ah1SmsText, StringKey.SmsAlarmHypo1Numbers)
+                    uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
+                }
                 addGraphAnnouncement("_____H4")
                 setAutomationState("BGLstate", "BGLlastLOW")
                 setAutomationState("LowBG", "50recent")
@@ -3833,7 +3926,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val lowOk = g <= 77.5 /* 4.3 mmol */ || (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000)
-            if (isTimeBetween(7, 30, 23, 30) && d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
+            // 07:30-23:30 gate REMOVED, alerting silenced in quiet hours instead -- same treatment and
+            // reasoning as AlarmHypo1 above and GentleHypoRisk. This one matters most of the three for
+            // the LowBG=50recent write, since that is what arms the recent-low rebound guard in
+            // DetermineBasalAutoISF.kt, and overnight was exactly when it could never fire.
+            val alarmHypo2Quiet = isTimeBetween(22, 0, 7, 30)
+            if (d <= 0.0 && sd <= 0.0 && lowOk && acceW <= 0.08) {
                 setBgAccelIsfWeight(0.10)
                 val rawG = rawGlucoseMgdl()
                 val rawD1 = rawDelta1MinMgdl()
@@ -3843,9 +3941,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
-                sendSms(ah2SmsText)
-                sendSmsToNumbers(ah2SmsText, StringKey.SmsAlarmHypo2Numbers)
-                uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
+                if (!alarmHypo2Quiet) {
+                    sendSms(ah2SmsText)
+                    sendSmsToNumbers(ah2SmsText, StringKey.SmsAlarmHypo2Numbers)
+                    uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
+                }
                 addGraphAnnouncement("__________A4")
                 setAutomationState("LowBG", "50recent")
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
@@ -3957,7 +4057,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // guard in DetermineBasalAutoISF.kt. Reusing the existing, already-maintained flag (set on
             // lows, cleared on recovery, with its own anti-flap throttle) rather than adding a second
             // recent-low detector that could disagree with it.
-            recentLowActive = checkAutomationState("LowBG", "50recent")
+            recentLowActive = checkAutomationState("LowBG", "50recent"),
+            smbSum10Min = smbSum10Min()
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
