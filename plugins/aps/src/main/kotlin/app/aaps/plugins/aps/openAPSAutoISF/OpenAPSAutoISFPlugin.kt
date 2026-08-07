@@ -639,7 +639,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int): Double
     {
-       if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
+        if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
             val nowMillis = System.currentTimeMillis()
             val stepsCount = SC(
                 duration = 0,
@@ -671,7 +671,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val useSleepState = automationStateService.inState("Sleeping", "True")
         aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
         // really still sleeping?
-            if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes < recentSteps30Minutes) && now>=inactivity_idle_end) {
+        if (useSleepState && (recentSteps5Minutes+recentSteps10Minutes+recentSteps15Minutes == recentSteps30Minutes) ) {     //no steps between 15m and 30m; was: && now>=inactivity_idle_end) {
             automationStateService.setState("query_got_up", "query_it")
         }
         aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
