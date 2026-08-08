@@ -202,7 +202,10 @@ class DetermineBasalAutoISF @Inject constructor(
         // Default 0.0 = "no data supplied" -> the cumulative cap below is trivially satisfied and
         // behaviour is unchanged for callers that don't pass it (tests, replay), same convention as the
         // other optional params above.
-        smbSum10Min: Double = 0.0
+        smbSum10Min: Double = 0.0,
+        // Total units of SMB delivered in the last 30 min. Used by the late FastRise taper and the
+        // final 30-min cumulative cap below. Default 0.0 preserves existing callers/tests.
+        smbSum30Min: Double = 0.0
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1687,6 +1690,47 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.5
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 3)} -> ${round(microBolus, 3)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
                     }
+                }
+// =====================================================
+// LATE FAST-RISE TAPER + CUMULATIVE SMB CAP (rolling 30 min)
+// =====================================================
+                // A fast rise can keep requesting SMBs after substantial insulin has already accumulated.
+                // Leave the early response unchanged, then progressively trim only the later FastRise
+                // requests. This runs after smbBoostRecent restoration so that boost cannot undo it.
+                val fastRiseNow =
+                    libreActive &&
+                        bg > 6.0 * 18 &&
+                        bg < 12.0 * 18 &&
+                        COB <= 25 &&
+                        Delta >= 0.25 * 18 &&
+                        SDelta >= 0.10 * 18 &&
+                        rawDelta5Mgdl >= 0.25 * 18 &&
+                        rawDelta1Mgdl >= 0.25 * 18 &&
+                        aapsDelta1Mgdl >= 0.25 * 18
+
+                if (fastRiseNow && microBolus > 0.0) {
+                    val lateFastRiseFactor = when {
+                        smbSum30Min >= 1.9 -> 0.50
+                        smbSum30Min >= 1.5 -> 0.75
+                        else -> 1.0
+                    }
+                    if (lateFastRiseFactor < 1.0) {
+                        val beforeLateFastRise = microBolus
+                        microBolus *= lateFastRiseFactor
+                        rT.reason.append(" late FastRise SMB30 ${round(smbSum30Min, 2)}U: x${round(lateFastRiseFactor, 2)} ${round(beforeLateFastRise, 3)} -> ${round(microBolus, 3)} ")
+                    }
+                }
+
+                // Do not gate the final allowance on fastRiseNow: at the end of the Aug 8 event the raw
+                // rise flattened for two cycles while SMB continued, precisely when accumulated insulin
+                // still needed protection. Trim to the remaining budget rather than always zeroing.
+                val smbCap30Min = 2.1
+                val smbAllowance30Min = (smbCap30Min - smbSum30Min).coerceAtLeast(0.0)
+                if (microBolus > smbAllowance30Min) {
+                    val before30MinCap = microBolus
+                    microBolus = smbAllowance30Min
+                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 3)} -> ${round(microBolus, 3)} (last30min ${round(smbSum30Min, 2)}U of ${round(smbCap30Min, 2)}U cap) ")
+                    consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 3)} trimmed to ${round(microBolus, 3)} ")
                 }
 // =====================================================
 // CUMULATIVE SMB CAP (rolling 10 min)

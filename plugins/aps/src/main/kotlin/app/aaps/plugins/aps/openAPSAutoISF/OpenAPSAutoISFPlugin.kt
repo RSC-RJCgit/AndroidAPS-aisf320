@@ -4214,7 +4214,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // lows, cleared on recovery, with its own anti-flap throttle) rather than adding a second
             // recent-low detector that could disagree with it.
             recentLowActive = checkAutomationState("LowBG", "50recent"),
-            smbSum10Min = smbSum10Min()
+            smbSum10Min = smbSum10Min(),
+            smbSum30Min = smbSum30Min()
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
