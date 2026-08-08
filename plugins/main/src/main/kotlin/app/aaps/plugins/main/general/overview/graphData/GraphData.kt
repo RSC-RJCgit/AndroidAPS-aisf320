@@ -276,6 +276,11 @@ class GraphData @Inject constructor(
         addSeries(overviewData.smbLabelSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    // ΔIOB-per-SMB-stack labels, fixed at the top of this graph, white. See PrepareTreatmentsDataWorker.kt.
+    fun addStackDeltaIobLabels() {
+        addSeries(overviewData.stackDeltaIobSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addIobTh(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
         if (maxCommonIob>0.0) {
             maxY = maxCommonIob

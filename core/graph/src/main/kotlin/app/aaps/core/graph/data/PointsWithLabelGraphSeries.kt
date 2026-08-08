@@ -227,6 +227,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
+        // SMB-stack ΔIOB label (Shape.SMB_STACK_DELTA_IOB) — fixed at the very top of graph2 (IOB graph),
+        // drawn at each event's own X (the stack's start time), unlike the fixed-left rows above.
+        val stackDeltaIobPy = graphTop + scaledTextSize * 0.8f
         for (value in values) {
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
@@ -247,7 +250,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // glucose values.
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
-                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3
+                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
+                value.shape == Shape.SMB_STACK_DELTA_IOB
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -521,6 +525,19 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // near bottom of graph, stacking upward with half-height steps
                         val labelY = graphTop + graphHeight - scaledTextSize * 0.3f - stackIndex2 * scaledTextSize * 0.5f
                         canvas.drawText(value.label, endX, labelY, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
+                } else if (value.shape == Shape.SMB_STACK_DELTA_IOB) {
+                    // ΔIOB over the 10 minutes following an SMB-stack's start, fixed at the top of graph2,
+                    // always white, drawn at the stack's own start timestamp. See PrepareTreatmentsDataWorker.kt.
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.55f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.color = Color.WHITE
+                        mPaint.textAlign = Paint.Align.CENTER
+                        canvas.drawText(value.label, endX, stackDeltaIobPy, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
