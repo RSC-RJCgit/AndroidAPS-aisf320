@@ -192,7 +192,8 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
 
         // Reconstructed SMB-stack starts + the IOB change over the 10 minutes following each one, drawn
-        // at the top of graph2 in white (Shape.SMB_STACK_DELTA_IOB). Mirrors the LIVE stacking state
+        // at the top of the IOB/COB panel (g==0, NOT the same panel as smbLabels/addSmbLabels() above --
+        // that one is g==1) in white (Shape.SMB_STACK_DELTA_IOB). Mirrors the LIVE stacking state
         // machine exactly (ApsAutoIsfSmbStackStart in DetermineBasalAutoISF.kt: avg gap <=70s over the
         // trailing 5 min of SMBs, new stack only when none is active or the previous one's 10-min window
         // has elapsed) rather than a fresh definition — same avg-gap formula as

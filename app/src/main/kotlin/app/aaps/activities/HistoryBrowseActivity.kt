@@ -501,7 +501,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // trading places with the CarePortal notes now on graph4 above. History Browse never got that
             // swap, which is why SMB labels appeared on a different panel in the two screens.
             if (g == 1) secondGraphData.addSmbLabels()
-            if (g == 1) secondGraphData.addStackDeltaIobLabels()
+            // IOB/COB panel per user's own on-screen check -- was g==1 (SMB's own panel), moved.
+            if (g == 0) secondGraphData.addStackDeltaIobLabels()
             if (g == 2) secondGraphData.addIsfWeightsRow()
 
             // set manual x bounds to have nice steps

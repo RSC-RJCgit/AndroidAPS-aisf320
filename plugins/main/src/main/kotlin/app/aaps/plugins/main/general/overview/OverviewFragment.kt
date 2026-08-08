@@ -1778,7 +1778,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
             if (g == 1) secondGraphData.addSmbLabels()
-            if (g == 1) secondGraphData.addStackDeltaIobLabels()
+            // IOB/COB panel per user's own on-screen check -- was g==1 (SMB's own panel), moved.
+            if (g == 0) secondGraphData.addStackDeltaIobLabels()
             // "pp= acc= du=" row: graph3 (g==2), fixed near the bottom.
             if (g == 2) secondGraphData.addIsfWeightsRow()
 

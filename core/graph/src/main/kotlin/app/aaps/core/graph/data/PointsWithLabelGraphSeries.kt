@@ -191,6 +191,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // cannot move labels belonging to an earlier, completed group.
         val smbStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB)
         val smbGraph2StackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_GRAPH2)
+        // 30-minute grouping (not the 10-min dosing-stack window the label's own VALUE represents) --
+        // purely so two ΔIOB labels landing close together on screen stay readable instead of
+        // overlapping. See Shape.SMB_STACK_DELTA_IOB.
+        val stackDeltaIobStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_STACK_DELTA_IOB, 30 * 60_000L)
         // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
         // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
         // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
@@ -528,16 +532,20 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.SMB_STACK_DELTA_IOB) {
-                    // ΔIOB over the 10 minutes following an SMB-stack's start, fixed at the top of graph2,
-                    // always white, drawn at the stack's own start timestamp. See PrepareTreatmentsDataWorker.kt.
+                    // ΔIOB over the 10 minutes following an SMB-stack's start, fixed at the top of the
+                    // IOB/COB panel, always white, drawn at the stack's own start timestamp. Stacks
+                    // DOWNWARD in 30-min groups (stackDeltaIobStackReverseIndex) so two labels landing
+                    // close together stay readable. See PrepareTreatmentsDataWorker.kt.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
+                        val stackIndex3 = stackDeltaIobStackReverseIndex[value] ?: 0
                         mPaint.textSize = (scaledTextSize * 0.55f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.color = Color.WHITE
                         mPaint.textAlign = Paint.Align.CENTER
-                        canvas.drawText(value.label, endX, stackDeltaIobPy, mPaint)
+                        val labelY = stackDeltaIobPy + stackIndex3 * scaledTextSize * 0.55f
+                        canvas.drawText(value.label, endX, labelY, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {
@@ -692,7 +700,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         }
     }
 
-    private fun calculateSmbStackIndices(values: List<E>, shape: Shape): IdentityHashMap<E, Int> {
+    private fun calculateSmbStackIndices(values: List<E>, shape: Shape, windowMs: Long = 10 * 60_000L): IdentityHashMap<E, Int> {
         // BaseSeries iteration order can be newest-first. Stack windows must be built in timestamp
         // order; otherwise timestamp-anchor stays negative and consecutive windows merge into one.
         val smbValues = values.filter { it.shape == shape }.sortedBy { it.x }
@@ -703,7 +711,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
 
         smbValues.forEach { value ->
             val timestamp = value.x.toLong()
-            if (anchor == Long.MIN_VALUE || timestamp - anchor >= 10 * 60_000L) {
+            if (anchor == Long.MIN_VALUE || timestamp - anchor >= windowMs) {
                 anchor = timestamp
                 bucket++
             }
