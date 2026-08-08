@@ -183,23 +183,43 @@ class AutoIsfHistoryExporter @Inject constructor(
             fileListProvider.aapsLogsPath
         }
 
-    /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in the export dir's own
+    /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in the source dir's own
      *  "output" subfolder, from the 5 most recent table-export .txt files there (this dialog's own
      *  just-written one plus the 4 automatic exports before it, assuming writeExport() already ran this
      *  call) -- raw concatenation, oldest file first, no separators, exactly mirroring the pre-existing
      *  external "combinedRegan.txt" this replaces (verified against that file: 5 repeated header lines =
      *  5 files concatenated back-to-back with nothing in between). Call AFTER writeExport() so its fresh
      *  file is naturally included as "the last one" rather than needing special-casing. Silent on
-     *  failure/no-data, matching writeExport()'s own error handling (log only, no user-facing failure). */
+     *  failure/no-data, matching writeExport()'s own error handling (log only, no user-facing failure).
+     *
+     *  Source dir: tries resolveExportDir()'s own aapsLogs/<PatientName>/ first (what writeExport()
+     *  itself computes); if that's empty, falls back to a sibling aapsLogs/../aiv_<PatientName>/ (a
+     *  differently-named top-level folder observed, on at least one real device, to be where files
+     *  actually land instead) -- unexplained discrepancy between the two, not something resolved from
+     *  code alone, so this checks both rather than assuming one. Output always lands in THIS SAME dir's
+     *  own "output" subfolder, whichever dir that turned out to be -- never a folder that doesn't
+     *  actually hold the source files. */
     fun buildCombinedExport() {
         try {
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val dir = resolveExportDir(patientName)
             val tablePrefix = if (patientName.isNotEmpty()) "AutoISF_${patientName}_" else "AutoISF_"
-            val tableFiles = dir.listFiles { f ->
-                f.isFile && f.name.startsWith(tablePrefix) && f.name.endsWith(".txt") &&
-                    !f.name.startsWith("AutoISF_settings_")
-            }?.sortedByDescending { it.name } ?: return
+            fun tableFilesIn(dir: File): List<File> =
+                dir.listFiles { f ->
+                    f.isFile && f.name.startsWith(tablePrefix) && f.name.endsWith(".txt") &&
+                        !f.name.startsWith("AutoISF_settings_")
+                }?.sortedByDescending { it.name } ?: emptyList()
+
+            val nestedDir = resolveExportDir(patientName)
+            var dir = nestedDir
+            var tableFiles = tableFilesIn(nestedDir)
+            if (tableFiles.isEmpty() && patientName.isNotEmpty()) {
+                val topLevelDir = File(fileListProvider.aapsLogsPath.parentFile, "aiv_$patientName")
+                val topLevelFiles = tableFilesIn(topLevelDir)
+                if (topLevelFiles.isNotEmpty()) {
+                    dir = topLevelDir
+                    tableFiles = topLevelFiles
+                }
+            }
             if (tableFiles.isEmpty()) return
             val last5OldestFirst = tableFiles.take(5).sortedBy { it.name }
             val outputDir = File(dir, "output").also { it.mkdirs() }
