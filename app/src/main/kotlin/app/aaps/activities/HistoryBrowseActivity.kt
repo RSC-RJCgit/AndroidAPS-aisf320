@@ -365,6 +365,13 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
 
         graphData.performUpdate()
 
+        // ScaledDataPoints share this Scale instance across every graph. Preserve the main graph's
+        // normalization because secondary graph setup below may overwrite it when ComboCarbs is also
+        // selected there; rendering reads the multiplier dynamically.
+        val mainCombinedCarbsScaleMultiplier = historyBrowserData.overviewData.combinedCarbsScale.multiplier.takeIf {
+            overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.COMBINED_CARBS.ordinal)
+        }
+
         // 2nd graphs
         prepareGraphsIfNeeded(menuChartSettings.size)
         val secondaryGraphsData: ArrayList<GraphData> = ArrayList()
@@ -527,6 +534,9 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                 ).toVisibility()
             secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()
+        }
+        mainCombinedCarbsScaleMultiplier?.let {
+            historyBrowserData.overviewData.combinedCarbsScale.multiplier = it
         }
     }
 
