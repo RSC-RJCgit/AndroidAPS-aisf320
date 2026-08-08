@@ -72,7 +72,7 @@ notes, etc.) all follow the same pipeline:
 2. `core/graph/data/PointsWithLabelGraphSeries.kt` — the renderer; switches on `Shape` per data
    point. Fixed-position rows use a pixel offset computed once above the draw loop (e.g.
    `stepsRowPy`, `isfIndicesRowPy`); per-timestamp labels (like SMB doses or `OvernightDuraRescue`'s
-   sibling `SMB_STACK_DELTA_IOB`) draw at that point's own X instead. Shapes meant to always render
+   sibling `SMB_STACK_TOTAL`) draw at that point's own X instead. Shapes meant to always render
    regardless of the current Y-scale must be added to the `yIndependentShape` check, or they get
    culled whenever their placeholder Y falls outside the panel's current value range.
 3. `workflow/Prepare*Worker.kt` — builds the actual `DataPointWithLabelInterface` list from

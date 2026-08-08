@@ -107,7 +107,7 @@ interface OverviewData {
     var maxTreatmentsValue: Double
     var treatmentsSeries: SeriesData
     var smbLabelSeries: SeriesData
-    var stackDeltaIobSeries: SeriesData
+    var smbStackTotalSeries: SeriesData
     var maxTherapyEventValue: Double
     var therapyEventSeries: SeriesData
     // Plain TE.Type.NOTE events only (split out from therapyEventSeries) — renders on graph4 (swapped

@@ -1586,6 +1586,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addA1DeltaAnnotation()
         graphData.addUkfDeltaAnnotation()
         graphData.addHpAnnotation()
+        // "pp= acc= du=" row: moved off graph3 (now hosting the SMB-stack-total labels below) onto the
+        // main graph's own bottom area, near the SMB triangles/arrowheads there.
+        graphData.addIsfWeightsRow()
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
@@ -1778,10 +1781,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
             if (g == 1) secondGraphData.addSmbLabels()
-            // IOB/COB panel per user's own on-screen check -- was g==1 (SMB's own panel), moved.
-            if (g == 0) secondGraphData.addStackDeltaIobLabels()
-            // "pp= acc= du=" row: graph3 (g==2), fixed near the bottom.
-            if (g == 2) secondGraphData.addIsfWeightsRow()
+            // graph3 (g==2): was the "pp= acc= du=" row (now on the main graph, see addIsfWeightsRow()
+            // above) -- replaced with the SMB-stack-total labels (was g==0/IOB-COB panel, moved here).
+            if (g == 2) secondGraphData.addSmbStackTotalLabels()
 
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal]) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal]) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)

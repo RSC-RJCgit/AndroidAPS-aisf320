@@ -192,9 +192,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val smbStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB)
         val smbGraph2StackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_GRAPH2)
         // 30-minute grouping (not the 10-min dosing-stack window the label's own VALUE represents) --
-        // purely so two ΔIOB labels landing close together on screen stay readable instead of
-        // overlapping. See Shape.SMB_STACK_DELTA_IOB.
-        val stackDeltaIobStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_STACK_DELTA_IOB, 30 * 60_000L)
+        // purely so two SMB-stack-total labels landing close together on screen stay readable instead of
+        // overlapping. See Shape.SMB_STACK_TOTAL.
+        val smbStackTotalStackReverseIndex = calculateSmbStackIndices(values, Shape.SMB_STACK_TOTAL, 30 * 60_000L)
         // Note-text stack grouping: a ROLLING window anchored to each stack's own first note, not a
         // fixed epoch-aligned grid (timestamp/25min) — that fixed-grid scheme could split two notes only
         // a few minutes apart into different "buckets" whenever they straddled one of the grid's absolute
@@ -231,13 +231,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
-        // SMB-stack ΔIOB label (Shape.SMB_STACK_DELTA_IOB) — anchored in the IOB/COB panel's top half,
-        // same formula/spot as NOTE_ARROWHEAD_GRAPH3's noteArrowheadPy above (0.2 of the panel's own
-        // height down from its top), not jammed against the top edge itself or down at the panel's base.
-        // Drawn at each event's own X (the stack's start time), unlike the fixed-left rows above. A 30-min
-        // group of labels stacks UPWARD from this anchor (see the render branch below), toward the top
-        // edge, using the headroom above the anchor rather than crowding into the chart content below it.
-        val stackDeltaIobPy = graphTop + graphHeight * 0.2f
+        // SMB-stack total label (Shape.SMB_STACK_TOTAL) — anchored at the BASE of whichever panel this
+        // series is added to, same formula as SMB_GRAPH2's own bottom anchor above. Drawn at each event's
+        // own X (the stack's start time), unlike the fixed-left rows above. A 30-min group of labels
+        // stacks UPWARD from this base (see the render branch below).
+        val smbStackTotalPy = graphTop + graphHeight - scaledTextSize * 0.3f
         for (value in values) {
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
@@ -259,7 +257,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
                 value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
-                value.shape == Shape.SMB_STACK_DELTA_IOB
+                value.shape == Shape.SMB_STACK_TOTAL
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -535,21 +533,24 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(value.label, endX, labelY, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
-                } else if (value.shape == Shape.SMB_STACK_DELTA_IOB) {
-                    // ΔIOB over the 10 minutes following an SMB-stack's start, anchored in the IOB/COB
-                    // panel's top half (same spot as NOTE_ARROWHEAD_GRAPH3's arrows), always white, drawn
-                    // at the stack's own start timestamp. The most recent label in a 30-min group
-                    // (stackIndex3 == 0) sits at stackDeltaIobPy; OLDER labels in that group stack UPWARD
-                    // from there, toward the top edge. See PrepareTreatmentsDataWorker.kt.
+                } else if (value.shape == Shape.SMB_STACK_TOTAL) {
+                    // Total SMB units delivered in the 10 minutes following an SMB-stack's start, anchored
+                    // at the base of whichever panel this is added to (currently graph3), drawn at the
+                    // stack's own start timestamp. Font size/color match the HHmm time labels on graph4's
+                    // note arrowheads (NOTE_ARROWHEAD_GRAPH3 above: textSize 0.5f, yellow, bold) rather
+                    // than this shape's own original white/0.55f. The most recent label in a 30-min group
+                    // (stackIndex3 == 0) sits at smbStackTotalPy (the base); OLDER labels in that group
+                    // stack UPWARD from there — same direction/mechanism as SMB_GRAPH2's own dose labels.
+                    // See PrepareTreatmentsDataWorker.kt.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
-                        val stackIndex3 = stackDeltaIobStackReverseIndex[value] ?: 0
-                        mPaint.textSize = (scaledTextSize * 0.55f).toFloat()
+                        val stackIndex3 = smbStackTotalStackReverseIndex[value] ?: 0
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
-                        mPaint.color = Color.WHITE
+                        mPaint.color = Color.YELLOW
                         mPaint.textAlign = Paint.Align.CENTER
-                        val labelY = stackDeltaIobPy - stackIndex3 * scaledTextSize * 0.55f
+                        val labelY = smbStackTotalPy - stackIndex3 * scaledTextSize * 0.5f
                         canvas.drawText(value.label, endX, labelY, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }

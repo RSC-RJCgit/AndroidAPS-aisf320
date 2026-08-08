@@ -501,9 +501,12 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // trading places with the CarePortal notes now on graph4 above. History Browse never got that
             // swap, which is why SMB labels appeared on a different panel in the two screens.
             if (g == 1) secondGraphData.addSmbLabels()
-            // IOB/COB panel per user's own on-screen check -- was g==1 (SMB's own panel), moved.
-            if (g == 0) secondGraphData.addStackDeltaIobLabels()
-            if (g == 2) secondGraphData.addIsfWeightsRow()
+            // graph3 (g==2): was the "pp= acc= du=" row -- replaced with the SMB-stack-total labels (was
+            // g==0/IOB-COB panel, moved here). Unlike OverviewFragment.kt, this screen has no established
+            // main-graph annotation wiring (L1/A1/UKF/HP aren't ported here either), so the "pp= acc= du="
+            // row has no new home in History Browse for now -- it's simply gone from this screen, not
+            // moved. Flagging rather than silently dropping it without a note.
+            if (g == 2) secondGraphData.addSmbStackTotalLabels()
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)

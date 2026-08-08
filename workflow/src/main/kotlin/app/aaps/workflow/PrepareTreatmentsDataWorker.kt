@@ -191,10 +191,10 @@ class PrepareTreatmentsDataWorker(
             }
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
 
-        // Reconstructed SMB-stack starts + the IOB change over the 10 minutes following each one, drawn
-        // in the top half of the IOB/COB panel (g==0, NOT the same panel as smbLabels/addSmbLabels()
-        // above -- that one is g==1), stacking upward toward the top edge, in white
-        // (Shape.SMB_STACK_DELTA_IOB). Mirrors the LIVE stacking state
+        // Reconstructed SMB-stack starts + the TOTAL SMB units delivered in the 10 minutes following each
+        // one, drawn at the base of graph3 (replacing the old "pp= acc= du=" row, now moved to the main
+        // graph), stacking upward, small yellow text matching graph4's HHmm time labels
+        // (Shape.SMB_STACK_TOTAL). Mirrors the LIVE stacking state
         // machine exactly (ApsAutoIsfSmbStackStart in DetermineBasalAutoISF.kt: avg gap <=70s over the
         // trailing 5 min of SMBs, new stack only when none is active or the previous one's 10-min window
         // has elapsed) rather than a fresh definition — same avg-gap formula as
@@ -202,12 +202,14 @@ class PrepareTreatmentsDataWorker(
         // past ApsAutoIsfSmbStackStart values (it's a single live scalar, overwritten each cycle), so
         // stack starts are re-derived here from the SMB dose timestamps themselves.
         //
-        // KNOWN IMPRECISION: the IOB at "10 minutes after start" is taken from the nearest AutoIsfValues
-        // record to that instant (aivList, ~1-min cadence at this user's current loop interval), not an
-        // exact value AT T+10 — a dose landing right on that boundary could end up counted just inside or
-        // just outside the window depending on which side the nearest record falls. Not a concern for
-        // doses clearly inside/outside the window, only ones within roughly one loop cycle of the edge.
-        val smbTimestampsForStack = bolusDataPoints.filter { it.data.type == BS.Type.SMB }.map { it.x.toLong() }.sorted()
+        // Was ΔIOB over the window (nearest-AutoIsfValues-record lookup, with a known boundary-precision
+        // caveat); now a direct sum of SMB amounts actually timestamped inside [start, start+10min] --
+        // simpler, and no longer approximate at the boundary the way the nearest-record match was. Also
+        // no longer walks aivList to find cycle timestamps -- the SMB dose timestamps themselves are the
+        // only instants the trailing-gap value can change at, so walking those directly is equivalent and
+        // drops the aivList dependency for this block entirely.
+        val smbAmountsForStack = bolusDataPoints.filter { it.data.type == BS.Type.SMB }.map { it.x.toLong() to it.data.amount }
+        val smbTimestampsForStack = smbAmountsForStack.map { it.first }.sorted()
         fun avgGapTrailing5MinSec(at: Long): Double? {
             val windowStart = at - 5 * 60_000L
             val inWindow = smbTimestampsForStack.filter { it in windowStart..at }
@@ -215,39 +217,36 @@ class PrepareTreatmentsDataWorker(
             val spanSec = (inWindow.max() - inWindow.min()).toDouble() / 1000.0
             return spanSec / (inWindow.size - 1)
         }
-        val stackDeltaIobLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
+        val smbStackTotalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
         var reconstructedStackStart = 0L
-        aivList.sortedBy { it.timestamp }.forEach { aiv ->
-            val gap = avgGapTrailing5MinSec(aiv.timestamp)
+        smbTimestampsForStack.forEach { ts ->
+            val gap = avgGapTrailing5MinSec(ts)
             if (gap != null && gap <= 70.0) {
-                if (reconstructedStackStart == 0L || aiv.timestamp - reconstructedStackStart >= 10 * 60_000L) {
-                    reconstructedStackStart = aiv.timestamp
-                    val iobAtStart = aiv.iob
-                    val targetT10 = reconstructedStackStart + 10 * 60_000L
-                    val nearestT10 = aivList.filter { it.timestamp >= reconstructedStackStart }
-                        .minByOrNull { kotlin.math.abs(it.timestamp - targetT10) }
-                    if (nearestT10 != null && kotlin.math.abs(nearestT10.timestamp - targetT10) < T.mins(15).msecs()) {
-                        val deltaIob = nearestT10.iob - iobAtStart
-                        val stackStartTs = reconstructedStackStart
-                        val labelText = (if (deltaIob >= 0) "+" else "") + String.format("%.2f", deltaIob)
-                        stackDeltaIobLabels.add(object : DataPointWithLabelInterface {
-                            override fun getX(): Double = stackStartTs.toDouble()
-                            override fun getY(): Double = 0.0
-                            override fun setY(y: Double) {}
-                            override val label: String = labelText
-                            override val duration: Long = 0L
-                            override val shape = app.aaps.core.graph.data.Shape.SMB_STACK_DELTA_IOB
-                            override val size: Float = 1.0f
-                            override val paintStyle = android.graphics.Paint.Style.FILL
-                            override fun color(context: android.content.Context?) = android.graphics.Color.WHITE
-                        })
-                    }
+                if (reconstructedStackStart == 0L || ts - reconstructedStackStart >= 10 * 60_000L) {
+                    reconstructedStackStart = ts
+                    val windowEnd = reconstructedStackStart + 10 * 60_000L
+                    val smbTotal = smbAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
+                    val stackStartTs = reconstructedStackStart
+                    val labelText = String.format("%.2f", smbTotal)
+                    smbStackTotalLabels.add(object : DataPointWithLabelInterface {
+                        override fun getX(): Double = stackStartTs.toDouble()
+                        override fun getY(): Double = 0.0
+                        override fun setY(y: Double) {}
+                        override val label: String = labelText
+                        override val duration: Long = 0L
+                        override val shape = app.aaps.core.graph.data.Shape.SMB_STACK_TOTAL
+                        override val size: Float = 1.0f
+                        override val paintStyle = android.graphics.Paint.Style.FILL
+                        // Not actually read by the renderer (SMB_STACK_TOTAL's branch hardcodes yellow,
+                        // matching graph4's time labels) -- kept accurate anyway rather than stale.
+                        override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
+                    })
                 }
             } else if (reconstructedStackStart != 0L) {
                 reconstructedStackStart = 0L
             }
         }
-        data.overviewData.stackDeltaIobSeries = PointsWithLabelGraphSeries(stackDeltaIobLabels.toTypedArray())
+        data.overviewData.smbStackTotalSeries = PointsWithLabelGraphSeries(smbStackTotalLabels.toTypedArray())
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
