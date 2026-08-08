@@ -148,17 +148,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         val written = mutableListOf<File>()
         try {
             fileListProvider.ensureAapsLogsDirExists()
-            // Reuses GeneralPatientName (same value the logs cloud export already scopes by) rather
-            // than a separate new setting — if you've already set different patient names per device to
-            // distinguish the logs cloud folder, this scopes AIV exports the same way for free, both
-            // the folder and the filename. Empty (default) falls back to the original unscoped
-            // folder/filename, unchanged.
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val dir = if (patientName.isNotEmpty()) {
-                File(fileListProvider.aapsLogsPath, patientName).also { it.mkdirs() }
-            } else {
-                fileListProvider.aapsLogsPath
-            }
+            val dir = resolveExportDir(patientName)
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val cobTByTimestamp = calculatedCobT(records)
@@ -178,6 +169,48 @@ class AutoIsfHistoryExporter @Inject constructor(
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
         return written
+    }
+
+    /** Reuses GeneralPatientName (same value the logs cloud export already scopes by) rather than a
+     *  separate new setting — if you've already set different patient names per device to distinguish
+     *  the logs cloud folder, this scopes AIV exports the same way for free, both the folder and the
+     *  filename. Empty (default) falls back to the original unscoped aapsLogs folder, unchanged. Shared
+     *  by writeExport() and buildCombinedExport() so both always agree on where files actually live. */
+    private fun resolveExportDir(patientName: String): File =
+        if (patientName.isNotEmpty()) {
+            File(fileListProvider.aapsLogsPath, patientName).also { it.mkdirs() }
+        } else {
+            fileListProvider.aapsLogsPath
+        }
+
+    /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in the export dir's own
+     *  "output" subfolder, from the 5 most recent table-export .txt files there (this dialog's own
+     *  just-written one plus the 4 automatic exports before it, assuming writeExport() already ran this
+     *  call) -- raw concatenation, oldest file first, no separators, exactly mirroring the pre-existing
+     *  external "combinedRegan.txt" this replaces (verified against that file: 5 repeated header lines =
+     *  5 files concatenated back-to-back with nothing in between). Call AFTER writeExport() so its fresh
+     *  file is naturally included as "the last one" rather than needing special-casing. Silent on
+     *  failure/no-data, matching writeExport()'s own error handling (log only, no user-facing failure). */
+    fun buildCombinedExport() {
+        try {
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val dir = resolveExportDir(patientName)
+            val tablePrefix = if (patientName.isNotEmpty()) "AutoISF_${patientName}_" else "AutoISF_"
+            val tableFiles = dir.listFiles { f ->
+                f.isFile && f.name.startsWith(tablePrefix) && f.name.endsWith(".txt") &&
+                    !f.name.startsWith("AutoISF_settings_")
+            }?.sortedByDescending { it.name } ?: return
+            if (tableFiles.isEmpty()) return
+            val last5OldestFirst = tableFiles.take(5).sortedBy { it.name }
+            val outputDir = File(dir, "output").also { it.mkdirs() }
+            val outFile = File(outputDir, "combined$patientName.txt")
+            outFile.bufferedWriter().use { writer ->
+                last5OldestFirst.forEach { writer.write(it.readText()) }
+            }
+            aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${last5OldestFirst.size} file(s)")
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "AutoISF combined export failed", e)
+        }
     }
 
     /** Same table data as the CSV, in a human-readable, column-aligned plain-text file — for
@@ -549,7 +582,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta,
      *  and heavier weights on both delta terms (0.5 vs hpStr's 0.25) -- an experiment to compare
      *  against hpStr's column side by side, NOT a replacement (hpStr is untouched above). Formula:
-     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] + COBt/15. COBt is the
+     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - COBt/12. COBt is the
      *  comparison-only interpreted total from calculatedCobT(); HP1 and dosing remain unchanged.
      *  "--" if ukfRawBgl wasn't computed for this row or the row
      *  5min back (same conditions ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
@@ -558,7 +591,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
         val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
-        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol + cobT / 15.0
+        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobT / 12.0
         return df1.format(hp2)
     }
 }

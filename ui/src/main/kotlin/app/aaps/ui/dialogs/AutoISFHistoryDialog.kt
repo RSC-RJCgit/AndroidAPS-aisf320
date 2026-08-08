@@ -110,10 +110,13 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
         // but only on first creation, not on every rotation (savedInstanceState != null on re-create),
         // so rotating doesn't spam duplicate export files. The automatic 6-hourly export runs from
-        // KeepAliveWorker via the same AutoIsfHistoryExporter.
+        // KeepAliveWorker via the same AutoIsfHistoryExporter. buildCombinedExport() runs right after,
+        // on the same background thread, so its rebuild always sees this dialog's own fresh write as
+        // "the last file" without any extra coordination.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
                 autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, allRawReadings, now)
+                autoIsfHistoryExporter.buildCombinedExport()
             }
         }
     }
