@@ -165,6 +165,7 @@ interface OverviewData {
     var noisyBgDeltaSeries: SeriesData
     // Libre 1-min delta label attached to the current Libre graph point — see L1DeltaDataPoint/Shape.L1_DELTA_POINT.
     var l1DeltaSeries: SeriesData
+    var ukfDeltaSeries: SeriesData
     // AAPS (smoothed) 1-min delta label attached to the current smoothed BG graph point — see A1DeltaDataPoint/Shape.A1_DELTA_POINT.
     var a1DeltaSeries: SeriesData
     // "hypoprediction= <value>" row, fixed near the bottom of the main graph — see HPDataPoint/Shape.HP_ROW_BOTTOM.

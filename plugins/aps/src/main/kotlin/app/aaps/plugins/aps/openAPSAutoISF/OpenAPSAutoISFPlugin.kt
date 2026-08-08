@@ -2376,8 +2376,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
-            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted) && !rescueActive) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
+            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted)) {
+                // !rescueActive gates ONLY the profile switch, same as MJrecentCurrProfAcce/NightAcce
+                // below -- acce/iobTH still apply regardless of an active rescue (previously the whole
+                // block, including these two, was wrongly gated on !rescueActive as well).
+                if (!rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")

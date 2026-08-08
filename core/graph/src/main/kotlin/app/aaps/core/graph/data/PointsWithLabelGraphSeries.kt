@@ -565,7 +565,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsExtraRowPy, mPaint)
                     }
-                } else if (value.shape == Shape.L1_DELTA_POINT || value.shape == Shape.A1_DELTA_POINT) {
+                } else if (value.shape == Shape.L1_DELTA_POINT || value.shape == Shape.A1_DELTA_POINT || value.shape == Shape.UKF_DELTA_POINT) {
                     // Libre 1-min / AAPS (smoothed) 1-min delta label attached directly to the current
                     // graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no circle
                     // (the actual BG point already has its own dot drawn by the glucose series

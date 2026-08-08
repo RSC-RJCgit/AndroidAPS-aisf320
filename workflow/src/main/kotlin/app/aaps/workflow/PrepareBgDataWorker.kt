@@ -24,6 +24,7 @@ import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
+import app.aaps.core.graph.data.UkfDeltaDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -275,6 +276,20 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
+        // UKF 5-min delta label (light blue, matches the rawBgSmoothedSeries line), attached to that
+        // line's own current point rather than the raw/noisy one — see ukfFiveMinuteDelta() above.
+        val ukfDeltaResult = ukfFiveMinuteDelta(rawReadings)
+        data.overviewData.ukfDeltaSeries =
+            if (latest != null && ukfDeltaResult != null) {
+                val (ukfDeltaMgdl, ukfNowMgdl) = ukfDeltaResult
+                val label = "U" + formatMmolDelta(ukfDeltaMgdl)
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        UkfDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(ukfNowMgdl), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
         // area — see Shape.HP_ROW_BOTTOM). HP = (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol]
         // + COB/12. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
@@ -494,6 +509,34 @@ class PrepareBgDataWorker(
         val actualMin = (newest.timestamp - prior.timestamp) / 60_000.0
         if (actualMin <= 0.0) return null
         return (newestNoise - priorNoise) / actualMin * 5.0
+    }
+
+    // UKF-smoothed 5-min delta (mg/dL, rate-normalized), plus the current UKF-smoothed value itself for
+    // label placement -- unlike libreFifteenMinuteDelta above (a raw two-point slope over raw gv.noise),
+    // this runs the SAME UKF filter as rawBgSmoothedSeries (the blue dashed line) and diffs two points on
+    // that smoothed curve, so it should always agree with which way that line visually appears to be
+    // moving. 5 minutes is fine here (vs L1's 15) since the UKF filter has already done the noise-fighting
+    // that made L1 need a wider raw window. Named to match this file's *FiveMinuteDelta siblings rather
+    // than AutoIsfHistoryExporter.kt's mmol-returning ukfDeltaMmol() -- same idea, different scope/units.
+    private fun ukfFiveMinuteDelta(readings: List<GV>): Pair<Double, Double>? {
+        if (readings.size < 2) return null
+        val newestFirst = readings.sortedByDescending { it.timestamp }
+        if (newestFirst.any { it.noise == null }) return null
+        val calibratedPoints = newestFirst.map { it.timestamp to it.noise!! }
+        val smoothedMgdl = ukfSmoothing.smoothForDisplay(calibratedPoints)
+        val newest = newestFirst.first()
+        val target = newest.timestamp - 5 * 60_000L
+        var bestIdx = -1
+        var bestDiff = Long.MAX_VALUE
+        for (i in 1 until newestFirst.size) {
+            val diff = kotlin.math.abs(newestFirst[i].timestamp - target)
+            if (diff < bestDiff) { bestDiff = diff; bestIdx = i }
+        }
+        if (bestIdx < 0 || bestDiff > 3 * 60_000L) return null
+        val actualMin = (newest.timestamp - newestFirst[bestIdx].timestamp) / 60_000.0
+        if (actualMin <= 0.0) return null
+        val deltaMgdl = (smoothedMgdl[0] - smoothedMgdl[bestIdx]) / actualMin * 5.0
+        return deltaMgdl to smoothedMgdl[0]
     }
 
     // Average gap in SECONDS between readings in the trailing 5 minutes (newest.timestamp-5min ..

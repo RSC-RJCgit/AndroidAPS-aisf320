@@ -1584,6 +1584,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // here too since it wants the main graph's own basal-column area at the bottom, not graph1's.
         graphData.addL1DeltaAnnotation()
         graphData.addA1DeltaAnnotation()
+        graphData.addUkfDeltaAnnotation()
         graphData.addHpAnnotation()
 
         // set manual x bounds to have nice steps
