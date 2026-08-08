@@ -231,9 +231,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
-        // SMB-stack ΔIOB label (Shape.SMB_STACK_DELTA_IOB) — fixed at the very top of graph2 (IOB graph),
-        // drawn at each event's own X (the stack's start time), unlike the fixed-left rows above.
-        val stackDeltaIobPy = graphTop + scaledTextSize * 0.8f
+        // SMB-stack ΔIOB label (Shape.SMB_STACK_DELTA_IOB) — anchored in the IOB/COB panel's top half,
+        // same formula/spot as NOTE_ARROWHEAD_GRAPH3's noteArrowheadPy above (0.2 of the panel's own
+        // height down from its top), not jammed against the top edge itself or down at the panel's base.
+        // Drawn at each event's own X (the stack's start time), unlike the fixed-left rows above. A 30-min
+        // group of labels stacks UPWARD from this anchor (see the render branch below), toward the top
+        // edge, using the headroom above the anchor rather than crowding into the chart content below it.
+        val stackDeltaIobPy = graphTop + graphHeight * 0.2f
         for (value in values) {
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
@@ -532,10 +536,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.SMB_STACK_DELTA_IOB) {
-                    // ΔIOB over the 10 minutes following an SMB-stack's start, fixed at the top of the
-                    // IOB/COB panel, always white, drawn at the stack's own start timestamp. Stacks
-                    // DOWNWARD in 30-min groups (stackDeltaIobStackReverseIndex) so two labels landing
-                    // close together stay readable. See PrepareTreatmentsDataWorker.kt.
+                    // ΔIOB over the 10 minutes following an SMB-stack's start, anchored in the IOB/COB
+                    // panel's top half (same spot as NOTE_ARROWHEAD_GRAPH3's arrows), always white, drawn
+                    // at the stack's own start timestamp. The most recent label in a 30-min group
+                    // (stackIndex3 == 0) sits at stackDeltaIobPy; OLDER labels in that group stack UPWARD
+                    // from there, toward the top edge. See PrepareTreatmentsDataWorker.kt.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         val stackIndex3 = stackDeltaIobStackReverseIndex[value] ?: 0
@@ -544,7 +549,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.style = Paint.Style.FILL
                         mPaint.color = Color.WHITE
                         mPaint.textAlign = Paint.Align.CENTER
-                        val labelY = stackDeltaIobPy + stackIndex3 * scaledTextSize * 0.55f
+                        val labelY = stackDeltaIobPy - stackIndex3 * scaledTextSize * 0.55f
                         canvas.drawText(value.label, endX, labelY, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
