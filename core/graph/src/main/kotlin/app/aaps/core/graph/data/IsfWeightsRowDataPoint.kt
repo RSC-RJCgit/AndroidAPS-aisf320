@@ -6,10 +6,9 @@ import android.graphics.Paint
 import app.aaps.core.interfaces.resources.ResourceHelper
 
 // Single live annotation point: "pp= acc= du=" — current ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight.
-// Now on the main graph (was graph3), positioned relative to its own yValue (current BG, display units)
-// rather than a fixed panel-height fraction (Shape.PP_ACC_DU_ROW) -- see that shape's own comment for
-// why. yValue/label are pre-formatted by the caller; yValue must be the current BG in display units or
-// the row lands at the wrong height.
+// On graph5 (Shape.PP_ACC_DU_ROW). yValue must be a FIXED value near 4.0 mmol (display units), NOT the
+// live current BG -- the caller passes a constant rather than latest.value. See that shape's own comment
+// for why (graph5's basal bars occupy negative Y, so this can't just track the current BG point either).
 class IsfWeightsRowDataPoint(
     private val timestamp: Long,
     private val yValue: Double,

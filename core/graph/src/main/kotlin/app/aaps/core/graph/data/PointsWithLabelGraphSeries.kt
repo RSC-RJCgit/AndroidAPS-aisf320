@@ -602,22 +602,20 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawText(value.label, graphLeft + 10f, nearBottomPy, mPaint)
                     }
                 } else if (value.shape == Shape.PP_ACC_DU_ROW) {
-                    // "pp= acc= du=" row, main graph only (was graph3). Unlike the other fixed rows above,
-                    // this one is positioned relative to endY -- the point's OWN real Y (current BG,
-                    // already computed generically above for every shape) -- not a fixed graphHeight
-                    // fraction. A fixed fraction (same greenLinePy/nearBottomPy formula the other rows use)
-                    // landed in the main graph's basal-column area at the bottom, the same zone
-                    // HP_ROW_BOTTOM deliberately occupies -- not the green BGL-plotted area where SMB
-                    // triangles/arrows sit. Offsetting below the CURRENT BG point instead approximates
-                    // "just above a current SMB triangle", since a triangle for a live dose would itself be
-                    // anchored near that same current BG value.
+                    // "pp= acc= du=" row, graph5 only. Positioned via endY -- the point's own real Y,
+                    // already computed generically above for every shape -- fed a FIXED value near 4.0
+                    // mmol (not the live current BG) by the caller. Deliberately real-value-based rather
+                    // than a graphHeight pixel fraction: graph5's basal bars occupy negative Y below the
+                    // glucose floor (same structure as bg_graph, contrary to an earlier assumption here
+                    // that graph5 had no basal region), so a fixed pixel fraction lands in that zone
+                    // rather than near BGL=4 -- the real value transform doesn't have that problem.
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
                         mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(value.label, graphLeft + 10f, endY + scaledTextSize * 1.2f, mPaint)
+                        canvas.drawText(value.label, graphLeft + 10f, endY - scaledTextSize * 0.3f, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.ISF_INDICES) {

@@ -1647,11 +1647,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             // "pp= acc= du=" row: moved off graph3 (which now hosts the SMB-stack-total labels) onto
             // graph5 specifically -- this is THIS graph, not bg_graph (see graph5_container in
-            // overview_graphs_layout.xml). Positioned relative to the current-BG point's own Y
-            // (Shape.PP_ACC_DU_ROW), which works regardless of panel -- but note graph5 has no SMB
-            // triangles/arrowheads of its own ("plain data lines only", per this block's own comment
-            // above), so "just above the SMB triangles" has no actual triangle here to align against;
-            // it'll sit near the current BG point instead. Flag if you also want treatment markers here.
+            // overview_graphs_layout.xml). Positioned via a real value near 4.0 mmol, not a pixel
+            // fraction of graph height and not the live current BG either -- see Shape.PP_ACC_DU_ROW's
+            // own comment (graph5's basal bars occupy negative Y, same as bg_graph).
             graph5Data.addIsfWeightsRow()
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
@@ -1788,7 +1786,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
             if (g == 1) secondGraphData.addSmbLabels()
-            // graph3 (g==2): was the "pp= acc= du=" row (now on the main graph, see addIsfWeightsRow()
+            // graph3 (g==2): was the "pp= acc= du=" row (now on graph5, see graph5Data.addIsfWeightsRow()
             // above) -- replaced with the SMB-stack-total labels (was g==0/IOB-COB panel, moved here).
             if (g == 2) secondGraphData.addSmbStackTotalLabels()
 

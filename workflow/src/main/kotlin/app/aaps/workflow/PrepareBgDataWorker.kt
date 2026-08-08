@@ -247,9 +247,13 @@ class PrepareBgDataWorker(
                 val label = "pp=${String.format(Locale.getDefault(), "%.2f", ppW)} " +
                     "acc=${String.format(Locale.getDefault(), "%.2f", acceW)} " +
                     "du=${String.format(Locale.getDefault(), "%.2f", duraW)}"
+                // Fixed near 4.0 mmol (75.6 mg/dL), NOT the live current BG -- see Shape.PP_ACC_DU_ROW's
+                // own comment for why a real value on the actual glucose scale is used here rather than a
+                // pixel fraction (graph5's basal bars occupy negative Y below the glucose floor, so a
+                // pixel-fraction-of-height approach lands in that zone instead of near BGL=4).
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(75.6), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
