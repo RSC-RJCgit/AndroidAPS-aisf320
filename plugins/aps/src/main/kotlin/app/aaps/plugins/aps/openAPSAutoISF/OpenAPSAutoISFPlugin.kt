@@ -572,6 +572,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .sumOf { it.amount }
     }
 
+    // Total UNITS of SMB delivered in the last 30 minutes -- same shape as smbSum10Min(), wider window.
+    // Used as OvernightDuraRescue's "no active stacking" gate: a rescue is meant for a plateaued high
+    // with nothing currently being delivered for it, not for topping up a burst already in progress.
+    private fun smbSum30Min(): Double {
+        val now = dateUtil.now()
+        return persistenceLayer.getBolusesFromTimeToTime(now - 30 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+            .sumOf { it.amount }
+    }
+
     // Count of SMBs delivered in the last 20 minutes. Deliberately a much longer window than
     // smbCount5Min() -- used by BolusGivenMildFailsafe to detect genuine delivery silence (sensor
     // dropout, pod disconnect, etc.), not just the normal gap between doses that a 5-min window
@@ -837,6 +847,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, rh.gs(R.string.openapsma_no_glucose_data))
             return
         }
+
+        // True while an OvernightDuraRescue temporary Standard-profile switch is still within its 60-min
+        // window. OffHighProf/MJrecentCurrProfAcce/NightAcce's switch-to-Low actions check this and yield
+        // rather than fight the rescue back down to Low mid-window. Computed once per cycle here since all
+        // four sites need the same read.
+        val rescueActive = preferences.get(LongKey.ApsAutoIsfOvernightRescueUntil) > dateUtil.now()
 
         val inputConstraints = ConstraintObject(0.0, aapsLogger) // fake. only for collecting all results
 
@@ -2271,6 +2287,67 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- OvernightDuraRescue: deep-night duraISF-led correction when Low profile is under-treating a
+        // genuine plateaued high. Narrower, one-shot counterpart to what BasalUp used to do before it was
+        // blocked 22:00-06:00 this session -- NOT a re-opening of that gap: time-boxed to 60 minutes via
+        // switchProfileIfNeeded's own duration (auto-reverts, no extra revert logic needed), gated on
+        // duraISF genuinely dominating the other AutoISF adaptation factors, no live stacking, no recent
+        // low (excludes rebound-highs), and BOTH short- and long-avg delta sitting flat rather than still
+        // moving either way. NightIobCeiling (00:00-06:00) and the cumulative 10-min SMB cap (00:30-04:00,
+        // 0.6U) both key on time/IOB value, not profile name, so they stay fully in force through the
+        // rescue window by design -- this only shifts the profile-derived sens anchor and basal, it does
+        // not touch the AutoISF acce/bg/pp/dura adaptation factors themselves, which are computed purely
+        // from BG shape and are identical regardless of which profile is active.
+        //
+        // VERIFIED: autoISF(profile, graphActivity, iobData.activity*100) runs at line ~953, well before
+        // this block, so autoIsfValues.duraIsf/.finalIsf/.acceIsf/.bgIsf/.ppIsf are THIS cycle's numbers,
+        // not stale from the previous loop. (Residual, unconfirmed: getIsfMgdl() -> calculateVariableIsf()
+        // -> autoISF(profile) is a second write path into the same autoIsfValues object, callable by other
+        // code outside invoke()'s own timing with default currentActivity=0/smbActivity=0 -- see the
+        // existing tddRatio comment a few hundred lines down in autoISF() acknowledging this same class of
+        // hazard for one field. Not ruled out here for duraIsf/finalIsf specifically; would need AAPS's
+        // threading model traced further to close.)
+        //
+        // 2.5 thresholds checked against real data, not assumed: actual device settings put
+        // autoISF_max=2.6, autoISF_min=0.3 (AutoISF_settings_20260725_102523.txt), and 695 overnight rows
+        // across 6 recent AIV exports give Final/dura medians of 1.36/1.42, p90 of 2.6/2.84, p95 of
+        // 2.81/3.17 (dura is unclamped pre-liftISF and finalISF can exceed autoISF_max via the
+        // sensitivityRatio multiplier in withinISFlimits' exercise/resistance/step branches, which is why
+        // Final's observed max of 3.12 exceeds the raw 2.6 config ceiling). So 2.5 sits at the overnight
+        // p90-p95 mark for both -- reachable, not dead code, and roughly the same rarity band the 10-min
+        // SMB cap was deliberately tuned to. Landed there by coincidence of a round number, not by design,
+        // but confirmed sane rather than left as a guess.
+        run {
+            if (!readyToRun("OvernightDuraRescue", 60)) return@run
+            if (rescueActive) return@run   // don't stack a second rescue on an active one
+
+            val g   = glucoseStatus.glucose
+            val sd  = glucoseStatus.shortAvgDelta   // mg/dL
+            val ld  = glucoseStatus.longAvgDelta    // mg/dL
+            val onLowProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
+
+            val duraIsf  = autoIsfValues.duraIsf
+            val finalIsf = autoIsfValues.finalIsf
+            val duraDominant = duraIsf > 2.5 && finalIsf > 2.5 && duraIsf > finalIsf
+                && duraIsf >= autoIsfValues.acceIsf && duraIsf >= autoIsfValues.bgIsf && duraIsf >= autoIsfValues.ppIsf
+
+            val noRecentLow = !checkAutomationState("LowBG", "50recent")
+            val noStacking  = smbSum30Min() <= 0.0
+
+            val rescueOk = isTimeBetween(2, 0, 4, 0) && onLowProfile && g > 108.1 /* 6.0 mmol */
+                && duraDominant && noStacking && noRecentLow
+                && ld > -1.8 && ld <= 1.8   /* -0.1 < LDelta <= 0.1 mmol */
+                && sd > -1.8 && sd <= 1.8   /* -0.1 < SDelta <= 0.1 mmol */
+
+            if (rescueOk) {
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 60)
+                preferences.put(LongKey.ApsAutoIsfOvernightRescueUntil, dateUtil.now() + T.mins(60).msecs())
+                sendSms("OvernightDuraRescue: g=${round(g / 18.0182, 1)} duraISF=${round(duraIsf, 2)} finalISF=${round(finalIsf, 2)} -> Standard 60min")
+                addCarePortalNote("DuraRsc")
+                markRun("OvernightDuraRescue")
+            }
+        }
+
         // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
         // Fires when NOT on the Low profile (i.e. on a named high/steroid profile), Steroids Off, no TT.
         // 5-min floor throttle added (see readyToRun() usage note).
@@ -2299,7 +2376,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
-            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted)) {
+            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted) && !rescueActive) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
@@ -3321,7 +3398,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
                 // exists for is preserved whether or not a low is predicted.
                 val hpMj = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if ((isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 sendSms("MJ recent CurrProf Acce HP=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
@@ -3828,7 +3905,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
                 val hpNight = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                if (isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline

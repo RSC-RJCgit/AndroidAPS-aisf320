@@ -41,5 +41,10 @@ enum class LongKey(
     // revert to baseline, on the reasoning that the compensation is calibrated against genuine high-BGL
     // Libre-vs-reference divergence, which this checks is actually still occurring recently.
     ApsAutoIsfLibreOver12Ts("autoisf_libre_over_12_ts", 0, defaultedBySM = true),
+    // Internal-only: timestamp (ms) until which OvernightDuraRescue's temporary Standard-profile switch
+    // should be respected -- OffHighProf/MJrecentCurrProfAcce/NightAcce's switch-to-Low actions check this
+    // and yield while it's in the future. 0/past means no rescue active; no explicit clear needed, it just
+    // stops mattering once passed.
+    ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0, defaultedBySM = true),
 
 }
