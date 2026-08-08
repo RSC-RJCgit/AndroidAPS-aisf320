@@ -18,7 +18,6 @@ import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.HPDataPoint
 import app.aaps.core.graph.data.IsfIndicesDataPoint
 import app.aaps.core.graph.data.IsfWeightsRowDataPoint
-import app.aaps.core.graph.data.L1DeltaDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
@@ -198,7 +197,6 @@ class PrepareBgDataWorker(
         val libreDelta = libreOneMinuteDelta(data.overviewData.bgReadingsArray)
         val aapsDelta5 = aapsFiveMinuteDelta(data.overviewData.bgReadingsArray)
         val libreDelta5 = libreFiveMinuteDelta(data.overviewData.bgReadingsArray)
-        val libreDelta15 = libreFifteenMinuteDelta(data.overviewData.bgReadingsArray)
         // Fixed 2h lookback independent of the graph's own display range, so Step30max always has its full window.
         val stepsWindowFrom = toTime - T.hours(2).msecs()
         val rawStepsCountList = persistenceLayer.getStepsCountFromTimeToTime(stepsWindowFrom, toTime)
@@ -252,26 +250,6 @@ class PrepareBgDataWorker(
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
-                    )
-                )
-            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
-
-        // Libre 15-min delta label (green), attached directly to the current Libre graph point (same
-        // x/timestamp and y/BG value as the actual plotted point) rather than a fixed row. Was the raw
-        // Libre 1-min delta (libreDelta), then the 5-min one (libreDelta5) — now the 15-min one
-        // (libreDelta15); the smoothed AAPS delta below (a1DeltaSeries) intentionally stays at its own
-        // 1-minute value, untouched.
-        data.overviewData.l1DeltaSeries =
-            if (latest != null && noisyBg != null && libreDelta15 != null) {
-                // Sign repeated 4 times at the end too (e.g. "+0.25++++") for visibility — the leading
-                // sign alone is easy to miss on a small rotated graph label. "L" right before the value
-                // identifies this as the Libre-derived delta (vs the 6-underscore+"A" offset kept for
-                // AAPS below, so the two rotated labels don't land on top of each other).
-                val formatted = formatMmolDelta(libreDelta15)
-                val label = "L" + formatted + formatted.first().toString().repeat(4)
-                PointsWithLabelGraphSeries(
-                    arrayOf<DataPointWithLabelInterface>(
-                        L1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -495,28 +473,14 @@ class PrepareBgDataWorker(
         return newestNoise - priorNoise
     }
 
-    // Same as libreFiveMinuteDelta above, just a 15-minute window instead of 5.
-    // Rate-normalized to a 5-minute-equivalent (matches AutoIsfHistoryExporter.kt's own rawDeltaStr()
-    // convention for minutesBack>5: the 15-min window is used only for a more stable rate estimate, not
-    // returned as a raw 15-min magnitude -- returning the raw magnitude here previously made this label
-    // read ~3x too high compared to the AIV table's own "15" column for the same moment.
-    private fun libreFifteenMinuteDelta(readings: List<GV>): Double? {
-        val newest = readings.firstOrNull() ?: return null
-        val newestNoise = newest.noise ?: return null
-        val target = newest.timestamp - 15 * 60_000L
-        val prior = readings.filter { it.timestamp <= target && it.noise != null }.maxByOrNull { it.timestamp } ?: return null
-        val priorNoise = prior.noise ?: return null
-        val actualMin = (newest.timestamp - prior.timestamp) / 60_000.0
-        if (actualMin <= 0.0) return null
-        return (newestNoise - priorNoise) / actualMin * 5.0
-    }
-
     // UKF-smoothed 5-min delta (mg/dL, rate-normalized), plus the current UKF-smoothed value itself for
-    // label placement -- unlike libreFifteenMinuteDelta above (a raw two-point slope over raw gv.noise),
-    // this runs the SAME UKF filter as rawBgSmoothedSeries (the blue dashed line) and diffs two points on
+    // label placement -- unlike the old raw-Libre 15-min delta this replaced (a raw two-point slope over
+    // raw gv.noise, since removed), this runs the SAME UKF filter as rawBgSmoothedSeries (the blue dashed
+    // line) and diffs two points on
     // that smoothed curve, so it should always agree with which way that line visually appears to be
-    // moving. 5 minutes is fine here (vs L1's 15) since the UKF filter has already done the noise-fighting
-    // that made L1 need a wider raw window. Named to match this file's *FiveMinuteDelta siblings rather
+    // moving. 5 minutes is fine here (vs the removed raw label's 15) since the UKF filter has already
+    // done the noise-fighting that made the raw version need a wider window. Named to match this file's
+    // *FiveMinuteDelta siblings rather
     // than AutoIsfHistoryExporter.kt's mmol-returning ukfDeltaMmol() -- same idea, different scope/units.
     private fun ukfFiveMinuteDelta(readings: List<GV>): Pair<Double, Double>? {
         if (readings.size < 2) return null

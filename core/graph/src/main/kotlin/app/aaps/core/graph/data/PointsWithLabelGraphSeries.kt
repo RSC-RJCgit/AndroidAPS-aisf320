@@ -579,13 +579,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, stepsExtraRowPy, mPaint)
                     }
-                } else if (value.shape == Shape.L1_DELTA_POINT || value.shape == Shape.A1_DELTA_POINT || value.shape == Shape.UKF_DELTA_POINT) {
-                    // Libre 1-min / AAPS (smoothed) 1-min delta label attached directly to the current
-                    // graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no circle
-                    // (the actual BG point already has its own dot drawn by the glucose series
-                    // underneath). L1 now matches A1's own size (both 0.85f). Already bold via
-                    // drawLabel45Right's isFakeBoldText.
-                    val sizeMultiplier = 0.85f
+                } else if (value.shape == Shape.A1_DELTA_POINT || value.shape == Shape.UKF_DELTA_POINT) {
+                    // AAPS (smoothed) 1-min delta / UKF 5-min delta labels, attached directly to the
+                    // current graph point — same 45°-rotated style as GENERAL's drawLabel45Right, but no
+                    // circle (the actual BG point already has its own dot drawn by the glucose series
+                    // underneath). Already bold via drawLabel45Right's isFakeBoldText. Was 0.85f (matched
+                    // the old raw-Libre label, since removed) -- both smaller now.
+                    val sizeMultiplier = 0.7f
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * sizeMultiplier)
                 } else if (value.shape == Shape.HP_ROW_BOTTOM) {
                     // "hypoprediction= <value>" row, fixed at nearBottomPy — same static-position
@@ -600,6 +600,25 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(value.label, graphLeft + 10f, nearBottomPy, mPaint)
+                    }
+                } else if (value.shape == Shape.PP_ACC_DU_ROW) {
+                    // "pp= acc= du=" row, main graph only (was graph3). Unlike the other fixed rows above,
+                    // this one is positioned relative to endY -- the point's OWN real Y (current BG,
+                    // already computed generically above for every shape) -- not a fixed graphHeight
+                    // fraction. A fixed fraction (same greenLinePy/nearBottomPy formula the other rows use)
+                    // landed in the main graph's basal-column area at the bottom, the same zone
+                    // HP_ROW_BOTTOM deliberately occupies -- not the green BGL-plotted area where SMB
+                    // triangles/arrows sit. Offsetting below the CURRENT BG point instead approximates
+                    // "just above a current SMB triangle", since a triangle for a live dose would itself be
+                    // anchored near that same current BG value.
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(value.label, graphLeft + 10f, endY + scaledTextSize * 1.2f, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.ISF_INDICES) {
                     // "f= ac= bg= pp= du= smb=" row, one color per field (matching

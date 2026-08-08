@@ -1582,13 +1582,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // must be on THIS graph (the real BG graph, same y-scale as the plotted points), not a secondary
         // graph panel. The hypo-prediction row is fixed-position (ignores y-scale entirely), but stays
         // here too since it wants the main graph's own basal-column area at the bottom, not graph1's.
-        graphData.addL1DeltaAnnotation()
+        // Replaces the old raw-Libre 15-min delta label (Shape.L1_DELTA_POINT, removed) -- that one could
+        // briefly show the "old" direction near an inflection since it was a raw two-point slope; this
+        // tracks the same UKF-smoothed curve drawn as the blue dashed line instead.
         graphData.addA1DeltaAnnotation()
         graphData.addUkfDeltaAnnotation()
         graphData.addHpAnnotation()
-        // "pp= acc= du=" row: moved off graph3 (now hosting the SMB-stack-total labels below) onto the
-        // main graph's own bottom area, near the SMB triangles/arrowheads there.
-        graphData.addIsfWeightsRow()
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
@@ -1646,6 +1645,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 graph5Data.addRawBgSmoothed(false)
             }
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
+            // "pp= acc= du=" row: moved off graph3 (which now hosts the SMB-stack-total labels) onto
+            // graph5 specifically -- this is THIS graph, not bg_graph (see graph5_container in
+            // overview_graphs_layout.xml). Positioned relative to the current-BG point's own Y
+            // (Shape.PP_ACC_DU_ROW), which works regardless of panel -- but note graph5 has no SMB
+            // triangles/arrowheads of its own ("plain data lines only", per this block's own comment
+            // above), so "just above the SMB triangles" has no actual triangle here to align against;
+            // it'll sit near the current BG point instead. Flag if you also want treatment markers here.
+            graph5Data.addIsfWeightsRow()
             graph5Data.addTargetLine()
             graph5Data.addRunningModes()
             graph5Data.addNowLine(dateUtil.now())

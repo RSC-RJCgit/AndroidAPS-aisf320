@@ -8,8 +8,9 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 // Single live annotation point: UKF-smoothed 5-minute delta, attached directly to the current
 // UKF-smoothed graph point (at its actual x/y position) — the same curve drawn as the blue dashed
 // rawBgSmoothedSeries line, so this label should always agree with which way that line is visually
-// moving, unlike L1DeltaDataPoint's raw two-point slope which can briefly show the old direction near
-// an inflection. yValue must be the current UKF-smoothed value (display units), not the raw/AAPS one,
+// moving, unlike the raw-Libre delta label this replaced, which was a raw two-point slope that could
+// briefly show the old direction near an inflection. yValue must be the current UKF-smoothed value
+// (display units), not the raw/AAPS one,
 // or the label lands away from the line it's meant to sit on.
 class UkfDeltaDataPoint(
     private val timestamp: Long,

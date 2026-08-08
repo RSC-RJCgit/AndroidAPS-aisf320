@@ -163,10 +163,6 @@ class GraphData @Inject constructor(
         addSeries(overviewData.isfWeightsRowSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
-    fun addL1DeltaAnnotation() {
-        addSeries(overviewData.l1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-    }
-
     fun addA1DeltaAnnotation() {
         addSeries(overviewData.a1DeltaSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }

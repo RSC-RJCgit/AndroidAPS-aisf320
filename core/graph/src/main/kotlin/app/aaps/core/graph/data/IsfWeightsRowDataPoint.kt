@@ -5,10 +5,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import app.aaps.core.interfaces.resources.ResourceHelper
 
-// Single live annotation point: "pp= acc= du=" — current ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight,
-// fixed near the bottom of graph3, same style/mechanism as NoisyBgDeltaDataPoint's "L=/A1=.../MJ" row on
-// graph1 (Shape.GENERAL_WITH_DURATION_OFFSET, drawn at greenLinePy on whichever graph this series is
-// added to). yValue/label are pre-formatted by the caller.
+// Single live annotation point: "pp= acc= du=" — current ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight.
+// Now on the main graph (was graph3), positioned relative to its own yValue (current BG, display units)
+// rather than a fixed panel-height fraction (Shape.PP_ACC_DU_ROW) -- see that shape's own comment for
+// why. yValue/label are pre-formatted by the caller; yValue must be the current BG in display units or
+// the row lands at the wrong height.
 class IsfWeightsRowDataPoint(
     private val timestamp: Long,
     private val yValue: Double,
@@ -20,8 +21,8 @@ class IsfWeightsRowDataPoint(
     override fun getY(): Double = yValue
     override fun setY(y: Double) {}
 
-    override val duration = 60_000L // 1 minute; only needs to be > 0 to select a "with duration" shape
-    override val shape = Shape.GENERAL_WITH_DURATION_OFFSET
+    override val duration = 0L
+    override val shape = Shape.PP_ACC_DU_ROW
     override val size get() = if (rh.gb(app.aaps.core.ui.R.bool.isTablet)) 12.0f else 10.0f
     override val paintStyle: Paint.Style = Paint.Style.FILL
     override fun color(context: Context?): Int = Color.WHITE
