@@ -33,6 +33,7 @@ data class AutoIsfValues(
     var smbDelivered: Double = 0.0,
     var delta: Double = 0.0,
     var shortAvgDelta: Double = 0.0,
+    var longAvgDelta: Double = 0.0,
     var bgAcceleration: Double = 0.0,
     var smbDeliveryRatio: Double = 0.0,
     var iob: Double = 0.0,

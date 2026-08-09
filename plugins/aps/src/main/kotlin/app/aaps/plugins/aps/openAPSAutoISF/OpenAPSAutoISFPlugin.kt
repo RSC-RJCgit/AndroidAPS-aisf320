@@ -1064,6 +1064,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             autoIsfValues.glucose = it.glucose
             autoIsfValues.delta = it.delta
             autoIsfValues.shortAvgDelta = it.shortAvgDelta
+            autoIsfValues.longAvgDelta = it.longAvgDelta
             autoIsfValues.bgAcceleration = it.bgAcceleration
         }
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT

@@ -280,7 +280,17 @@ open class DatabaseModule {
         }
     }
 
+    // ~17.5-42.5-min-ago average delta (glucose_status.longAvgDelta / DetermineBasalAutoISF.kt's "LDelta"),
+    // persisted the same way shortAvgDelta already is -- see AIV.kt / OpenAPSAutoISFPlugin.kt's
+    // autoIsfValues.longAvgDelta assignment and NSDeviceStatusHandler.kt's lDeltaRegex reconstruction.
+    internal val migration39to40 = object : Migration(39, 40) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `${TABLE_AUTOISF_VALUES}` ADD COLUMN `longAvgDelta` DOUBLE NOT NULL DEFAULT 0.0")
+            dropCustomIndexes(db)
+        }
+    }
+
     /** List of all migrations for easy reply in tests. */
     @VisibleForTesting
-    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37, migration37to38, migration38to39)
+    internal val migrations = arrayOf(migration20to21, migration21to22, migration22to23, migration23to24, migration24to25, migration25to26, migration26to27, migration27to28, migration28to29, migration29to30, migration30to31, migration31to32, migration32to33, migration33to34, migration34to35, migration35to36, migration36to37, migration37to38, migration38to39, migration39to40)
 }

@@ -88,7 +88,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -116,6 +116,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.bgAcceleration),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
+            df2.format(r.longAvgDelta / MGDL_TO_MMOL),
             rawBglStr(r.timestamp, rawReadings),
             rawDeltaStr(r.timestamp, rawReadings, 1),
             rawDeltaStr(r.timestamp, rawReadings, 5),

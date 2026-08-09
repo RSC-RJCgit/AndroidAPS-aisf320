@@ -21,6 +21,10 @@ data class AIV(
     var smbDelivered: Double = 0.0,
     var delta: Double = 0.0,
     var shortAvgDelta: Double = 0.0,
+    /** ~17.5-42.5-min-ago average delta (glucose_status.longAvgDelta / DetermineBasalAutoISF.kt's own
+     *  "LDelta"), mg/dL/5min -- persisted the same way as shortAvgDelta so the AIV export table can
+     *  carry the historical LDelta column exports need for hypo-prediction-formula analysis. */
+    var longAvgDelta: Double = 0.0,
     var bgAcceleration: Double = 0.0,
     var smbDeliveryRatio: Double = 0.0,
     var iob: Double = 0.0,
@@ -58,6 +62,7 @@ data class AIV(
                 iobThEffective == other.iobThEffective &&
                 delta == other.delta &&
                 shortAvgDelta == other.shortAvgDelta &&
+                longAvgDelta == other.longAvgDelta &&
                 glucose == other.glucose &&
                 insulinReq == other.insulinReq &&
                 tbrRate == other.tbrRate &&

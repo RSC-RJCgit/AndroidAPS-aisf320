@@ -98,6 +98,7 @@ class NSDeviceStatusHandler @Inject constructor(
     private val bgAcceRegex = Regex("""\bbg_acce:\s*(-?[0-9.]+)""")
     private val deltaRegex = Regex("""\bDelta:\s*(-?[0-9.]+)""")
     private val sDeltaRegex = Regex("""\bSDelta:\s*(-?[0-9.]+)""")
+    private val lDeltaRegex = Regex("""\bLDelta:\s*(-?[0-9.]+)""")
     private val smbDeliveryRatioRegex = Regex("""SMB delivery ratio:\s*([0-9.]+)""")
     private val iobThEffectiveRegex = Regex("""iobThEffectiveU:\s*([0-9.]+)""")
     private val acceIsfWeightRegex = Regex("""AcceIsfWeight:\s*([0-9.]+)""")
@@ -212,6 +213,7 @@ class NSDeviceStatusHandler @Inject constructor(
                                 // this collapses to near-zero once the table divides by ~18 again.
                                 delta          = firstMatch(deltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
                                 shortAvgDelta  = firstMatch(sDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
+                                longAvgDelta   = firstMatch(lDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
                                 bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
                                 smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
                                 iob            = rt.IOB ?: 0.0,
