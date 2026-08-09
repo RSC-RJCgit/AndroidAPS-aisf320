@@ -173,6 +173,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     override var lastAPSResult: APSResult? = null
     private var consoleError = mutableListOf<String>()
     private var consoleLog = mutableListOf<String>()
+    // Persists across loop cycles (plugin is a singleton) so the "dura_ISF IOB taper" Script Debug
+    // line always shows *something* -- last engagement time/IOB/factor if it's ever fired, "never" if
+    // not -- rather than only appearing on the cycle it actually engages and being silent/absent the
+    // rest of the time.
+    private var lastDuraTaperTimestamp: Long = 0L
+    private var lastDuraTaperInfo: String = ""
     val autoIsfVersion = "3.2.0"
     val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
     private val autoISF_max; get() = preferences.get(DoubleKey.ApsAutoIsfMax)
@@ -4845,7 +4851,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (iobTaperFactor < 1.0) {
                     val beforeTaper = duraBoost
                     duraBoost *= iobTaperFactor
-                    consoleError.add("dura_ISF IOB taper: IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 3)} -> ${round(duraBoost, 3)})")
+                    lastDuraTaperTimestamp = dateUtil.now()
+                    lastDuraTaperInfo = "IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 3)} -> ${round(duraBoost, 3)})"
+                    consoleError.add("dura_ISF IOB taper: $lastDuraTaperInfo")
                 }
                 dura_ISF += duraBoost
                 sens_modified = true
@@ -4853,6 +4861,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
         autoIsfValues.duraIsf = dura_ISF
+        // Unconditional (every cycle, not just cycles where the taper fires) so Script Debug always has
+        // *something* for the taper rather than only ever showing it live on the exact cycle it engaged --
+        // see lastDuraTaperTimestamp/-Info's own declaration comment for why.
+        consoleError.add(
+            if (lastDuraTaperTimestamp > 0L) "dura_ISF taper last engaged: ${dateUtil.timeString(lastDuraTaperTimestamp)} (${dateUtil.minAgoShort(lastDuraTaperTimestamp)}) -- $lastDuraTaperInfo"
+            else "dura_ISF taper: not engaged since app start"
+        )
 
         if (sens_modified) {
             liftISF = max(dura_ISF, max(bg_ISF, max(acce_ISF, pp_ISF)))
