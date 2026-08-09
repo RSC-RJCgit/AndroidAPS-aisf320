@@ -123,6 +123,9 @@ interface OverviewData {
     var iobSeries: SeriesData
     var absIobSeries: SeriesData
     var iobPredictions1Series: SeriesData
+    // Same "only the genuinely dominant peaks" labeling as activityPeakSeries -- see
+    // PrepareIobAutosensGraphDataWorker.kt's iobPeakIndices computation for the exact rule.
+    var iobPeakSeries: SeriesData
 
     var maxBGIValue: Double
     val bgiScale: Scale

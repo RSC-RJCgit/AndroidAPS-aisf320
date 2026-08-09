@@ -575,6 +575,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Total UNITS of SMB delivered in the last 30 minutes -- same shape as smbSum10Min(), wider window.
     // Used as OvernightDuraRescue's "no active stacking" gate: a rescue is meant for a plateaued high
     // with nothing currently being delivered for it, not for topping up a burst already in progress.
+    // Also feeds determine_basal()'s own late-FastRise trim and 30-min cumulative SMB cap (see
+    // DetermineBasalAutoISF.kt) -- reverted to SMB-only (was briefly changed to include normal boluses
+    // too, which turned out to affect that always-on dosing math, not what was actually being asked for
+    // -- see the SMB_STACK_TOTAL yellow-label reconstruction in PrepareTreatmentsDataWorker.kt instead).
     private fun smbSum30Min(): Double {
         val now = dateUtil.now()
         return persistenceLayer.getBolusesFromTimeToTime(now - 30 * 60_000L, now, ascending = false)

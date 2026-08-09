@@ -191,25 +191,37 @@ class PrepareTreatmentsDataWorker(
             }
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
 
-        // Reconstructed SMB-stack starts + the TOTAL SMB units delivered in the 10 minutes following each
-        // one, drawn at the base of graph3 (replacing the old "pp= acc= du=" row, now moved to the main
-        // graph), stacking upward, small yellow text matching graph4's HHmm time labels
-        // (Shape.SMB_STACK_TOTAL). Mirrors the LIVE stacking state
-        // machine exactly (ApsAutoIsfSmbStackStart in DetermineBasalAutoISF.kt: avg gap <=70s over the
-        // trailing 5 min of SMBs, new stack only when none is active or the previous one's 10-min window
-        // has elapsed) rather than a fresh definition — same avg-gap formula as
-        // AutoIsfHistoryExporter.smbInterval5SecStr(). Historical-only: there is no persisted history of
-        // past ApsAutoIsfSmbStackStart values (it's a single live scalar, overwritten each cycle), so
-        // stack starts are re-derived here from the SMB dose timestamps themselves.
+        // Reconstructed stack starts + the TOTAL units delivered in the 10 minutes following each one
+        // (SMBs plus any contained normal/manual bolus -- see allAmountsForStack below), drawn at the base
+        // of graph3 (replacing the old "pp= acc= du=" row, now moved to the main graph), stacking upward,
+        // small yellow text matching graph4's HHmm time labels (Shape.SMB_STACK_TOTAL).
         //
-        // Was ΔIOB over the window (nearest-AutoIsfValues-record lookup, with a known boundary-precision
-        // caveat); now a direct sum of SMB amounts actually timestamped inside [start, start+10min] --
-        // simpler, and no longer approximate at the boundary the way the nearest-record match was. Also
-        // no longer walks aivList to find cycle timestamps -- the SMB dose timestamps themselves are the
-        // only instants the trailing-gap value can change at, so walking those directly is equivalent and
-        // drops the aivList dependency for this block entirely.
+        // Two independent ways a window can OPEN, evaluated together in one chronological pass below:
+        // (1) SMB rapid-fire, exactly mirroring the LIVE stacking state machine (ApsAutoIsfSmbStackStart
+        //     in DetermineBasalAutoISF.kt: avg gap <=70s over the trailing 5 min of SMBs) -- same avg-gap
+        //     formula as AutoIsfHistoryExporter.smbInterval5SecStr(). This is the only trigger the live
+        //     state machine itself has, so it's also the only one that can RESET an active window early
+        //     (see the "gap genuinely broke" branch below) -- a normal bolus mid-window never does that,
+        //     it just gets swept into whichever window (if any) already covers it.
+        // (2) A normal (manual/wizard) bolus ON ITS OWN, unconditionally -- no gap/rapid-fire condition
+        //     needed, since a single bolus is already a significant, deliberate event by itself. Only
+        //     gated by the same "no active window, or the previous one's 10-min has elapsed" rule as (1).
+        // Both share one reconstructedStackStart/window state so overlapping/adjacent triggers from either
+        // source don't produce double-counted or double-labeled windows.
+        //
+        // Historical-only: there is no persisted history of past ApsAutoIsfSmbStackStart values (it's a
+        // single live scalar, overwritten each cycle), so stack starts are re-derived here from the dose
+        // timestamps themselves. Was ΔIOB over the window (nearest-AutoIsfValues-record lookup, with a
+        // known boundary-precision caveat); now a direct sum of amounts actually timestamped inside
+        // [start, start+10min] -- simpler, and no longer approximate at the boundary the way the
+        // nearest-record match was.
         val smbAmountsForStack = bolusDataPoints.filter { it.data.type == BS.Type.SMB }.map { it.x.toLong() to it.data.amount }
         val smbTimestampsForStack = smbAmountsForStack.map { it.first }.sorted()
+        val smbTimestampSet = smbTimestampsForStack.toSet()
+        // bolusDataPoints is already NORMAL-or-SMB only (see its own filter above). Distinct+sorted since
+        // an SMB and a normal bolus coinciding at the exact same millisecond would otherwise appear twice.
+        val allAmountsForStack = bolusDataPoints.map { it.x.toLong() to it.data.amount }
+        val allTimestampsForStack = allAmountsForStack.map { it.first }.distinct().sorted()
         fun avgGapTrailing5MinSec(at: Long): Double? {
             val windowStart = at - 5 * 60_000L
             val inWindow = smbTimestampsForStack.filter { it in windowStart..at }
@@ -219,13 +231,17 @@ class PrepareTreatmentsDataWorker(
         }
         val smbStackTotalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
         var reconstructedStackStart = 0L
-        smbTimestampsForStack.forEach { ts ->
-            val gap = avgGapTrailing5MinSec(ts)
-            if (gap != null && gap <= 70.0) {
+        allTimestampsForStack.forEach { ts ->
+            val isSmb = ts in smbTimestampSet
+            // Trigger (1) above: SMB needs its own trailing-gap condition. Trigger (2): a normal bolus is
+            // always eligible to open its own window.
+            val smbGapOk = isSmb && (avgGapTrailing5MinSec(ts)?.let { it <= 70.0 } == true)
+            val eligibleToOpen = smbGapOk || !isSmb
+            if (eligibleToOpen) {
                 if (reconstructedStackStart == 0L || ts - reconstructedStackStart >= 10 * 60_000L) {
                     reconstructedStackStart = ts
                     val windowEnd = reconstructedStackStart + 10 * 60_000L
-                    val smbTotal = smbAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
+                    val smbTotal = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
                     val stackStartTs = reconstructedStackStart
                     val labelText = String.format("%.2f", smbTotal)
                     smbStackTotalLabels.add(object : DataPointWithLabelInterface {
@@ -242,7 +258,12 @@ class PrepareTreatmentsDataWorker(
                         override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
                     })
                 }
+                // else: falls within an already-active window (from either trigger source) -- already
+                // swept into that window's total via the filter at open time, nothing further to do.
             } else if (reconstructedStackStart != 0L) {
+                // eligibleToOpen was false, which (given !isSmb is always eligible) only happens for an
+                // SMB whose own trailing gap broke 70s -- the rapid-fire genuinely stopped, so clear the
+                // marker rather than letting a later resumption silently extend the old window.
                 reconstructedStackStart = 0L
             }
         }

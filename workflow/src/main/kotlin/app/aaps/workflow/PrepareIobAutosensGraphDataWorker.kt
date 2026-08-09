@@ -132,6 +132,23 @@ class PrepareIobAutosensGraphDataWorker(
         override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.activityColor)
     }
 
+    class IobPeakDataPoint(
+        private val x: Double,
+        private val y: Double,
+        private val labelText: String,
+        private val rh: ResourceHelper
+    ) : DataPointWithLabelInterface {
+        override fun getX(): Double = x
+        override fun getY(): Double = y
+        override fun setY(y: Double) {}
+        override val label: String = labelText
+        override val duration = 0L
+        override val shape = Shape.IOB_PEAK
+        override val size = 0f
+        override val paintStyle: Paint.Style = Paint.Style.FILL
+        override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.iobColor)
+    }
+
     override suspend fun doWorkAndLog(): Result {
         val data = dataWorkerStorage.pickupObject(inputData.getLong(DataWorkerStorage.STORE_KEY, -1)) as PrepareIobAutosensData?
             ?: return Result.failure(workDataOf("Error" to "missing input data"))
@@ -141,6 +158,10 @@ class PrepareIobAutosensGraphDataWorker(
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 0, null))
         val iobArray: MutableList<ScaledDataPoint> = ArrayList()
         val absIobArray: MutableList<ScaledDataPoint> = ArrayList()
+        // Raw (unscaled) IOB value, one per iobArray entry in the same order -- same reasoning as
+        // rawActPoints below (ScaledDataPoint.getY() applies iobScale's transform, so peak detection
+        // needs the value it was actually built from, not a read-back-through-scale copy).
+        val rawIobPoints: MutableList<Double> = ArrayList()
         data.overviewData.maxIobValueFound = Double.MIN_VALUE
         var lastIob = 0.0
         var absLastIob = 0.0
@@ -287,8 +308,12 @@ class PrepareIobAutosensGraphDataWorker(
             val absIob = IobTotal.combine(iob, baseBasalIob)
             val autosensData = adsData.getAutosensDataAtTime(time)
             if (abs(lastIob - iob.iob) > 0.02) {
-                if (abs(lastIob - iob.iob) > 0.2) iobArray.add(ScaledDataPoint(time, lastIob, data.overviewData.iobScale))
+                if (abs(lastIob - iob.iob) > 0.2) {
+                    iobArray.add(ScaledDataPoint(time, lastIob, data.overviewData.iobScale))
+                    rawIobPoints.add(lastIob)
+                }
                 iobArray.add(ScaledDataPoint(time, iob.iob, data.overviewData.iobScale))
+                rawIobPoints.add(iob.iob)
                 data.overviewData.maxIobValueFound = maxOf(data.overviewData.maxIobValueFound, abs(iob.iob))
                 lastIob = iob.iob
             }
@@ -450,6 +475,46 @@ class PrepareIobAutosensGraphDataWorker(
             it.backgroundColor = -0x7f000001 and rh.gac(ctx, app.aaps.core.ui.R.attr.iobColor) //50%
             it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.iobColor)
             it.thickness = 3
+        }
+
+        // IOB peak labels -- same "only the genuinely dominant peaks" selection as the ACTIVITY peak
+        // labels below: a point first has to be a local peak (strictly higher than its predecessor, at
+        // least as high as its successor -- the leading edge of a flat-topped plateau, not every point
+        // along it), then only gets a label if ALL of: (1) it's over 75% of the day's overall max IOB
+        // (maxIobValueFound), (2) it's the max IOB within the trailing 6-hour window ending at its own
+        // time, (3) at least 2 hours since the last point that itself got a label. See the ACTIVITY_PEAK
+        // block's own comment below for the full reasoning -- same algorithm, applied to iobArray/
+        // rawIobPoints instead of allActPoints/rawActPoints. iobArray is unevenly spaced (only one entry
+        // per genuine >0.02 change, not a fixed 5-min bucket), which the algorithm doesn't assume.
+        val sixHoursMsIob = 6 * 60 * 60 * 1000L
+        val twoHoursMsIob = 2 * 60 * 60 * 1000L
+        var lastIobLabeledTimestamp: Long? = null
+        val iobPeakIndices = iobArray.indices.filter { i ->
+            val raw = abs(rawIobPoints[i])
+            val isLocalPeak = (i == 0 || raw > abs(rawIobPoints[i - 1])) &&
+                (i == iobArray.size - 1 || raw >= abs(rawIobPoints[i + 1]))
+            if (!isLocalPeak) return@filter false
+            if (raw <= data.overviewData.maxIobValueFound * 0.75) return@filter false
+            val windowStart = iobArray[i].x - sixHoursMsIob
+            val maxInTrailingWindow = iobArray.indices
+                .filter { j -> iobArray[j].x in windowStart..iobArray[i].x }
+                .maxOf { j -> abs(rawIobPoints[j]) }
+            if (raw < maxInTrailingWindow) return@filter false
+            val thisTimestamp = iobArray[i].x.toLong()
+            val sinceLast = lastIobLabeledTimestamp
+            if (sinceLast != null && thisTimestamp - sinceLast < twoHoursMsIob) return@filter false
+            lastIobLabeledTimestamp = thisTimestamp
+            true
+        }
+        data.overviewData.iobPeakSeries = if (iobPeakIndices.isNotEmpty() && data.overviewData.maxIobValueFound > 0.0) {
+            PointsWithLabelGraphSeries(
+                iobPeakIndices.map { i ->
+                    val point = iobArray[i]
+                    IobPeakDataPoint(point.x, point.y, decimalFormatter.to2Decimal(rawIobPoints[i]), rh) as DataPointWithLabelInterface
+                }.toTypedArray()
+            )
+        } else {
+            PointsWithLabelGraphSeries()
         }
 
         if (overviewMenus.setting[0][OverviewMenus.CharType.PRE.ordinal]) {

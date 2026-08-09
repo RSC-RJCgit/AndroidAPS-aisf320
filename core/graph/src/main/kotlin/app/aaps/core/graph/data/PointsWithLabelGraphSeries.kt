@@ -433,8 +433,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
-                } else if (value.shape == Shape.ACTIVITY_PEAK) {
+                } else if (value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.IOB_PEAK) {
                     // Same style as GENERAL's drawLabel45Right, but below the peak point instead of above.
+                    // Shared rendering for both peak-label shapes -- they differ only in which graph they're
+                    // added to and the DataPoint's own color() (activityColor vs iobColor).
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)

@@ -94,6 +94,7 @@ class OverviewDataImpl @Inject constructor(
         iobSeries = FixedLineGraphSeries<ScaledDataPoint>()
         absIobSeries = FixedLineGraphSeries<ScaledDataPoint>()
         iobPredictions1Series = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        iobPeakSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         //iobPredictions2Series = PointsWithLabelGraphSeries()
         maxBGIValue = Double.MIN_VALUE
         minusBgiSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -302,6 +303,7 @@ class OverviewDataImpl @Inject constructor(
     override var iobSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var absIobSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var iobPredictions1Series: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var iobPeakSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
     override var maxBGIValue = Double.MIN_VALUE
     override val bgiScale = Scale()

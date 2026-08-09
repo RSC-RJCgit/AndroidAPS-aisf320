@@ -306,6 +306,7 @@ class GraphData @Inject constructor(
         overviewData.iobScale.multiplier = maxY * scale / max(overviewData.maxIobValueFound, maxCommonIob)      //overviewData.maxIobValueFound
         addSeries(overviewData.iobSeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.iobPredictions1Series as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+        addSeries(overviewData.iobPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         //addSeries(overviewData.iobPredictions2Series)
     }
 

@@ -24,6 +24,7 @@ enum class Shape {
     EXERCISE,
     GENERAL,
     ACTIVITY_PEAK, // peak insulin activity label — same 45°-rotated style as GENERAL's drawLabel45Right, but below the point instead of above
+    IOB_PEAK, // peak IOB label on the IOB graph — same dominant-peaks-only selection/rendering as ACTIVITY_PEAK (own color via IobPeakDataPoint.color(), see PrepareIobAutosensGraphDataWorker.kt)
     GENERAL_WITH_DURATION,
     GENERAL_WITH_DURATION_OFFSET, // same fixed-top-of-graph style as GENERAL_WITH_DURATION, drawn lower to avoid overlapping CarePortal notes
     COB_FAIL_OVER,
