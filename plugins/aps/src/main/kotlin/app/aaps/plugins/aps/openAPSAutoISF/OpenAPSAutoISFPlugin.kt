@@ -954,7 +954,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
             val graphActivity = 100 * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
-            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100)
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -4487,7 +4487,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return activityRatio
     }
 
-    fun autoISF(profile: Profile, currentActivity: Double = 0.0, smbActivity: Double = 0.0): Double {
+    // iob default 0.0 (== untapered, full dura_ISF effect) matches currentActivity/smbActivity's own
+    // default -- calculateVariableIsf()'s cached/arbitrary-timestamp call site below doesn't have a live
+    // IOB any more than it has live activity, same pre-existing limitation (see that call site's comment).
+    fun autoISF(profile: Profile, currentActivity: Double = 0.0, smbActivity: Double = 0.0, iob: Double = 0.0): Double {
 
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
@@ -4818,7 +4821,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // fight the resistance at high levels
                 val dura05Weight = dura05 / 60
                 val avg05Weight = weightISF / target_bg
-                dura_ISF += dura05Weight * avg05Weight * (avg05 - target_bg)
+                var duraBoost = dura05Weight * avg05Weight * (avg05 - target_bg)
+                // IOB-gated taper: dura_ISF's "fight the resistance" boost pushes MORE insulin out (a
+                // higher dura_ISF makes sens/final_ISF smaller, i.e. more aggressive, not less), so left
+                // unchecked it keeps adding insulin regardless of how much is already on board. Measured
+                // against 142 real dura-engagement episodes on real device data (2026-07-25 to 08-09):
+                // episodes ending with IOB >= ~2.3U precede a later low (<4.0mmol within 3h) far more often
+                // than episodes ending with IOB ~1.0U or less (median IOB-at-episode-end 2.34U for the
+                // later-low group vs 1.04U for episodes that resolved cleanly) -- duration and time-of-day
+                // were NOT distinguishing between the two groups, only IOB was. So taper the boost itself
+                // by current IOB rather than lowering dura_ISF_weight globally, which would blunt the ~73%
+                // of engagements that resolve cleanly (those mostly have low IOB already, so the taper
+                // leaves them untouched). Never fully zeroed (iobTaperFloor), same "scaled trim, not a
+                // hard block" philosophy as the SMB anti-stack escalating trim elsewhere in this file.
+                val iobTaperStart = 1.5   // full boost below this -- above the resolved-cleanly median (~1.04U), some margin
+                val iobTaperEnd = 3.0     // floor reached at/above this -- around/above the later-low median (~2.34U)
+                val iobTaperFloor = 0.3
+                val iobTaperFactor = when {
+                    iob <= iobTaperStart -> 1.0
+                    iob >= iobTaperEnd   -> iobTaperFloor
+                    else                 -> 1.0 - (1.0 - iobTaperFloor) * (iob - iobTaperStart) / (iobTaperEnd - iobTaperStart)
+                }
+                if (iobTaperFactor < 1.0) {
+                    val beforeTaper = duraBoost
+                    duraBoost *= iobTaperFactor
+                    consoleError.add("dura_ISF IOB taper: IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 3)} -> ${round(duraBoost, 3)})")
+                }
+                dura_ISF += duraBoost
                 sens_modified = true
                 consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${convert_isf(sens)} did not do it for ${round(dura05, 1)}m")
             }
