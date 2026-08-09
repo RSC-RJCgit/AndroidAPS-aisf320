@@ -191,26 +191,28 @@ class PrepareTreatmentsDataWorker(
             }
         data.overviewData.smbLabelSeries = PointsWithLabelGraphSeries(smbLabels.toTypedArray())
 
-        // Reconstructed 30-min stack windows + the TOTAL units delivered in each one (SMBs plus any
+        // Reconstructed 20-min stack windows + the TOTAL units delivered in each one (SMBs plus any
         // contained normal/manual bolus), drawn at the base of graph3 (replacing the old "pp= acc= du="
         // row, now moved to the main graph), stacking upward, small yellow text matching graph4's HHmm
         // time labels (Shape.SMB_STACK_TOTAL).
         //
         // Rewritten to match the original design exactly (was previously mirroring the unrelated LIVE
         // 10-min ApsAutoIsfSmbStackStart gap-based state machine instead -- wrong model for this feature,
-        // caused two real bugs: labels only summed a 10-min window instead of 30, and a mid-window SMB
-        // whose OWN trailing gap broke 70s reset the marker, letting a later event start a spurious NEW
-        // window before the current one's period had actually elapsed):
+        // caused two real bugs: labels only summed a 10-min window instead of the intended one, and a
+        // mid-window SMB whose OWN trailing gap broke 70s reset the marker, letting a later event start a
+        // spurious NEW window before the current one's period had actually elapsed):
         //   1. A window OPENS on ANY SMB or normal/manual bolus that isn't already covered by an active
         //      window -- no gap/rapid-fire condition on the trigger itself, unlike the live state machine.
         //   2. It stays open, unconditionally absorbing every SMB/bolus that lands inside it, for a fixed
-        //      30 minutes -- nothing can open a second window or otherwise interrupt it before that.
-        //   3. The label is placed at the window's END (start+30min), documenting the just-completed
+        //      20 minutes -- nothing can open a second window or otherwise interrupt it before that.
+        //   3. The label is placed at the window's END (start+20min), documenting the just-completed
         //      total, not at the start where it would visually read as available before the window closed.
+        // Was 30min -- trying 20min instead (2026-08-10), narrower window so the total reflects a tighter
+        // burst rather than blending in whatever else lands in the following 10 minutes.
         // Historical-only, so "windowEnd" being in the future relative to loop position doesn't matter --
         // allAmountsForStack is the complete already-known bolus history for the whole display range, so
         // the filter below always sees the window's true final total regardless of iteration order.
-        val stackWindowMs = 30 * 60_000L
+        val stackWindowMs = 20 * 60_000L
         // bolusDataPoints is already NORMAL-or-SMB only (see its own filter above). Distinct+sorted since
         // an SMB and a normal bolus coinciding at the exact same millisecond would otherwise appear twice.
         val allAmountsForStack = bolusDataPoints.map { it.x.toLong() to it.data.amount }
@@ -237,7 +239,7 @@ class PrepareTreatmentsDataWorker(
                     override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
                 })
             }
-            // else: falls within an already-active 30-min window -- already swept into that window's
+            // else: falls within an already-active window -- already swept into that window's
             // total via the filter at open time, and (unlike the old code) nothing can end it early.
         }
         data.overviewData.smbStackTotalSeries = PointsWithLabelGraphSeries(smbStackTotalLabels.toTypedArray())

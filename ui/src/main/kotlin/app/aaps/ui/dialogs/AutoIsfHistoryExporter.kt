@@ -618,7 +618,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
         val ldeltaMmol = r.longAvgDelta / MGDL_TO_MMOL
         val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
-        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol)) cobT / 12.0 else 0.0
+        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol, r.insulinReq)) cobT / 12.0 else 0.0
         val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobtTerm
         return df1.format(hp2)
     }
@@ -633,7 +633,15 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  at the one genuine low in that dataset, the gate ALSO stayed closed (acceleration had already
      *  flipped positive coming out of the trough) but HP2 still landed within 0.1 of HP anyway, since
      *  dropping the penalty (not flipping its sign) never made HP2 read LOWER than the ungated version --
-     *  the gate was only ever needed to suppress false rises, not to enhance real lows. */
-    private fun cobtPenaltyGated(bgAcceleration: Double, sdeltaMmol: Double, ldeltaMmol: Double): Boolean =
-        bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1
+     *  the gate was only ever needed to suppress false rises, not to enhance real lows.
+     *  Extended after a second real-data pass (aiv_Regan, 2026-08-10): the original clause alone missed
+     *  272 rows where BG was genuinely falling (SDelta<0 and LDelta<0) but acceleration hadn't yet gone
+     *  negative (a "falling, decelerating-positively" case) -- COBt stayed applied there when it shouldn't.
+     *  Added an OR-branch admitting sdeltaMmol<0 && ldeltaMmol<0 outright, regardless of acceleration.
+     *  That broadened OR would also have caught rows where the loop was still actively dosing (insulinReq
+     *  > 0), so both branches are now additionally gated on insulinReq<=0.0 -- of the 349 rows the old
+     *  single clause included, 131 still had Req>0 (discounting COBt while still actively requesting
+     *  insulin), which this closes. */
+    private fun cobtPenaltyGated(bgAcceleration: Double, sdeltaMmol: Double, ldeltaMmol: Double, insulinReq: Double): Boolean =
+        ((bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) || (sdeltaMmol < 0 && ldeltaMmol < 0)) && insulinReq <= 0.0
 }

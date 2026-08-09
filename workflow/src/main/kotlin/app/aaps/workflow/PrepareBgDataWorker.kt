@@ -244,9 +244,11 @@ class PrepareBgDataWorker(
         // ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row
         // above on graph1. IOBth is latestAiv's own persisted iobThEffective field (no computation).
         // HP2 mirrors AutoIsfHistoryExporter.hp2Str()'s formula -- (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
-        // + 0.5*UKFRawDelta5[mmol] - COBt/12, gated by the same cobtPenaltyGated() condition (bgAcceleration
-        // < 0 AND SDelta/LDelta both < 0.1 mmol/5min) so this live label doesn't repeat the false-hypo-alarm
-        // bug that formula had before gating -- see hp2Str's own doc comment for the real-data verification.
+        // + 0.5*UKFRawDelta5[mmol] - COBt/12, gated by the same cobtPenaltyGated() condition ((bgAcceleration
+        // < 0 AND SDelta/LDelta both < 0.1 mmol/5min) OR (SDelta AND LDelta both < 0), AND insulinReq <= 0)
+        // so this live label doesn't repeat the false-hypo-alarm bug that formula had before gating, nor
+        // discount COBt while the loop is still actively requesting insulin -- see hp2Str's own doc comment
+        // for the real-data verification (272-row gap + 131-row Req>0 inconsistency, aiv_Regan 2026-08-10).
         // Like hpSeries's own HP= above, uses the LIVE mealCOB in place of the export's
         // historically-reconstructed COBt (calculatedCobT()'s excess-carb-episode accumulation lives in the
         // ui module and isn't available to this workflow module); close enough for a live glance, the
@@ -265,7 +267,8 @@ class PrepareBgDataWorker(
                     val ldeltaMmol = latestAiv.longAvgDelta * Constants.MGDL_TO_MMOLL
                     val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val gated = latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1
+                    val gated = ((latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
+                        (sdeltaMmol < 0 && ldeltaMmol < 0)) && latestAiv.insulinReq <= 0.0
                     val cobTerm = if (gated) cob / 12.0 else 0.0
                     val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobTerm
                     String.format(Locale.getDefault(), "%.1f", hp2)
