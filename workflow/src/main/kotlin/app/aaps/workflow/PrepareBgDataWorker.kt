@@ -244,12 +244,15 @@ class PrepareBgDataWorker(
         // ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row
         // above on graph1. IOBth is latestAiv's own persisted iobThEffective field (no computation).
         // HP2 mirrors AutoIsfHistoryExporter.hp2Str()'s formula -- (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
-        // + 0.5*UKFRawDelta5[mmol] - COBt/12 -- but, like hpSeries's own HP= above, uses the LIVE
-        // mealCOB in place of the export's historically-reconstructed COBt (calculatedCobT()'s
-        // excess-carb-episode accumulation lives in the ui module and isn't available to this workflow
-        // module); close enough for a live glance, the export table remains the precise source for
-        // actual COBt-vs-COB analysis. "--" when latestAiv or the UKF delta isn't available yet, same
-        // fallback pattern as hpSeries/stepsStackedSeries's own hpTxt above.
+        // + 0.5*UKFRawDelta5[mmol] - COBt/12, gated by the same cobtPenaltyGated() condition (bgAcceleration
+        // < 0 AND SDelta/LDelta both < 0.1 mmol/5min) so this live label doesn't repeat the false-hypo-alarm
+        // bug that formula had before gating -- see hp2Str's own doc comment for the real-data verification.
+        // Like hpSeries's own HP= above, uses the LIVE mealCOB in place of the export's
+        // historically-reconstructed COBt (calculatedCobT()'s excess-carb-episode accumulation lives in the
+        // ui module and isn't available to this workflow module); close enough for a live glance, the
+        // export table remains the precise source for actual COBt-vs-COB analysis. "--" when latestAiv or
+        // the UKF delta isn't available yet, same fallback pattern as hpSeries/stepsStackedSeries's own
+        // hpTxt above.
         data.overviewData.isfWeightsRowSeries =
             if (latest != null) {
                 val ppW = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
@@ -259,9 +262,12 @@ class PrepareBgDataWorker(
                 val hp2Txt = if (latestAiv != null && ukfDeltaResult != null) {
                     val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                     val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                    val ldeltaMmol = latestAiv.longAvgDelta * Constants.MGDL_TO_MMOLL
                     val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cob / 12.0
+                    val gated = latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1
+                    val cobTerm = if (gated) cob / 12.0 else 0.0
+                    val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobTerm
                     String.format(Locale.getDefault(), "%.1f", hp2)
                 } else "--"
                 val label = "pp=${String.format(Locale.getDefault(), "%.2f", ppW)} " +

@@ -23,6 +23,10 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:validators"))
     implementation(project(":shared:impl"))
+    // AutoIsfHistoryExporter, for kicking off an AIV export alongside the log export -- see
+    // MaintenancePlugin.sendLogs(). No dependency in the other direction (ui doesn't depend on this
+    // module), so this doesn't create a cycle.
+    implementation(project(":ui"))
 
     testImplementation(project(":shared:tests"))
     testImplementation(project(":implementation"))

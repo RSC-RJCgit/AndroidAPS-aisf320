@@ -35,6 +35,7 @@ import app.aaps.plugins.configuration.maintenance.cloud.CloudConstants
 import app.aaps.plugins.configuration.maintenance.cloud.CloudStorageManager
 import app.aaps.plugins.configuration.maintenance.cloud.StorageTypes
 import app.aaps.plugins.configuration.maintenance.cloud.ExportOptionsDialog
+import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -62,7 +63,8 @@ class MaintenancePlugin @Inject constructor(
     private val loggerUtils: LoggerUtils,
     private val uel: UserEntryLogger,
     private val cloudStorageManager: CloudStorageManager,
-    private val exportOptionsDialog: ExportOptionsDialog
+    private val exportOptionsDialog: ExportOptionsDialog,
+    private val autoIsfHistoryExporter: AutoIsfHistoryExporter
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -77,13 +79,33 @@ class MaintenancePlugin @Inject constructor(
     aapsLogger, rh
 ) {
 
-    fun sendLogs() {
+    /** [alsoExportAiv] defaults to true for the two truly on-demand callers -- the Maintenance screen's
+     *  own button, and CloudLogsUploadTT's remote trigger in OpenAPSAutoISFPlugin.kt -- which previously
+     *  only touched log files, so an AAPSClient/remote-triggered log export never carried AIV data along
+     *  with it. Pass false from KeepAliveWorker's own exportLogsToCloudIfDue(): that automatic path
+     *  already runs alongside exportAutoIsfHistoryIfDue() in the same 6h worker cycle, which
+     *  independently (and unconditionally, unlike this cloud-log path's own
+     *  MaintenanceAutoExportLogsToCloud gate) exports AIV every cycle already -- without the flag this
+     *  would fire the AIV export twice per cycle whenever that preference is enabled. */
+    fun sendLogs(alsoExportAiv: Boolean = true) {
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
         val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName()) ?: return
         aapsLogger.debug("zipFile: ${zipFile.name}")
         val zip = zipLogs(zipFile, logs)
-        
+
+        if (alsoExportAiv) {
+            // Off the UI thread, same CoroutineScope(Dispatchers.IO).launch pattern as
+            // sendLogsToCloudDrive() below -- self-contained (queries persistenceLayer itself), no data
+            // to pass in. buildCombinedExport() always covers its own fixed 30h window regardless of
+            // caller, so nothing further to widen here.
+            CoroutineScope(Dispatchers.IO).launch {
+                val now = System.currentTimeMillis()
+                autoIsfHistoryExporter.exportLast6Hours(now)
+                autoIsfHistoryExporter.buildCombinedExport(now)
+            }
+        }
+
         // Check export destination preference (master switch or individual setting)
         if ((exportOptionsDialog.isLogCloudEnabled()) && 
             cloudStorageManager.isCloudStorageActive()) {

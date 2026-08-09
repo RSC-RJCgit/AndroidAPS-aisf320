@@ -157,7 +157,10 @@ class KeepAliveWorker(
         if (!preferences.get(BooleanKey.MaintenanceAutoExportLogsToCloud)) return
         val lastRun = preferences.get(LongNonKey.LastCloudLogExport)
         if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
-            maintenancePlugin.sendLogs()
+            // alsoExportAiv=false: exportAutoIsfHistoryIfDue() below already covers the AIV export
+            // unconditionally every cycle -- see sendLogs()'s own doc comment for why this would
+            // otherwise double up whenever MaintenanceAutoExportLogsToCloud is enabled.
+            maintenancePlugin.sendLogs(alsoExportAiv = false)
             preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
         }
     }

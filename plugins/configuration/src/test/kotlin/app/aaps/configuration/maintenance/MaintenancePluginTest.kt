@@ -8,6 +8,7 @@ import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.plugins.configuration.maintenance.cloud.CloudStorageManager
 import app.aaps.plugins.configuration.maintenance.cloud.ExportOptionsDialog
 import app.aaps.shared.tests.TestBaseWithProfile
+import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -22,12 +23,13 @@ class MaintenancePluginTest : TestBaseWithProfile() {
     @Mock lateinit var uel: UserEntryLogger
     @Mock lateinit var cloudStorageManager: CloudStorageManager
     @Mock lateinit var exportOptionsDialog: ExportOptionsDialog
+    @Mock lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
 
     private lateinit var sut: MaintenancePlugin
 
     @BeforeEach
     fun mock() {
-        sut = MaintenancePlugin(context, rh, preferences, nsSettingsStatus, aapsLogger, config, fileListProvider, loggerUtils, uel, cloudStorageManager, exportOptionsDialog)
+        sut = MaintenancePlugin(context, rh, preferences, nsSettingsStatus, aapsLogger, config, fileListProvider, loggerUtils, uel, cloudStorageManager, exportOptionsDialog, autoIsfHistoryExporter)
         whenever(loggerUtils.suffix).thenReturn(".log.zip")
         whenever(loggerUtils.logDirectory).thenReturn("src/test/assets/logger")
         // Unknown solution after scoped access

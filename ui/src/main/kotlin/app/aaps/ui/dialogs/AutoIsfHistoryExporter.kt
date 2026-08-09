@@ -605,7 +605,10 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta,
      *  and heavier weights on both delta terms (0.5 vs hpStr's 0.25) -- an experiment to compare
      *  against hpStr's column side by side, NOT a replacement (hpStr is untouched above). Formula:
-     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - COBt/12. COBt is the
+     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - COBt/12 (COBt term only applied
+     *  when [cobtPenaltyGated] says the trend actually supports it -- see that function's own doc
+     *  comment for why: an ungated -COBt/12 term made HP2 read as a false hypo alarm during ordinary
+     *  post-meal rises, since COBt is LARGEST exactly when BG is still climbing). COBt is the
      *  comparison-only interpreted total from calculatedCobT(); HP1 and dosing remain unchanged.
      *  "--" if ukfRawBgl wasn't computed for this row or the row
      *  5min back (same conditions ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
@@ -613,8 +616,24 @@ class AutoIsfHistoryExporter @Inject constructor(
         val ukfDelta5Mmol = ukfDeltaMmol(r, allRecords, 5) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
+        val ldeltaMmol = r.longAvgDelta / MGDL_TO_MMOL
         val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
-        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobT / 12.0
+        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol)) cobT / 12.0 else 0.0
+        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobtTerm
         return df1.format(hp2)
     }
+
+    /** Gates hp2Str's -COBt/12 penalty to only apply when the BG trend actually supports treating
+     *  outstanding carbs as a hypo-risk-reducing factor: decelerating (bgAcceleration < 0) AND both the
+     *  short (~5-17.5min) and long (~17.5-42.5min) average deltas are flat-or-falling (< 0.1 mmol/5min).
+     *  Verified against real device data (2026-08-08 meal episode, aiv_Regan exports): ungated, HP2 read
+     *  as low as 2.9 while BG was actually still climbing toward a peak 2h later -- a false hypo alarm
+     *  driven entirely by COBt being largest exactly when a meal is still absorbing (i.e. BG still
+     *  rising). Gated, those same rows correctly fall back to no COBt penalty (HP2 tracks HP closely);
+     *  at the one genuine low in that dataset, the gate ALSO stayed closed (acceleration had already
+     *  flipped positive coming out of the trough) but HP2 still landed within 0.1 of HP anyway, since
+     *  dropping the penalty (not flipping its sign) never made HP2 read LOWER than the ungated version --
+     *  the gate was only ever needed to suppress false rises, not to enhance real lows. */
+    private fun cobtPenaltyGated(bgAcceleration: Double, sdeltaMmol: Double, ldeltaMmol: Double): Boolean =
+        bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1
 }
