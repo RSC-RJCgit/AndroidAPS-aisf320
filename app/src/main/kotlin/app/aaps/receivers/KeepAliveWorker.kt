@@ -169,11 +169,15 @@ class KeepAliveWorker(
     // in addition to (not instead of) the local aapsLogs write, whenever cloud storage is configured.
     // No progress/success toasts here — this already runs silently in the background like the log
     // export above; failures are logged only, matching the "no popup for cloud export" request.
+    // buildCombinedExport() also runs here (not just from the history dialog) so combined<Name>.txt
+    // and its dated aapsLogs/<Name>datedAIV/ copy stay current even when the dialog is never opened.
     private suspend fun exportAutoIsfHistoryIfDue() {
         val lastRun = preferences.get(LongNonKey.LastAutoIsfHistoryExport)
         if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
-            val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(dateUtil.now())
-            preferences.put(LongNonKey.LastAutoIsfHistoryExport, dateUtil.now())
+            val now = dateUtil.now()
+            val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
+            autoIsfHistoryExporter.buildCombinedExport(now)
+            preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
             uploadAivFilesToCloud(writtenFiles)
         }
     }

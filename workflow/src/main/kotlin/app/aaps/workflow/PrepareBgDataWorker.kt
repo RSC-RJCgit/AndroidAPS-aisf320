@@ -220,6 +220,9 @@ class PrepareBgDataWorker(
         // green line's acce=/IOd5= fields below and isfIndicesSeries further down, so only queried once.
         val recentAiv = persistenceLayer.getAutoIsfValuesFromTimeToTime(toTime - T.hours(2).msecs(), toTime)
         val latestAiv = recentAiv.maxByOrNull { it.timestamp }
+        // Computed here (moved up from its original spot just above ukfDeltaSeries below) so
+        // isfWeightsRowSeries's HP2= field can reuse it too, instead of calling ukfFiveMinuteDelta() twice.
+        val ukfDeltaResult = ukfFiveMinuteDelta(rawReadings)
         data.overviewData.noisyBgDeltaSeries =
             if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
                 val delta5Txt = " A5=${aapsDelta5?.let { formatMmolDelta(it) } ?: "--"} L5=${libreDelta5?.let { formatMmolDelta(it) } ?: "--"}"
@@ -237,16 +240,34 @@ class PrepareBgDataWorker(
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
-        // "pp= acc= du=" row, fixed near the bottom of graph3 — current (live) ApsAutoIsfPpWeight/
-        // BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row above on graph1.
+        // "pp= acc= du= IOBth= HP2=" row, fixed near the bottom of graph3 — current (live)
+        // ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row
+        // above on graph1. IOBth is latestAiv's own persisted iobThEffective field (no computation).
+        // HP2 mirrors AutoIsfHistoryExporter.hp2Str()'s formula -- (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
+        // + 0.5*UKFRawDelta5[mmol] - COBt/12 -- but, like hpSeries's own HP= above, uses the LIVE
+        // mealCOB in place of the export's historically-reconstructed COBt (calculatedCobT()'s
+        // excess-carb-episode accumulation lives in the ui module and isn't available to this workflow
+        // module); close enough for a live glance, the export table remains the precise source for
+        // actual COBt-vs-COB analysis. "--" when latestAiv or the UKF delta isn't available yet, same
+        // fallback pattern as hpSeries/stepsStackedSeries's own hpTxt above.
         data.overviewData.isfWeightsRowSeries =
             if (latest != null) {
                 val ppW = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
                 val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
                 val duraW = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+                val iobThTxt = latestAiv?.let { String.format(Locale.getDefault(), "%.2f", it.iobThEffective) } ?: "--"
+                val hp2Txt = if (latestAiv != null && ukfDeltaResult != null) {
+                    val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
+                    val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                    val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
+                    val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+                    val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cob / 12.0
+                    String.format(Locale.getDefault(), "%.1f", hp2)
+                } else "--"
                 val label = "pp=${String.format(Locale.getDefault(), "%.2f", ppW)} " +
                     "acc=${String.format(Locale.getDefault(), "%.2f", acceW)} " +
-                    "du=${String.format(Locale.getDefault(), "%.2f", duraW)}"
+                    "du=${String.format(Locale.getDefault(), "%.2f", duraW)} " +
+                    "IOBth=$iobThTxt HP2=$hp2Txt"
                 // Fixed near 4.0 mmol (75.6 mg/dL), NOT the live current BG -- see Shape.PP_ACC_DU_ROW's
                 // own comment for why a real value on the actual glucose scale is used here rather than a
                 // pixel fraction (graph5's basal bars occupy negative Y below the glucose floor, so a
@@ -260,7 +281,8 @@ class PrepareBgDataWorker(
 
         // UKF 5-min delta label (light blue, matches the rawBgSmoothedSeries line), attached to that
         // line's own current point rather than the raw/noisy one — see ukfFiveMinuteDelta() above.
-        val ukfDeltaResult = ukfFiveMinuteDelta(rawReadings)
+        // (ukfDeltaResult itself is computed earlier, right after latestAiv, so isfWeightsRowSeries's
+        // HP2= field can share it.)
         data.overviewData.ukfDeltaSeries =
             if (latest != null && ukfDeltaResult != null) {
                 val (ukfDeltaMgdl, ukfNowMgdl) = ukfDeltaResult

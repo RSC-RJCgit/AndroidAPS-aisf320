@@ -51,6 +51,10 @@ class AutoIsfHistoryExporter @Inject constructor(
     companion object {
         private const val MGDL_TO_MMOL = 18.0182
         const val WINDOW_HOURS = 6L
+
+        // combined<Name>.txt covers a wider trailing window than the 6h table export so it reads as
+        // one continuous history rather than needing several 6h exports stitched together.
+        private const val COMBINED_WINDOW_HOURS = 30L
     }
 
     /** Queries the last [WINDOW_HOURS] hours and writes the CSV + text + settings files, returning
@@ -183,54 +187,60 @@ class AutoIsfHistoryExporter @Inject constructor(
             fileListProvider.aapsLogsPath
         }
 
-    /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in the source dir's own
-     *  "output" subfolder, from the 5 most recent table-export .txt files there (this dialog's own
-     *  just-written one plus the 4 automatic exports before it, assuming writeExport() already ran this
-     *  call) -- raw concatenation, oldest file first, no separators, exactly mirroring the pre-existing
-     *  external "combinedRegan.txt" this replaces (verified against that file: 5 repeated header lines =
-     *  5 files concatenated back-to-back with nothing in between). Call AFTER writeExport() so its fresh
-     *  file is naturally included as "the last one" rather than needing special-casing. Silent on
+    /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in resolveExportDir()'s own
+     *  "output" subfolder, and a dated copy alongside it (see below) -- from a single fresh
+     *  [COMBINED_WINDOW_HOURS]-hour DB query, the same way [exportLast6Hours] builds the regular 6h
+     *  table, rather than concatenating several previously-written 6h .txt files. That earlier
+     *  concatenation approach had a real bug: [exportTableAsText]/[formatTableText] pads each column to
+     *  the widest value IN THAT CALL's own rows, so pasting several independently-padded chunks together
+     *  could silently drift out of alignment between chunks. A single direct query has no such seam, and
+     *  it also means a missed automatic export no longer leaves a gap in the combined file. Silent on
      *  failure/no-data, matching writeExport()'s own error handling (log only, no user-facing failure).
      *
-     *  Source dir: tries resolveExportDir()'s own aapsLogs/<PatientName>/ first (what writeExport()
-     *  itself computes); if that's empty, falls back to a sibling aapsLogs/../aiv_<PatientName>/ (a
-     *  differently-named top-level folder observed, on at least one real device, to be where files
-     *  actually land instead) -- unexplained discrepancy between the two, not something resolved from
-     *  code alone, so this checks both rather than assuming one. Output always lands in THIS SAME dir's
-     *  own "output" subfolder, whichever dir that turned out to be -- never a folder that doesn't
-     *  actually hold the source files. */
-    fun buildCombinedExport() {
+     *  Dated copy: also written to aapsLogs/<PatientName>datedAIV/combined<PatientName><yyyyMMdd>.txt
+     *  (fileListProvider.aapsLogsPath, NOT resolveExportDir()'s possibly-nested per-patient dir) --
+     *  same content, so a same-day rerun (dialog reopened, or the next KeepAliveWorker cycle) overwrites
+     *  that day's dated file rather than accumulating duplicates. */
+    fun buildCombinedExport(now: Long) {
         try {
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val tablePrefix = if (patientName.isNotEmpty()) "AutoISF_${patientName}_" else "AutoISF_"
-            fun tableFilesIn(dir: File): List<File> =
-                dir.listFiles { f ->
-                    f.isFile && f.name.startsWith(tablePrefix) && f.name.endsWith(".txt") &&
-                        !f.name.startsWith("AutoISF_settings_")
-                }?.sortedByDescending { it.name } ?: emptyList()
+            val from = now - TimeUnit.HOURS.toMillis(COMBINED_WINDOW_HOURS)
+            val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
+            if (records.isEmpty()) return
+            val apsResults = persistenceLayer.getApsResults(from, now)
+            val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
+            val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
+            val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
+            val cobTByTimestamp = calculatedCobT(records)
+            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, mjNotesFrom(from), rawReadings, cobTByTimestamp) }
+            val text = formatTableText(rows)
 
-            val nestedDir = resolveExportDir(patientName)
-            var dir = nestedDir
-            var tableFiles = tableFilesIn(nestedDir)
-            if (tableFiles.isEmpty() && patientName.isNotEmpty()) {
-                val topLevelDir = File(fileListProvider.aapsLogsPath.parentFile, "aiv_$patientName")
-                val topLevelFiles = tableFilesIn(topLevelDir)
-                if (topLevelFiles.isNotEmpty()) {
-                    dir = topLevelDir
-                    tableFiles = topLevelFiles
-                }
-            }
-            if (tableFiles.isEmpty()) return
-            val last5OldestFirst = tableFiles.take(5).sortedBy { it.name }
-            val outputDir = File(dir, "output").also { it.mkdirs() }
+            val outputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
             val outFile = File(outputDir, "combined$patientName.txt")
-            outFile.bufferedWriter().use { writer ->
-                last5OldestFirst.forEach { writer.write(it.readText()) }
-            }
-            aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${last5OldestFirst.size} file(s)")
+            outFile.writeText(text)
+            aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${records.size} row(s)")
+
+            val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
+            val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
+            File(datedDir, "combined$patientName$dateStamp.txt").writeText(text)
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF combined export failed", e)
         }
+    }
+
+    /** Column-aligned plain-text rendering of [exportHeaders] + `rows`, columns padded to the widest
+     *  value within THIS call's own data. Shared by [exportTableAsText] and [buildCombinedExport] so
+     *  both stay in sync automatically; kept as one call per file (rather than, say, concatenating
+     *  several calls' output) is what keeps columns aligned -- padding is only comparable within a
+     *  single call's own width computation. */
+    private fun formatTableText(rows: List<List<String>>): String {
+        val widths = exportHeaders.indices.map { i ->
+            maxOf(exportHeaders[i].length, rows.maxOfOrNull { it[i].length } ?: 0)
+        }
+        val sb = StringBuilder()
+        sb.append(exportHeaders.mapIndexed { i, h -> h.padEnd(widths[i]) }.joinToString("  ").trimEnd()).append("\n")
+        for (row in rows) sb.append(row.mapIndexed { i, v -> v.padEnd(widths[i]) }.joinToString("  ").trimEnd()).append("\n")
+        return sb.toString()
     }
 
     /** Same table data as the CSV, in a human-readable, column-aligned plain-text file — for
@@ -239,15 +249,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     private fun exportTableAsText(dir: File, stamp: String, rows: List<List<String>>): File? {
         return try {
             val file = File(dir, "AutoISF_$stamp.txt")
-            val widths = exportHeaders.indices.map { i ->
-                maxOf(exportHeaders[i].length, rows.maxOfOrNull { it[i].length } ?: 0)
-            }
-            file.bufferedWriter().use { writer ->
-                writer.write(exportHeaders.mapIndexed { i, h -> h.padEnd(widths[i]) }.joinToString("  ").trimEnd() + "\n")
-                for (row in rows) {
-                    writer.write(row.mapIndexed { i, v -> v.padEnd(widths[i]) }.joinToString("  ").trimEnd() + "\n")
-                }
-            }
+            file.writeText(formatTableText(rows))
             aapsLogger.debug(LTag.UI, "AutoISF history text export to ${file.absolutePath}")
             file
         } catch (e: Exception) {
