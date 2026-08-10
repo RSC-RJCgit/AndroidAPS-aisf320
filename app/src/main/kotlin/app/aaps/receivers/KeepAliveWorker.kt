@@ -152,7 +152,7 @@ class KeepAliveWorker(
         return Result.success()
     }
 
-    // Automatic cloud log export, mirroring databaseCleanup()'s throttle pattern below.
+    // Automatic cloud log export every 6 hours, mirroring databaseCleanup()'s throttle pattern below.
     private fun exportLogsToCloudIfDue() {
         if (!preferences.get(BooleanKey.MaintenanceAutoExportLogsToCloud)) return
         val lastRun = preferences.get(LongNonKey.LastCloudLogExport)
@@ -167,7 +167,7 @@ class KeepAliveWorker(
 
     // Automatic AutoISF history export (CSV + text + settings) every 6 hours, so the files land in
     // aapsLogs alongside the rolling log files without needing to open the history dialog. Same
-    // 6-hour throttle as the cloud log export above. Also uploads the same files to cloud storage
+    // same 6-hour throttle as the cloud log export above. Also uploads the same files to cloud storage
     // (CloudConstants.CLOUD_PATH_AIV — same "/AAPS/export/<name>" convention as logs/preferences),
     // in addition to (not instead of) the local aapsLogs write, whenever cloud storage is configured.
     // No progress/success toasts here — this already runs silently in the background like the log
@@ -180,10 +180,10 @@ class KeepAliveWorker(
             val now = dateUtil.now()
             val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
             autoIsfHistoryExporter.buildCombinedExport(now)
-            if (writtenFiles.isNotEmpty())
+            if (writtenFiles.size == 3)
                 aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
             else
-                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=0")
+                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
             uploadAivFilesToCloud(writtenFiles)
         }

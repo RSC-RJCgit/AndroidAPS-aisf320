@@ -99,7 +99,7 @@ class MaintenancePlugin @Inject constructor(
         }
         aapsLogger.debug("zipFile: ${zipFile.name}")
         val zip = zipLogs(zipFile, logs)
-        saveLogsLocally(zip)
+        saveLogsLocally(zip, trigger)
 
         if (alsoExportAiv) {
             // Off the UI thread, same CoroutineScope(Dispatchers.IO).launch pattern as
@@ -110,10 +110,10 @@ class MaintenancePlugin @Inject constructor(
                 val now = System.currentTimeMillis()
                 val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
-                if (writtenFiles.isNotEmpty())
+                if (writtenFiles.size == 3)
                     aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
                 else
-                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=0")
+                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
             }
         }
 
@@ -150,15 +150,27 @@ class MaintenancePlugin @Inject constructor(
      *  Retention capped at localLogsKeepCount (28, ~1 week at the 6h automatic cadence) -- each zip is
      *  several MB to low tens of MB, so unlike the AIV text/CSV exports this would otherwise grow
      *  unbounded. */
-    private fun saveLogsLocally(zipFile: DocumentFile) {
+    private fun saveLogsLocally(zipFile: DocumentFile, trigger: String) {
         val localLogsKeepCount = 28
         try {
-            val bytes = context.contentResolver.openInputStream(zipFile.uri)?.use { it.readBytes() } ?: return
+            val bytes = context.contentResolver.openInputStream(zipFile.uri)?.use { it.readBytes() }
+            if (bytes == null) {
+                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
+                return
+            }
+            if (bytes.size < 1024) {
+                aapsLogger.error(
+                    LTag.CORE,
+                    "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
+                )
+                return
+            }
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
             val dir = (if (patientName.isNotEmpty()) File(fileListProvider.logsPath, patientName) else fileListProvider.logsPath)
                 .also { it.mkdirs() }
             File(dir, zipFile.name ?: constructName()).writeBytes(bytes)
             aapsLogger.debug("Logs saved locally to ${dir.absolutePath}")
+            aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
 
             val existing = dir.listFiles { _, name -> name.startsWith("AndroidAPS") && name.endsWith(".zip") } ?: return
             if (existing.size > localLogsKeepCount) {
@@ -167,6 +179,7 @@ class MaintenancePlugin @Inject constructor(
             }
         } catch (e: Exception) {
             aapsLogger.error("Error saving logs locally", e)
+            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=EXCEPTION", e)
         }
     }
 
@@ -333,6 +346,14 @@ class MaintenancePlugin @Inject constructor(
             val bytes = inputStream?.use { it.readBytes() }
             
             if (bytes != null) {
+                if (bytes.size < 1024) {
+                    aapsLogger.error(
+                        LTag.CORE,
+                        "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
+                    )
+                    ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
+                    return
+                }
                 // Upload to cloud storage
                 CoroutineScope(Dispatchers.IO).launch {
                     try {

@@ -120,10 +120,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             Executors.newSingleThreadExecutor().execute {
                 val writtenFiles = autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, allRawReadings, now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
-                if (writtenFiles.isNotEmpty())
+                if (writtenFiles.size == 3)
                     aapsLogger.info(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
                 else
-                    aapsLogger.error(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=0")
+                    aapsLogger.error(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
             }
         }
     }
