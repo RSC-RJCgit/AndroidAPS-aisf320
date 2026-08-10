@@ -237,6 +237,8 @@
     <string name="logs_uploaded_to_cloud">Logs successfully uploaded to cloud storage</string>
     <string name="logs_upload_failed">Failed to upload logs to cloud storage</string>
     <string name="logs_upload_error">Error occurred while uploading logs to cloud storage</string>
+    <string name="logs_upload_under_1kb">Log export failed: generated zip is smaller than 1 KB</string>
+    <string name="logs_upload_no_source">Log export failed: no source log files were found</string>
     <string name="csv_upload_failed">Failed to upload User Entries CSV to cloud storage</string>
     <string name="csv_upload_error">Error occurred while uploading CSV to cloud</string>
     <string name="export_options_updated">Export options updated</string>

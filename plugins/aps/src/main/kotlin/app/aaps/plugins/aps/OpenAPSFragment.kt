@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventExportScriptDebugStatusChanged
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.utils.HtmlHelper
@@ -104,6 +105,10 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
             .toObservable(EventResetOpenAPSGui::class.java)
             .observeOn(aapsSchedulers.main)
             .subscribe({ resetGUI(it.text) }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventExportScriptDebugStatusChanged::class.java)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ updateGUI() }, fabricPrivacy::logException)
 
         updateGUI()
     }
@@ -133,6 +138,8 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     private fun updateGUI() {
         if (_binding == null) return
         val openAPSPlugin = activePlugin.activeAPS
+        val exportStatuses = exportScriptDebugStatus.snapshot()
+        binding.scriptdebugdata.text = exportStatuses.joinToString("\n")
         openAPSPlugin.lastAPSResult?.let { lastAPSResult ->
             binding.result.text = lastAPSResult.rawData().dataClassToHtml()
             binding.request.text = lastAPSResult.resultAsSpanned()
@@ -142,7 +149,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
             binding.iobdata.text = rh.gs(R.string.array_of_elements, lastAPSResult.iobData?.size) + "\n" + lastAPSResult.iob?.dataClassToHtml()
             binding.profile.text = lastAPSResult.oapsProfile?.dataClassToHtml() ?: lastAPSResult.oapsProfileAutoIsf?.dataClassToHtml()
             binding.mealdata.text = lastAPSResult.mealData?.dataClassToHtml()
-            binding.scriptdebugdata.text = (exportScriptDebugStatus.snapshot() + (lastAPSResult.scriptDebug ?: emptyList())).joinToString("\n")
+            binding.scriptdebugdata.text = (exportStatuses + (lastAPSResult.scriptDebug ?: emptyList())).joinToString("\n")
             binding.constraints.text = lastAPSResult.inputConstraints?.getReasons()
             binding.autosensdata.text = lastAPSResult.autosensResult?.dataClassToHtml()
             binding.lastrun.text = dateUtil.dateAndTimeString(openAPSPlugin.lastAPSRun)

@@ -1,5 +1,6 @@
 package app.aaps.implementation.logging
 
+import android.os.Environment
 import app.aaps.core.interfaces.logging.LoggerUtils
 import ch.qos.logback.classic.LoggerContext
 import dagger.Reusable
@@ -12,7 +13,9 @@ import javax.inject.Inject
 @Reusable
 class LoggerUtilsImpl @Inject constructor() : LoggerUtils {
 
-    override var suffix = ".log"
+    // MaintenancePlugin creates ZIP archives; keep the filename consistent with both the actual
+    // content and the AndroidAPS_LOG_*.log.zip convention used by backup/retention tooling.
+    override var suffix = ".log.zip"
 
     /**
      * Returns the directory, in which the logs are stored on the system. This is configured in the
@@ -22,4 +25,7 @@ class LoggerUtilsImpl @Inject constructor() : LoggerUtils {
      */
     override val logDirectory: String
         get() = (LoggerFactory.getILoggerFactory() as LoggerContext).getProperty("EXT_FILES_DIR")
+            ?: Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+                .resolve("aapsLogs")
+                .absolutePath
 }

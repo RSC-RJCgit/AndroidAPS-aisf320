@@ -3,6 +3,7 @@ package app.aaps.plugins.configuration.maintenance
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -96,6 +97,13 @@ class MaintenancePlugin @Inject constructor(
         exportScriptDebugStatus.add(startedStatus)
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
+        if (logs.isEmpty()) {
+            val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_SOURCE_LOGS"
+            aapsLogger.error(LTag.CORE, status)
+            exportScriptDebugStatus.add(status)
+            ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_no_source))
+            return
+        }
         val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName())
         if (zipFile == null) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
@@ -132,6 +140,9 @@ class MaintenancePlugin @Inject constructor(
             // Send to Cloud Drive
             sendLogsToCloudDrive(zip, trigger)
         } else {
+            val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=CLOUD_NOT_ENABLED"
+            aapsLogger.error(LTag.CORE, status)
+            exportScriptDebugStatus.add(status)
             // Send via email (default behavior)
             val recipient = preferences.get(StringKey.MaintenanceEmail)
             val attachmentUri = zip.uri
@@ -240,20 +251,31 @@ class MaintenancePlugin @Inject constructor(
      * @return
      */
     fun getLogFiles(amount: Int): List<File> {
-        aapsLogger.debug("getting $amount logs from directory ${loggerUtils.logDirectory}")
-        val logDir = File(loggerUtils.logDirectory)
-        val files = logDir.listFiles { _: File?, name: String ->
-            (name.startsWith("AndroidAPS")
-                && (name.endsWith(".log")
-                || name.endsWith(".zip") && !name.endsWith(loggerUtils.suffix)))
-        } ?: emptyArray()
-        Arrays.sort(files) { f1: File, f2: File -> f2.name.compareTo(f1.name) }
-        val result = listOf(*files)
+        val configuredPath = loggerUtils.logDirectory
+        val fallbackPath = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "aapsLogs").absolutePath
+        val searchDirs = listOf(configuredPath, fallbackPath)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .map(::File)
+        aapsLogger.debug("getting $amount logs from ${searchDirs.joinToString { it.absolutePath }}")
+
+        // Include the live log and hourly rolled logs. Exclude AndroidAPS_LOG_* because those are
+        // previously generated export bundles, not source logs; including them would recursively nest
+        // old exports inside every new export and make archives grow without bound.
+        val result = searchDirs
+            .flatMap { dir ->
+                dir.listFiles { _: File?, name: String ->
+                    name == "AndroidAPS.log" ||
+                        (name.startsWith("AndroidAPS") && !name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip"))
+                }?.toList().orEmpty()
+            }
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.name }
         var toIndex = amount
         if (toIndex > result.size) {
             toIndex = result.size
         }
-        aapsLogger.debug("returning sublist 0 to $toIndex")
+        aapsLogger.debug("found ${result.size} source log file(s): ${result.joinToString { "${it.name}(${it.length()}B)" }}; returning 0 to $toIndex")
         return result.subList(0, toIndex)
     }
 
@@ -365,7 +387,7 @@ class MaintenancePlugin @Inject constructor(
                         "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
                     )
                     exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
-                    ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
+                    ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb))
                     return
                 }
                 // Upload to cloud storage
@@ -374,6 +396,8 @@ class MaintenancePlugin @Inject constructor(
                         val provider = cloudStorageManager.getActiveProvider()
                         if (provider == null) {
                             aapsLogger.error("No active cloud provider")
+                            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                             fallbackToEmailLogs(zipFile)
                             return@launch
                         }
