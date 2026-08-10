@@ -93,6 +93,7 @@ class MaintenancePlugin @Inject constructor(
         val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName()) ?: return
         aapsLogger.debug("zipFile: ${zipFile.name}")
         val zip = zipLogs(zipFile, logs)
+        saveLogsLocally(zip)
 
         if (alsoExportAiv) {
             // Off the UI thread, same CoroutineScope(Dispatchers.IO).launch pattern as
@@ -118,6 +119,44 @@ class MaintenancePlugin @Inject constructor(
             val emailIntent: Intent = this.sendMail(attachmentUri, recipient, "Log Export")
             aapsLogger.debug("sending emailIntent")
             context.startActivity(emailIntent)
+        }
+    }
+
+    /** Persistent local copy of every zip sendLogs() creates, mirroring how AutoIsfHistoryExporter
+     *  keeps a local aapsLogs/<PatientName> copy of AIV data rather than relying on the cloud upload
+     *  alone. Runs unconditionally (every sendLogs() call -- manual button, TT remote trigger, and the
+     *  automatic 6h KeepAliveWorker cycle alike), independent of the cloud-upload preference and of
+     *  cloud upload success/failure, since local save answers a different question (do we have a copy
+     *  at all) than "did it reach the cloud".
+     *
+     *  Deliberately plain File under Environment's public Documents path (fileListProvider.logsPath),
+     *  NOT the SAF-backed ensureTempDirExists()/AapsDirectoryUri route the zip itself and the cloud
+     *  upload use -- that grant does not survive an app reinstall or data clear, which is exactly the
+     *  failure mode that left Client's cloud log export silently dead after its reinstall (2026-08-09)
+     *  while its local AIV exports kept working the whole time via this same plain-File route.
+     *
+     *  Scoped per patient (logs/<PatientName>/, matching the cloud path's logs_<PatientName> naming)
+     *  so multiple devices exporting into a shared Google-Drive-synced Documents folder don't collide.
+     *  Retention capped at localLogsKeepCount (28, ~1 week at the 6h automatic cadence) -- each zip is
+     *  several MB to low tens of MB, so unlike the AIV text/CSV exports this would otherwise grow
+     *  unbounded. */
+    private fun saveLogsLocally(zipFile: DocumentFile) {
+        val localLogsKeepCount = 28
+        try {
+            val bytes = context.contentResolver.openInputStream(zipFile.uri)?.use { it.readBytes() } ?: return
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val dir = (if (patientName.isNotEmpty()) File(fileListProvider.logsPath, patientName) else fileListProvider.logsPath)
+                .also { it.mkdirs() }
+            File(dir, zipFile.name ?: constructName()).writeBytes(bytes)
+            aapsLogger.debug("Logs saved locally to ${dir.absolutePath}")
+
+            val existing = dir.listFiles { _, name -> name.startsWith("AndroidAPS") && name.endsWith(".zip") } ?: return
+            if (existing.size > localLogsKeepCount) {
+                Arrays.sort(existing) { f1: File, f2: File -> f2.name.compareTo(f1.name) }
+                existing.drop(localLogsKeepCount).forEach { it.delete() }
+            }
+        } catch (e: Exception) {
+            aapsLogger.error("Error saving logs locally", e)
         }
     }
 

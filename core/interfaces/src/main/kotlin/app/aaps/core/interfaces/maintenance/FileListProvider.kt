@@ -8,6 +8,11 @@ interface FileListProvider {
 
     val resultPath: File
     val aapsLogsPath: File
+    /** Documents/AAPS/logs -- persistent local home for the zipped AndroidAPS log archives sendLogs()
+     *  creates, mirroring aapsLogsPath's role for AIV data. Plain File (Environment public-storage
+     *  path), not SAF, so it doesn't depend on the AapsDirectoryUri grant that ensureTempDirExists()/
+     *  the cloud-upload path use -- and unlike those, survives an app reinstall untouched. */
+    val logsPath: File
     fun ensurePreferenceDirExists(): DocumentFile?
     fun ensureExportDirExists(): DocumentFile?
     fun ensureTempDirExists(): DocumentFile?

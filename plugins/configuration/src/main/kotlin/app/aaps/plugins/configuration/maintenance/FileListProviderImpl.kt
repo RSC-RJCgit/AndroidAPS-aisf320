@@ -51,6 +51,7 @@ class FileListProviderImpl @Inject constructor(
     private val documentsPath get() = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "AAPS")
     override val resultPath get() = File(documentsPath, File.separator + "results")
     override val aapsLogsPath get() = File(documentsPath, File.separator + "aapsLogs")
+    override val logsPath get() = File(documentsPath, File.separator + "logs")
 
     val preferencesPath = "preferences"
     val exportsPath = "exports"
