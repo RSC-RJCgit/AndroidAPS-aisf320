@@ -1767,6 +1767,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset2200UpTT")
         }
 
+        // Automatically clear TOD offsets when their sign no longer suits the current MJ/HP state.
+        // The NOMJ condition is the exact automation state MJ=NOMJremains. A missing HP does not
+        // satisfy HP < 5.0; the MJ-state part of either rule can still clear the applicable offsets.
+        val nomjRemains = checkAutomationState("MJ", "NOMJremains")
+        val todResetHp = hypoPredictionMmol(
+            glucoseStatus.glucose,
+            glucoseStatus.shortAvgDelta,
+            iobData.iob,
+            mealData.mealCOB
+        )
+        val todOffsetKeys = listOf(
+            DoubleKey.ApsAutoIsfTodOffset0002,
+            DoubleKey.ApsAutoIsfTodOffset0204,
+            DoubleKey.ApsAutoIsfTodOffset0406,
+            DoubleKey.ApsAutoIsfTodOffset0609,
+            DoubleKey.ApsAutoIsfTodOffset0912,
+            DoubleKey.ApsAutoIsfTodOffset1218,
+            DoubleKey.ApsAutoIsfTodOffset1822,
+            DoubleKey.ApsAutoIsfTodOffset2200
+        )
+        val stepsLow = checkAutomationState("Steps", "StepsLow")
+        val stepsHigh = checkAutomationState("Steps", "StepsHigh")
+        val clearNegativeTodOffsets = !nomjRemains || (todResetHp != null && todResetHp < 5.0) || stepsHigh
+        // A positive TOD offset delays/limits SMB, so remove that protection only when every
+        // permissive signal agrees. Missing HP deliberately fails closed and preserves the offset.
+        val clearPositiveTodOffsets = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0
+        val resetTodOffsets = todOffsetKeys.filter { key ->
+            val value = preferences.get(key)
+            (value < 0.0 && clearNegativeTodOffsets) || (value > 0.0 && clearPositiveTodOffsets)
+        }
+        if (resetTodOffsets.isNotEmpty()) {
+            val resettingPositive = resetTodOffsets.any { preferences.get(it) > 0.0 }
+            val resettingNegative = resetTodOffsets.any { preferences.get(it) < 0.0 }
+            val resetValues = resetTodOffsets.joinToString(",") { key ->
+                "${key.name}=${round(preferences.get(key), 2)}"
+            }
+            resetTodOffsets.forEach { key -> preferences.put(key, 0.0) }
+            val reason = when {
+                clearPositiveTodOffsets && resettingPositive ->
+                    "NOMJremains+StepsLow+HP=${round(todResetHp ?: 0.0, 2)}>6.0"
+                stepsHigh && resettingNegative -> "StepsHigh"
+                !nomjRemains -> "NOT_NOMJremains"
+                else -> "HP=${round(todResetHp ?: 0.0, 2)}<5.0"
+            }
+            sendSms("TodOffsetsZero: $reason; $resetValues")
+            addCarePortalNote("TOD0 $reason")
+        }
+
         // --- Graph2ToggleTT: manually setting a TT of 5.138 mmol is used as a remote toggle for
         // ApsAutoIsfShowCarbModelCurve (the "graph2" carb model curve display) — not a real target.
         // Next value after TodOffset2200UpTT's 5.136 in the settings-nudge TT cluster. Same
