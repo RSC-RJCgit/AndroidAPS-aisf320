@@ -5,21 +5,24 @@ import app.aaps.core.interfaces.rx.events.EventExportScriptDebugStatusChanged
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /** Recent export results shown above the current APS calculation's Script debug output. */
-@Singleton
-class ExportScriptDebugStatus @Inject constructor(private val rxBus: RxBus) {
+object ExportScriptDebugStatus {
 
     private val entries = ArrayDeque<String>()
+    @Volatile private var rxBus: RxBus? = null
+
+    /** The Script-debug UI supplies the app event bus when it is created. */
+    fun bind(rxBus: RxBus) {
+        this.rxBus = rxBus
+    }
 
     @Synchronized
     fun add(message: String) {
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         entries.addFirst("[$time] $message")
         while (entries.size > MAX_ENTRIES) entries.removeLast()
-        rxBus.send(EventExportScriptDebugStatusChanged())
+        rxBus?.send(EventExportScriptDebugStatusChanged())
     }
 
     @Synchronized

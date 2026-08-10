@@ -45,7 +45,6 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var dateUtil: DateUtil
-    @Inject lateinit var exportScriptDebugStatus: ExportScriptDebugStatus
 
     @Suppress("PrivatePropertyName")
     private val ID_MENU_RUN = 503
@@ -96,6 +95,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     @Synchronized
     override fun onResume() {
         super.onResume()
+        ExportScriptDebugStatus.bind(rxBus)
 
         disposable += rxBus
             .toObservable(EventOpenAPSUpdateGui::class.java)
@@ -138,7 +138,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     private fun updateGUI() {
         if (_binding == null) return
         val openAPSPlugin = activePlugin.activeAPS
-        val exportStatuses = exportScriptDebugStatus.snapshot()
+        val exportStatuses = ExportScriptDebugStatus.snapshot()
         binding.scriptdebugdata.text = exportStatuses.joinToString("\n")
         openAPSPlugin.lastAPSResult?.let { lastAPSResult ->
             binding.result.text = lastAPSResult.rawData().dataClassToHtml()

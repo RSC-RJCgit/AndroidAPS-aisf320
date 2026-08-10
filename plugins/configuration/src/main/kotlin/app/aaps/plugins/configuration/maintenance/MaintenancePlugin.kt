@@ -67,8 +67,7 @@ class MaintenancePlugin @Inject constructor(
     private val uel: UserEntryLogger,
     private val cloudStorageManager: CloudStorageManager,
     private val exportOptionsDialog: ExportOptionsDialog,
-    private val autoIsfHistoryExporter: AutoIsfHistoryExporter,
-    private val exportScriptDebugStatus: ExportScriptDebugStatus
+    private val autoIsfHistoryExporter: AutoIsfHistoryExporter
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -94,20 +93,20 @@ class MaintenancePlugin @Inject constructor(
     fun sendLogs(alsoExportAiv: Boolean = true, trigger: String = "MANUAL") {
         val startedStatus = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=STARTED"
         aapsLogger.info(LTag.CORE, startedStatus)
-        exportScriptDebugStatus.add(startedStatus)
+        ExportScriptDebugStatus.add(startedStatus)
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
         if (logs.isEmpty()) {
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_SOURCE_LOGS"
             aapsLogger.error(LTag.CORE, status)
-            exportScriptDebugStatus.add(status)
+            ExportScriptDebugStatus.add(status)
             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_no_source))
             return
         }
         val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName())
         if (zipFile == null) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
-            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
             return
         }
         aapsLogger.debug("zipFile: ${zipFile.name}")
@@ -127,7 +126,7 @@ class MaintenancePlugin @Inject constructor(
                     aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
                 else
                     aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
-                exportScriptDebugStatus.add(
+                ExportScriptDebugStatus.add(
                     if (writtenFiles.size == 3) "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=3"
                     else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
@@ -142,7 +141,7 @@ class MaintenancePlugin @Inject constructor(
         } else {
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=CLOUD_NOT_ENABLED"
             aapsLogger.error(LTag.CORE, status)
-            exportScriptDebugStatus.add(status)
+            ExportScriptDebugStatus.add(status)
             // Send via email (default behavior)
             val recipient = preferences.get(StringKey.MaintenanceEmail)
             val attachmentUri = zip.uri
@@ -176,7 +175,7 @@ class MaintenancePlugin @Inject constructor(
             val bytes = context.contentResolver.openInputStream(zipFile.uri)?.use { it.readBytes() }
             if (bytes == null) {
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
-                exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
                 return
             }
             if (bytes.size < 1024) {
@@ -184,7 +183,7 @@ class MaintenancePlugin @Inject constructor(
                     LTag.CORE,
                     "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
                 )
-                exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
                 return
             }
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
@@ -193,7 +192,7 @@ class MaintenancePlugin @Inject constructor(
             File(dir, zipFile.name ?: constructName()).writeBytes(bytes)
             aapsLogger.debug("Logs saved locally to ${dir.absolutePath}")
             aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
-            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
 
             val existing = dir.listFiles { _, name -> name.startsWith("AndroidAPS") && name.endsWith(".zip") } ?: return
             if (existing.size > localLogsKeepCount) {
@@ -203,7 +202,7 @@ class MaintenancePlugin @Inject constructor(
         } catch (e: Exception) {
             aapsLogger.error("Error saving logs locally", e)
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=EXCEPTION", e)
-            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=EXCEPTION")
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=EXCEPTION")
         }
     }
 
@@ -386,7 +385,7 @@ class MaintenancePlugin @Inject constructor(
                         LTag.CORE,
                         "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
                     )
-                    exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
+                    ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
                     ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb))
                     return
                 }
@@ -397,7 +396,7 @@ class MaintenancePlugin @Inject constructor(
                         if (provider == null) {
                             aapsLogger.error("No active cloud provider")
                             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
-                            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                             fallbackToEmailLogs(zipFile)
                             return@launch
                         }
@@ -427,11 +426,11 @@ class MaintenancePlugin @Inject constructor(
                         if (uploadedFileId != null) {
                             aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
                             aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
-                            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
+                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
                         } else {
                             aapsLogger.error("Failed to upload logs to cloud storage")
                             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
-                            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
+                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
                             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
                             
                             // Fallback to email
@@ -440,7 +439,7 @@ class MaintenancePlugin @Inject constructor(
                     } catch (e: Exception) {
                         aapsLogger.error("Error uploading logs to cloud storage", e)
                         aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION", e)
-                        exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
+                        ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
                         ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
                         
                         // Fallback to email
@@ -450,13 +449,13 @@ class MaintenancePlugin @Inject constructor(
             } else {
                 aapsLogger.error("Failed to read zip file contents")
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
-                exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
                 fallbackToEmailLogs(zipFile)
             }
         } catch (e: Exception) {
             aapsLogger.error("Error preparing logs for cloud upload", e)
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
-            exportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
             fallbackToEmailLogs(zipFile)
         }
     }

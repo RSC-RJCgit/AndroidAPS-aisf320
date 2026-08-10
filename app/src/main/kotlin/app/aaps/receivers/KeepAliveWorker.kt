@@ -70,7 +70,6 @@ class KeepAliveWorker(
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
     @Inject lateinit var cloudStorageManager: CloudStorageManager
-    @Inject lateinit var exportScriptDebugStatus: ExportScriptDebugStatus
 
     companion object {
 
@@ -186,7 +185,7 @@ class KeepAliveWorker(
                 aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
             else
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
-            exportScriptDebugStatus.add(
+            ExportScriptDebugStatus.add(
                 if (writtenFiles.size == 3) "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=3"
                 else "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
             )
