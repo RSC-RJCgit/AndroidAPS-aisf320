@@ -13,6 +13,7 @@ and carb ratios.
 
 ## Where to find documentation about autoISF
 * Please visit ga-zelle’s repository [GitHub - ga-zelle/autoISF](https://github.com/ga-zelle/autoISF/tree/A3.4.2.6_ai3.2.1).
+* This repo contains a [ReadMe document](https://github.com/ga-zelle/autoISF/blob/A3.4.2.6_ai3.2.1/README.md) with a description of the latest changes to AutoISF
 * The [**Quick Guide (bzw. Kurzanleitung)**](https://github.com/68d23e02-a816-45de-83ad-d5483ef5e351) provides an overview of autoISF and its features
 
 
@@ -30,14 +31,7 @@ and carb ratios.
   from the official [Nightscout AndroidAPS](https://github.com/nightscout/AndroidAPS)
   repo as a base and adds autoISF 3.2.1 to it.
 
-## What's new in autoISF Version 3.2.1 when compared to AutoISF 3.2.0
-The main new features on the AutoISF side provided by the upgrade from 3.2.0 to 3.2.1 are:
-* Re-enabled keeping 1 month worth of logfiles
-* The *States* and its *Values* are now included in settings exports and imports. This also means references in macros are now maintained during import (if previously exported by this new version).
-* When *States* or its *Values* get updated behind the scenes (i.e. by macros or Kotlin code) the *States Tab* gets updated within 1 second.
-* The new smoothing method UKF was added. It was developed for Tsunami by *piecycle* who previously developed the exponential algorithm. UKF is more powerful and already part of the AAPS4 prototype.
-
-## Why was autoISF not part of the oficial AndroidAPS "master" version?
+## Why was autoISF not part of the official AndroidAPS "master" version?
 * With AndroidAPS 3.3, autoISF was introduced as a plugin, but can only be enabled in dev mode
 * The version available here makes the latest 3.2.1 version of autoISF available in the currently  
   latest 2.4.2.6vAndroidAPS version even without dev mode
