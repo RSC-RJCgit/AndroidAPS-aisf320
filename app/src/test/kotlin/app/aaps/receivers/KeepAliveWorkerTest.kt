@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -46,6 +47,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
     @Mock private lateinit var listenableFuture: ListenableFuture<List<WorkInfo>>
     @Mock private lateinit var mockedRxBus: RxBus
     @Mock private lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
+    @Mock private lateinit var exportScriptDebugStatus: ExportScriptDebugStatus
 
     @BeforeEach
     fun setUp() {
@@ -77,6 +79,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
             it.workManager = workManager
             it.rh = rh
             it.autoIsfHistoryExporter = autoIsfHistoryExporter
+            it.exportScriptDebugStatus = exportScriptDebugStatus
         }
 
     @Test

@@ -15,6 +15,7 @@ import androidx.core.view.MenuCompat
 import androidx.core.view.MenuProvider
 import androidx.lifecycle.Lifecycle
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
@@ -43,6 +44,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var dateUtil: DateUtil
+    @Inject lateinit var exportScriptDebugStatus: ExportScriptDebugStatus
 
     @Suppress("PrivatePropertyName")
     private val ID_MENU_RUN = 503
@@ -140,7 +142,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
             binding.iobdata.text = rh.gs(R.string.array_of_elements, lastAPSResult.iobData?.size) + "\n" + lastAPSResult.iob?.dataClassToHtml()
             binding.profile.text = lastAPSResult.oapsProfile?.dataClassToHtml() ?: lastAPSResult.oapsProfileAutoIsf?.dataClassToHtml()
             binding.mealdata.text = lastAPSResult.mealData?.dataClassToHtml()
-            binding.scriptdebugdata.text = lastAPSResult.scriptDebug?.joinToString("\n")
+            binding.scriptdebugdata.text = (exportScriptDebugStatus.snapshot() + (lastAPSResult.scriptDebug ?: emptyList())).joinToString("\n")
             binding.constraints.text = lastAPSResult.inputConstraints?.getReasons()
             binding.autosensdata.text = lastAPSResult.autosensResult?.dataClassToHtml()
             binding.lastrun.text = dateUtil.dateAndTimeString(openAPSPlugin.lastAPSRun)

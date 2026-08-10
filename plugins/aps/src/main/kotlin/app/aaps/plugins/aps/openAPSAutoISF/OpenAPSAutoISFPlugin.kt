@@ -1634,12 +1634,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- TodOffset*TT (8 pairs, T1-T8): manually setting a TT of 5.092-5.136 mmol is used as a
-        // remote +/-0.1 nudge on one of the 8 fixed time-of-day varOffset windows (ApsAutoIsfTodOffset*,
+        // remote +/-0.5 nudge on one of the 8 fixed time-of-day varOffset windows (ApsAutoIsfTodOffset*,
         // see DetermineBasalAutoISF.kt), clamped to +/-2.0 — not a real target. T1=00-02h, T2=02-04h,
         // T3=04-06h, T4=06-09h, T5=09-12h, T6=12-18h, T7=18-22h, T8=22-00h. Same pattern/tight 0.0001mmol
         // tolerance as the other settings-nudge TTs above.
         if (readyToRun("TodOffset0002DownTT", 2) && activeTtNear(5.092, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
@@ -1647,7 +1647,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0002DownTT")
         }
         if (readyToRun("TodOffset0002UpTT", 2) && activeTtNear(5.094, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
@@ -1655,7 +1655,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0002UpTT")
         }
         if (readyToRun("TodOffset0204DownTT", 2) && activeTtNear(5.098, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
@@ -1663,7 +1663,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0204DownTT")
         }
         if (readyToRun("TodOffset0204UpTT", 2) && activeTtNear(5.100, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
@@ -1671,7 +1671,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0204UpTT")
         }
         if (readyToRun("TodOffset0406DownTT", 2) && activeTtNear(5.104, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
@@ -1679,7 +1679,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0406DownTT")
         }
         if (readyToRun("TodOffset0406UpTT", 2) && activeTtNear(5.106, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
@@ -1687,7 +1687,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0406UpTT")
         }
         if (readyToRun("TodOffset0609DownTT", 2) && activeTtNear(5.110, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
@@ -1695,7 +1695,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0609DownTT")
         }
         if (readyToRun("TodOffset0609UpTT", 2) && activeTtNear(5.112, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
@@ -1703,7 +1703,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0609UpTT")
         }
         if (readyToRun("TodOffset0912DownTT", 2) && activeTtNear(5.116, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
@@ -1711,7 +1711,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0912DownTT")
         }
         if (readyToRun("TodOffset0912UpTT", 2) && activeTtNear(5.118, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
@@ -1719,7 +1719,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset0912UpTT")
         }
         if (readyToRun("TodOffset1218DownTT", 2) && activeTtNear(5.122, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
@@ -1727,7 +1727,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset1218DownTT")
         }
         if (readyToRun("TodOffset1218UpTT", 2) && activeTtNear(5.124, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
@@ -1735,7 +1735,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset1218UpTT")
         }
         if (readyToRun("TodOffset1822DownTT", 2) && activeTtNear(5.128, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
@@ -1743,7 +1743,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset1822DownTT")
         }
         if (readyToRun("TodOffset1822UpTT", 2) && activeTtNear(5.130, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
@@ -1751,7 +1751,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset1822UpTT")
         }
         if (readyToRun("TodOffset2200DownTT", 2) && activeTtNear(5.134, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.1).coerceAtLeast(-2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.5).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
@@ -1759,7 +1759,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset2200DownTT")
         }
         if (readyToRun("TodOffset2200UpTT", 2) && activeTtNear(5.136, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.1).coerceAtMost(2.0)
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.5).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
@@ -1896,11 +1896,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("DuraWeightUpTT")
         }
 
-        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.10 nudge on
+        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.50 nudge on
         // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
         // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
         if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.036, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.10).coerceAtLeast(0.50)
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.50).coerceAtLeast(0.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
@@ -1908,10 +1908,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SmbOffsetDownTT")
         }
 
-        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.10 nudge on
+        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.50 nudge on
         // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
         if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.038, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.10).coerceAtMost(1.50)
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.50).coerceAtMost(1.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")

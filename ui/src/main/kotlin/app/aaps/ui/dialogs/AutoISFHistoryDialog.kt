@@ -18,6 +18,7 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
@@ -35,6 +36,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var exportScriptDebugStatus: ExportScriptDebugStatus
 
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
@@ -124,6 +126,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     aapsLogger.info(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
                 else
                     aapsLogger.error(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
+                exportScriptDebugStatus.add(
+                    if (writtenFiles.size == 3) "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=3"
+                    else "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
+                )
             }
         }
     }
