@@ -28,7 +28,5 @@ object ExportScriptDebugStatus {
     @Synchronized
     fun snapshot(): List<String> = entries.toList()
 
-    private companion object {
-        const val MAX_ENTRIES = 20
-    }
+    private const val MAX_ENTRIES = 20
 }
