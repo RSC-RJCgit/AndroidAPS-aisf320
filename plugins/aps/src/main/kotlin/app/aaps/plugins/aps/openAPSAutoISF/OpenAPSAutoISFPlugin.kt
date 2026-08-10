@@ -960,7 +960,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
         if (autoIsfMode) {
             val graphActivity = 100 * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
-            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob)
+            val hpForDuraTaper = hypoPredictionMmol(
+                glucoseStatus.glucose,
+                glucoseStatus.shortAvgDelta,
+                iobData.iob,
+                mealData.mealCOB
+            )
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, hpForDuraTaper)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -4544,7 +4550,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // iob default 0.0 (== untapered, full dura_ISF effect) matches currentActivity/smbActivity's own
     // default -- calculateVariableIsf()'s cached/arbitrary-timestamp call site below doesn't have a live
     // IOB any more than it has live activity, same pre-existing limitation (see that call site's comment).
-    fun autoISF(profile: Profile, currentActivity: Double = 0.0, smbActivity: Double = 0.0, iob: Double = 0.0): Double {
+    fun autoISF(
+        profile: Profile,
+        currentActivity: Double = 0.0,
+        smbActivity: Double = 0.0,
+        iob: Double = 0.0,
+        hpMmol: Double? = null
+    ): Double {
 
         var steps180min = StepService.getRecentStepCount180Min()
         var steps15min = StepService.getRecentStepCount15Min()
@@ -4892,9 +4904,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val iobTaperEnd = 3.0     // floor reached at/above this -- around/above the later-low median (~2.34U)
                 val iobTaperFloor = 0.3
                 val iobTaperFactor = when {
-                    iob <= iobTaperStart -> 1.0
-                    iob >= iobTaperEnd   -> iobTaperFloor
-                    else                 -> 1.0 - (1.0 - iobTaperFloor) * (iob - iobTaperStart) / (iobTaperEnd - iobTaperStart)
+                    hpMmol != null && hpMmol > 7.0 -> 1.0
+                    iob <= iobTaperStart           -> 1.0
+                    iob >= iobTaperEnd             -> iobTaperFloor
+                    else                           -> 1.0 - (1.0 - iobTaperFloor) * (iob - iobTaperStart) / (iobTaperEnd - iobTaperStart)
+                }
+                if (hpMmol != null && hpMmol > 7.0) {
+                    consoleError.add("dura_ISF IOB taper disabled: HP=${round(hpMmol, 2)} > 7.0")
                 }
                 if (iobTaperFactor < 1.0) {
                     val beforeTaper = duraBoost
@@ -5342,5 +5358,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_541
+OpenAPSAutoISFPlugin.ktaisf321_5422
 */
