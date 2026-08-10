@@ -3,14 +3,6 @@ name: AAPS CI
 on:
   workflow_dispatch:
     inputs:
-      tagName:
-        description: 'Select AAPS Version'
-        required: true
-        default: '3.4.2.6+aisf3.2.1'
-        type: choice
-        options:
-          # ── 3.4.x (JDK 21) ──────────────────────────────
-          - 3.4.2.6+aisf3.2.1
       buildVariant:
         description: 'Select Build Variant'
         required: true
@@ -156,19 +148,17 @@ jobs:
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
           echo "✅ Access token obtained."
 
-      - name: Checkout source code at tag
+      - name: Checkout source code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Determine JVM version from tag
+      - name: Set JVM version
         run: |
-          # jdk-map.json must be read before switching to the upstream tag,
-          # as the upstream tag does not contain this file.
-          TAG="${{ github.event.inputs.tagName }}"
           JAVA_VERSION=21
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
           echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
-          echo "ℹ️ Tag $TAG → JDK $JAVA_VERSION (from jdk-map.json)"
+          echo "ℹ️ Building $BRANCH_NAME with JDK $JAVA_VERSION"
 
       - name: Set BUILD_VARIANT
         run: |
