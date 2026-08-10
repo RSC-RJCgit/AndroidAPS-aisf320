@@ -1859,7 +1859,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // activeTtNear()/cancel/notify pattern as the other remote-signal TTs above; no toggle state,
         // just fires once per TT-set.
         if (readyToRun("CloudLogsUploadTT", 2) && activeTtNear(5.140, 0.0001)) {
-            importExportPrefs.sendLogs()
+            importExportPrefs.sendLogs(trigger = "REMOTE_TT")
             cancelCurrentTempTarget()
             sendSms("CloudLogsUpload: triggered")
             addCarePortalNote("CLup")

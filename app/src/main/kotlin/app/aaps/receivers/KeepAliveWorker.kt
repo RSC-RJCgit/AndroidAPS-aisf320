@@ -160,7 +160,7 @@ class KeepAliveWorker(
             // alsoExportAiv=false: exportAutoIsfHistoryIfDue() below already covers the AIV export
             // unconditionally every cycle -- see sendLogs()'s own doc comment for why this would
             // otherwise double up whenever MaintenanceAutoExportLogsToCloud is enabled.
-            maintenancePlugin.sendLogs(alsoExportAiv = false)
+            maintenancePlugin.sendLogs(alsoExportAiv = false, trigger = "AUTOMATIC_6H")
             preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
         }
     }
@@ -180,6 +180,10 @@ class KeepAliveWorker(
             val now = dateUtil.now()
             val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
             autoIsfHistoryExporter.buildCombinedExport(now)
+            if (writtenFiles.isNotEmpty())
+                aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
+            else
+                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=0")
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
             uploadAivFilesToCloud(writtenFiles)
         }

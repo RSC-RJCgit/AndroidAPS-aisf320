@@ -132,7 +132,7 @@ class ImportExportPrefsImpl @Inject constructor(
     private val maintenancePlugin: MaintenancePlugin
 ) : ImportExportPrefs {
 
-    override fun sendLogs() = maintenancePlugin.sendLogs()
+    override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
 
     companion object {
         /** Cloud preference files loaded from the active cloud provider for the import list. */

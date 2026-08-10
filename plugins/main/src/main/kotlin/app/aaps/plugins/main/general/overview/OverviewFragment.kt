@@ -50,6 +50,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.nsclient.NSSettingsStatus
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.LastBgData
@@ -172,6 +173,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var commandQueue: CommandQueue
+    @Inject lateinit var importExportPrefs: ImportExportPrefs
 
     private val disposable = CompositeDisposable()
 
@@ -1961,6 +1963,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
             binding.infoLayout.asLayout.setOnLongClickListener {
+                aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
+                // The dialog writes the AIV CSV/TXT/settings files. Avoid a duplicate AIV write in
+                // sendLogs while still starting the cloud log export from the same long press.
+                importExportPrefs.sendLogs(trigger = "ISF_LONG_PRESS", alsoExportAiv = false)
                 uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
                 true
             }

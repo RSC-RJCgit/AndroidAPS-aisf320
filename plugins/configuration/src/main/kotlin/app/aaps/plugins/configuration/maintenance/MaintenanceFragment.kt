@@ -93,7 +93,7 @@ class MaintenanceFragment : DaggerFragment() {
         val parentClass = this.activity?.let { it::class.java }
         inMenu = parentClass == uiInteraction.singleFragmentActivity
         updateProtectedUi()
-        binding.logSend.setOnClickListener { maintenancePlugin.sendLogs() }
+        binding.logSend.setOnClickListener { maintenancePlugin.sendLogs(trigger = "MANUAL") }
         binding.logDelete.setOnClickListener {
             disposable +=
                 Completable.fromAction { maintenancePlugin.deleteLogs(5) }

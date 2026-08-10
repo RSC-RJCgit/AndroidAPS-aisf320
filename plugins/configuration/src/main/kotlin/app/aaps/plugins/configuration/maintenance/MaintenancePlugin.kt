@@ -12,6 +12,7 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.FileListProvider
@@ -87,10 +88,15 @@ class MaintenancePlugin @Inject constructor(
      *  independently (and unconditionally, unlike this cloud-log path's own
      *  MaintenanceAutoExportLogsToCloud gate) exports AIV every cycle already -- without the flag this
      *  would fire the AIV export twice per cycle whenever that preference is enabled. */
-    fun sendLogs(alsoExportAiv: Boolean = true) {
+    fun sendLogs(alsoExportAiv: Boolean = true, trigger: String = "MANUAL") {
+        aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=STARTED")
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
-        val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName()) ?: return
+        val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName())
+        if (zipFile == null) {
+            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
+            return
+        }
         aapsLogger.debug("zipFile: ${zipFile.name}")
         val zip = zipLogs(zipFile, logs)
         saveLogsLocally(zip)
@@ -102,8 +108,12 @@ class MaintenancePlugin @Inject constructor(
             // caller, so nothing further to widen here.
             CoroutineScope(Dispatchers.IO).launch {
                 val now = System.currentTimeMillis()
-                autoIsfHistoryExporter.exportLast6Hours(now)
+                val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
+                if (writtenFiles.isNotEmpty())
+                    aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
+                else
+                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=0")
             }
         }
 
@@ -111,7 +121,7 @@ class MaintenancePlugin @Inject constructor(
         if ((exportOptionsDialog.isLogCloudEnabled()) && 
             cloudStorageManager.isCloudStorageActive()) {
             // Send to Cloud Drive
-            sendLogsToCloudDrive(zip)
+            sendLogsToCloudDrive(zip, trigger)
         } else {
             // Send via email (default behavior)
             val recipient = preferences.get(StringKey.MaintenanceEmail)
@@ -314,7 +324,7 @@ class MaintenancePlugin @Inject constructor(
         return emailIntent
     }
 
-    private fun sendLogsToCloudDrive(zipFile: DocumentFile) {
+    private fun sendLogsToCloudDrive(zipFile: DocumentFile, trigger: String) {
         try {
             aapsLogger.debug("Sending logs to cloud storage")
             
@@ -357,8 +367,10 @@ class MaintenancePlugin @Inject constructor(
 
                         if (uploadedFileId != null) {
                             aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
+                            aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
                         } else {
                             aapsLogger.error("Failed to upload logs to cloud storage")
+                            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
                             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
                             
                             // Fallback to email
@@ -366,6 +378,7 @@ class MaintenancePlugin @Inject constructor(
                         }
                     } catch (e: Exception) {
                         aapsLogger.error("Error uploading logs to cloud storage", e)
+                        aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION", e)
                         ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
                         
                         // Fallback to email
@@ -374,10 +387,12 @@ class MaintenancePlugin @Inject constructor(
                 }
             } else {
                 aapsLogger.error("Failed to read zip file contents")
+                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
                 fallbackToEmailLogs(zipFile)
             }
         } catch (e: Exception) {
             aapsLogger.error("Error preparing logs for cloud upload", e)
+            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
             fallbackToEmailLogs(zipFile)
         }
     }

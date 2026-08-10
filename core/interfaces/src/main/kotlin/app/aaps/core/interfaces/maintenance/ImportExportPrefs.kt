@@ -24,7 +24,7 @@ interface ImportExportPrefs {
      * Zip current logs and send them (cloud storage if configured, else email) -- same action as the
      * "Send logs" button on the Maintenance screen.
      */
-    fun sendLogs()
+    fun sendLogs(trigger: String = "MANUAL", alsoExportAiv: Boolean = true)
 
     /**
      * Store for selected file from UI
