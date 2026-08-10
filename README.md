@@ -14,7 +14,7 @@ and carb ratios.
 ## Where to find documentation about autoISF
 * Please visit ga-zelle’s repository [GitHub - ga-zelle/autoISF](https://github.com/ga-zelle/autoISF/tree/A3.4.2.6_ai3.2.1).
 * This repo contains a [ReadMe document](https://github.com/ga-zelle/autoISF/blob/A3.4.2.6_ai3.2.1/README.md) with a description of the latest changes to AutoISF
-* The [**Quick Guide (bzw. Kurzanleitung)**](https://github.com/68d23e02-a816-45de-83ad-d5483ef5e351) provides an overview of autoISF and its features
+* The [**Quick Guide (bzw. Kurzanleitung)**](https://github.com/ga-zelle/autoISF/blob/A3.4.2.6_ai3.2.1/autoISF3.2.0_Quick_Guide.pdf) provides an overview of autoISF and its features
 
 
 ## Why do I get AutoISF here and not at ga-zelle's Repo?
