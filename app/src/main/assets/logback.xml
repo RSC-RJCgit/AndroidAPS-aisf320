@@ -1,7 +1,6 @@
 <configuration>
     <!-- Create a file appender for a log in the application's data directory -->
     <property name="EXT_FILES_DIR" scope="context" value="/storage/emulated/0/Documents/aapsLogs" />
-    <property name="APP_FILES_LOG_DIR" value="${EXT_DIR:-${DATA_DIR}}/aapsLogs" />
     <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${EXT_FILES_DIR}/AndroidAPS.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -11,21 +10,6 @@
             <!-- keep 30 days (hourly archives) worth of history -->
             <maxHistory>720</maxHistory>
             <!-- clean history on app start and check for missed rollovers -->
-            <cleanHistoryOnStart>true</cleanHistoryOnStart>
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %.-1level/%logger: %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <!-- Scoped-storage fallback. Keep the established Documents writer above for existing/main-phone
-         installations, while Client/Virtual can still produce source logs when Android denies direct
-         writes to public Documents. MaintenancePlugin scans and deduplicates both locations. -->
-    <appender name="appFilesFile" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${APP_FILES_LOG_DIR}/AndroidAPS.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${APP_FILES_LOG_DIR}/AndroidAPS._%d{yyyy-MM-dd_HH}.log.zip</fileNamePattern>
-            <maxHistory>720</maxHistory>
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
         </rollingPolicy>
         <encoder>
@@ -45,7 +29,6 @@
     <!-- Write INFO (and higher-level) messages to the log file -->
     <root level="DEBUG">
         <appender-ref ref="file" />
-        <appender-ref ref="appFilesFile" />
         <appender-ref ref="logcat" />
     </root>
 </configuration>

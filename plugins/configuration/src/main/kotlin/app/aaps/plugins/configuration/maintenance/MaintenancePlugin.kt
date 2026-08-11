@@ -253,9 +253,7 @@ class MaintenancePlugin @Inject constructor(
     fun getLogFiles(amount: Int): List<File> {
         val configuredPath = loggerUtils.logDirectory
         val fallbackPath = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "aapsLogs").absolutePath
-        val appExternalPath = context.getExternalFilesDir(null)?.resolve("aapsLogs")?.absolutePath
-        val appInternalPath = context.filesDir.resolve("aapsLogs").absolutePath
-        val searchDirs = listOfNotNull(configuredPath, fallbackPath, appExternalPath, appInternalPath)
+        val searchDirs = listOf(configuredPath, fallbackPath)
             .filter { it.isNotBlank() }
             .distinct()
             .map(::File)
@@ -271,10 +269,7 @@ class MaintenancePlugin @Inject constructor(
                         (name.startsWith("AndroidAPS") && !name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip"))
                 }?.toList().orEmpty()
             }
-            // Both appenders intentionally use the same filenames. Prefer the established public
-            // Documents copy when it exists and otherwise take the app-specific fallback, avoiding
-            // duplicate ZipEntry names in the generated export archive.
-            .distinctBy { it.name }
+            .distinctBy { it.absolutePath }
             .sortedByDescending { it.name }
         var toIndex = amount
         if (toIndex > result.size) {
