@@ -233,6 +233,7 @@ class MaintenanceFragment : DaggerFragment() {
                     aapsLogger.info(LTag.CORE, "CSV_EXPORT user confirmed, calling exportUserEntriesCsv")
                     uel.log(Action.EXPORT_CSV, Sources.Maintenance)
                     importExportPrefs.exportUserEntriesCsv(activity)
+                    maintenancePlugin.sendLogs(trigger = "MANUAL")
                 }
             }
         }

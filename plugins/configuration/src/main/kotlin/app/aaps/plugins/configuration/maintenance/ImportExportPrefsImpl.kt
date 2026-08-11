@@ -1093,6 +1093,7 @@ class ImportExportPrefsImpl @Inject constructor(
         @Inject lateinit var persistenceLayer: PersistenceLayer
         @Inject lateinit var cloudStorageManager: CloudStorageManager
         @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
+        @Inject lateinit var preferences: Preferences
 
         override suspend fun doWorkAndLog(): Result {
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT doWorkAndLog started")
@@ -1107,6 +1108,13 @@ class ImportExportPrefsImpl @Inject constructor(
 
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT entries count=${entries.size}")
 
+            try {
+                exportThirtyHourText()
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.CORE, "CSV_EXPORT failed to create 30-hour TXT copies", e)
+                ToastUtils.longErrorToast(context, "User entries 30-hour TXT export failed")
+            }
+
             val isCsvCloudEnabled = exportOptionsDialog.isCsvCloudEnabled()
             val isCloudActive = cloudStorageManager.isCloudStorageActive()
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT isCsvCloudEnabled=$isCsvCloudEnabled, isCloudActive=$isCloudActive")
@@ -1118,6 +1126,30 @@ class ImportExportPrefsImpl @Inject constructor(
                 aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT calling exportToLocal")
                 return exportToLocal(entries)
             }
+        }
+
+        /** Saves a dated 30-hour snapshot beside AIV and an undated output copy. */
+        private fun exportThirtyHourText() {
+            val entries = persistenceLayer
+                .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
+                .blockingGet()
+            val contents = userEntryPresentationHelper.userEntriesToCsv(entries)
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val patientDir = (if (patientName.isNotEmpty()) File(prefFileList.aapsLogsPath, patientName) else prefFileList.aapsLogsPath).apply {
+                if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
+            }
+            val outputDir = File(patientDir, "output").apply {
+                if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
+            }
+            val timestamp = org.joda.time.LocalDateTime.now()
+                .toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))
+            val nameSuffix = patientName.takeIf { it.isNotEmpty() }?.let { "_$it" } ?: ""
+            val datedFile = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt")
+            val currentFile = File(outputDir, "UserEntries_30h${nameSuffix}.txt")
+
+            datedFile.writeText(contents, Charsets.UTF_8)
+            currentFile.writeText(contents, Charsets.UTF_8)
+            aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT 30-hour TXT saved: ${datedFile.absolutePath}; current=${currentFile.absolutePath}; entries=${entries.size}")
         }
 
         private suspend fun exportToLocal(userEntries: List<UE>): Result {
