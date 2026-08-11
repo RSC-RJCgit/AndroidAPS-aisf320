@@ -1287,9 +1287,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val libreSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
             val libreOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
             val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("D0", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("D1", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("D2", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                sensorAgeDays < 1.0                            -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
                 // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
                 sensorAgeDays >= 11.0 && sensorAgeDays < 13.0 -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
                 sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)

@@ -132,7 +132,9 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     else "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
                 autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
-                importExportPrefs.uploadAivFilesToCloud(writtenFiles, "ISF_LONG_PRESS")
+                importExportPrefs.uploadAivFilesToCloud(writtenFiles, "ISF_LONG_PRESS") {
+                    importExportPrefs.sendLogs(trigger = "ISF_LONG_PRESS", alsoExportAiv = false)
+                }
             }
         }
     }

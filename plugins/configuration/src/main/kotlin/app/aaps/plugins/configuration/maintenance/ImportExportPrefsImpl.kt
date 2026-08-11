@@ -134,7 +134,8 @@ class ImportExportPrefsImpl @Inject constructor(
 ) : ImportExportPrefs {
 
     override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
-    override fun uploadAivFilesToCloud(files: List<File>, trigger: String) = maintenancePlugin.uploadAivFilesToCloud(files, trigger)
+    override fun uploadAivFilesToCloud(files: List<File>, trigger: String, onComplete: (() -> Unit)?) =
+        maintenancePlugin.uploadAivFilesToCloud(files, trigger, onComplete)
 
     companion object {
         /** Cloud preference files loaded from the active cloud provider for the import list. */

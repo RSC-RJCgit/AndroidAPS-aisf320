@@ -26,7 +26,7 @@ interface ImportExportPrefs {
      * "Send logs" button on the Maintenance screen.
      */
     fun sendLogs(trigger: String = "MANUAL", alsoExportAiv: Boolean = true)
-    fun uploadAivFilesToCloud(files: List<File>, trigger: String)
+    fun uploadAivFilesToCloud(files: List<File>, trigger: String, onComplete: (() -> Unit)? = null)
 
     /**
      * Store for selected file from UI

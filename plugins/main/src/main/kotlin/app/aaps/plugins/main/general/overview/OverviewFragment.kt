@@ -1967,9 +1967,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
             binding.infoLayout.asLayout.setOnLongClickListener {
                 aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
-                // The dialog writes the AIV CSV/TXT/settings files. Avoid a duplicate AIV write in
-                // sendLogs while still starting the cloud log export from the same long press.
-                importExportPrefs.sendLogs(trigger = "ISF_LONG_PRESS", alsoExportAiv = false)
+                // The dialog writes and uploads AIV first, then starts logs from its cloud-completion
+                // callback. This guarantees AVLs/AVLf -> AVCs/AVCf -> LGsP ordering.
                 uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
                 true
             }

@@ -147,23 +147,20 @@ class KeepAliveWorker(
         maintenancePlugin.deleteLogs(30*24)
         workerDbStatus()
         databaseCleanup()
-        exportLogsToCloudIfDue()
-        exportAutoIsfHistoryIfDue()
+        val automaticLogsDue = preferences.get(BooleanKey.MaintenanceAutoExportLogsToCloud) &&
+            preferences.get(LongNonKey.LastCloudLogExport) < dateUtil.now() - T.hours(6).msecs()
+        if (automaticLogsDue) {
+            // Reserve the six-hour slot before starting asynchronous cloud work, preventing another
+            // KeepAlive instance from launching a duplicate sequence while this one is still running.
+            preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
+            exportAutoIsfHistoryIfDue(force = true) {
+                maintenancePlugin.sendLogs(alsoExportAiv = false, trigger = "AUTOMATIC_6H")
+            }
+        } else {
+            exportAutoIsfHistoryIfDue()
+        }
 
         return Result.success()
-    }
-
-    // Automatic cloud log export every 6 hours, mirroring databaseCleanup()'s throttle pattern below.
-    private fun exportLogsToCloudIfDue() {
-        if (!preferences.get(BooleanKey.MaintenanceAutoExportLogsToCloud)) return
-        val lastRun = preferences.get(LongNonKey.LastCloudLogExport)
-        if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
-            // alsoExportAiv=false: exportAutoIsfHistoryIfDue() below already covers the AIV export
-            // unconditionally every cycle -- see sendLogs()'s own doc comment for why this would
-            // otherwise double up whenever MaintenanceAutoExportLogsToCloud is enabled.
-            maintenancePlugin.sendLogs(alsoExportAiv = false, trigger = "AUTOMATIC_6H")
-            preferences.put(LongNonKey.LastCloudLogExport, dateUtil.now())
-        }
     }
 
     // Automatic AutoISF history export (CSV + text + settings) every 6 hours, so the files land in
@@ -175,9 +172,9 @@ class KeepAliveWorker(
     // export above; failures are logged only, matching the "no popup for cloud export" request.
     // buildCombinedExport() also runs here (not just from the history dialog) so combined<Name>.txt
     // and its dated aapsLogs/<Name>datedAIV/ copy stay current even when the dialog is never opened.
-    private suspend fun exportAutoIsfHistoryIfDue() {
+    private suspend fun exportAutoIsfHistoryIfDue(force: Boolean = false, onCloudComplete: (() -> Unit)? = null) {
         val lastRun = preferences.get(LongNonKey.LastAutoIsfHistoryExport)
-        if (lastRun < dateUtil.now() - T.hours(6).msecs()) {
+        if (force || lastRun < dateUtil.now() - T.hours(6).msecs()) {
             val now = dateUtil.now()
             val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
             autoIsfHistoryExporter.buildCombinedExport(now)
@@ -191,8 +188,8 @@ class KeepAliveWorker(
             )
             autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
-            maintenancePlugin.uploadAivFilesToCloud(writtenFiles, "AUTOMATIC_6H")
-        }
+            maintenancePlugin.uploadAivFilesToCloud(writtenFiles, "AUTOMATIC_6H", onCloudComplete)
+        } else onCloudComplete?.invoke()
     }
 
     private suspend fun uploadAivFilesToCloud(files: List<java.io.File>) {

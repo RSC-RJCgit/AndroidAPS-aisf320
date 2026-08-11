@@ -92,22 +92,15 @@ class MaintenancePlugin @Inject constructor(
     aapsLogger, rh
 ) {
 
-    /** [alsoExportAiv] defaults to true for the two truly on-demand callers -- the Maintenance screen's
-     *  own button, and CloudLogsUploadTT's remote trigger in OpenAPSAutoISFPlugin.kt -- which previously
-     *  only touched log files, so an AAPSClient/remote-triggered log export never carried AIV data along
-     *  with it. Pass false from KeepAliveWorker's own exportLogsToCloudIfDue(): that automatic path
-     *  already runs alongside exportAutoIsfHistoryIfDue() in the same 6h worker cycle, which
-     *  independently (and unconditionally, unlike this cloud-log path's own
-     *  MaintenanceAutoExportLogsToCloud gate) exports AIV every cycle already -- without the flag this
-     *  would fire the AIV export twice per cycle whenever that preference is enabled. */
+    /** [alsoExportAiv] defaults to true for combined manual/remote requests. Those requests export and
+     *  upload AIV first, then re-enter with false from the cloud-completion callback to perform only the
+     *  log portion. The automatic and long-press paths likewise call the false continuation after their
+     *  own AIV work, preventing duplicate AIV files while preserving strict result-note ordering. */
     fun sendLogs(alsoExportAiv: Boolean = true, trigger: String = "MANUAL") {
-        val startedStatus = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=STARTED"
-        aapsLogger.info(LTag.CORE, startedStatus)
-        ExportScriptDebugStatus.add(startedStatus)
-
         // AIV backup is an independent part of a manual/remote export. Start it before checking for
         // source log files so NO_SOURCE_LOGS, ZIP_CREATE, or another log-only failure cannot suppress
-        // the CSV/TXT/settings files, combined file, or their cloud upload.
+        // the CSV/TXT/settings files, combined file, or their cloud upload. The log-only continuation
+        // is invoked from the AIV cloud callback, enforcing AVLs/AVLf -> AVCs/AVCf -> log-result order.
         if (alsoExportAiv) {
             CoroutineScope(Dispatchers.IO).launch {
                 val now = System.currentTimeMillis()
@@ -122,9 +115,16 @@ class MaintenancePlugin @Inject constructor(
                     else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
                 autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
-                uploadAivFilesToCloud(writtenFiles, trigger)
+                uploadAivFilesToCloud(writtenFiles, trigger) {
+                    sendLogs(alsoExportAiv = false, trigger = trigger)
+                }
             }
+            return
         }
+
+        val startedStatus = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=STARTED"
+        aapsLogger.info(LTag.CORE, startedStatus)
+        ExportScriptDebugStatus.add(startedStatus)
 
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
@@ -316,15 +316,17 @@ class MaintenancePlugin @Inject constructor(
     }
 
     /** Upload AIV CSV/TXT/settings files for manual, remote, and scheduled exports through one path. */
-    fun uploadAivFilesToCloud(files: List<File>, trigger: String) {
+    fun uploadAivFilesToCloud(files: List<File>, trigger: String, onComplete: (() -> Unit)? = null) {
         if (files.isEmpty()) {
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=NO_FILES")
             autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
+            onComplete?.invoke()
             return
         }
         if (!cloudStorageManager.isCloudStorageActive()) {
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=CLOUD_NOT_ENABLED")
             autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
+            onComplete?.invoke()
             return
         }
         CoroutineScope(Dispatchers.IO).launch {
@@ -358,6 +360,8 @@ class MaintenancePlugin @Inject constructor(
                 aapsLogger.error(LTag.CORE, "AIV cloud upload error", e)
                 ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=EXCEPTION")
                 autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
+            } finally {
+                onComplete?.invoke()
             }
         }
     }
