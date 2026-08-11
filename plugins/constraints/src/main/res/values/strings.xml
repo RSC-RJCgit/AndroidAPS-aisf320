@@ -39,7 +39,7 @@
     <string name="pumpisnottempbasalcapable">Pump is not temp basal capable</string>
     <string name="closed_loop_disabled_on_dev_branch">Running dev version. Closed loop is disabled.</string>
     <string name="closed_loop_disabled_with_eb">Closed loop disabled because of running Extended bolus</string>
-    <string name="smbalwaysdisabled">SMB always and after carbs disabled because active BG source doesn\'t support advanced filtering</string>
+    <string name="smbalwaysdisabled">Active BG source is not marked as supporting advanced filtering. Advanced-filter-dependent SMB preference routes are unavailable; other AutoISF SMB logic may still allow SMB.</string>
     <string name="smbnotallowedinopenloopmode">SMB not allowed in open loop mode</string>
     <string name="maxvalueinpreferences">max value in preferences</string>
     <string name="hardlimit">hard limit</string>

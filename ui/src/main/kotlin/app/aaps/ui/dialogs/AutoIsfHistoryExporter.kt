@@ -5,6 +5,9 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -14,6 +17,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -51,6 +55,25 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     private val df1 = DecimalFormat("0.0")
     private val df2 = DecimalFormat("0.00")
+
+    /** Records the four final AIV export outcomes as short CarePortal notes. */
+    fun addExportCarePortalNote(note: String) {
+        require(note == "AVLs" || note == "AVLf" || note == "AVCs" || note == "AVCf")
+        val therapyEvent = TE(
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+            duration = TimeUnit.MINUTES.toMillis(1),
+            type = TE.Type.NOTE,
+            note = note,
+            glucoseUnit = profileFunction.getUnits()
+        )
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = "AIV export result",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe({}, { error -> aapsLogger.error(LTag.CORE, "Failed to add AIV CarePortal note $note", error) })
+    }
 
     companion object {
         private const val MGDL_TO_MMOL = 18.0182

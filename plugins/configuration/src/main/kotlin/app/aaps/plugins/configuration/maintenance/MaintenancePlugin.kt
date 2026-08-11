@@ -9,9 +9,13 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.logging.LTag
@@ -22,6 +26,7 @@ import app.aaps.core.interfaces.nsclient.NSSettingsStatus
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -49,6 +54,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Arrays
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -67,7 +73,8 @@ class MaintenancePlugin @Inject constructor(
     private val uel: UserEntryLogger,
     private val cloudStorageManager: CloudStorageManager,
     private val exportOptionsDialog: ExportOptionsDialog,
-    private val autoIsfHistoryExporter: AutoIsfHistoryExporter
+    private val autoIsfHistoryExporter: AutoIsfHistoryExporter,
+    private val persistenceLayer: PersistenceLayer
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -100,6 +107,7 @@ class MaintenancePlugin @Inject constructor(
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_SOURCE_LOGS"
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
+            addCloudLogCarePortalNote(trigger, success = false)
             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_no_source))
             return
         }
@@ -107,6 +115,7 @@ class MaintenancePlugin @Inject constructor(
         if (zipFile == null) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
+            addCloudLogCarePortalNote(trigger, success = false)
             return
         }
         aapsLogger.debug("zipFile: ${zipFile.name}")
@@ -130,6 +139,7 @@ class MaintenancePlugin @Inject constructor(
                     if (writtenFiles.size == 3) "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=3"
                     else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
+                autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
                 uploadAivFilesToCloud(writtenFiles, trigger)
             }
         }
@@ -143,6 +153,7 @@ class MaintenancePlugin @Inject constructor(
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=CLOUD_NOT_ENABLED"
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
+            addCloudLogCarePortalNote(trigger, success = false)
             // Send via email (default behavior)
             val recipient = preferences.get(StringKey.MaintenanceEmail)
             val attachmentUri = zip.uri
@@ -283,10 +294,12 @@ class MaintenancePlugin @Inject constructor(
     fun uploadAivFilesToCloud(files: List<File>, trigger: String) {
         if (files.isEmpty()) {
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=NO_FILES")
+            autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
             return
         }
         if (!cloudStorageManager.isCloudStorageActive()) {
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=CLOUD_NOT_ENABLED")
+            autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
             return
         }
         CoroutineScope(Dispatchers.IO).launch {
@@ -294,6 +307,7 @@ class MaintenancePlugin @Inject constructor(
                 val provider = cloudStorageManager.getActiveProvider()
                 if (provider == null) {
                     ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                    autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
                     return@launch
                 }
                 val patientName = preferences.get(StringKey.GeneralPatientName).trim()
@@ -314,9 +328,11 @@ class MaintenancePlugin @Inject constructor(
                     "EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE files=$uploaded/${files.size}"
                 if (uploaded == files.size) aapsLogger.info(LTag.CORE, status) else aapsLogger.error(LTag.CORE, status)
                 ExportScriptDebugStatus.add(status)
+                autoIsfHistoryExporter.addExportCarePortalNote(if (uploaded == files.size) "AVCs" else "AVCf")
             } catch (e: Exception) {
                 aapsLogger.error(LTag.CORE, "AIV cloud upload error", e)
                 ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=EXCEPTION")
+                autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
             }
         }
     }
@@ -429,6 +445,7 @@ class MaintenancePlugin @Inject constructor(
                         "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
                     )
                     ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
+                    addCloudLogCarePortalNote(trigger, success = false)
                     ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb))
                     return
                 }
@@ -440,6 +457,7 @@ class MaintenancePlugin @Inject constructor(
                             aapsLogger.error("No active cloud provider")
                             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                            addCloudLogCarePortalNote(trigger, success = false)
                             fallbackToEmailLogs(zipFile)
                             return@launch
                         }
@@ -470,10 +488,12 @@ class MaintenancePlugin @Inject constructor(
                             aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
                             aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
                             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
+                            addCloudLogCarePortalNote(trigger, success = true)
                         } else {
                             aapsLogger.error("Failed to upload logs to cloud storage")
                             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
                             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
+                            addCloudLogCarePortalNote(trigger, success = false)
                             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
                             
                             // Fallback to email
@@ -483,6 +503,7 @@ class MaintenancePlugin @Inject constructor(
                         aapsLogger.error("Error uploading logs to cloud storage", e)
                         aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION", e)
                         ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
+                        addCloudLogCarePortalNote(trigger, success = false)
                         ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
                         
                         // Fallback to email
@@ -493,14 +514,43 @@ class MaintenancePlugin @Inject constructor(
                 aapsLogger.error("Failed to read zip file contents")
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
                 ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
+                addCloudLogCarePortalNote(trigger, success = false)
                 fallbackToEmailLogs(zipFile)
             }
         } catch (e: Exception) {
             aapsLogger.error("Error preparing logs for cloud upload", e)
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
+            addCloudLogCarePortalNote(trigger, success = false)
             fallbackToEmailLogs(zipFile)
         }
+    }
+
+    /** One short CarePortal note for the final cloud-log result (never for STARTED/local/AIV status). */
+    private fun addCloudLogCarePortalNote(trigger: String, success: Boolean) {
+        val note = when {
+            success && trigger == "AUTOMATIC_6H" -> "LGs6"
+            success && (trigger == "ISF_LONG_PRESS" || trigger == "REMOTE_TT") -> "LGsP"
+            success -> "LGsM"
+            trigger == "AUTOMATIC_6H" -> "LOGF2"
+            trigger == "ISF_LONG_PRESS" || trigger == "REMOTE_TT" -> "LOGF3"
+            else -> "LOGF1"
+        }
+        val now = System.currentTimeMillis()
+        val therapyEvent = TE(
+            timestamp = NoteTimestampAllocator.next(now),
+            duration = TimeUnit.MINUTES.toMillis(1),
+            type = TE.Type.NOTE,
+            note = note,
+            glucoseUnit = GlucoseUnit.MGDL
+        )
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = "Cloud log export result",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe({}, { error -> aapsLogger.error(LTag.CORE, "Failed to add cloud-log CarePortal note $note", error) })
     }
     
     private fun fallbackToEmailLogs(zipFile: DocumentFile) {

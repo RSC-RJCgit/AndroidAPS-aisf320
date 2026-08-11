@@ -601,7 +601,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(value.label, graphLeft + 10f, nearBottomPy, mPaint)
+                        value.label.split('\n').forEachIndexed { lineIndex, line ->
+                            canvas.drawText(line, graphLeft + 10f, nearBottomPy + lineIndex * scaledTextSize * 0.6f, mPaint)
+                        }
                     }
                 } else if (value.shape == Shape.PP_ACC_DU_ROW) {
                     // "pp= acc= du=" row, graph5 only. Positioned via endY -- the point's own real Y,

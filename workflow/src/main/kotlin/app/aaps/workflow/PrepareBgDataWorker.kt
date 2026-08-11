@@ -321,7 +321,14 @@ class PrepareBgDataWorker(
                 val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
-                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
+                // targetBgOffset is the final live offset threshold actually used by DetermineBasal,
+                // not a reconstruction from the current preferences. Reading it from the latest APS
+                // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
+                val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
+                val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
+                val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
+                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp) +
+                    "\ntargetOffset= " + targetOffsetText + "  duTTime= " + duraTaperTime
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -596,9 +603,17 @@ class PrepareBgDataWorker(
     private val smbRatioRegex = Regex("""SMB delivery ratio:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
     private val acceWeightRegex = Regex("""AcceIsfWeight:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
     private val fslSlopeRegex = Regex("""FslCalSlope:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
+    private val targetOffsetRegex = Regex("""targetBgOffset:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
+    private val duraTaperTimeRegex = Regex("""dura_ISF taper last engaged:\s*(.+?)\s*\(""", RegexOption.IGNORE_CASE)
 
     private fun doubleFromReason(reason: String, regex: Regex): Double? =
         regex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
+
+    private fun targetOffsetFromReason(reason: String): Double? =
+        targetOffsetRegex.findAll(reason).lastOrNull()?.groupValues?.get(1)?.toDoubleOrNull()
+
+    private fun duraTaperTimeFromReason(reason: String): String? =
+        duraTaperTimeRegex.findAll(reason).lastOrNull()?.groupValues?.get(1)
 
     // Mirrors AutoIsfHistoryExporter.iob5MinChangeStr(): change in AIV.iob over ~5 minutes, using
     // whichever AIV record is nearest the 5-min-ago mark (within a 3-min tolerance, since AIV rows

@@ -189,6 +189,7 @@ class KeepAliveWorker(
                 if (writtenFiles.size == 3) "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=3"
                 else "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
             )
+            autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
             maintenancePlugin.uploadAivFilesToCloud(writtenFiles, "AUTOMATIC_6H")
         }
