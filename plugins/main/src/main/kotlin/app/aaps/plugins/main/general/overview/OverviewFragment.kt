@@ -1647,6 +1647,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 graph5Data.addRawBgSmoothed(false)
             }
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
+            // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
+            // area, one line below the pp/acc/du row.
+            graph5Data.addTargetOffsetDuTAnnotation()
             // "pp= acc= du=" row: moved off graph3 (which now hosts the SMB-stack-total labels) onto
             // graph5 specifically -- this is THIS graph, not bg_graph (see graph5_container in
             // overview_graphs_layout.xml). Positioned via a real value near 4.0 mmol, not a pixel
@@ -1785,7 +1788,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Note arrowheads: moved from graph3 to graph4 (g==3), top half — see noteArrowheadPy in
             // PointsWithLabelGraphSeries.kt. Same TREAT toggle source.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
-            if (g == 3) secondGraphData.addTargetOffsetDuTAnnotation()
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
             if (g == 1) secondGraphData.addSmbLabels()

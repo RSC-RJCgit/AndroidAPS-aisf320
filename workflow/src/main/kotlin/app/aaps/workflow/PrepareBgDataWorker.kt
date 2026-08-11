@@ -333,7 +333,7 @@ class PrepareBgDataWorker(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTDataPoint(
                             latest.timestamp,
-                            profileUtil.fromMgdlToUnits(latest.value),
+                            profileUtil.fromMgdlToUnits(75.6),
                             "targetOffset= $targetOffsetText  duTTime= $duraTaperTime",
                             rh
                         )
