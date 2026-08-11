@@ -210,6 +210,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     fun buildCombinedExport(now: Long) {
         try {
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val outputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
+            writeStableSettings(outputDir, patientName, now)
             val from = now - TimeUnit.HOURS.toMillis(COMBINED_WINDOW_HOURS)
             val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
             if (records.isEmpty()) return
@@ -221,24 +223,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, mjNotesFrom(from), rawReadings, cobTByTimestamp) }
             val text = formatTableText(rows)
 
-            val outputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
             val outFile = File(outputDir, "combined$patientName.txt")
             outFile.writeText(text)
             aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${records.size} row(s)")
-
-            // Keep an undated settings companion beside the undated combined table. The dated source
-            // remains in the patient export folder; this copy is overwritten on every combined rebuild
-            // so consumers can use one stable filename without having to discover the newest timestamp.
-            val exportDir = resolveExportDir(patientName)
-            val latestSettings = exportDir.listFiles { file ->
-                file.isFile && file.name.startsWith("AutoISF_settings_") && file.name.endsWith(".txt")
-            }?.maxByOrNull { it.lastModified() }
-            latestSettings?.let { source ->
-                val stableName = if (patientName.isNotEmpty()) "AutoISF_settings_$patientName.txt" else "AutoISF_settings.txt"
-                val stableSettings = File(outputDir, stableName)
-                source.copyTo(stableSettings, overwrite = true)
-                aapsLogger.debug(LTag.UI, "Latest AutoISF settings copied to ${stableSettings.absolutePath}")
-            }
 
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
             val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
@@ -286,37 +273,50 @@ class AutoIsfHistoryExporter @Inject constructor(
     private fun exportSettingsText(dir: File, stamp: String): File? {
         return try {
             val file = File(dir, "AutoISF_settings_$stamp.txt")
-            if (config.AAPSCLIENT) {
-                val snapshot = preferences.get(StringNonKey.MirroredAutoIsfSettings)
-                val mirroredAt = preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
-                file.bufferedWriter().use { writer ->
-                    if (snapshot.isBlank() || mirroredAt == 0L) {
-                        writer.write("source = PUMP_MIRROR_UNAVAILABLE\n")
-                    } else {
-                        writer.write("source = PUMP_MIRROR\n")
-                        writer.write("mirrored_at = ${dateUtil.dateAndTimeString(mirroredAt)}\n")
-                        writer.write(snapshot)
-                        writer.write("\n")
-                    }
-                }
-                aapsLogger.debug(LTag.UI, "Mirrored Pump AutoISF settings exported to ${file.absolutePath}")
-                return file
-            }
-            val lines = mutableListOf<String>()
-            BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
-            IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
-            DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
-            UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
-            StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
-            file.bufferedWriter().use { writer ->
-                for (line in lines.sorted()) writer.write("$line\n")
-            }
+            file.writeText(settingsText(System.currentTimeMillis()))
             aapsLogger.debug(LTag.UI, "AutoISF settings exported to ${file.absolutePath}")
             file
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF settings export failed", e)
             null
         }
+    }
+
+    private fun writeStableSettings(outputDir: File, patientName: String, now: Long) {
+        val stableName = if (patientName.isNotEmpty()) "AutoISF_settings_$patientName.txt" else "AutoISF_settings.txt"
+        val stableSettings = File(outputDir, stableName)
+        stableSettings.writeText(settingsText(now))
+        aapsLogger.debug(LTag.UI, "Current AutoISF settings written to ${stableSettings.absolutePath}")
+    }
+
+    /** Pump writes local authoritative values; Client writes only the last mirrored Pump snapshot. */
+    private fun settingsText(now: Long): String {
+        if (config.AAPSCLIENT) {
+            val snapshot = preferences.get(StringNonKey.MirroredAutoIsfSettings)
+            val mirroredAt = preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
+            return if (snapshot.isBlank() || mirroredAt == 0L) {
+                "main_phone_snapshot_time = UNAVAILABLE\nsource = PUMP_MIRROR_UNAVAILABLE\n"
+            } else {
+                "main_phone_snapshot_time = ${dateUtil.dateAndTimeString(mirroredAt)}\n" +
+                    "source = PUMP_MIRROR\n$snapshot\n"
+            }
+        }
+
+        val lines = mutableListOf<String>()
+        lines.add("main_phone_snapshot_time = ${dateUtil.dateAndTimeString(now)}")
+        lines.add("source = MAIN_PHONE_LOCAL")
+        lines.add("configuration_flavor = ${config.FLAVOR}")
+        lines.add("configuration_version = ${config.VERSION_NAME}")
+        lines.add("configuration_application_id = ${config.APPLICATION_ID}")
+        lines.add("configuration_profile = ${profileFunction.getProfileName()}")
+        BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
+        UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
+        StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        lines.add("${DoubleKey.FslCalSlope.key} = ${df2.format(preferences.get(DoubleKey.FslCalSlope))}")
+        lines.add("${DoubleKey.FslCalOffset.key} = ${df2.format(preferences.get(DoubleKey.FslCalOffset))}")
+        return lines.take(6).joinToString("\n") + "\n" + lines.drop(6).sorted().joinToString("\n") + "\n"
     }
 
     // -----------------------------------------------------------------------------------------------

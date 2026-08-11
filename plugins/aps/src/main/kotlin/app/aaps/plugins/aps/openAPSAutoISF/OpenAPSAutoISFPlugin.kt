@@ -4351,6 +4351,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     /** Stable, sorted snapshot mirrored to AAPSClient with each AutoISF device-status result. */
     private fun autoIsfSettingsSnapshot(): String {
         val lines = mutableListOf<String>()
+        lines.add("configuration_flavor = ${config.FLAVOR}")
+        lines.add("configuration_version = ${config.VERSION_NAME}")
+        lines.add("configuration_application_id = ${config.APPLICATION_ID}")
+        lines.add("configuration_profile = ${profileFunction.getProfileName()}")
         BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
         IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
         DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach {
@@ -4360,6 +4364,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             lines.add("${it.key} = ${String.format(Locale.US, "%.2f", preferences.get(it))}")
         }
         StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        // These are live calibration values but their enum names do not contain "AutoIsf", so the
+        // generic filters above would otherwise omit the day-0/day-1 sensor-age override actually in use.
+        lines.add("${DoubleKey.FslCalSlope.key} = ${String.format(Locale.US, "%.2f", preferences.get(DoubleKey.FslCalSlope))}")
+        lines.add("${DoubleKey.FslCalOffset.key} = ${String.format(Locale.US, "%.2f", preferences.get(DoubleKey.FslCalOffset))}")
         return lines.sorted().joinToString("\n")
     }
 
