@@ -2000,11 +2000,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("DuraWeightUpTT")
         }
 
-        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.50 nudge on
+        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.1 nudge on
         // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
         // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
         if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.036, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.50).coerceAtLeast(0.50)
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.1).coerceAtLeast(0.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
@@ -2012,10 +2012,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SmbOffsetDownTT")
         }
 
-        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.50 nudge on
+        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.1 nudge on
         // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
         if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.038, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.50).coerceAtMost(1.50)
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.1).coerceAtMost(1.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
@@ -2465,9 +2465,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
         // Fires when NOT on the Low profile (i.e. on a named high/steroid profile), Steroids Off, no TT.
-        // 5-min floor throttle added (see readyToRun() usage note).
+        // 30-min floor throttle matches the temporary low-profile duration and prevents another
+        // profile-changing block from re-arming OffP-1/OffP-2 within that protection window.
         run {
-            if (!readyToRun("OffHighProf", 5)) return@run
+            if (!readyToRun("OffHighProf", 30)) return@run
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
@@ -5537,5 +5538,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_553
+OpenAPSAutoISFPlugin.ktaisf321_554
 */

@@ -1240,7 +1240,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1"),
         TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01"),
         TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05"),
-        TtCode.Stepped("SMB offset HARD", 5.036, 5.038, "-0.5", "+0.5"),
+        TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1"),
         TtCode.Single("clean grph view", 5.042),
         TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%"),
         // MildBoostDownTT/UpTT nudges ApsAutoIsfMildBoostRatio ALONE (unlike SMBdel base + mild-Bst above, which nudges it together with the baseline).
