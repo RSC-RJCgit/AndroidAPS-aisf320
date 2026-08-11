@@ -55,7 +55,10 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profiling.Profiler
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.interfaces.queue.Callback
+import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
@@ -87,6 +90,7 @@ import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
@@ -166,6 +170,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var smsCommunicator: SmsCommunicator
     @Inject lateinit var receiverStatusStore: app.aaps.core.interfaces.receivers.ReceiverStatusStore
+    @Inject lateinit var bolusWizardProvider: Provider<BolusWizard>
+    @Inject lateinit var commandQueue: CommandQueue
 
     // last values
     override var lastAPSRun: Long = 0
@@ -179,6 +185,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // rest of the time.
     private var lastDuraTaperTimestamp: Long = 0L
     private var lastDuraTaperInfo: String = ""
+    private var virtualPseudoWizardLastStatus: String = "never fired"
     val autoIsfVersion = "3.2.0"
     val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
     private val autoISF_max; get() = preferences.get(DoubleKey.ApsAutoIsfMax)
@@ -464,6 +471,49 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun hypoPredictionMmol(glucoseMgdl: Double, shortAvgDeltaMgdl: Double, iob: Double, cob: Double): Double? {
         val rawD5 = rawDelta5MinMgdl() ?: return null
         return (glucoseMgdl / 18.0182 - iob) + 0.25 * (shortAvgDeltaMgdl / 18.0182) + 0.25 * (rawD5 / 18.0182) + cob / 12.0
+    }
+
+    /** Strict 90-minute BG coverage check for the Virtual-Pump pseudo-wizard experiment. */
+    private fun allRecentBgAbove90Minutes(minimumMgdl: Double): Boolean {
+        val now = dateUtil.now()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(90).msecs(), now, ascending = true)
+        if (readings.size < 10) return false
+        if (readings.first().timestamp > now - T.mins(85).msecs()) return false
+        if (readings.last().timestamp < now - T.mins(10).msecs()) return false
+        if (readings.zipWithNext().any { (a, b) -> b.timestamp - a.timestamp > T.mins(10).msecs() }) return false
+        return readings.all { it.value > minimumMgdl }
+    }
+
+    /**
+     * Minutes during the last 15 where the stored/current AutoISF factor was actively raising insulin.
+     * Factors themselves are normally near 1, so the requested >7 and >4 thresholds are interpreted as
+     * active minutes, not factor magnitudes. Each sample owns the interval since the preceding sample,
+     * capped at five minutes; missing history therefore fails closed.
+     */
+    private fun recentAdaptationMinutes(selector: (AIV) -> Double): Double {
+        val now = dateUtil.now()
+        val start = now - T.mins(15).msecs()
+        val records = (persistenceLayer.getAutoIsfValuesFromTimeToTime(start, now) + autoIsfValues)
+            .filter { it.timestamp in start..now }
+            .distinctBy { it.timestamp }
+            .sortedBy { it.timestamp }
+        if (records.size < 2 || records.first().timestamp > start + T.mins(5).msecs()) return 0.0
+        var activeMinutes = 0.0
+        records.zipWithNext().forEach { (previous, current) ->
+            if (selector(current) > 1.0) {
+                activeMinutes += ((current.timestamp - previous.timestamp) / 60_000.0).coerceIn(0.0, 5.0)
+            }
+        }
+        return activeMinutes
+    }
+
+    /** Live counterpart of the export-only retrospective COBt value. */
+    private fun liveCobT(currentCob: Double): Double {
+        val latest = persistenceLayer.getAutoIsfValuesFromTime(dateUtil.now() - T.mins(10).msecs()).maxByOrNull { it.timestamp }
+            ?: return currentCob
+        val absorbed = iobCobCalculator.ads.getAutosensDataAtTime(latest.timestamp)?.this5MinAbsorption ?: 0.0
+        val unexplainedRate = (latest.uamCarbImpact - absorbed).coerceAtLeast(0.0)
+        return currentCob + unexplainedRate / 5.0
     }
 
     // Raw 15-min delta (.noise), normalised down to a per-5-min rate (÷3) so it stays on the same
@@ -4194,6 +4244,109 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 addCarePortalNote("Steps Steroids OFF")
                 markRun("StepsSteroidsOff")
+            }
+        }
+
+        // Experimental correction bolus for retrospective testing on Virtual Pump only. This is
+        // intentionally hard-gated twice (eligibility and immediately before queueing) so installing
+        // this branch on a real-pump build cannot deliver it. It runs the normal constrained Wizard in
+        // the background with a pseudo-COB input, but records carbs=0: no fake carb treatment is made.
+        run {
+            val actionKey = "VirtualPseudoWizard"
+            val virtualPump = activePlugin.activePump is VirtualPump
+            val ukfBgl = computeUkfRawBgl()
+            val hp = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+            val noTempTarget = persistenceLayer.getTemporaryTargetActiveAt(now) == null
+            // Match the other coded automations' "no bolus within" meaning: NORMAL/user boluses only.
+            // SMBs are deliberately ignored here; otherwise an active loop would make this gate nearly
+            // permanently false.
+            val lastNormalBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val noNormalBolus120 = lastNormalBolusMinutes >= 120
+            val allBgHigh = allRecentBgAbove90Minutes(8.0 * GlucoseUnit.MMOLL_TO_MGDL)
+            val duraActiveMinutes = recentAdaptationMinutes { it.duraIsf }
+            val acceActiveMinutes = recentAdaptationMinutes { it.acceIsf }
+            val cooldownReady = readyToRun(actionKey, 90)
+            val conditionsMet = virtualPump &&
+                ukfBgl > 12.0 * GlucoseUnit.MMOLL_TO_MGDL &&
+                bgAcce > 7.0 &&
+                glucoseStatus.shortAvgDelta > 0.6 * GlucoseUnit.MMOLL_TO_MGDL &&
+                allBgHigh &&
+                duraActiveMinutes > 7.0 &&
+                acceActiveMinutes > 4.0 &&
+                mealData.mealCOB == 0.0 &&
+                noTempTarget &&
+                recentSteps60Minutes < 600 &&
+                hp != null && hp > 7.5 &&
+                noNormalBolus120 &&
+                cooldownReady &&
+                !commandQueue.bolusInQueue()
+
+            consoleError.add(
+                "VirtualPseudoWizard ${if (conditionsMet) "READY" else "blocked"}: " +
+                    "virtual=$virtualPump ukf=${String.format(Locale.US, "%.1f", ukfBgl / GlucoseUnit.MMOLL_TO_MGDL)} " +
+                    "acce=${String.format(Locale.US, "%.2f", bgAcce)} SDelta=${String.format(Locale.US, "%.2f", glucoseStatus.shortAvgDelta / GlucoseUnit.MMOLL_TO_MGDL)} " +
+                    "allBG90>8=$allBgHigh duraMin=${String.format(Locale.US, "%.1f", duraActiveMinutes)} " +
+                    "acceMin=${String.format(Locale.US, "%.1f", acceActiveMinutes)} COB=${String.format(Locale.US, "%.1f", mealData.mealCOB)} " +
+                    "noTT=$noTempTarget steps60=$recentSteps60Minutes HP=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
+                    "noNormalBolus120=$noNormalBolus120 lastNormalBolusMin=$lastNormalBolusMinutes " +
+                    "cooldown90=$cooldownReady queueFree=${!commandQueue.bolusInQueue()} ;;"
+            )
+            consoleError.add("VirtualPseudoWizard last result: $virtualPseudoWizardLastStatus ;; ")
+
+            if (conditionsMet) {
+                val pseudoCob = max(liveCobT(mealData.mealCOB), 10.0)
+                val wizard = bolusWizardProvider.get().doCalc(
+                    profile = profile,
+                    profileName = profileFunction.getProfileName(),
+                    tempTarget = null,
+                    carbs = 0,
+                    cob = pseudoCob,
+                    bg = glucoseStatus.glucose,
+                    correction = 0.0,
+                    useBg = true,
+                    useCob = true,
+                    includeBolusIOB = true,
+                    includeBasalIOB = true,
+                    useSuperBolus = false,
+                    useTT = false,
+                    useTrend = false,
+                    useAlarm = false,
+                    notes = "Virtual-only pseudo-wizard; pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g; zero carbs recorded",
+                    quickWizard = false,
+                    positiveIOBOnly = false
+                )
+                val insulin = wizard.insulinAfterConstraints
+                if (insulin > 0.0 && activePlugin.activePump is VirtualPump) {
+                    val bolusInfo = DetailedBolusInfo().apply {
+                        this.insulin = insulin
+                        carbs = 0.0
+                        eventType = TE.Type.CORRECTION_BOLUS
+                        mgdlGlucose = glucoseStatus.glucose
+                        glucoseType = TE.MeterType.SENSOR
+                        bolusCalculatorResult = wizard.createBolusCalculatorResult()
+                        notes = "Virtual-only pseudo-wizard; pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g; zero carbs recorded"
+                        bolusType = BS.Type.NORMAL
+                    }
+                    val accepted = commandQueue.bolus(bolusInfo, object : Callback() {
+                        override fun run() {
+                            if (result.success) {
+                                markRun(actionKey)
+                                virtualPseudoWizardLastStatus = "SUCCESS ${String.format(Locale.US, "%.2f", insulin)}U at ${dateUtil.timeString(dateUtil.now())}"
+                                aapsLogger.info(LTag.APS, "VirtualPseudoWizard SUCCESS ${String.format(Locale.US, "%.2f", insulin)}U")
+                            } else {
+                                virtualPseudoWizardLastStatus = "FAILED at ${dateUtil.timeString(dateUtil.now())}: ${result.comment}"
+                                aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: ${result.comment}")
+                            }
+                        }
+                    })
+                    if (!accepted) {
+                        virtualPseudoWizardLastStatus = "FAILED at ${dateUtil.timeString(dateUtil.now())}: bolus queue rejected request"
+                        aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: bolus queue rejected request")
+                    }
+                    else consoleError.add("VirtualPseudoWizard queued ${String.format(Locale.US, "%.2f", insulin)}U with pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g and carbs=0 ;; ")
+                } else {
+                    consoleError.add("VirtualPseudoWizard no dose: constrained Wizard result=${String.format(Locale.US, "%.2f", insulin)}U ;; ")
+                }
             }
         }
 
