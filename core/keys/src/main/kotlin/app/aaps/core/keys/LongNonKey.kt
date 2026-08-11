@@ -14,5 +14,6 @@ enum class LongNonKey(
     LastCleanupRun("last_cleanup_run", 0L),
     LastCloudLogExport("last_cloud_log_export", 0L),
     LastAutoIsfHistoryExport("last_autoisf_history_export", 0L),
+    MirroredAutoIsfSettingsTimestamp("mirrored_autoisf_settings_timestamp", 0L, exportable = false),
 }
 

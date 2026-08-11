@@ -4323,6 +4323,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // for outbound sync. See computeUkfRawBgl() below.
                 autoIsfValues.ukfRawBgl = computeUkfRawBgl()
                 rt.autoIsfUkfRawBgl = autoIsfValues.ukfRawBgl
+                rt.autoIsfSettingsSnapshot = autoIsfSettingsSnapshot()
                 // Dedicated, unconditional reason lines for the client-sync fallback (see
                 // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
                 // same values (which is conditional on which branch fired, and consoleLog doesn't
@@ -4345,6 +4346,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()
         rxBus.send(EventOpenAPSUpdateGui())
+    }
+
+    /** Stable, sorted snapshot mirrored to AAPSClient with each AutoISF device-status result. */
+    private fun autoIsfSettingsSnapshot(): String {
+        val lines = mutableListOf<String>()
+        BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach {
+            lines.add("${it.key} = ${String.format(Locale.US, "%.2f", preferences.get(it))}")
+        }
+        UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach {
+            lines.add("${it.key} = ${String.format(Locale.US, "%.2f", preferences.get(it))}")
+        }
+        StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        return lines.sorted().joinToString("\n")
     }
 
     // UKF-smoothed Raw BG (mg/dL), computed once per cycle and persisted into autoIsfValues.ukfRawBgl /

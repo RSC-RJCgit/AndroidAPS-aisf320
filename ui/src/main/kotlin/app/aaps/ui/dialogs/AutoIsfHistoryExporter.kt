@@ -6,6 +6,7 @@ import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -16,7 +17,9 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.io.File
@@ -41,6 +44,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val dateUtil: DateUtil,
     private val profileFunction: ProfileFunction,
     private val preferences: Preferences,
+    private val config: Config,
     private val aapsLogger: AAPSLogger,
     private val iobCobCalculator: IobCobCalculator
 ) {
@@ -282,6 +286,22 @@ class AutoIsfHistoryExporter @Inject constructor(
     private fun exportSettingsText(dir: File, stamp: String): File? {
         return try {
             val file = File(dir, "AutoISF_settings_$stamp.txt")
+            if (config.AAPSCLIENT) {
+                val snapshot = preferences.get(StringNonKey.MirroredAutoIsfSettings)
+                val mirroredAt = preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
+                file.bufferedWriter().use { writer ->
+                    if (snapshot.isBlank() || mirroredAt == 0L) {
+                        writer.write("source = PUMP_MIRROR_UNAVAILABLE\n")
+                    } else {
+                        writer.write("source = PUMP_MIRROR\n")
+                        writer.write("mirrored_at = ${dateUtil.dateAndTimeString(mirroredAt)}\n")
+                        writer.write(snapshot)
+                        writer.write("\n")
+                    }
+                }
+                aapsLogger.debug(LTag.UI, "Mirrored Pump AutoISF settings exported to ${file.absolutePath}")
+                return file
+            }
             val lines = mutableListOf<String>()
             BooleanKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
             IntKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }

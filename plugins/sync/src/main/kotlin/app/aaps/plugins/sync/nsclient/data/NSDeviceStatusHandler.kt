@@ -12,6 +12,8 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
@@ -188,6 +190,10 @@ class NSDeviceStatusHandler @Inject constructor(
                         disposable += persistenceLayer.insertOrUpdateApsResult(apsResult).subscribe()
                     }
                     processedDeviceStatusData.openAPSData.suggested?.let { rt ->
+                        rt.autoIsfSettingsSnapshot?.takeIf { it.isNotBlank() }?.let { snapshot ->
+                            preferences.put(StringNonKey.MirroredAutoIsfSettings, snapshot)
+                            preferences.put(LongNonKey.MirroredAutoIsfSettingsTimestamp, clock)
+                        }
                         if (rt.autoIsfFinal != null) {
                             // Several AIV fields aren't exposed as dedicated RT properties, but the
                             // text they're embedded in (RT.reason, a plain string) IS part of this

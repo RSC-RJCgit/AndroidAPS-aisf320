@@ -64,6 +64,9 @@ data class RT(
     // gets persisted locally from that same computed value) -- unlike autoIsfUamCarbImpact, which flows
     // the other way since its source computation lives in DetermineBasalAutoISF.kt instead.
     var autoIsfUkfRawBgl: Double? = null,
+    // Authoritative AutoISF preference snapshot from the APS-running phone. AAPSClient stores and
+    // exports this mirror instead of presenting its unrelated local/default preferences as pump data.
+    var autoIsfSettingsSnapshot: String? = null,
 
 
     var consoleLog: MutableList<String>? = null,
