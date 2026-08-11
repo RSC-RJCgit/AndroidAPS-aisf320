@@ -39,7 +39,7 @@ object CodedAutomationNames {
         "TodOffset0609DownTT", "TodOffset0609UpTT", "TodOffset0912DownTT", "TodOffset0912UpTT",
         "TodOffset1218DownTT", "TodOffset1218UpTT", "TodOffset1822DownTT", "TodOffset1822UpTT",
         "TodOffset2200DownTT", "TodOffset2200UpTT", "TwilightTH15Acce", "Usual2forTH",
-        "WizardPctDownTT", "WizardPctUpTT", "iobTHDaytimeFloor"
+        "VirtualPseudoWizard", "WizardPctDownTT", "WizardPctUpTT", "iobTHDaytimeFloor"
     )
 
     private fun normalize(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
