@@ -53,7 +53,10 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.text.SimpleDateFormat
 import java.util.Arrays
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -101,6 +104,28 @@ class MaintenancePlugin @Inject constructor(
         val startedStatus = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=STARTED"
         aapsLogger.info(LTag.CORE, startedStatus)
         ExportScriptDebugStatus.add(startedStatus)
+
+        // AIV backup is an independent part of a manual/remote export. Start it before checking for
+        // source log files so NO_SOURCE_LOGS, ZIP_CREATE, or another log-only failure cannot suppress
+        // the CSV/TXT/settings files, combined file, or their cloud upload.
+        if (alsoExportAiv) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val now = System.currentTimeMillis()
+                val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
+                autoIsfHistoryExporter.buildCombinedExport(now)
+                if (writtenFiles.size == 3)
+                    aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
+                else
+                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
+                ExportScriptDebugStatus.add(
+                    if (writtenFiles.size == 3) "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=3"
+                    else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
+                )
+                autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
+                uploadAivFilesToCloud(writtenFiles, trigger)
+            }
+        }
+
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
         if (logs.isEmpty()) {
@@ -121,28 +146,6 @@ class MaintenancePlugin @Inject constructor(
         aapsLogger.debug("zipFile: ${zipFile.name}")
         val zip = zipLogs(zipFile, logs)
         saveLogsLocally(zip, trigger)
-
-        if (alsoExportAiv) {
-            // Off the UI thread, same CoroutineScope(Dispatchers.IO).launch pattern as
-            // sendLogsToCloudDrive() below -- self-contained (queries persistenceLayer itself), no data
-            // to pass in. buildCombinedExport() always covers its own fixed 30h window regardless of
-            // caller, so nothing further to widen here.
-            CoroutineScope(Dispatchers.IO).launch {
-                val now = System.currentTimeMillis()
-                val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
-                autoIsfHistoryExporter.buildCombinedExport(now)
-                if (writtenFiles.size == 3)
-                    aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
-                else
-                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
-                ExportScriptDebugStatus.add(
-                    if (writtenFiles.size == 3) "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=3"
-                    else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
-                )
-                autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
-                uploadAivFilesToCloud(writtenFiles, trigger)
-            }
-        }
 
         // Check export destination preference (master switch or individual setting)
         if ((exportOptionsDialog.isLogCloudEnabled()) && 
@@ -264,7 +267,7 @@ class MaintenancePlugin @Inject constructor(
     fun getLogFiles(amount: Int): List<File> {
         val configuredPath = loggerUtils.logDirectory
         val fallbackPath = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "aapsLogs").absolutePath
-        val searchDirs = listOf(configuredPath, fallbackPath)
+        val searchDirs = listOf(configuredPath, fallbackPath, loggerUtils.appSpecificLogDirectory)
             .filter { it.isNotBlank() }
             .distinct()
             .map(::File)
@@ -275,10 +278,32 @@ class MaintenancePlugin @Inject constructor(
         // old exports inside every new export and make archives grow without bound.
         val result = searchDirs
             .flatMap { dir ->
-                dir.listFiles { _: File?, name: String ->
+                val listed = dir.listFiles { _: File?, name: String ->
                     name == "AndroidAPS.log" ||
                         (name.startsWith("AndroidAPS") && !name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip"))
-                }?.toList().orEmpty()
+                }
+                if (!listed.isNullOrEmpty()) {
+                    listed.toList()
+                } else {
+                    // Scoped-storage can allow opening a known public-Documents file while refusing
+                    // directory enumeration. Probe the live filename and logback's deterministic
+                    // hourly rollover names directly so cloud export still works in that state.
+                    val directlyReadable = mutableListOf<File>()
+                    File(dir, "AndroidAPS.log").takeIf { it.isFile && it.canRead() }?.let(directlyReadable::add)
+                    val hourFormat = SimpleDateFormat("yyyy-MM-dd_HH", Locale.US)
+                    val now = System.currentTimeMillis()
+                    repeat(30 * 24) { hoursAgo ->
+                        val stamp = hourFormat.format(Date(now - hoursAgo * 60L * 60L * 1000L))
+                        File(dir, "AndroidAPS._$stamp.log.zip")
+                            .takeIf { it.isFile && it.canRead() }
+                            ?.let(directlyReadable::add)
+                    }
+                    aapsLogger.warn(
+                        LTag.CORE,
+                        "Log directory listing unavailable/empty for ${dir.absolutePath}; direct-name fallback found ${directlyReadable.size} source log file(s)"
+                    )
+                    directlyReadable
+                }
             }
             .distinctBy { it.absolutePath }
             .sortedByDescending { it.name }

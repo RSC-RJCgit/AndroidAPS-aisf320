@@ -34,6 +34,7 @@ class MaintenancePluginTest : TestBaseWithProfile() {
         sut = MaintenancePlugin(context, rh, preferences, nsSettingsStatus, aapsLogger, config, fileListProvider, loggerUtils, uel, cloudStorageManager, exportOptionsDialog, autoIsfHistoryExporter, persistenceLayer)
         whenever(loggerUtils.suffix).thenReturn(".log.zip")
         whenever(loggerUtils.logDirectory).thenReturn("src/test/assets/logger")
+        whenever(loggerUtils.appSpecificLogDirectory).thenReturn("src/test/assets/logger")
         // Unknown solution after scoped access
         //whenever(fileListProvider.ensureTempDirExists()).thenReturn(File("src/test/assets/logger"))
     }
