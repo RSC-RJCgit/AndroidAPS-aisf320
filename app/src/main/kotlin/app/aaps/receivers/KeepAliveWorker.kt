@@ -64,12 +64,12 @@ class KeepAliveWorker(
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var maintenancePlugin: MaintenancePlugin
+    @Inject lateinit var cloudStorageManager: CloudStorageManager
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dstHelperPlugin: DstHelperPlugin
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
-    @Inject lateinit var cloudStorageManager: CloudStorageManager
 
     companion object {
 
@@ -190,7 +190,7 @@ class KeepAliveWorker(
                 else "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
             )
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
-            uploadAivFilesToCloud(writtenFiles)
+            maintenancePlugin.uploadAivFilesToCloud(writtenFiles, "AUTOMATIC_6H")
         }
     }
 

@@ -98,6 +98,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import javax.inject.Inject
@@ -133,6 +134,7 @@ class ImportExportPrefsImpl @Inject constructor(
 ) : ImportExportPrefs {
 
     override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
+    override fun uploadAivFilesToCloud(files: List<File>, trigger: String) = maintenancePlugin.uploadAivFilesToCloud(files, trigger)
 
     companion object {
         /** Cloud preference files loaded from the active cloud provider for the import list. */

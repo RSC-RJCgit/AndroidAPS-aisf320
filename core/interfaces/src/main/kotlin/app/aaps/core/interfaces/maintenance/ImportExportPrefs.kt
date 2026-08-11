@@ -5,6 +5,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import app.aaps.core.interfaces.rx.weardata.CwfData
 import org.json.JSONObject
+import java.io.File
 
 interface ImportExportPrefs {
 
@@ -25,6 +26,7 @@ interface ImportExportPrefs {
      * "Send logs" button on the Maintenance screen.
      */
     fun sendLogs(trigger: String = "MANUAL", alsoExportAiv: Boolean = true)
+    fun uploadAivFilesToCloud(files: List<File>, trigger: String)
 
     /**
      * Store for selected file from UI

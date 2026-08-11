@@ -130,6 +130,7 @@ class MaintenancePlugin @Inject constructor(
                     if (writtenFiles.size == 3) "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=SUCCESS files=3"
                     else "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
+                uploadAivFilesToCloud(writtenFiles, trigger)
             }
         }
 
@@ -281,6 +282,48 @@ class MaintenancePlugin @Inject constructor(
         }
         aapsLogger.debug("found ${result.size} source log file(s): ${result.joinToString { "${it.name}(${it.length()}B)" }}; returning 0 to $toIndex")
         return result.subList(0, toIndex)
+    }
+
+    /** Upload AIV CSV/TXT/settings files for manual, remote, and scheduled exports through one path. */
+    fun uploadAivFilesToCloud(files: List<File>, trigger: String) {
+        if (files.isEmpty()) {
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=NO_FILES")
+            return
+        }
+        if (!cloudStorageManager.isCloudStorageActive()) {
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=CLOUD_NOT_ENABLED")
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val provider = cloudStorageManager.getActiveProvider()
+                if (provider == null) {
+                    ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                    return@launch
+                }
+                val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+                val aivPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_AIV}_$patientName" else CloudConstants.CLOUD_PATH_AIV
+                provider.getOrCreateFolderPath(aivPath)?.let { provider.setSelectedFolderId(it) }
+                var uploaded = 0
+                files.forEach { file ->
+                    val mimeType = if (file.name.endsWith(".csv")) "text/csv" else "text/plain"
+                    val bytes = file.readBytes()
+                    var uploadedFileId = provider.uploadFileToPath(file.name, bytes, mimeType, aivPath)
+                    if (uploadedFileId == null) uploadedFileId = provider.uploadFile(file.name, bytes, mimeType)
+                    if (uploadedFileId != null) uploaded++
+                    else aapsLogger.error(LTag.CORE, "AIV cloud upload failed for ${file.name}")
+                }
+                val status = if (uploaded == files.size)
+                    "EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=SUCCESS files=$uploaded"
+                else
+                    "EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE files=$uploaded/${files.size}"
+                if (uploaded == files.size) aapsLogger.info(LTag.CORE, status) else aapsLogger.error(LTag.CORE, status)
+                ExportScriptDebugStatus.add(status)
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.CORE, "AIV cloud upload error", e)
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=AIV_CLOUD result=FAILURE reason=EXCEPTION")
+            }
+        }
     }
 
     fun zipLogs(zipFile: DocumentFile, files: List<File>): DocumentFile {

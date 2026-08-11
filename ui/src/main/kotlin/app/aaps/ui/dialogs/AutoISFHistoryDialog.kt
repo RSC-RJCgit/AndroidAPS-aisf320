@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.ui.databinding.DialogAutoisfHistoryBinding
@@ -36,6 +37,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var importExportPrefs: ImportExportPrefs
 
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
@@ -129,6 +131,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     if (writtenFiles.size == 3) "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=3"
                     else "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
                 )
+                importExportPrefs.uploadAivFilesToCloud(writtenFiles, "ISF_LONG_PRESS")
             }
         }
     }

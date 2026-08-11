@@ -189,7 +189,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         }
 
     /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in resolveExportDir()'s own
-     *  "output" subfolder, and a dated copy alongside it (see below) -- from a single fresh
+     *  "output" subfolder, copies the newest settings export there under an undated stable filename,
+     *  and writes a dated combined copy alongside it (see below) -- from a single fresh
      *  [COMBINED_WINDOW_HOURS]-hour DB query, the same way [exportLast6Hours] builds the regular 6h
      *  table, rather than concatenating several previously-written 6h .txt files. That earlier
      *  concatenation approach had a real bug: [exportTableAsText]/[formatTableText] pads each column to
@@ -220,6 +221,20 @@ class AutoIsfHistoryExporter @Inject constructor(
             val outFile = File(outputDir, "combined$patientName.txt")
             outFile.writeText(text)
             aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${records.size} row(s)")
+
+            // Keep an undated settings companion beside the undated combined table. The dated source
+            // remains in the patient export folder; this copy is overwritten on every combined rebuild
+            // so consumers can use one stable filename without having to discover the newest timestamp.
+            val exportDir = resolveExportDir(patientName)
+            val latestSettings = exportDir.listFiles { file ->
+                file.isFile && file.name.startsWith("AutoISF_settings_") && file.name.endsWith(".txt")
+            }?.maxByOrNull { it.lastModified() }
+            latestSettings?.let { source ->
+                val stableName = if (patientName.isNotEmpty()) "AutoISF_settings_$patientName.txt" else "AutoISF_settings.txt"
+                val stableSettings = File(outputDir, stableName)
+                source.copyTo(stableSettings, overwrite = true)
+                aapsLogger.debug(LTag.UI, "Latest AutoISF settings copied to ${stableSettings.absolutePath}")
+            }
 
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
             val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
