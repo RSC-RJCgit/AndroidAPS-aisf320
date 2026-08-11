@@ -4265,6 +4265,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val allBgHigh = allRecentBgAbove90Minutes(8.0 * GlucoseUnit.MMOLL_TO_MGDL)
             val duraActiveMinutes = recentAdaptationMinutes { it.duraIsf }
             val acceActiveMinutes = recentAdaptationMinutes { it.acceIsf }
+            val stepsOk = recentSteps60Minutes < 600 ||
+                (glucoseStatus.glucose > 11.0 * GlucoseUnit.MMOLL_TO_MGDL && recentSteps60Minutes < 1500)
             val cooldownReady = readyToRun(actionKey, 90)
             val conditionsMet = virtualPump &&
                 ukfBgl > 12.0 * GlucoseUnit.MMOLL_TO_MGDL &&
@@ -4275,7 +4277,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 acceActiveMinutes > 4.0 &&
                 mealData.mealCOB == 0.0 &&
                 noTempTarget &&
-                recentSteps60Minutes < 600 &&
+                stepsOk &&
                 hp != null && hp > 7.5 &&
                 noNormalBolus120 &&
                 cooldownReady &&
@@ -4287,7 +4289,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "acce=${String.format(Locale.US, "%.2f", bgAcce)} SDelta=${String.format(Locale.US, "%.2f", glucoseStatus.shortAvgDelta / GlucoseUnit.MMOLL_TO_MGDL)} " +
                     "allBG90>8=$allBgHigh duraMin=${String.format(Locale.US, "%.1f", duraActiveMinutes)} " +
                     "acceMin=${String.format(Locale.US, "%.1f", acceActiveMinutes)} COB=${String.format(Locale.US, "%.1f", mealData.mealCOB)} " +
-                    "noTT=$noTempTarget steps60=$recentSteps60Minutes HP=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
+                    "noTT=$noTempTarget steps60=$recentSteps60Minutes stepsOk=$stepsOk HP=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
                     "noNormalBolus120=$noNormalBolus120 lastNormalBolusMin=$lastNormalBolusMinutes " +
                     "cooldown90=$cooldownReady queueFree=${!commandQueue.bolusInQueue()} ;;"
             )

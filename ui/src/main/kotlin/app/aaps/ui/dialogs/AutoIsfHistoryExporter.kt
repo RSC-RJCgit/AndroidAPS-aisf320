@@ -267,9 +267,14 @@ class AutoIsfHistoryExporter @Inject constructor(
         val widths = exportHeaders.indices.map { i ->
             maxOf(exportHeaders[i].length, rows.maxOfOrNull { it[i].length } ?: 0)
         }
+        val smbColumn = exportHeaders.indexOf("SMB")
         val sb = StringBuilder()
         sb.append(exportHeaders.mapIndexed { i, h -> h.padEnd(widths[i]) }.joinToString("  ").trimEnd()).append("\n")
-        for (row in rows) sb.append(row.mapIndexed { i, v -> v.padEnd(widths[i]) }.joinToString("  ").trimEnd()).append("\n")
+        for (row in rows) {
+            val line = row.mapIndexed { i, v -> v.padEnd(widths[i]) }.joinToString("  ").trimEnd()
+            val hasSmb = smbColumn >= 0 && (row.getOrNull(smbColumn)?.toDoubleOrNull() ?: 0.0) > 0.0
+            sb.append(line).apply { if (hasSmb) append("  SMB") }.append("\n")
+        }
         return sb.toString()
     }
 
