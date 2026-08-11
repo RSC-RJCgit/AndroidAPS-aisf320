@@ -4269,9 +4269,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val conditionsMet = virtualPump &&
                 ukfBgl > 12.0 * GlucoseUnit.MMOLL_TO_MGDL &&
                 bgAcce > 7.0 &&
-                glucoseStatus.shortAvgDelta > 0.6 * GlucoseUnit.MMOLL_TO_MGDL &&
+                glucoseStatus.shortAvgDelta > 0.5 * GlucoseUnit.MMOLL_TO_MGDL &&
                 allBgHigh &&
-                duraActiveMinutes > 7.0 &&
+                duraActiveMinutes > 5.0 &&
                 acceActiveMinutes > 4.0 &&
                 mealData.mealCOB == 0.0 &&
                 noTempTarget &&
