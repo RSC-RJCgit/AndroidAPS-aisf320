@@ -171,6 +171,7 @@ interface OverviewData {
     var a1DeltaSeries: SeriesData
     // "hypoprediction= <value>" row, fixed near the bottom of the main graph — see HPDataPoint/Shape.HP_ROW_BOTTOM.
     var hpSeries: SeriesData
+    var targetOffsetDuTSeries: SeriesData
     // "pp= acc= du=" row, fixed near the bottom of graph3 — see IsfWeightsRowDataPoint.
     var isfWeightsRowSeries: SeriesData
     var stepsStackedSeries: SeriesData

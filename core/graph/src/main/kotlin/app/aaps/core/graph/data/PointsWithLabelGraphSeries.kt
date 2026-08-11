@@ -231,6 +231,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
+        val targetOffsetDuTRowPy = noteArrowheadPy + scaledTextSize * 2.0f
         // SMB-stack total label (Shape.SMB_STACK_TOTAL) — anchored at the BASE of whichever panel this
         // series is added to, same formula as SMB_GRAPH2's own bottom anchor above. Drawn at each event's
         // own X (the stack's start time), unlike the fixed-left rows above. A 30-min group of labels
@@ -256,7 +257,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // glucose values.
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
-                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
+                value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.TARGET_OFFSET_DUT_GRAPH4 || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
                 value.shape == Shape.SMB_STACK_TOTAL
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
@@ -604,6 +605,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         value.label.split('\n').forEachIndexed { lineIndex, line ->
                             canvas.drawText(line, graphLeft + 10f, nearBottomPy + lineIndex * scaledTextSize * 0.6f, mPaint)
                         }
+                    }
+                } else if (value.shape == Shape.TARGET_OFFSET_DUT_GRAPH4) {
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(value.label, graphLeft + 10f, targetOffsetDuTRowPy, mPaint)
                     }
                 } else if (value.shape == Shape.PP_ACC_DU_ROW) {
                     // "pp= acc= du=" row, graph5 only. Positioned via endY -- the point's own real Y,

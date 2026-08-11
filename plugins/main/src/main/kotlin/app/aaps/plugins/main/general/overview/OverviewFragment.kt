@@ -1785,6 +1785,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Note arrowheads: moved from graph3 to graph4 (g==3), top half — see noteArrowheadPy in
             // PointsWithLabelGraphSeries.kt. Same TREAT toggle source.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
+            if (g == 3) secondGraphData.addTargetOffsetDuTAnnotation()
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
             if (g == 1) secondGraphData.addSmbLabels()

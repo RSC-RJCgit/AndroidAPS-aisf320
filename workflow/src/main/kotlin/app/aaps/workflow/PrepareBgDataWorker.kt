@@ -23,6 +23,7 @@ import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
+import app.aaps.core.graph.data.TargetOffsetDuTDataPoint
 import app.aaps.core.graph.data.UkfDeltaDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
@@ -327,14 +328,26 @@ class PrepareBgDataWorker(
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
                 val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
-                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp) +
-                    "\ntargetOffset= " + targetOffsetText + "  duTTime= " + duraTaperTime
+                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
+                data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        TargetOffsetDuTDataPoint(
+                            latest.timestamp,
+                            profileUtil.fromMgdlToUnits(latest.value),
+                            "targetOffset= $targetOffsetText  duTTime= $duraTaperTime",
+                            rh
+                        )
+                    )
+                )
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
                     )
                 )
-            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+            } else {
+                data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+                PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+            }
 
         // AAPS (smoothed) 1-min delta label (orange), same style as the Libre one above but attached to
         // the smoothed/plotted BG value (latest.value) rather than the raw noise value — the two lines
