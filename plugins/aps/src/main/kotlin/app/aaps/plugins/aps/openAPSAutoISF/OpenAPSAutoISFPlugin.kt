@@ -1991,6 +1991,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("ProfileLowTT")
         }
 
+        // --- LibreUkf1ToggleTT / LibreUkf2ToggleTT: 5.152 / 5.154 are the two choices behind one
+        // "Libre UKF mode" row in the IOB double-tap popup. Each choice toggles its own mode. Turning
+        // one on always turns the other off, matching the mutually-exclusive switches in Settings;
+        // choosing the currently-active mode again leaves both modes off (original non-UKF path).
+        if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
+            preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
+            if (newState) preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, false)
+            cancelCurrentTempTarget()
+            sendSms("LibreUKF1: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("UK1${if (newState) "On" else "Off"}")
+            markRun("LibreUkf1ToggleTT")
+        }
+
+        if (readyToRun("LibreUkf2ToggleTT", 2) && activeTtNear(5.154, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+            preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, newState)
+            if (newState) preferences.put(BooleanKey.FslUseUkfSmoothing, false)
+            cancelCurrentTempTarget()
+            sendSms("LibreUKF2: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("UK2${if (newState) "On" else "Off"}")
+            markRun("LibreUkf2ToggleTT")
+        }
+
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
         // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
         // storage if configured, else email) — for AAPSClient users who have no settings access to
