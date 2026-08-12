@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 @Suppress("ConstPropertyName")
 object Versions {
 
+    // On change edit aaps-ci.yml
     const val appVersion = "3.4.2.5+aisf321_556"
     const val versionCode = 1500
 

@@ -4671,7 +4671,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val useSleepState = automationStateService.inState("Sleeping", "True")
         aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
         // really still sleeping?
-        if (existSleepState && useSleepState && (recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes < recentSteps30Minutes) && now >= inactivity_idle_end) {
+        if (useSleepState && (recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes == recentSteps30Minutes)) {   // no steps between 15m and 30m; was: && now>=inactivity_idle_end) -- dropped deliberately, see AndroidAPS-3426 merge (2026-08-12)
             automationStateService.setState("query_got_up", "query_it")
         }
         aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
