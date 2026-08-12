@@ -459,18 +459,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return Triple(rawG, rawD1, rawD5)
     }
 
-    // Hypo prediction (mmol). Identical formula to AutoIsfHistoryExporter.hpStr() — the "HP" column in
-    // the AIV history table and CSV export — so a threshold chosen by reading that column means exactly
-    // the same thing when used as a live gate here: (BGL - IOB) + 0.25*SDelta + 0.25*rawLibreDelta5 +
-    // COB/12, all in mmol. Divisor 18.0182 matches the exporter's MGDL_TO_MMOL rather than the plain 18
-    // used for inline mmol comments elsewhere in this file, so the two agree to the decimal shown.
-    // Null (not a sentinel) when the raw Libre 5-min delta is unavailable, so each caller decides
-    // explicitly whether missing data should fail open or closed for its own action rather than
-    // inheriting a silent default. Parameters are passed in rather than read from the enclosing
-    // automations scope because that state (glucoseStatus/iobData/mealData) is local to it.
-    private fun hypoPredictionMmol(glucoseMgdl: Double, shortAvgDeltaMgdl: Double, iob: Double, cob: Double): Double? {
-        val rawD5 = rawDelta5MinMgdl() ?: return null
-        return (glucoseMgdl / 18.0182 - iob) + 0.25 * (shortAvgDeltaMgdl / 18.0182) + 0.25 * (rawD5 / 18.0182) + cob / 12.0
+    // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
+    // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
+    private fun hypoPrediction2Mmol(
+        glucoseMgdl: Double,
+        shortAvgDeltaMgdl: Double,
+        longAvgDeltaMgdl: Double,
+        iob: Double,
+        cob: Double
+    ): Double? {
+        val ukfDelta5Mgdl = ukfRawMetrics().third ?: return null
+        val sdeltaMmol = shortAvgDeltaMgdl / 18.0182
+        val ldeltaMmol = longAvgDeltaMgdl / 18.0182
+        val cobPenaltyApplies =
+            (((bgAcceleration < 0.0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
+                (sdeltaMmol < 0.0 && ldeltaMmol < 0.0)) &&
+                autoIsfValues.insulinReq <= 0.0)
+        val cobtTerm = if (cobPenaltyApplies) liveCobT(cob) / 12.0 else 0.0
+        return (glucoseMgdl / 18.0182 - iob) +
+            0.5 * sdeltaMmol +
+            0.5 * (ukfDelta5Mgdl / 18.0182) -
+            cobtTerm
     }
 
     /** Strict 90-minute BG coverage check for the Virtual-Pump pseudo-wizard experiment. */
@@ -1008,15 +1017,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         preferences.put(BooleanKey.ActivityMonitorStepsActive, stepActivityDetected)
         preferences.put(BooleanKey.ActivityMonitorStepsInactive, stepInactivityDetected)
+        var liveHp2: Double? = null
         if (autoIsfMode) {
             val graphActivity = 100 * iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).activity
-            val hpForDuraTaper = hypoPredictionMmol(
+            liveHp2 = hypoPrediction2Mmol(
                 glucoseStatus.glucose,
                 glucoseStatus.shortAvgDelta,
+                glucoseStatus.longAvgDelta,
                 iobData.iob,
-                mealData.mealCOB
+                mealData.mealCOB,
+                glucoseStatus.bgAcceleration
             )
-            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, hpForDuraTaper)
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -1090,7 +1102,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smb_max_range_extension = smbMaxRangeExtension,
             enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
             iob_threshold_percent = iobThresholdPercent,
-            profile_percentage = profile_percentage
+            profile_percentage = profile_percentage,
+            hypo_prediction_2 = liveHp2
         )
         var sensitivityRatio = 1.0
         // TODO eliminate
@@ -1823,15 +1836,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffset2200UpTT")
         }
 
-        // Automatically clear TOD offsets when their sign no longer suits the current MJ/HP state.
-        // The NOMJ condition is the exact automation state MJ=NOMJremains. A missing HP does not
-        // satisfy HP < 5.0; the MJ-state part of either rule can still clear the applicable offsets.
+        // Automatically clear TOD offsets when their sign no longer suits the current MJ/HP2 state.
+        // The NOMJ condition is the exact automation state MJ=NOMJremains. A missing HP2 does not
+        // satisfy HP2 < 5.0; the MJ-state part of either rule can still clear the applicable offsets.
         val nomjRemains = checkAutomationState("MJ", "NOMJremains")
-        val todResetHp = hypoPredictionMmol(
+        val todResetHp = hypoPrediction2Mmol(
             glucoseStatus.glucose,
             glucoseStatus.shortAvgDelta,
+            glucoseStatus.longAvgDelta,
             iobData.iob,
-            mealData.mealCOB
+            mealData.mealCOB,
+            bgAcce
         )
         val todOffsetKeys = listOf(
             DoubleKey.ApsAutoIsfTodOffset0002,
@@ -1847,7 +1862,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val stepsHigh = checkAutomationState("Steps", "StepsHigh")
         val clearNegativeTodOffsets = !nomjRemains || (todResetHp != null && todResetHp < 5.0) || stepsHigh
         // A positive TOD offset delays/limits SMB, so remove that protection only when every
-        // permissive signal agrees. Missing HP deliberately fails closed and preserves the offset.
+        // permissive signal agrees. Missing HP2 deliberately fails closed and preserves the offset.
         val clearPositiveTodOffsets = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0
         val resetTodOffsets = todOffsetKeys.filter { key ->
             val value = preferences.get(key)
@@ -1862,10 +1877,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             resetTodOffsets.forEach { key -> preferences.put(key, 0.0) }
             val reason = when {
                 clearPositiveTodOffsets && resettingPositive ->
-                    "NOMJremains+StepsLow+HP=${round(todResetHp ?: 0.0, 2)}>6.0"
+                    "NOMJremains+StepsLow+HP2=${round(todResetHp ?: 0.0, 2)}>6.0"
                 stepsHigh && resettingNegative -> "StepsHigh"
                 !nomjRemains -> "NOT_NOMJremains"
-                else -> "HP=${round(todResetHp ?: 0.0, 2)}<5.0"
+                else -> "HP2=${round(todResetHp ?: 0.0, 2)}<5.0"
             }
             sendSms("TodOffsetsZero: $reason; $resetValues")
             addCarePortalNote("TOD0 $reason")
@@ -1935,7 +1950,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // themselves use, so a manual override isn't silently undone by a timer. It CAN still be undone
         // by another automation though: BasalUp switches back to Standard on a rise (no longer time-gated),
         // and TwilightTH15Acce (06:00-08:00) plus ExportSettingsPodActivation (any time, on pod change)
-        // switch to Low without an HP gate. So this is a "set it now" control, not a lock — if a switch
+        // switch to Low without an HP2 gate. So this is a "set it now" control, not a lock — if a switch
         // gets reverted within minutes, one of those three is the thing to look at, not this block.
         // Two one-way setters rather than one toggling TT, same reasoning as the MJ pair: the resulting
         // profile is always known from which code was sent, never dependent on what it was beforehand
@@ -2163,9 +2178,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val d    = glucoseStatus.delta
                 val sd   = glucoseStatus.shortAvgDelta
                 val (rawG, rawD1, rawD5) = ukfRawMetrics()
-                val hp = rawD5?.let {
-                    (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
-                }
+                val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
 
                 // Block 1: AAPS BGL ≤ 5.3 + raw BGL ≤ 4.0 + OR(raw ≤ 3.5, raw-1min < 0, raw-5min < 0)
                 val rawLow = rawG != null && rawG <= 72.1 /* 4.0 mmol */
@@ -2182,14 +2195,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val ghB2 = g <= 99.1 /* 5.5 */ && profile_percentage == 50 &&
                     d <= -5.40 /* -0.30 */ && sd <= -3.60 /* -0.20 */ && rawOr2
 
-                // Block 3: the same hypo-prediction shown as HP, using GentleHypo's UKF raw 5-minute
+                // Block 3: the same hypo-prediction shown as HP2, using GentleHypo's UKF raw 5-minute
                 // delta so every raw-derived input in this automation comes from one consistent source.
                 val ghB3 = hp != null && hp <= 4.1
 
-                val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; ghB3 -> "HP"; else -> null }
+                val ghBlock = when { ghB1 -> "1"; ghB2 -> "2"; ghB3 -> "HP2"; else -> null }
 
                 // Extra gate on top of the above (does not replace it): only actually fire if
-                // UKF raw glucose < 4.0 mmol OR HP <= 4.1 OR step60 > 200, AND UKF raw delta-1min <= 0,
+                // UKF raw glucose < 4.0 mmol OR HP2 <= 4.1 OR step60 > 200, AND UKF raw delta-1min <= 0,
                 // AND UKF raw delta-5min <= 0.
                 val ghExtraLow = (rawG != null && rawG < 72.1 /* 4.0 mmol */) ||
                     (hp != null && hp <= 4.1) || recentSteps60Minutes > 200
@@ -2204,7 +2217,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                         " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                         " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
-                        " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
+                        " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                         " iob=${String.format("%.2f", iobData.iob)}"
                     // Silenced in quiet hours (see gentleHypoQuiet above) -- enacted either way, so the
                     // acce/iobTH changes and the BGLstate write below still happen overnight.
@@ -2217,7 +2230,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     //setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
-                    aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }} HP=${hp?.let { String.format("%.1f", it) }}")
+                    aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW rawG=${rawG?.let { String.format("%.1f", it / 18.016) }} rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) }} rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) }} HP2=${hp?.let { String.format("%.1f", it) }}")
                 }
             }
         }
@@ -2480,10 +2493,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // switch re-arms every time its own 30-min duration expires (the "!onCurrentProfile" gate goes
             // true again on revert), that kept the low profile in place for much of 01:00-06:00 in 30-min
             // chunks -- while acce/iobTH, which are NOT reverted with it, stayed suppressed throughout.
-            // Fails OPEN (allows the block to fire) when HP can't be evaluated -- see hypoPredictionMmol().
+            // Fails OPEN (allows the block to fire) when HP2 can't be evaluated -- see hypoPrediction2Mmol().
             // This is a hypo-protective action, so the safe default on missing data is the pre-existing
             // behaviour rather than silently withholding a back-off that might be warranted.
-            val hpNow = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+            val hpNow = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
             val hypoPredicted = hpNow == null || hpNow < 5.0
             // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
             val ohb1 = isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9
@@ -2499,7 +2512,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (!rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
-                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP2=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("OffP-$ohBlock")
                 markRun("OffHighProf")
             }
@@ -3511,14 +3524,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && activeTtMgdl() == null
                 && profile_percentage == 100
                 && isTimeBetween(0, 0, 8, 0)) {
-                // Profile switch now HP-GATED rather than unconditional -- same rationale and same
+                // Profile switch now HP2-GATED rather than unconditional -- same rationale and same
                 // fail-closed choice as EveningTH above (permanent switch, no revert before BasalUp's
                 // 07:00 window, so skipping is far cheaper than switching unnecessarily). The acce-weight
                 // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
                 // exists for is preserved whether or not a low is predicted.
-                val hpMj = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+                val hpMj = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
                 if ((isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
-                sendSms("MJ recent CurrProf Acce HP=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("MJ recent CurrProf Acce HP2=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 addCarePortalNote("MJrec")
@@ -3541,14 +3554,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // route off the low/MJ-night profile, so anything that switched to it overnight kept you there
             // until morning with no recovery path -- the core of the "overnight corrections blocked"
             // problem. Left undamped deliberately: this block already self-limits hard, since it requires
-            // onCurrentProfile (it can only ever undo a switch something else made), so with the HP < 5.0
+            // onCurrentProfile (it can only ever undo a switch something else made), so with the HP2 < 5.0
             // gates now on EveningTH/MJrec/NightAcce/OffHighProf it should rarely have anything to undo.
             // The one pairing to watch is OffHighProf (01:00-06:00), which is this block's mirror image --
             // it switches TO low on a fall, this switches back on a rise -- so a wobbling BGL could
             // alternate them at the 5-min throttle. That is observable directly as alternating BsUp /
             // OffP-1 careportal notes; damping (longer overnight throttle, or a stronger rise than
             // d >= 0.2) is deliberately NOT pre-applied, to avoid adding another unvalidated constant
-            // against an oscillation that may never materialise now the HP gates are in place.
+            // against an oscillation that may never materialise now the HP2 gates are in place.
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && recentSteps60Minutes <= 1000
@@ -3855,7 +3868,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // because all its branches gate on a LOW BGL (<=7.5mmol) or on 22:00+.
         //
         // Deliberately separate from EveningTH rather than raising that block's BGL guard: EveningTH also
-        // sets acce 0.45 and (HP-gated) switches to the low profile, and both of those are back-off actions
+        // sets acce 0.45 and (HP2-gated) switches to the low profile, and both of those are back-off actions
         // that would be wrong applied to a genuine high -- blunting the acceleration response and weakening
         // basal/ISF while BG is climbing risks trading an overnight low for an overnight high. This block
         // therefore touches iobTH and nothing else.
@@ -3953,21 +3966,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // cases where this automation already ran. The stacking itself is addressed by the
                 // escalating anti-stack trim in DetermineBasalAutoISF.kt.
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
-                // Profile switch now HP-GATED rather than unconditional. Parking on the low/MJ-night
+                // Profile switch now HP2-GATED rather than unconditional. Parking on the low/MJ-night
                 // profile from 20:00 was suppressing overnight corrections: the low profile's weaker
                 // basal/ISF persists all night once switched, and BasalUp (the only switch back to
                 // Standard) is gated from 07:00, so there was no automated route off it before morning.
                 // Gating on a genuinely predicted low keeps the hypo protection this switch exists for
-                // while stopping it parking there on quiet nights. Fails CLOSED (no switch) when HP is
+                // while stopping it parking there on quiet nights. Fails CLOSED (no switch) when HP2 is
                 // unavailable -- opposite of OffHighProf's fail-open, and deliberately so: this switch is
                 // permanent (duration 0) with no automatic revert before 07:00, so the cost of switching
                 // when it wasn't warranted is much higher than skipping one evening adjustment.
-                val hpEve = hypoPredictionMmol(g, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
-                // 22:00-06:00 makes this switch UNCONDITIONAL; outside those hours the HP < 5.0 gate still
-                // applies. Same added condition on MJrec, NightAcce and OffHighProf. Reason: HP contains
+                val hpEve = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
+                // 22:00-06:00 makes this switch UNCONDITIONAL; outside those hours the HP2 < 5.0 gate still
+                // applies. Same added condition on MJrec, NightAcce and OffHighProf. Reason: HP2 contains
                 // IOB ((BGL - IOB) + ...), so it only falls below a threshold once insulin is already on
                 // board -- it confirms an overdose rather than anticipating one. Verified against the
-                // 6->7 Aug 2026 night: HP was 7.1 at 23:09 and 6.9 at 01:06, crossing 6.5 only ~4 minutes
+                // 6->7 Aug 2026 night: HP2 was 7.1 at 23:09 and 6.9 at 01:06, crossing 6.5 only ~4 minutes
                 // into each SMB burst, by which point most of the dose had gone. Gating a PREVENTIVE
                 // action on a REACTIVE measure cannot work, so overnight it is dropped entirely.
                 // The Logs1 export confirmed the profile in force at 23:08 and 02:33 was ProfileReal (the
@@ -3975,7 +3988,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // starts, which is what an unconditional overnight switch achieves. Window starts at 22:00
                 // rather than midnight because the first burst began at 23:10.
                 if (isTimeBetween(22, 0, 6, 0) || (hpEve != null && hpEve < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
-                sendSms("EveningTH CurrProf 50_0.45 Acce HP=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("EveningTH CurrProf 50_0.45 Acce HP2=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
             }
@@ -4018,18 +4031,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && checkAutomationState("Steroids", "Steroids Off")
                 && acceW >= 0.08) {
                 setBgAccelIsfWeight(0.35)
-                // Profile switch now HP-GATED rather than unconditional -- same rationale and same
+                // Profile switch now HP2-GATED rather than unconditional -- same rationale and same
                 // fail-closed choice as EveningTH/MJrec above. No self-latch concern here, unlike MJrec:
                 // this block's own "(iobTH >= 19 || iobTH <= 17)" trigger already latches it (setting
                 // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
-                val hpNight = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+                val hpNight = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
                 if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
-                sendSms("NightAcce_0.35TH18 HP=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("NightAcce_0.35TH18 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Night")
                 markRun("NightAcce")
             }
@@ -4137,9 +4150,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val (rawG, rawD1, rawD5) = ukfRawMetrics()
-            val hp = rawD5?.let {
-                (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
-            }
+            val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
             // ah1b1's 07:30-23:30 gate REMOVED so this branch also covers the small hours. It exists to
             // catch a slow decline into hypo, and that is no less real at 04:00 -- on 6->7 Aug 2026 BGL sat
             // at 3.5 from 04:00-05:30 and this block could not fire at all, because ah1b1 was outside its
@@ -4164,7 +4175,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
-                    " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
+                    " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 // Alerting only outside quiet hours. The URGENT notification is what actually wakes you,
                 // and the SMS likewise, so both are gated -- but the state writes and acce drop below are
@@ -4194,9 +4205,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val (rawG, rawD1, rawD5) = ukfRawMetrics()
-            val hp = rawD5?.let {
-                (g / 18.0182 - iobData.iob) + 0.25 * (sd / 18.0182) + 0.25 * (it / 18.0182) + mealData.mealCOB / 12.0
-            }
+            val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
             val lowOk = g <= 77.5 /* 4.3 mmol */ ||
                 (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000) ||
                 (hp != null && hp <= 3.8)
@@ -4211,7 +4220,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " rawG=${rawG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " rawD1=${rawD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " rawD5=${rawD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
-                    " HP=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
+                    " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 if (!alarmHypo2Quiet) {
                     sendSms(ah2SmsText)
@@ -4256,7 +4265,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val actionKey = "VirtualPseudoWizard"
             val virtualPump = activePlugin.activePump is VirtualPump
             val ukfBgl = computeUkfRawBgl()
-            val hp = hypoPredictionMmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, iobData.iob, mealData.mealCOB)
+            val hp = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
             val noTempTarget = persistenceLayer.getTemporaryTargetActiveAt(now) == null
             // Match the other coded automations' "no bolus within" meaning: NORMAL/user boluses only.
             // SMBs are deliberately ignored here; otherwise an active loop would make this gate nearly
@@ -4271,7 +4280,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val cooldownReady = readyToRun(actionKey, 90)
             val conditionsMet = virtualPump &&
                 ukfBgl > 12.0 * GlucoseUnit.MMOLL_TO_MGDL &&
-                bgAcce > 7.0 &&
+                bgAcce > 3.0 &&
                 glucoseStatus.shortAvgDelta > 0.5 * GlucoseUnit.MMOLL_TO_MGDL &&
                 allBgHigh &&
                 duraActiveMinutes > 5.0 &&
@@ -4290,31 +4299,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "acce=${String.format(Locale.US, "%.2f", bgAcce)} SDelta=${String.format(Locale.US, "%.2f", glucoseStatus.shortAvgDelta / GlucoseUnit.MMOLL_TO_MGDL)} " +
                     "allBG90>8=$allBgHigh duraMin=${String.format(Locale.US, "%.1f", duraActiveMinutes)} " +
                     "acceMin=${String.format(Locale.US, "%.1f", acceActiveMinutes)} COB=${String.format(Locale.US, "%.1f", mealData.mealCOB)} " +
-                    "noTT=$noTempTarget steps60=$recentSteps60Minutes stepsOk=$stepsOk HP=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
+                    "noTT=$noTempTarget steps60=$recentSteps60Minutes stepsOk=$stepsOk HP2=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
                     "noNormalBolus120=$noNormalBolus120 lastNormalBolusMin=$lastNormalBolusMinutes " +
                     "cooldown90=$cooldownReady queueFree=${!commandQueue.bolusInQueue()} ;;"
             )
             consoleError.add("VirtualPseudoWizard last result: $virtualPseudoWizardLastStatus ;; ")
 
             if (conditionsMet) {
-                val pseudoCob = max(liveCobT(mealData.mealCOB), 10.0)
+                // Calculation-only carb entry; do not also add COB because Wizard sums both.
+                // The delivered correction treatment below continues to record zero carbs.
+                val calculationCarbs = when {
+                    glucoseStatus.glucose > 13.0 * GlucoseUnit.MMOLL_TO_MGDL -> 20
+                    glucoseStatus.glucose > 11.0 * GlucoseUnit.MMOLL_TO_MGDL -> 15
+                    else -> 10
+                }
                 val wizard = bolusWizardProvider.get().doCalc(
                     profile = profile,
                     profileName = profileFunction.getProfileName(),
                     tempTarget = null,
-                    carbs = 0,
-                    cob = pseudoCob,
+                    carbs = calculationCarbs,
+                    cob = 0.0,
                     bg = glucoseStatus.glucose,
                     correction = 0.0,
                     useBg = true,
-                    useCob = true,
+                    useCob = false,
                     includeBolusIOB = true,
                     includeBasalIOB = true,
                     useSuperBolus = false,
                     useTT = false,
                     useTrend = false,
                     useAlarm = false,
-                    notes = "Virtual-only pseudo-wizard; pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g; zero carbs recorded",
+                    notes = "Virtual-only pseudo-wizard; calculationCarbs=${calculationCarbs}g; zero carbs recorded",
                     quickWizard = false,
                     positiveIOBOnly = false
                 )
@@ -4327,7 +4342,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         mgdlGlucose = glucoseStatus.glucose
                         glucoseType = TE.MeterType.SENSOR
                         bolusCalculatorResult = wizard.createBolusCalculatorResult()
-                        notes = "Virtual-only pseudo-wizard; pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g; zero carbs recorded"
+                        notes = "Virtual-only pseudo-wizard; calculationCarbs=${calculationCarbs}g; zero carbs recorded"
                         bolusType = BS.Type.NORMAL
                     }
                     val accepted = commandQueue.bolus(bolusInfo, object : Callback() {
@@ -4346,7 +4361,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         virtualPseudoWizardLastStatus = "FAILED at ${dateUtil.timeString(dateUtil.now())}: bolus queue rejected request"
                         aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: bolus queue rejected request")
                     }
-                    else consoleError.add("VirtualPseudoWizard queued ${String.format(Locale.US, "%.2f", insulin)}U with pseudoCOBt=${String.format(Locale.US, "%.1f", pseudoCob)}g and carbs=0 ;; ")
+                    else consoleError.add("VirtualPseudoWizard queued ${String.format(Locale.US, "%.2f", insulin)}U with calculationCarbs=${calculationCarbs}g and recordedCarbs=0 ;; ")
                 } else {
                     consoleError.add("VirtualPseudoWizard no dose: constrained Wizard result=${String.format(Locale.US, "%.2f", insulin)}U ;; ")
                 }
@@ -5090,7 +5105,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     else                           -> 1.0 - (1.0 - iobTaperFloor) * (iob - iobTaperStart) / (iobTaperEnd - iobTaperStart)
                 }
                 if (hpMmol != null && hpMmol > 7.0) {
-                    consoleError.add("dura_ISF IOB taper disabled: HP=${round(hpMmol, 2)} > 7.0")
+                    consoleError.add("dura_ISF IOB taper disabled: HP2=${round(hpMmol, 2)} > 7.0")
                 }
                 if (iobTaperFactor < 1.0) {
                     val beforeTaper = duraBoost
