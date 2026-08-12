@@ -175,8 +175,16 @@ class GraphData @Inject constructor(
         addSeries(overviewData.hpSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addIobPeakMainAnnotation() {
+        addSeries(overviewData.iobPeakMainSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addTargetOffsetDuTAnnotation() {
         addSeries(overviewData.targetOffsetDuTSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
+    fun addTargetOffsetDuTGraph1Annotation() {
+        addSeries(overviewData.targetOffsetDuTGraph1Series as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
     fun addStepsStackedAnnotation() {
@@ -212,6 +220,7 @@ class GraphData @Inject constructor(
 
     fun addCombinedCarbs(scale: Double) {
         addSeries(overviewData.combinedCarbsSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.combinedCarbsPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         // Self-normalised against its own max, same as every other series here (activity, carb
         // absorption, ...). The point is that EVERY line's peak lands at the same height (maxY*scale),
         // so lines can be read against each other for SHAPE and TIMING -- when each rises, where it
@@ -234,6 +243,7 @@ class GraphData @Inject constructor(
 
     fun addCarbModelCurve(scale: Double) {
         addSeries(overviewData.carbModelSeries as FixedLineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.carbModelPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         if (overviewData.maxCarbModelValue > 0.0)
             overviewData.carbModelScale.multiplier = maxY * scale / overviewData.maxCarbModelValue
     }

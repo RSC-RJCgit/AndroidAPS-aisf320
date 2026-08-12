@@ -228,6 +228,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // fixed one more line-height above stepsExtraRowPy so it sits above all three of the rows/lines
         // above rather than overlapping any of them.
         val isfIndicesRowPy = stepsExtraRowPy - scaledTextSize * 0.6f
+        // Copy of graph 5's targetOffset/duTTime line, one row above graph 1's four status rows.
+        val targetOffsetDuTGraph1RowPy = isfIndicesRowPy - scaledTextSize * 0.6f
+
         // Note-arrowhead position (Shape.NOTE_ARROWHEAD_GRAPH3) — graph4's top half, 0.2 of that graph's
         // own height.
         val noteArrowheadPy = graphTop + graphHeight * 0.2f
@@ -236,6 +239,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // own X (the stack's start time), unlike the fixed-left rows above. A 30-min group of labels
         // stacks UPWARD from this base (see the render branch below).
         val smbStackTotalPy = graphTop + graphHeight - scaledTextSize * 0.3f
+        val iobPeakMainBottomPy = graphTop + graphHeight - scaledTextSize * 0.35f
+
         for (value in values) {
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
@@ -257,7 +262,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             val yIndependentShape = value.shape == Shape.GENERAL_WITH_DURATION || value.shape == Shape.GENERAL_WITH_DURATION_OFFSET ||
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
                 value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.TARGET_OFFSET_DUT_GRAPH5 || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
-                value.shape == Shape.SMB_STACK_TOTAL
+                value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1 ||
+                value.shape == Shape.SMB_STACK_TOTAL ||
+                value.shape == Shape.IOB_PEAK_MAIN_BOTTOM
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -441,6 +448,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45RightBelow(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
+                } else if (value.shape == Shape.IOB_PEAK_MAIN_BOTTOM) {
+                    // Same IOB-peak value and timestamp as the secondary IOB graph, fixed along the
+                    // bottom of the main graph's basal-column area.
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.CENTER
+                        canvas.drawText(value.label, endX, iobPeakMainBottomPy, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
                 } else if (value.shape == Shape.EXERCISE) {
                     mPaint.strokeWidth = 0f
                     if (value.label.isNotEmpty()) {
@@ -604,6 +623,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         value.label.split('\n').forEachIndexed { lineIndex, line ->
                             canvas.drawText(line, graphLeft + 10f, nearBottomPy + lineIndex * scaledTextSize * 0.6f, mPaint)
                         }
+                    }
+                } else if (value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1) {
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(value.label, graphLeft + 10f, targetOffsetDuTGraph1RowPy, mPaint)
                     }
                 } else if (value.shape == Shape.TARGET_OFFSET_DUT_GRAPH5) {
                     mPaint.strokeWidth = 0f

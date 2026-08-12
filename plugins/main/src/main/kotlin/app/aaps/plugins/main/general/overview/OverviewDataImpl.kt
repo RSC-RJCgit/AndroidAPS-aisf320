@@ -83,10 +83,12 @@ class OverviewDataImpl @Inject constructor(
         carbAbsorptionSeries = FixedLineGraphSeries<ScaledDataPoint>()
         maxCarbModelValue = 0.0
         carbModelSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        carbModelPeakSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxUamCarbImpactValue = 0.0
         uamCarbImpactSeries = FixedLineGraphSeries<ScaledDataPoint>()
         maxCombinedCarbsValue = 0.0
         combinedCarbsSeries = FixedLineGraphSeries<ScaledDataPoint>()
+        combinedCarbsPeakSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxBgParabolaValue = 280.0
         bgParabolaSeries = FixedLineGraphSeries<ScaledDataPoint>()
         bgParabolaPredictionSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -95,6 +97,7 @@ class OverviewDataImpl @Inject constructor(
         absIobSeries = FixedLineGraphSeries<ScaledDataPoint>()
         iobPredictions1Series = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         iobPeakSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        iobPeakMainSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         //iobPredictions2Series = PointsWithLabelGraphSeries()
         maxBGIValue = Double.MIN_VALUE
         minusBgiSeries = FixedLineGraphSeries<ScaledDataPoint>()
@@ -128,6 +131,7 @@ class OverviewDataImpl @Inject constructor(
         a1DeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         hpSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         targetOffsetDuTSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         isfWeightsRowSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsStackedSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsExtraSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -270,12 +274,14 @@ class OverviewDataImpl @Inject constructor(
     override var maxCarbModelValue = 0.0
     override val carbModelScale = Scale()
     override var carbModelSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+    override var carbModelPeakSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var maxUamCarbImpactValue = 0.0
     override val uamCarbImpactScale = Scale()
     override var uamCarbImpactSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var maxCombinedCarbsValue = 0.0
     override val combinedCarbsScale = Scale()
     override var combinedCarbsSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
+    override var combinedCarbsPeakSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
     override var maxBgParabolaValue = 0.0
     override val bgParabolaScale = Scale()
@@ -305,6 +311,7 @@ class OverviewDataImpl @Inject constructor(
     override var absIobSeries: SeriesData = FixedLineGraphSeries<ScaledDataPoint>()
     override var iobPredictions1Series: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var iobPeakSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var iobPeakMainSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
     override var maxBGIValue = Double.MIN_VALUE
     override val bgiScale = Scale()
@@ -338,6 +345,7 @@ class OverviewDataImpl @Inject constructor(
     override var a1DeltaSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var hpSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var targetOffsetDuTSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var targetOffsetDuTGraph1Series: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var isfWeightsRowSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsStackedSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsExtraSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()

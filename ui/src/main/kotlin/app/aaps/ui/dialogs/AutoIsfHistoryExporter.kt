@@ -114,7 +114,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     // -----------------------------------------------------------------------------------------------
 
     val exportHeaders = listOf(
-        "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
+        "Time", "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
         "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
     )
 
@@ -126,6 +126,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         return listOf(
             dateUtil.timeString(r.timestamp),
             df1.format(r.glucose / MGDL_TO_MMOL),
+            targetStr(r.timestamp, apsResults),
             df2.format(r.finalIsf),
             df2.format(r.acceIsf),
             df2.format(r.bgIsf),
@@ -371,6 +372,14 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (full != null) return String.format(Locale.US, "%.3f", full).replace(".", "").trimStart('0').ifEmpty { "0" }
         val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return Math.round(factor * 10).toString()
+    }
+
+    /** Actual APS target for this AIV cycle, displayed/exported in mmol/L. */
+    fun targetStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        if (nearest.targetBG <= 0.0) return "--"
+        return df1.format(nearest.targetBG / MGDL_TO_MMOL)
     }
 
     /** "LowBGrecent: Y|N ;" written into RT.reason every cycle (OpenAPSAutoISFPlugin.kt) -- the LowBG

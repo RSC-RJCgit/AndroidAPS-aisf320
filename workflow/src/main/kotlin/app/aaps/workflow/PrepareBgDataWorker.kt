@@ -23,6 +23,7 @@ import app.aaps.core.graph.data.NoisyBgDeltaDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsExtraDataPoint
 import app.aaps.core.graph.data.StepsStackedDataPoint
+import app.aaps.core.graph.data.TargetOffsetDuTGraph1DataPoint
 import app.aaps.core.graph.data.TargetOffsetDuTDataPoint
 import app.aaps.core.graph.data.UkfDeltaDataPoint
 import com.jjoe64.graphview.series.DataPoint
@@ -339,6 +340,16 @@ class PrepareBgDataWorker(
                         )
                     )
                 )
+                data.overviewData.targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        TargetOffsetDuTGraph1DataPoint(
+                            latest.timestamp,
+                            profileUtil.fromMgdlToUnits(75.6),
+                            "targetOffset= $targetOffsetText  duTTime= $duraTaperTime",
+                            rh
+                        )
+                    )
+                )
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
@@ -346,6 +357,7 @@ class PrepareBgDataWorker(
                 )
             } else {
                 data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+                data.overviewData.targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
                 PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
             }
 

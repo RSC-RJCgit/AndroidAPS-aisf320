@@ -1590,6 +1590,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addA1DeltaAnnotation()
         graphData.addUkfDeltaAnnotation()
         graphData.addHpAnnotation()
+        graphData.addIobPeakMainAnnotation()
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
@@ -1780,6 +1781,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Steps row + DR/AW/LS row above it + yellow/white line + ISF adaptation indices/SMB row
             // ("f= ac= bg= pp= du= smb=") above all three of those: graph1 (g==0), fixed near the bottom.
             if (g == 0) {
+                secondGraphData.addTargetOffsetDuTGraph1Annotation()
                 secondGraphData.addStepsStackedAnnotation()
                 secondGraphData.addStepsExtra()
                 secondGraphData.addNoisyBgDeltaAnnotation()

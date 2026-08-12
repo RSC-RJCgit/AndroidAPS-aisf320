@@ -79,6 +79,7 @@ interface OverviewData {
     var maxCarbModelValue: Double
     val carbModelScale: Scale
     var carbModelSeries: SeriesData
+    var carbModelPeakSeries: SeriesData
 
     // UAM Carb Impact (uci) -- deviation-derived carbs-equivalent, grams/5min (converted from uci's
     // native mg/dL/5min BG-impact via csf), from the AIV table, EMA-smoothed to match
@@ -95,6 +96,7 @@ interface OverviewData {
     var maxCombinedCarbsValue: Double
     val combinedCarbsScale: Scale
     var combinedCarbsSeries: SeriesData
+    var combinedCarbsPeakSeries: SeriesData
 
     var maxBgParabolaValue: Double
     val bgParabolaScale: Scale
@@ -126,6 +128,7 @@ interface OverviewData {
     // Same "only the genuinely dominant peaks" labeling as activityPeakSeries -- see
     // PrepareIobAutosensGraphDataWorker.kt's iobPeakIndices computation for the exact rule.
     var iobPeakSeries: SeriesData
+    var iobPeakMainSeries: SeriesData
 
     var maxBGIValue: Double
     val bgiScale: Scale
@@ -172,6 +175,7 @@ interface OverviewData {
     // "hypoprediction= <value>" row, fixed near the bottom of the main graph — see HPDataPoint/Shape.HP_ROW_BOTTOM.
     var hpSeries: SeriesData
     var targetOffsetDuTSeries: SeriesData
+    var targetOffsetDuTGraph1Series: SeriesData
     // "pp= acc= du=" row, fixed near the bottom of graph3 — see IsfWeightsRowDataPoint.
     var isfWeightsRowSeries: SeriesData
     var stepsStackedSeries: SeriesData

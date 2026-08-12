@@ -1,6 +1,7 @@
 package app.aaps.workflow
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import androidx.work.WorkerParameters
@@ -136,17 +137,64 @@ class PrepareIobAutosensGraphDataWorker(
         private val x: Double,
         private val y: Double,
         private val labelText: String,
-        private val rh: ResourceHelper
+        override val shape: Shape = Shape.IOB_PEAK
     ) : DataPointWithLabelInterface {
         override fun getX(): Double = x
         override fun getY(): Double = y
         override fun setY(y: Double) {}
         override val label: String = labelText
         override val duration = 0L
-        override val shape = Shape.IOB_PEAK
         override val size = 0f
         override val paintStyle: Paint.Style = Paint.Style.FILL
-        override fun color(context: Context?): Int = rh.gac(context, app.aaps.core.ui.R.attr.iobColor)
+        override fun color(context: Context?): Int = Color.RED
+    }
+
+    class CarbPeakDataPoint(
+        private val x: Double,
+        private val rawY: Double,
+        private val scale: Scale,
+        private val labelText: String,
+        private val colorValue: Int
+    ) : DataPointWithLabelInterface {
+        override fun getX(): Double = x
+        override fun getY(): Double = scale.transform(rawY)
+        override fun setY(y: Double) {}
+        override val label: String = labelText
+        override val duration = 0L
+        // Reuse the established below-the-peak renderer; the curve-specific color identifies the line.
+        override val shape = Shape.ACTIVITY_PEAK
+        override val size = 0f
+        override val paintStyle: Paint.Style = Paint.Style.FILL
+        override fun color(context: Context?): Int = colorValue
+    }
+
+    private fun dominantCarbPeakIndices(
+        points: List<ScaledDataPoint>,
+        rawValues: List<Double>,
+        overallMax: Double
+    ): List<Int> {
+        if (points.isEmpty() || points.size != rawValues.size || overallMax <= 0.0) return emptyList()
+        val sixHoursMs = 6 * 60 * 60 * 1000L
+        val twoHoursMs = 2 * 60 * 60 * 1000L
+        var lastLabeledTimestamp: Long? = null
+        val selected = mutableListOf<Int>()
+        for (i in points.indices) {
+            val raw = rawValues[i]
+            val isLocalPeak = (i == 0 || raw > rawValues[i - 1]) &&
+                (i == points.lastIndex || raw >= rawValues[i + 1])
+            if (!isLocalPeak || raw <= overallMax * 0.75) continue
+            val windowStart = points[i].x - sixHoursMs
+            val maxInTrailingWindow = points.indices
+                .filter { j -> points[j].x in windowStart..points[i].x }
+                .maxOf { j -> rawValues[j] }
+            if (raw < maxInTrailingWindow) continue
+            val timestamp = points[i].x.toLong()
+            val previous = lastLabeledTimestamp
+            if (previous != null && timestamp - previous < twoHoursMs) continue
+            selected.add(i)
+            lastLabeledTimestamp = timestamp
+        }
+        return selected
     }
 
     override suspend fun doWorkAndLog(): Result {
@@ -217,6 +265,7 @@ class PrepareIobAutosensGraphDataWorker(
         // from entered carbs, not a live activity measurement, so summing it in wouldn't mean the same
         // thing as combining these two.
         val combinedCarbsArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        val rawCombinedCarbsPoints: MutableList<Double> = ArrayList()
         data.overviewData.maxCombinedCarbsValue = 0.0
 
         // CARB MODEL CURVE (optional overlay, off by default) -- two-compartment (Dalla Man-style) Ra(t)
@@ -240,6 +289,7 @@ class PrepareIobAutosensGraphDataWorker(
         // computable for any timestamp, so it isn't restricted to time <= now.
         val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
         val carbModelArrayHist: MutableList<ScaledDataPoint> = ArrayList()
+        val rawCarbModelPoints: MutableList<Double> = ArrayList()
         data.overviewData.maxCarbModelValue = 0.0
         val carbModelK = 1.0 / 90.0 // t_peak = 1/k = 90min, matching the comment above (was 70min)
         val carbModelF = 0.9
@@ -370,6 +420,7 @@ class PrepareIobAutosensGraphDataWorker(
                         val excessUam = (smoothedUam - smoothedCarbAbs).coerceAtLeast(0.0)
                         val combined = smoothedCarbAbs + excessUam
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
+                        rawCombinedCarbsPoints.add(combined)
                         // Scale against the positive peak drawn above the graph baseline. Using abs()
                         // allowed a larger negative UAM trough to become the scale reference, which
                         // made the visible CarbComb peak substantially shorter than IA/CarbsAbs/model.
@@ -421,6 +472,7 @@ class PrepareIobAutosensGraphDataWorker(
                 // maxCarbModelValue is NOT updated here anymore -- precomputed analytically above,
                 // window-independently, before this loop runs (see that comment for why).
                 carbModelArrayHist.add(ScaledDataPoint(time, raPer5Min, data.overviewData.carbModelScale))
+                rawCarbModelPoints.add(raPer5Min)
             }
 
             // RATIO
@@ -440,6 +492,49 @@ class PrepareIobAutosensGraphDataWorker(
 
             time += 5 * 60 * 1000L
         }
+
+        // Peak labels for the two derived carb-rate curves. Use the same dominant-peak filtering as
+        // activity/IOB labels so five-minute noise does not create a label at every small bump. Values
+        // are the curves' native g/5min values; the point Y is transformed lazily through the same Scale
+        // as its line so it remains attached after GraphData sets the panel multiplier.
+        val carbModelPeakIndices = dominantCarbPeakIndices(
+            carbModelArrayHist,
+            rawCarbModelPoints,
+            data.overviewData.maxCarbModelValue
+        )
+        data.overviewData.carbModelPeakSeries = if (carbModelPeakIndices.isNotEmpty()) {
+            PointsWithLabelGraphSeries(
+                carbModelPeakIndices.map { i ->
+                    CarbPeakDataPoint(
+                        carbModelArrayHist[i].x,
+                        rawCarbModelPoints[i],
+                        data.overviewData.carbModelScale,
+                        "CM=${decimalFormatter.to2Decimal(rawCarbModelPoints[i])}",
+                        rh.gac(ctx, app.aaps.core.ui.R.attr.carbModelCurveColor)
+                    ) as DataPointWithLabelInterface
+                }.toTypedArray()
+            )
+        } else PointsWithLabelGraphSeries()
+
+        val combinedCarbsPeakIndices = dominantCarbPeakIndices(
+            combinedCarbsArrayHist,
+            rawCombinedCarbsPoints,
+            data.overviewData.maxCombinedCarbsValue
+        )
+        data.overviewData.combinedCarbsPeakSeries = if (combinedCarbsPeakIndices.isNotEmpty()) {
+            PointsWithLabelGraphSeries(
+                combinedCarbsPeakIndices.map { i ->
+                    CarbPeakDataPoint(
+                        combinedCarbsArrayHist[i].x,
+                        rawCombinedCarbsPoints[i],
+                        data.overviewData.combinedCarbsScale,
+                        "CC=${decimalFormatter.to2Decimal(rawCombinedCarbsPoints[i])}",
+                        rh.gac(ctx, app.aaps.core.ui.R.attr.combinedCarbsColor)
+                    ) as DataPointWithLabelInterface
+                }.toTypedArray()
+            )
+        } else PointsWithLabelGraphSeries()
+
 
         // IOB_TH -- reuses autoIsfResults fetched earlier (above the main loop, for the UAM/combined
         // carbs bucket lookups) rather than querying the same range twice.
@@ -510,12 +605,25 @@ class PrepareIobAutosensGraphDataWorker(
             PointsWithLabelGraphSeries(
                 iobPeakIndices.map { i ->
                     val point = iobArray[i]
-                    IobPeakDataPoint(point.x, point.y, decimalFormatter.to2Decimal(rawIobPoints[i]), rh) as DataPointWithLabelInterface
+                    IobPeakDataPoint(point.x, point.y, decimalFormatter.to2Decimal(rawIobPoints[i])) as DataPointWithLabelInterface
                 }.toTypedArray()
             )
         } else {
             PointsWithLabelGraphSeries()
         }
+
+        // Red bold duplicate at the same peak timestamp, fixed at the bottom of the main graph's basal
+        // columns. It exists only when the normal IOB peak label above exists.
+        data.overviewData.iobPeakMainSeries = if (iobPeakIndices.isNotEmpty() && data.overviewData.maxIobValueFound > 0.0) {
+            PointsWithLabelGraphSeries(
+                iobPeakIndices.map { i ->
+                    val point = iobArray[i]
+                    IobPeakDataPoint(
+                        point.x, point.y, decimalFormatter.to2Decimal(rawIobPoints[i]), Shape.IOB_PEAK_MAIN_BOTTOM
+                    ) as DataPointWithLabelInterface
+                }.toTypedArray()
+            )
+        } else PointsWithLabelGraphSeries()
 
         if (overviewMenus.setting[0][OverviewMenus.CharType.PRE.ordinal]) {
             val autosensData = adsData.getLastAutosensData("GraphData", aapsLogger, dateUtil)

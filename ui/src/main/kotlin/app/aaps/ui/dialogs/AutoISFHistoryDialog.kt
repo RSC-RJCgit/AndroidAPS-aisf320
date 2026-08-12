@@ -173,6 +173,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 binding.historyTime, table, cells = listOf(
                     Cell(dateUtil.timeString(r.timestamp),          colorTime),
                     Cell(df1.format(r.glucose / MGDL_TO_MMOL),      colorGlucose),
+                    Cell(autoIsfHistoryExporter.targetStr(r.timestamp, apsResults), colorGlucose),
                     Cell(df2.format(r.finalIsf),                    dominantIsfColor(r, colorFinalRatio)),
                     Cell(adjStr(r.acceIsf),                         colorAcceIsf),
                     Cell(adjStr(r.bgIsf),                           colorBgIsf),
@@ -270,7 +271,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         addSplitRow(
             binding.historyCorner, binding.historyHeader, cells = listOf(
                 Cell("", colorTime),
-                Cell("BG", colorGlucose, bold = true),
+                Cell("BG", colorGlucose, span = 2, bold = true),
                 Cell("Final Ratio", colorFinalRatio, bold = true),
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
                 Cell("UAM", colorHeader, bold = true),
@@ -292,6 +293,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             binding.historyCorner, binding.historyHeader, cells = listOf(
                 Cell("Time",   colorHeader, bold = true),
                 Cell("BGL",    colorGlucose, bold = true),
+                Cell("Target", colorGlucose, bold = true),
                 Cell("Final",  colorFinalRatio, bold = true),
                 Cell("acce",   colorAcceIsf, bold = true),
                 Cell("bg",     colorBgIsf,   bold = true),
