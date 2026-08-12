@@ -783,6 +783,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listValues = listOf(ValueWithUnit.SimpleString(note))
         ).subscribe()
     }
+    private fun todOffsetCarePortalNote(value: Double): String {
+        val roundedValue = round(value, 1).let { if (it == 0.0) 0.0 else it }
+        val sign = if (roundedValue >= 0.0) "+" else ""
+        return "T$sign$roundedValue"
+    }
+
 
     // Mirrors ActionNotification's TherapyEvent handling exactly (confirmed on-device working:
     // shows on the BGL graph and in Treatments/Notes) — unlike addCarePortalNote()'s TE.Type.NOTE,
@@ -1713,7 +1719,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
-            addCarePortalNote("T1d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0002DownTT")
         }
         if (readyToRun("TodOffset0002UpTT", 2) && activeTtNear(5.094, 0.0001)) {
@@ -1721,7 +1727,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
-            addCarePortalNote("T1u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0002UpTT")
         }
         if (readyToRun("TodOffset0204DownTT", 2) && activeTtNear(5.098, 0.0001)) {
@@ -1729,7 +1735,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
-            addCarePortalNote("T2d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0204DownTT")
         }
         if (readyToRun("TodOffset0204UpTT", 2) && activeTtNear(5.100, 0.0001)) {
@@ -1737,7 +1743,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
-            addCarePortalNote("T2u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0204UpTT")
         }
         if (readyToRun("TodOffset0406DownTT", 2) && activeTtNear(5.104, 0.0001)) {
@@ -1745,7 +1751,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
-            addCarePortalNote("T3d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0406DownTT")
         }
         if (readyToRun("TodOffset0406UpTT", 2) && activeTtNear(5.106, 0.0001)) {
@@ -1753,7 +1759,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
-            addCarePortalNote("T3u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0406UpTT")
         }
         if (readyToRun("TodOffset0609DownTT", 2) && activeTtNear(5.110, 0.0001)) {
@@ -1761,7 +1767,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
-            addCarePortalNote("T4d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0609DownTT")
         }
         if (readyToRun("TodOffset0609UpTT", 2) && activeTtNear(5.112, 0.0001)) {
@@ -1769,7 +1775,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
-            addCarePortalNote("T4u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0609UpTT")
         }
         if (readyToRun("TodOffset0912DownTT", 2) && activeTtNear(5.116, 0.0001)) {
@@ -1777,7 +1783,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
-            addCarePortalNote("T5d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0912DownTT")
         }
         if (readyToRun("TodOffset0912UpTT", 2) && activeTtNear(5.118, 0.0001)) {
@@ -1785,7 +1791,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
-            addCarePortalNote("T5u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset0912UpTT")
         }
         if (readyToRun("TodOffset1218DownTT", 2) && activeTtNear(5.122, 0.0001)) {
@@ -1793,7 +1799,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
-            addCarePortalNote("T6d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset1218DownTT")
         }
         if (readyToRun("TodOffset1218UpTT", 2) && activeTtNear(5.124, 0.0001)) {
@@ -1801,7 +1807,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
-            addCarePortalNote("T6u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset1218UpTT")
         }
         if (readyToRun("TodOffset1822DownTT", 2) && activeTtNear(5.128, 0.0001)) {
@@ -1809,7 +1815,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
-            addCarePortalNote("T7d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset1822DownTT")
         }
         if (readyToRun("TodOffset1822UpTT", 2) && activeTtNear(5.130, 0.0001)) {
@@ -1817,7 +1823,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
-            addCarePortalNote("T7u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset1822UpTT")
         }
         if (readyToRun("TodOffset2200DownTT", 2) && activeTtNear(5.134, 0.0001)) {
@@ -1825,7 +1831,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
-            addCarePortalNote("T8d${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset2200DownTT")
         }
         if (readyToRun("TodOffset2200UpTT", 2) && activeTtNear(5.136, 0.0001)) {
@@ -1833,7 +1839,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
             sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
-            addCarePortalNote("T8u${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
             markRun("TodOffset2200UpTT")
         }
 
