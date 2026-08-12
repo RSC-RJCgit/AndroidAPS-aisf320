@@ -3097,11 +3097,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
                 else                     -> mildBase
             }
-            consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 3)} mildBase=${round(mildBase, 3)} hardStackTarget=${round(hardStackTarget, 3)} currentRatio=${round(smb_delivery_ratio, 3)} thresholdScale=${round(thresholdScale, 3)} ;;")
-            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=$stackK ;;")
-            consoleError.add("BoostDebug signals: g=${round(g, 1)} d=${round(d, 2)} rawDelta5=${round(rawDelta5, 2)} rawDelta1=${round(rawDelta1, 2)} iobChange5=${round(iobChange5, 3)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${round(glucoseStatus.longAvgDelta, 2)} recentSteps60Minutes=$recentSteps60Minutes ;;")
+            consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 2)} mildBase=${round(mildBase, 2)} hardStackTarget=${round(hardStackTarget, 2)} currentRatio=${round(smb_delivery_ratio, 2)} thresholdScale=${round(thresholdScale, 2)} ;;")
+            consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=${round(stackK, 2)} ;;")
+            consoleError.add("BoostDebug signals: g=${convert_bg(g)} d=${deltaForDisplay(d)} rawDelta5=${deltaForDisplay(rawDelta5)} rawDelta1=${deltaForDisplay(rawDelta1)} iobChange5=${round(iobChange5, 2)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${deltaForDisplay(glucoseStatus.longAvgDelta)} recentSteps60Minutes=$recentSteps60Minutes ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
-            consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 3)} wouldFire=$mildWould ;;")
+            consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 2)} wouldFire=$mildWould ;;")
         }
 
         // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations, plus
@@ -4670,7 +4670,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     fun convert_bg(value: Double): String =
-        profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
+        String.format(Locale.US, "%.1f", profileUtil.fromMgdlToUnits(value)).replace("-0.0", "0.0")
+
+    private fun deltaForDisplay(valueMgdl: Double): String =
+        String.format(Locale.US, "%.2f", profileUtil.fromMgdlToUnits(valueMgdl)).replace("-0.00", "0.00")
 
     fun convert_isf(value: Double): String =
         String.format("%.1f", profileUtil.fromMgdlToUnits(value))
@@ -4854,13 +4857,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
                 sensitivityRatio = min(sensitivityRatio, resistanceMax)
                 sensitivityRatio = round(sensitivityRatio, 2)
-                consoleError.add("exerciseModeActive or resistanceModeActive sensitivityRatio: ${sensitivityRatio}")
+                consoleError.add("exerciseModeActive or resistanceModeActive sensitivityRatio: ${round(sensitivityRatio, 2)}")
             } else if (stepActivityDetected) {
                 sensitivityRatio = activityRatio
-                consoleError.add("stepActivityDetected : sensitivityRatio: ${activityRatio}")
+                consoleError.add("stepActivityDetected : sensitivityRatio: ${round(activityRatio, 2)}")
             } else if (stepInactivityDetected) {
                 sensitivityRatio = activityRatio
-                consoleError.add("stepInactivityDetected : sensitivityRatio: ${activityRatio}")
+                consoleError.add("stepInactivityDetected : sensitivityRatio: ${round(activityRatio, 2)}")
             }
         } else {
             var autosensResult = AutosensResult()
@@ -4987,10 +4990,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //consoleError.add("nowDate is ${nowDate} ;;")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
-        consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight, 4)} ;;")
-        consoleError.add("pp_ISF_weight is ${round(pp_ISF_weight, 4)} ;;")
+        consoleError.add("bgAccel_ISF_weight is ${round(bgAccel_ISF_weight, 2)} ;;")
+        consoleError.add("pp_ISF_weight is ${round(pp_ISF_weight, 2)} ;;")
         consoleError.add("iobThresholdPercent is ${iobThresholdPercent} ;;")
-        consoleError.add("insulin activity graph: ${round(currentActivity, 4)} ;;")
+        consoleError.add("insulin activity graph: ${round(currentActivity, 2)} ;;")
         //consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
         //consoleError.add("bg_acce  is $bg_acce ;;")
         //consoleError.add("Parabola fit results were acceleration:${round(bg_acce, 2)}, correlation:$fit_corr, duration:${glucose_status.parabolaMinutes}m")
@@ -5012,7 +5015,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
         if (fit_corr < 0.9) {
-            consoleError.add("acce_ISF adaptation by-passed as correlation ${round(fit_corr, 3)} is too low")
+            consoleError.add("acce_ISF adaptation by-passed as correlation ${round(fit_corr, 2)} is too low")
         } else {
             val fit_share = 10 * (fit_corr - 0.9)                            // 0 at correlation 0.9, 1 at 1.00
             var cap_weight = 1.0                                             // full contribution above target
@@ -5136,7 +5139,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val beforeTaper = duraBoost
                     duraBoost *= iobTaperFactor
                     lastDuraTaperTimestamp = dateUtil.now()
-                    lastDuraTaperInfo = "IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 3)} -> ${round(duraBoost, 3)})"
+                    lastDuraTaperInfo = "IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 2)} -> ${round(duraBoost, 2)})"
                     consoleError.add("dura_ISF IOB taper: $lastDuraTaperInfo")
                 }
                 dura_ISF += duraBoost
@@ -5267,10 +5270,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     ): Double {
         var liftISFlimited: Double = liftISF
         if (liftISF < minISFReduction) {
-            consoleError.add("weakest autoISF factor ${round(liftISF, 2)} limited by autoISF_min $minISFReduction")
+            consoleError.add("weakest autoISF factor ${round(liftISF, 2)} limited by autoISF_min ${round(minISFReduction, 2)}")
             liftISFlimited = minISFReduction
         } else if (liftISF > maxISFReduction) {
-            consoleError.add("strongest autoISF factor ${round(liftISF, 2)} limited by autoISF_max $maxISFReduction")
+            consoleError.add("strongest autoISF factor ${round(liftISF, 2)} limited by autoISF_max ${round(maxISFReduction, 2)}")
             liftISFlimited = maxISFReduction
         }
         val finalISF: Double

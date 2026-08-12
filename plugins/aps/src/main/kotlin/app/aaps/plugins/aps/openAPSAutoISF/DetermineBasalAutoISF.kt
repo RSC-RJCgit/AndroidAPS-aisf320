@@ -21,6 +21,7 @@ import java.text.DecimalFormat
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -70,10 +71,12 @@ class DetermineBasalAutoISF @Inject constructor(
     }
 
     fun convert_bg(value: Double): String =
-        profileUtil.fromMgdlToStringInUnits(value).replace("-0.0", "0.0")
+        String.format(Locale.US, "%.1f", profileUtil.fromMgdlToUnits(value)).replace("-0.0", "0.0")
 
     fun convert_bg2(value: Double): String =
-        String.format("%.2f", profileUtil.fromMgdlToUnits(value))
+        String.format(Locale.US, "%.2f", profileUtil.fromMgdlToUnits(value)).replace("-0.00", "0.00")
+
+    private fun basalForDisplay(value: Double): String = String.format(Locale.US, "%.1f", value)
 
     fun convert_isf(value: Double): String =
         String.format("%.1f", profileUtil.fromMgdlToUnits(value))
@@ -99,7 +102,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         // enable SMB/UAM (if enabled in preferences) while we have COB
         if (profile.enableSMB_with_COB && meal_data.mealCOB != 0.0) {
-            consoleError.add("SMB enabled for COB of ${meal_data.mealCOB}")
+            consoleError.add("SMB enabled for COB of ${round(meal_data.mealCOB, 1)}")
             return true
         }
 
@@ -137,7 +140,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         val suggestedRate = round_basal(rate)
         if (currenttemp.duration > (duration - 10) && currenttemp.duration <= 120 && suggestedRate <= currenttemp.rate * 1.2 && suggestedRate >= currenttemp.rate * 0.8 && duration > 0) {
-            rT.reason.append(" ${currenttemp.duration}m left and ${currenttemp.rate.withoutZeros()} ~ req ${suggestedRate.withoutZeros()}U/hr: no temp required")
+            rT.reason.append(" ${currenttemp.duration}m left and ${basalForDisplay(currenttemp.rate)} ~ req ${basalForDisplay(suggestedRate)}U/hr: no temp required")
             return rT
         }
 
@@ -153,7 +156,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     return rT
                 }
             } else {
-                reason(rT, "Setting neutral temp basal of ${profile.current_basal}U/hr")
+                reason(rT, "Setting neutral temp basal of ${basalForDisplay(profile.current_basal)}U/hr")
                 rT.duration = duration
                 rT.rate = suggestedRate
                 return rT
@@ -236,7 +239,7 @@ class DetermineBasalAutoISF @Inject constructor(
         }
         if (bg <= 10 || bg == 38.0 || noise >= 3 || minAgo > 12 || minAgo < -5 || (bg > 60 && flatBGsDetected)) {
             if (currenttemp.rate > basal) {
-                rT.reason.append(". Replacing high temp basal of ${currenttemp.rate} with neutral temp of $basal")
+                rT.reason.append(". Replacing high temp basal of ${basalForDisplay(currenttemp.rate)} with neutral temp of ${basalForDisplay(basal)}")
                 rT.deliverAt = deliverAt
                 rT.duration = 30
                 rT.rate = basal
@@ -248,7 +251,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 rT.rate = 0.0
                 return rT
             } else {
-                rT.reason.append(". Temp ${currenttemp.rate} <= current basal ${round(basal, 2)}U/hr; doing nothing. ")
+                rT.reason.append(". Temp ${basalForDisplay(currenttemp.rate)} <= current basal ${basalForDisplay(basal)}U/hr; doing nothing. ")
                 return rT
             }
         }
@@ -286,7 +289,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     sensitivityRatio = min(sensitivityRatio, resistanceMax)
                     sensitivityRatio = round(sensitivityRatio, 2)
                 }
-                consoleError.add("Sensitivity ratio set to $sensitivityRatio based on temp target of ${convert_bg(target_bg)}; ")
+                consoleError.add("Sensitivity ratio set to ${round(sensitivityRatio, 2)} based on temp target of ${convert_bg(target_bg)}; ")
             } else if (stepActivityDetected) {
                 sensitivityRatio = activityRatio
             } else if (stepInactivityDetected) {
@@ -295,7 +298,7 @@ class DetermineBasalAutoISF @Inject constructor(
         } else {
             consoleError.add("Sensitivity ratio unchanged: 1.0")
             sensitivityRatio = autosens_data.ratio
-            consoleError.add("Autosens ratio: $sensitivityRatio; ")
+            consoleError.add("Autosens ratio: ${round(sensitivityRatio, 2)}; ")
         }
         var iobTH_reduction_ratio = 1.0
         if (iob_threshold_percent != 100) {
@@ -304,9 +307,9 @@ class DetermineBasalAutoISF @Inject constructor(
         basal = profile.current_basal * sensitivityRatio
         basal = round_basal(basal)
         if (basal != profile_current_basal)
-            consoleError.add("adjusting basal from $profile_current_basal to $basal;")
+            consoleError.add("adjusting basal from ${basalForDisplay(profile_current_basal)} to ${basalForDisplay(basal)};")
         else
-            consoleError.add("Basal unchanged: $basal;")
+            consoleError.add("Basal unchanged: ${basalForDisplay(basal)};")
 
         if (profile.temptargetSet) {
             // temp target set, not adjusting with autosens
@@ -350,7 +353,7 @@ class DetermineBasalAutoISF @Inject constructor(
             } else {
                 adjusted_sens
             }
-        consoleError.add("CR: ${profile.carb_ratio}")
+        consoleError.add("CR: ${round(profile.carb_ratio, 2)}")
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
@@ -363,8 +366,8 @@ class DetermineBasalAutoISF @Inject constructor(
         var TDDfactor = preferences.get(DoubleKey.ApsAutoIsfTddFactorFallback)
         if (preferences.get(BooleanKey.ApsAutoIsfTddFactor)) {
             TDDfactor = min(1.2, max(0.80, tddRatio))
-            consoleError.add("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
-            rT.reason.append("TDDfactor ${round(TDDfactor, 3)} from tddRatio ${round(tddRatio, 3)} (tdd7D ${round(tdd7D, 1)}U)")
+            consoleError.add("TDDfactor ${round(TDDfactor, 2)} from tddRatio ${round(tddRatio, 2)} (tdd7D ${round(tdd7D, 1)}U)")
+            rT.reason.append("TDDfactor ${round(TDDfactor, 2)} from tddRatio ${round(tddRatio, 2)} (tdd7D ${round(tdd7D, 1)}U)")
         }
         TDDfactor = round(TDDfactor, 2)
         val iobTHtolerance = 130.0
@@ -698,7 +701,7 @@ class DetermineBasalAutoISF @Inject constructor(
         if (minUAMPredBG < 999) {
             consoleError.add(" minUAMPredBG: ${convert_bg(minUAMPredBG)}")
         }
-        consoleError.add(" avgPredBG: ${convert_bg(avgPredBG)} COB: ${meal_data.mealCOB} / ${meal_data.carbs}")
+        consoleError.add(" avgPredBG: ${convert_bg(avgPredBG)} COB: ${round(meal_data.mealCOB, 1)} / ${round(meal_data.carbs, 1)}")
         if (maxCOBPredBG > bg) {
             minPredBG = min(minPredBG, maxCOBPredBG)
         }
@@ -730,7 +733,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " aisf321_564 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " aisf321_564 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -766,9 +769,9 @@ class DetermineBasalAutoISF @Inject constructor(
         } else if (iobThUser == 60) {
             TOD = "Day PP130%"
         }
-        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        consoleError.add("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 2)} ;;")
         consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
-        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 2)} ;;")
         rT.reason.append("delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
         rT.reason.append("Delta: ${convert_bg2(Delta)} ;")
         rT.reason.append("SDelta: ${convert_bg2(SDelta)} ;")
@@ -777,7 +780,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("Delta: " + convert_bg2(Delta) + " ; ")
         consoleError.add("SDelta: " + convert_bg2(SDelta) + " ; ")
         consoleError.add("LDelta: " + convert_bg2(LDelta) + " ; ")
-        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
+        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 2)} ;;")
         consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
@@ -790,11 +793,11 @@ class DetermineBasalAutoISF @Inject constructor(
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
         rT.reason.append("delta_accl: ${round(delta_accl, 1).withoutZeros()} ;")
-        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 4)} ;;")
+        rT.reason.append("bgAccel_ISF_weight is ${round(profile.bgAccel_ISF_weight, 2)} ;;")
         rT.reason.append("dura_ISF_weight is ${round(profile.dura_ISF_weight, 2)} ;;")
         rT.reason.append("higher_ISFrange_weight is ${round(profile.higher_ISFrange_weight, 2)} ;;")
-        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
-        rT.reason.append("pp_ISF_weight is ${round(profile.pp_ISF_weight, 4)} ;;")
+        consoleError.add("pp_ISF_weight is ${round(profile.pp_ISF_weight, 2)} ;;")
+        rT.reason.append("pp_ISF_weight is ${round(profile.pp_ISF_weight, 2)} ;;")
         consoleError.add("Steps60M: " + Steps60M + " ; ")
         consoleError.add("Steps30M: " + Steps30M + " ; ")
         consoleError.add("TwilightTimeDec: " + TwilightTimeDec + " ; ")
@@ -900,12 +903,12 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("NOT (bg un targetBgOffset && low COB offsetSoZeroSMB=($offsetSoZeroSMB) ;")
         }
         rT.reason.append("varOffset ${convert_bg(varOffset)} ;")
-        rT.reason.append("varOffset ${varOffset} ;")
+        rT.reason.append("varOffset raw ${round(varOffset, 1)} ;")
         consoleError.add("varOffset ${convert_bg(varOffset)} ;")
-        consoleError.add("varOffset ${varOffset} ;")
+        consoleError.add("varOffset raw ${round(varOffset, 1)} ;")
         varOffset = min(36.0, varOffset)
 
-        rT.reason.append("varOffset ($varOffset)")
+        rT.reason.append("varOffset (${round(varOffset, 1)})")
         targetBgOffset = min(targetBgOrig + varOffset, 126.0)
         rT.reason.append("targetBgOffset = min(targetBgOrig + varOffset, 7.0): ${convert_bg(targetBgOffset)} ;")
         if (bg < targetBgOffset && (COB == 0.0 || (COB < 5 && CarbAge > 120))) {
@@ -913,14 +916,14 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("bg un targetBgOffset && no/low COB: ")
         }
 
-        consoleError.add("target_bgOrigmm: " + target_bgOrigmm + " ; ")
+        consoleError.add("target_bgOrigmm: " + round(target_bgOrigmm, 1) + " ; ")
         consoleError.add("targetBgOrig: " + convert_bg(targetBgOrig) + " ; ")
         consoleError.add("targetBgOffset: " + convert_bg(targetBgOffset) + " ; ")
         consoleError.add("offsetSoZeroSMB: " + offsetSoZeroSMB + " ; ")
         rT.reason.append("offsetSoZeroSMB: ${offsetSoZeroSMB} ;")
         rT.reason.append("targetBgOffset: ${convert_bg(targetBgOffset)} ;")
         rT.reason.append("targetBgOrig: ${convert_bg(targetBgOrig)} ;")
-        rT.reason.append("target_bgOrigmm: ${target_bgOrigmm} ;")
+        rT.reason.append("target_bgOrigmm: ${round(target_bgOrigmm, 1)} ;")
 
         if (!(bg < targetBgOffset && (COB == 0.0 || (COB < 5 && CarbAge > 120)))) {
             offsetSoZeroSMB = false
@@ -931,7 +934,7 @@ class DetermineBasalAutoISF @Inject constructor(
         }
 
         rT.reason.append(
-            "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg(deviation.toDouble())}, BGI: ${convert_bg(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            "COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -987,8 +990,8 @@ class DetermineBasalAutoISF @Inject constructor(
             maxDeltaPercentage = 0.3
         }
         if (maxDelta > maxDeltaPercentage * bg) {
-            consoleError.add("maxDelta ${convert_bg(maxDelta)} > ${100 * maxDeltaPercentage}% of BG ${convert_bg(bg)} - disabling SMB")
-            rT.reason.append("maxDelta " + convert_bg(maxDelta) + " > " + 100 * maxDeltaPercentage + "% of BG " + convert_bg(bg) + ": SMB disabled; ")
+            consoleError.add("maxDelta ${convert_bg2(maxDelta)} > ${100 * maxDeltaPercentage}% of BG ${convert_bg(bg)} - disabling SMB")
+            rT.reason.append("maxDelta " + convert_bg2(maxDelta) + " > " + 100 * maxDeltaPercentage + "% of BG " + convert_bg(bg) + ": SMB disabled; ")
             enableSMB = false
         }
 
@@ -1001,7 +1004,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val COBforCarbsReq = max(0.0, meal_data.mealCOB - 0.25 * meal_data.carbs)
         val carbsReq = round(((bgUndershoot - zeroTempEffectDouble) / csf - COBforCarbsReq))
         val zeroTempEffect = round(zeroTempEffectDouble)
-        consoleError.add("naive_eventualBG: $naive_eventualBG bgUndershoot: $bgUndershoot zeroTempDuration $zeroTempDuration zeroTempEffect: $zeroTempEffect carbsReq: $carbsReq")
+        consoleError.add("naive_eventualBG: ${convert_bg(naive_eventualBG)} bgUndershoot: ${convert_bg(bgUndershoot)} zeroTempDuration $zeroTempDuration zeroTempEffect: ${convert_bg(zeroTempEffect)} carbsReq: $carbsReq")
         if (carbsReq >= profile.carbsReqThreshold && minutesAboveThreshold <= 45) {
             rT.carbsReq = carbsReq
             rT.carbsReqWithin = minutesAboveThreshold
@@ -1009,8 +1012,8 @@ class DetermineBasalAutoISF @Inject constructor(
         }
 
         if (bg < threshold && iob_data.iob < -profile.current_basal * 20 / 60 && minDelta > 0 && minDelta > expectedDelta) {
-            rT.reason.append("IOB ${iob_data.iob} un ${round(-profile.current_basal * 20 / 60, 2)}")
-            rT.reason.append(" and minDelta ${convert_bg(minDelta)} > expectedDelta ${convert_bg(expectedDelta)}; ")
+            rT.reason.append("IOB ${round(iob_data.iob, 2)} un ${round(-profile.current_basal * 20 / 60, 2)}")
+            rT.reason.append(" and minDelta ${convert_bg2(minDelta)} > expectedDelta ${convert_bg2(expectedDelta)}; ")
         } else if (bg < threshold || minGuardBG < threshold) {
             rT.reason.append("minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)}")
             bgUndershoot = target_bg - minGuardBG
@@ -1035,15 +1038,15 @@ class DetermineBasalAutoISF @Inject constructor(
                     return setTempBasal(0.0, 30, profile, rT, currenttemp)
                 }
                 if (glucose_status.delta > minDelta) {
-                    rT.reason.append(", but Delta ${convert_bg(tick.toDouble())} > expectedDelta ${convert_bg(expectedDelta)}")
+                    rT.reason.append(", but Delta ${convert_bg2(tick.toDouble())} > expectedDelta ${convert_bg2(expectedDelta)}")
                 } else {
-                    rT.reason.append(", but Min. Delta ${minDelta.toFixed2()} > Exp. Delta ${convert_bg(expectedDelta)}")
+                    rT.reason.append(", but Min. Delta ${convert_bg2(minDelta)} > Exp. Delta ${convert_bg2(expectedDelta)}")
                 }
                 if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
-                    rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
+                    rT.reason.append(", temp " + basalForDisplay(currenttemp.rate) + " ~ req " + basalForDisplay(basal) + "U/hr. ")
                     return rT
                 } else {
-                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    rT.reason.append("; setting current basal of ${basalForDisplay(basal)} as temp. ")
                     return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
@@ -1062,11 +1065,11 @@ class DetermineBasalAutoISF @Inject constructor(
             val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
             val minInsulinReq = Math.min(insulinReq, naiveInsulinReq)
             if (insulinScheduled < minInsulinReq - basal * 0.3) {
-                rT.reason.append(", ${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} is a lot less than needed. ")
+                rT.reason.append(", ${currenttemp.duration}m@${basalForDisplay(currenttemp.rate)} is a lot less than needed. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
             if (currenttemp.duration > 5 && rate >= currenttemp.rate * 0.8) {
-                rT.reason.append(", temp ${currenttemp.rate} ~< req ${round(rate, 2)}U/hr. ")
+                rT.reason.append(", temp ${basalForDisplay(currenttemp.rate)} ~< req ${basalForDisplay(rate)}U/hr. ")
                 return rT
             } else {
                 if (rate <= 0) {
@@ -1084,7 +1087,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         return setTempBasal(rate, durationReq, profile, rT, currenttemp)
                     }
                 } else {
-                    rT.reason.append(", setting ${round(rate, 2)}U/hr. ")
+                    rT.reason.append(", setting ${basalForDisplay(rate)}U/hr. ")
                 }
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
@@ -1094,18 +1097,18 @@ class DetermineBasalAutoISF @Inject constructor(
             if (!(microBolusAllowed && enableSMB)) {
                 if (glucose_status.delta < minDelta) {
                     rT.reason.append(
-                        "Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Delta ${convert_bg(tick.toDouble())} < Exp. Delta ${
-                            convert_bg(expectedDelta)
+                        "Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Delta ${convert_bg2(tick.toDouble())} < Exp. Delta ${
+                            convert_bg2(expectedDelta)
                         }"
                     )
                 } else {
-                    rT.reason.append("Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Min. Delta ${minDelta.toFixed2()} < Exp. Delta ${convert_bg(expectedDelta)}")
+                    rT.reason.append("Eventual BG ${convert_bg(eventualBG)} > ${convert_bg(min_bg)} but Min. Delta ${convert_bg2(minDelta)} < Exp. Delta ${convert_bg2(expectedDelta)}")
                 }
                 if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
-                    rT.reason.append(", temp " + currenttemp.rate + " ~ req " + round(basal, 2).withoutZeros() + "U/hr. ")
+                    rT.reason.append(", temp " + basalForDisplay(currenttemp.rate) + " ~ req " + basalForDisplay(basal) + "U/hr. ")
                     return rT
                 } else {
-                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    rT.reason.append("; setting current basal of ${basalForDisplay(basal)} as temp. ")
                     return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
@@ -1114,10 +1117,10 @@ class DetermineBasalAutoISF @Inject constructor(
             if (!(microBolusAllowed && enableSMB)) {
                 rT.reason.append("${convert_bg(eventualBG)}-${convert_bg(minPredBG)} in range: no temp required")
                 if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
-                    rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
+                    rT.reason.append(", temp ${basalForDisplay(currenttemp.rate)} ~ req ${basalForDisplay(basal)}U/hr. ")
                     return rT
                 } else {
-                    rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                    rT.reason.append("; setting current basal of ${basalForDisplay(basal)} as temp. ")
                     return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
                 }
             }
@@ -1129,10 +1132,10 @@ class DetermineBasalAutoISF @Inject constructor(
         if (iob_data.iob > max_iob) {
             rT.reason.append("IOB ${round(iob_data.iob, 2)} ov max_iob $max_iob")
             if (currenttemp.duration > 15 && (round_basal(basal) == round_basal(currenttemp.rate))) {
-                rT.reason.append(", temp ${currenttemp.rate} ~ req ${round(basal, 2).withoutZeros()}U/hr. ")
+                rT.reason.append(", temp ${basalForDisplay(currenttemp.rate)} ~ req ${basalForDisplay(basal)}U/hr. ")
                 return rT
             } else {
-                rT.reason.append("; setting current basal of ${round(basal, 2)} as temp. ")
+                rT.reason.append("; setting current basal of ${basalForDisplay(basal)} as temp. ")
                 return setTempBasal(basal, standardTempDuration, profile, rT, currenttemp)
             }
         } else {
@@ -1148,8 +1151,8 @@ class DetermineBasalAutoISF @Inject constructor(
             insulinReq = round(insulinReq, 2)
             max_iob *= TDDfactor
             max_iob = round(max_iob, 2)
-            consoleError.add("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
-            rT.reason.append("TDDfactor ${TDDfactor} max_iob ${max_iob}  insulinReq = $insulinReq")
+            consoleError.add("TDDfactor ${round(TDDfactor, 2)} max_iob ${round(max_iob, 2)} insulinReq = ${round(insulinReq, 2)}")
+            rT.reason.append("TDDfactor ${round(TDDfactor, 2)} max_iob ${round(max_iob, 2)} insulinReq = ${round(insulinReq, 2)}")
             if (insulinReq > max_iob - iob_data.iob) {
                 rT.reason.append("max_iob $max_iob, ")
                 insulinReq = max_iob - iob_data.iob
@@ -1164,11 +1167,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 val mealInsulinReq = round(meal_data.mealCOB / profile.carb_ratio, 3)
                 val smb_max_range = smb_max_range_extension
                 if (iob_data.iob > mealInsulinReq && iob_data.iob > 0) {
-                    consoleError.add("IOB ${iob_data.iob} ov mealInsulinReq = $mealInsulinReq")
-                    consoleError.add("profile.maxUAMSMBBasalMinutes: ${profile.maxUAMSMBBasalMinutes} profile.current_basal: ${profile.current_basal}")
+                    consoleError.add("IOB ${round(iob_data.iob, 2)} ov mealInsulinReq = ${round(mealInsulinReq, 2)}")
+                    consoleError.add("profile.maxUAMSMBBasalMinutes: ${profile.maxUAMSMBBasalMinutes} profile.current_basal: ${basalForDisplay(profile.current_basal)}")
                     maxBolus = round(smb_max_range * profile.current_basal * profile.maxUAMSMBBasalMinutes / 60, 1)
                 } else {
-                    consoleError.add("profile.maxSMBBasalMinutes: ${profile.maxSMBBasalMinutes} profile.current_basal: ${profile.current_basal}")
+                    consoleError.add("profile.maxSMBBasalMinutes: ${profile.maxSMBBasalMinutes} profile.current_basal: ${basalForDisplay(profile.current_basal)}")
                     maxBolus = round(smb_max_range * profile.current_basal * profile.maxSMBBasalMinutes / 60, 1)
                 }
                 val roundSMBTo = 1 / profile.bolus_increment
@@ -1200,18 +1203,18 @@ class DetermineBasalAutoISF @Inject constructor(
                     smbLowTempReq = round(basal * durationReq / 30.0, 2)
                     durationReq = 30
                 }
-                rT.reason.append(" insulinReq $insulinReq")
+                rT.reason.append(" insulinReq ${round(insulinReq, 2)}")
                 if (microBolus >= maxBolus) {
-                    rT.reason.append("; maxBolus $maxBolus")
+                    rT.reason.append("; maxBolus ${round(maxBolus, 2)}")
                 }
                 if (durationReq > 0) {
-                    rT.reason.append("; setting ${durationReq}m low temp of ${smbLowTempReq}U/h")
+                    rT.reason.append("; setting ${durationReq}m low temp of ${basalForDisplay(smbLowTempReq)}U/h")
                 }
                 rT.reason.append(". ")
 
                 val lastBolusAge = (systemTime - iob_data.lastBolusTime) / 1000.0
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
-                consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                consoleError.add("naive_eventualBG ${convert_bg(naive_eventualBG)},${durationReq}m ${basalForDisplay(smbLowTempReq)}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: ${round(maxBolus, 2)}")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
                 val LibreTrue = if (libreActive) 1.0 else 1.0
@@ -1219,12 +1222,12 @@ class DetermineBasalAutoISF @Inject constructor(
                 val high_SMB2 = profile.smb_delivery_ratio_max
                 val bg_range_SMB = profile.smb_delivery_ratio_bg_range
                 val delivery_ratio = profile.smb_delivery_ratio
-                rT.reason.append("TDDfactor = ${TDDfactor} high_SMB= ${high_SMB2} TDDfactor= ${round(TDDfactor, 2)}   ")
-                rT.reason.append("TDDfactor= ${TDDfactor} high_SMB= ${high_SMB2}  ")
+                rT.reason.append("TDDfactor = ${round(TDDfactor, 2)} high_SMB= ${round(high_SMB2, 2)} ")
+                rT.reason.append("TDDfactor= ${round(TDDfactor, 2)} high_SMB= ${round(high_SMB2, 2)} ")
                 var ThresholForFastRise = TDDfactor * 0.030 * profile.max_iob
                 ThresholForFastRise = round(ThresholForFastRise, 2)
-                consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
-                rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = ($TDDfactor * 0.030 * ${profile.max_iob})= ${ThresholForFastRise} ")
+                consoleError.add("Delta threshold TDDfactor * 0.030 * profile.max_iob = (${round(TDDfactor, 2)} * 0.030 * ${round(profile.max_iob, 2)})= ${round(ThresholForFastRise, 2)} ")
+                rT.reason.append("Delta threshold TDDfactor * 0.030 * profile.max_iob = (${round(TDDfactor, 2)} * 0.030 * ${round(profile.max_iob, 2)})= ${round(ThresholForFastRise, 2)} ")
 
                 // Anti-stacking: if SMBs have averaged <=70s apart over the last 5 min, trim the SMB to
                 // 90% BEFORE the fast-rise caps below. Deliberately before the caps: the x0.9 may drop
@@ -1301,8 +1304,8 @@ class DetermineBasalAutoISF @Inject constructor(
                             (0.25 + 0.10 * ((stackAgeMin - stackGraceMin) / 2.0).toInt()).coerceAtMost(0.45)
                         else 0.10
                         microBolus *= (1.0 - trimFraction)
-                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x${round(1.0 - trimFraction, 2)} = ${microBolus} (stack age ${round(stackAgeMin, 1)}min, trim ${round(trimFraction * 100, 0)}%, IOB ${round(IOB, 2)} vs gate ${round(stackIobGateFraction * profile.max_iob, 2)} @${if (overnightStackWindow) "night" else "day"}) ")
-                        rT.reason.append("SMB stacking <=70s: microBolus x${round(1.0 - trimFraction, 2)} (age ${round(stackAgeMin, 1)}min, IOB ${round(IOB, 2)}) = ${microBolus} ")
+                        consoleError.add("SMB stacking: avg gap ${round(smbInt5Sec, 0)}s <=70 -> microBolus x${round(1.0 - trimFraction, 2)} = ${round(microBolus, 2)} (stack age ${round(stackAgeMin, 1)}min, trim ${round(trimFraction * 100, 0)}%, IOB ${round(IOB, 2)} vs gate ${round(stackIobGateFraction * profile.max_iob, 2)} @${if (overnightStackWindow) "night" else "day"}) ")
+                        rT.reason.append("SMB stacking <=70s: microBolus x${round(1.0 - trimFraction, 2)} (age ${round(stackAgeMin, 1)}min, IOB ${round(IOB, 2)}) = ${round(microBolus, 2)} ")
                     }
                 } else if (preferences.get(LongKey.ApsAutoIsfSmbStackStart) != 0L) {
                     // Stacking has genuinely stopped (avg gap back above 70s) -- clear the marker so a
@@ -1332,12 +1335,12 @@ class DetermineBasalAutoISF @Inject constructor(
                     val microBolus1 = microBolus
                     if (microBolus > 0.02 * profile.max_iob) {
                         microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * profile.max_iob = ${microBolus} ")
+                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
-                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${microBolus - microBolus1} diff = ")
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${round(IOB, 2)} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${round(microBolus - microBolus1, 2)} diff = ")
                     }
                 } else if (((nowHour >= 5) && (nowHour < 10)) &&
                     bg <= 8.0 * 18 &&
@@ -1353,12 +1356,12 @@ class DetermineBasalAutoISF @Inject constructor(
                     val microBolus1 = microBolus
                     if (microBolus > 0.02 * profile.max_iob) {
                         microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * profile.max_iob = ${microBolus} ")
+                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
-                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${IOB} ")
-                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.716 shower = ${microBolus - microBolus1} diff  ")
+                        rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${round(IOB, 2)} ")
+                        rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.716 shower = ${round(microBolus - microBolus1, 2)} diff  ")
                     }
                     rT.reason.append(" CHANGED SIZE for shower time ")
 // =====================================================
@@ -1370,7 +1373,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     IOB < 0.70
                 ) {
                     microBolus = microBolus * 0.7
-                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
                     rT.reason.append(" CHANGED SIZE 0.712 fast rise 0.712 for low IOB accel glitch ")
 // =====================================================
 // SENSOR GLITCH / SWING DAMPING
@@ -1382,7 +1385,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 10.0 * 18
                 ) {
                     microBolus = microBolus * 0.5
-                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${round(microBolus, 2)} ")
                     rT.reason.append(" CHANGED SIZE fast rise 0.511 for sudden glitchy 0.5 rises after gentle fall ; sensor swings 0.5 smb ")
 // =====================================================
 // SENSOR GLITCH2 / SWING DAMPING
@@ -1393,7 +1396,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 10.0 * 18
                 ) {
                     microBolus = microBolus * 0.5
-                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                    rT.reason.append("microBolus = microBolus * 0.5 ; microBolus = ${round(microBolus, 2)} ")
                     rT.reason.append(" CHANGED SIZE fast rise 0.512 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
 // =====================================================
 // POST CARBS / SWING DAMPING
@@ -1405,7 +1408,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 10.0 * 18
                 ) {
                     microBolus = microBolus * 0.7
-                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                    rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
                     rT.reason.append(" CHANGED SIZE fast rise 0.713 for sudden glitchy 0.5 rises after  fall ; sensor swings 0.5 smb ")
 // =====================================================
 // HIGH TT PROTECTION [low TT 4.0 but delta High]
@@ -1418,7 +1421,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
                     microBolus = microBolus * 0.5
-                    rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${microBolus} ")
+                    rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${round(microBolus, 2)} ")
                     rT.reason.append(" CHANGED SIZE for [high delta during low TT for low delta only] highTT 0.5 smb? ")
 // =====================================================
 // GLITCH ZERO SMB
@@ -1463,7 +1466,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             LDelta >= 1.0 * 18
                         ) {
                             microBolus = microBolus * 0.2
-                            rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${microBolus} ")
+                            rT.reason.append("microBolus = microBolus * 0.2 ; microBolus = ${round(microBolus, 2)} ")
                             rT.reason.append(" CHANGED SIZE 0.201 for fast rise 0.201 smb ")
                         } else if (Delta >= 0.55 * 18 &&
                             SDelta >= 0.30 * 18 &&
@@ -1472,21 +1475,21 @@ class DetermineBasalAutoISF @Inject constructor(
                         ) {
                             if (bg > 8.8 * 18) {
                                 microBolus = microBolus * 0.6
-                                rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.602 for moderate fast rise 0.602 ")
                             } else if (bg > 8.0 * 18) {
                                 microBolus = microBolus * 0.65
-                                rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.653 for moderate fast rise 0.653 ")
                             } else if (bg <= 8.0 * 18 &&
                                 (microBolus > ThresholForFastRise ||
                                     nowHour <= 8)
                             ) {
                                 microBolus = microBolus * 0.5
-                                rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus * 0.5 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.5 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.504 for moderate fast rise 0.504 ")
                             } else if (bg <= 8.0 * 18 && microBolus <= ThresholForFastRise) {
-                                rT.reason.append("smbUn  0.564 for microBolus  = ${microBolus} ")
+                                rT.reason.append("smbUn  0.564 for microBolus  = ${round(microBolus, 2)} ")
                             }
                         } else if (Delta >= 0.25 * 18 &&
                             SDelta >= 0.15 * 18 &&
@@ -1495,21 +1498,21 @@ class DetermineBasalAutoISF @Inject constructor(
                         ) {
                             if (bg > 8.8 * 18) {
                                 microBolus = microBolus * 0.9 // was 0.85 — slight loosening, mild-tier daytime rise
-                                rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.855 for mild fast rise 0.855 ")
                             } else if (bg > 8.0 * 18) {
                                 microBolus = microBolus * 0.85 // was 0.8 — slight loosening
-                                rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.806 for mild fast rise 0.806 ")
                             } else if (bg <= 8.0 * 18 &&
                                 (microBolus > ThresholForFastRise ||
                                     (nowHour <= 8 && nowHour >= 3))
                             ) {
                                 microBolus = microBolus * 0.75 // was 0.7 — slight loosening
-                                rT.reason.append("microBolus ov \${ThresholForFastRise}  = microBolus  * 0.75 ; microBolus = ${microBolus} ")
+                                rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.75 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.707 for mild fast rise 0.707 ")
                             } else {
-                                rT.reason.append("smbUn 0.707 for 0.025 * profile.max_iob microBolus = ${microBolus} ")
+                                rT.reason.append("smbUn 0.707 for 0.025 * profile.max_iob microBolus = ${round(microBolus, 2)} ")
                             }
                         }
                     } else if (Delta >= 0.25 * 18 &&
@@ -1521,10 +1524,10 @@ class DetermineBasalAutoISF @Inject constructor(
                             nowHour <= 8
                         ) {
                             microBolus = microBolus * 0.7 // was 0.6 — slight loosening, narrowest/earliest-stage rise tier
-                            rT.reason.append("microBolus ov ${ThresholForFastRise}  = microBolus  * 0.7 ; microBolus = ${microBolus} ")
+                            rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
                             rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
                         } else {
-                            rT.reason.append("smbUn 0.608 for 0.030 * profile.max_iob microBolus = ${microBolus} ")
+                            rT.reason.append("smbUn 0.608 for 0.030 * profile.max_iob microBolus = ${round(microBolus, 2)} ")
                         }
 // =====================================================
 // HIGHER BG FAST RISE
@@ -1538,7 +1541,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rawDelta5Mgdl >= 0.9 * 18 && rawDelta1Mgdl >= 0.9 * 18 && aapsDelta1Mgdl >= 0.9 * 18
                     ) {
                         microBolus = microBolus * 0.75
-                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${microBolus} ")
+                        rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${round(microBolus, 2)} ")
                         rT.reason.append(" CHANGED SIZE 0.759 for fast rise 0.759 smb ")
 // =====================================================
 // EARLY MORNING EXTRA FAST RISE GUARD (rev 2 — raw-delta based)
@@ -1572,8 +1575,8 @@ class DetermineBasalAutoISF @Inject constructor(
                             (rawDelta15Mgdl >= 0.2 * 18 && rawDelta5Mgdl > rawDelta15Mgdl * 1.5))
                     ) {
                         microBolus = microBolus * 0.8
-                        rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${microBolus} ")
-                        rT.reason.append(" CHANGED SIZE 0.810b early-AM raw-rise guard: rawD5 ${rawDelta5Mgdl / 18.0} rawD15 ${rawDelta15Mgdl / 18.0} ")
+                        rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${round(microBolus, 2)} ")
+                        rT.reason.append(" CHANGED SIZE 0.810b early-AM raw-rise guard: rawD5 ${convert_bg2(rawDelta5Mgdl)} rawD15 ${convert_bg2(rawDelta15Mgdl)} ")
 //=====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // =====================================================
@@ -1588,12 +1591,12 @@ class DetermineBasalAutoISF @Inject constructor(
                             microBolus = 0.02 * profile.max_iob
                             rT.reason.append("nowHour ${nowHour} ")
                             rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
-                            rT.reason.append("CHANGED SIZE 0.211 Twilight fast rise 0.211 microBolus = 0.2 * [etc]profile.max_iob ${microBolus} ")
+                            rT.reason.append("CHANGED SIZE 0.211 Twilight fast rise 0.211 microBolus = 0.2 * [etc]profile.max_iob ${round(microBolus, 2)} ")
                         }
                         if (microBolus + IOB > 0.075 * profile.max_iob) {
                             microBolus = 0.075 * profile.max_iob - IOB
-                            rT.reason.append("microBolus = 0.75 * profile.max_iob - IOB ; 0.75 * profile.max_iob ${0.075 * profile.max_iob} IOB ${IOB} ")
-                            rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov 0.75 * profile.max_iob microBolus = 0.75 * [etc ]profile.max_iob - IOB ${microBolus} ")
+                            rT.reason.append("microBolus = 0.75 * profile.max_iob - IOB ; 0.75 * profile.max_iob ${round(0.075 * profile.max_iob, 2)} IOB ${round(IOB, 2)} ")
+                            rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov 0.75 * profile.max_iob microBolus = 0.75 * [etc ]profile.max_iob - IOB ${round(microBolus, 2)} ")
                         }
                         rT.reason.append(" CHANGED SIZE SMB other hours ")
 // =====================================================
@@ -1612,7 +1615,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         (Steps180M ?: 0) > 1500)
                 ) {
                     microBolus = microBolus * 0.70
-                    rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${microBolus} ")
+                    rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${round(microBolus, 2)} ")
                 }
 // =====================================================
 // LOW-STEPS-THRESHOLD FAST-RISE EXTRA CUT (daytime, low HP2 only)
@@ -1641,7 +1644,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     val hp2Now = profile.hypo_prediction_2
                     if (hp2Now != null && hp2Now <= 6.5) {
                         microBolus = microBolus * 0.75
-                        rT.reason.append("microBolus = microBolus * 0.75 low-steps fast-rise extra cut (HP2=${round(hp2Now, 2)}); microBolus = ${microBolus} ")
+                        rT.reason.append("microBolus = microBolus * 0.75 low-steps fast-rise extra cut (HP2=${round(hp2Now, 2)}); microBolus = ${round(microBolus, 2)} ")
                     }
                 }
 // =====================================================
@@ -1654,7 +1657,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // trim survives this restore — only the fast-rise caps are undone.
                 // (Earlier profile_percentage>100 variant of this bypass was removed by user choice.)
                 if (smbBoostRecent && microBolus != microBolusFullUncapped) {
-                    rT.reason.append(" fast-rise caps skipped (BolusGiven/Mild boost within 30 min): microBolus ${microBolus} -> ${microBolusFullUncapped} ")
+                    rT.reason.append(" fast-rise caps skipped (BolusGiven/Mild boost within 30 min): microBolus ${round(microBolus, 2)} -> ${round(microBolusFullUncapped, 2)} ")
                     microBolus = microBolusFullUncapped
                 }
 // =====================================================
@@ -1687,7 +1690,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (COB > 0.0 || uciGrams >= 0.3) {
                         val beforeLowGuard = microBolus
                         microBolus = microBolus * 0.5
-                        rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 3)} -> ${round(microBolus, 3)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
+                        rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
                     }
                 }
 // =====================================================
@@ -1716,7 +1719,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (lateFastRiseFactor < 1.0) {
                         val beforeLateFastRise = microBolus
                         microBolus *= lateFastRiseFactor
-                        rT.reason.append(" late FastRise SMB30 ${round(smbSum30Min, 2)}U: x${round(lateFastRiseFactor, 2)} ${round(beforeLateFastRise, 3)} -> ${round(microBolus, 3)} ")
+                        rT.reason.append(" late FastRise SMB30 ${round(smbSum30Min, 2)}U: x${round(lateFastRiseFactor, 2)} ${round(beforeLateFastRise, 2)} -> ${round(microBolus, 2)} ")
                     }
                 }
 
@@ -1728,8 +1731,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (microBolus > smbAllowance30Min) {
                     val before30MinCap = microBolus
                     microBolus = smbAllowance30Min
-                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 3)} -> ${round(microBolus, 3)} (last30min ${round(smbSum30Min, 2)}U of ${round(smbCap30Min, 2)}U cap) ")
-                    consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 3)} trimmed to ${round(microBolus, 3)} ")
+                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U of ${round(smbCap30Min, 2)}U cap) ")
+                    consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 2)} trimmed to ${round(microBolus, 2)} ")
                 }
 // =====================================================
 // CUMULATIVE SMB CAP (rolling 10 min)
@@ -1768,8 +1771,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (microBolus > smbAllowanceLeft) {
                     val beforeCumCap = microBolus
                     microBolus = if (smbAllowanceLeft > 0.0) smbAllowanceLeft else 0.0
-                    rT.reason.append(" 10min SMB cap: ${round(beforeCumCap, 3)} -> ${round(microBolus, 3)} (last10min ${round(smbSum10Min, 2)}U of ${round(smbCap10Min, 2)}U cap) ")
-                    consoleError.add("Cumulative SMB cap: ${round(smbSum10Min, 2)}U already delivered in last 10min vs ${round(smbCap10Min, 2)}U cap -> microBolus ${round(beforeCumCap, 3)} trimmed to ${round(microBolus, 3)} ")
+                    rT.reason.append(" 10min SMB cap: ${round(beforeCumCap, 2)} -> ${round(microBolus, 2)} (last10min ${round(smbSum10Min, 2)}U of ${round(smbCap10Min, 2)}U cap) ")
+                    consoleError.add("Cumulative SMB cap: ${round(smbSum10Min, 2)}U already delivered in last 10min vs ${round(smbCap10Min, 2)}U cap -> microBolus ${round(beforeCumCap, 2)} trimmed to ${round(microBolus, 2)} ")
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
@@ -1792,7 +1795,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (lastBolusAge > SMBInterval - 15.0) {   // 15s tolerance (enact offset, see above)
                     if (microBolus > 0) {
                         rT.units = microBolus
-                        rT.reason.append("Microbolusing ${microBolus}U. ")
+                        rT.reason.append("Microbolusing ${round(microBolus, 2)}U. ")
                     }
                 } else {
                     val nextBolusMins = (SMBInterval - lastBolusAge) / 60.0
@@ -1810,27 +1813,27 @@ class DetermineBasalAutoISF @Inject constructor(
             }
             var maxSafeBasal = getMaxSafeBasal(profile)
             if (rate > maxSafeBasal) {
-                rT.reason.append("adj. req. rate: ${round(rate, 2)} to maxSafeBasal: ${maxSafeBasal.withoutZeros()}, ")
+                rT.reason.append("adj. req. rate: ${basalForDisplay(rate)} to maxSafeBasal: ${basalForDisplay(maxSafeBasal)}, ")
                 rate = round_basal(maxSafeBasal)
             }
 
             val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
             if (insulinScheduled >= TDDfactor * insulinReq * 2) {
-                rT.reason.append("${currenttemp.duration}m@${(currenttemp.rate).toFixed2()} ov 2 * insulinReq. Setting temp basal of ${round(rate, 2)}U/hr. ")
+                rT.reason.append("${currenttemp.duration}m@${basalForDisplay(currenttemp.rate)} ov 2 * insulinReq. Setting temp basal of ${basalForDisplay(rate)}U/hr. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
 
             if (currenttemp.duration == 0) {
-                rT.reason.append("no temp, setting " + round(rate, 2).withoutZeros() + "U/hr. ")
+                rT.reason.append("no temp, setting " + basalForDisplay(rate) + "U/hr. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
             }
 
             if (currenttemp.duration > 5 &&  (round_basal(rate) <= round_basal(currenttemp.rate))) {
-                rT.reason.append("temp ${(currenttemp.rate).toFixed2()} ov~ req ${round(rate, 2).withoutZeros()}U/hr. ")
+                rT.reason.append("temp ${basalForDisplay(currenttemp.rate)} ov~ req ${basalForDisplay(rate)}U/hr. ")
                 return rT
             }
 
-            rT.reason.append("temp ${currenttemp.rate.toFixed2()} un ${round(rate, 2).withoutZeros()}U/hr. ")
+            rT.reason.append("temp ${basalForDisplay(currenttemp.rate)} un ${basalForDisplay(rate)}U/hr. ")
             return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
         }
     }
