@@ -96,17 +96,17 @@ class AutoIsfHistoryExporter @Inject constructor(
         val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
         // 20-min lead-in so the oldest rows still have their raw-delta look-backs available
         val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
-        return writeExport(records, apsResults, stepsCounts, smbBoluses, mjNotesFrom(from), rawReadings, now)
+        return writeExport(records, apsResults, stepsCounts, smbBoluses, carePortalNotesFrom(from), rawReadings, now)
     }
 
-    /** MJ-lifecycle careportal notes (newest-first), across ALL sources — native automation, code, or
-     *  manual — since they're all TE.Type.NOTE rows. Used to derive the per-row MJ state. Filters to
-     *  just the notes that mark an MJ transition: "MJ"->MJa, "MJ2", "MJ3", "MJoff*"/"A1"->NOM.
-     *  Queries 24h BEFORE [from] (not just the display window): the last MJ transition — e.g. the
-     *  midnight MJoff — is often older than the 6h table window, and without it every row would
-     *  wrongly fall back to the no-note default. Same 24h lookback as the graph annotation. */
-    fun mjNotesFrom(from: Long): List<TE> =
+    /** All CarePortal NOTE events, newest first. The 24-hour lead-in preserves MJ state at the
+     * beginning of an AIV window; notes are only displayed when they fall in a row's own minute. */
+    fun carePortalNotesFrom(from: Long): List<TE> =
         persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
+
+    /** MJ-only compatibility query retained for graph/history callers. */
+    fun mjNotesFrom(from: Long): List<TE> =
+        carePortalNotesFrom(from)
             .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff") }
 
     // -----------------------------------------------------------------------------------------------
@@ -115,13 +115,13 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ"
+        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>): List<String> {
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -168,7 +168,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             stepsValue(sc, r.timestamp, apsResults, 30)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 60)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "",
-            mjStateStr(r.timestamp, mjNotes)
+            mjStateStr(r.timestamp, carePortalNotes),
+            carePortalNotesStr(r.timestamp, carePortalNotes)
         )
     }
 
@@ -176,7 +177,7 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  aapsLogs directory, returning whichever of the three were written successfully (empty list on
      *  total failure). `records` is the set to export (also used as the IOB-5-min look-back set), so
      *  callers should pass the full unfiltered window. Runs on the caller's thread. */
-    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, mjNotes: List<TE>, rawReadings: List<GV>, now: Long): List<File> {
+    fun writeExport(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, now: Long): List<File> {
         val written = mutableListOf<File>()
         try {
             fileListProvider.ensureAapsLogsDirExists()
@@ -185,12 +186,12 @@ class AutoIsfHistoryExporter @Inject constructor(
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val cobTByTimestamp = calculatedCobT(records)
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, mjNotes, rawReadings, cobTByTimestamp) }
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, carePortalNotes, rawReadings, cobTByTimestamp) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
-                writer.write(exportHeaders.joinToString(",") + "\n")
-                for (row in rows) writer.write(row.joinToString(",") + "\n")
+                writer.write(exportHeaders.joinToString(",") { csvCell(it) } + "\n")
+                for (row in rows) writer.write(row.joinToString(",") { csvCell(it) } + "\n")
             }
             aapsLogger.debug(LTag.UI, "AutoISF history exported to ${csvFile.absolutePath}")
             written.add(csvFile)
@@ -243,7 +244,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
             val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
             val cobTByTimestamp = calculatedCobT(records)
-            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, mjNotesFrom(from), rawReadings, cobTByTimestamp) }
+            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp) }
             val text = formatTableText(rows)
 
             val outFile = File(outputDir, "combined$patientName.txt")
@@ -559,8 +560,28 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  when no MJ note is found in the 24h lookback — the midnight MJoff check resets the state to
      *  NOMJremains, so a long note-less stretch means NOM, not unknown (matches the graph line).
      *  `mjNotes` must be pre-filtered (see mjNotesFrom) and newest-first. */
+    /** CarePortal notes created during this AIV row's one-minute interval. */
+    fun carePortalNotesStr(timestamp: Long, notes: List<TE>): String =
+        notes.asSequence()
+            .filter { it.timestamp >= timestamp && it.timestamp < timestamp + TimeUnit.MINUTES.toMillis(1) }
+            .mapNotNull { it.note?.trim()?.takeIf(String::isNotEmpty) }
+            .map { it.replace(Regex("[\\r\\n]+"), " ") }
+            .distinct()
+            .toList()
+            .asReversed()
+            .joinToString("|")
+
+    /** RFC-4180-compatible CSV cell escaping for arbitrary CarePortal note text. */
+    private fun csvCell(value: String): String =
+        if (value.any { it == ',' || it == '"' || it == '\r' || it == '\n' })
+            "\"${value.replace("\"", "\"\"")}\""
+        else value
     fun mjStateStr(timestamp: Long, mjNotes: List<TE>): String {
-        val latest = mjNotes.firstOrNull { it.timestamp <= timestamp } ?: return "NOM"
+        val latest = mjNotes.firstOrNull {
+            val note = it.note ?: ""
+            it.timestamp <= timestamp && (note == "MJ" || note == "MJ2" || note == "MJ3" ||
+                note == "MoreMJ" || note == "A1" || note == "NOMJremains" || note.startsWith("MJoff"))
+        } ?: return "NOM"
         val note = latest.note ?: return "NOM"
         return when {
             note == "MJ"  -> "MJa"

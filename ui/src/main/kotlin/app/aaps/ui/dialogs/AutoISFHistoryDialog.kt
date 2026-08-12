@@ -75,7 +75,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allApsResults: List<APSResult> = emptyList()
     private var allStepsCounts: List<SC> = emptyList()
     private var allSmbBoluses: List<BS> = emptyList()
-    private var allMjNotes: List<TE> = emptyList()
+    private var allCarePortalNotes: List<TE> = emptyList()
     private var allRawReadings: List<GV> = emptyList()
     private var smbOnly = false
 
@@ -108,7 +108,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allApsResults = persistenceLayer.getApsResults(sixHoursAgo, now)
         allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
         allSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(sixHoursAgo, now, ascending = false).filter { it.type == BS.Type.SMB }
-        allMjNotes = autoIsfHistoryExporter.mjNotesFrom(sixHoursAgo)
+        allCarePortalNotes = autoIsfHistoryExporter.carePortalNotesFrom(sixHoursAgo)
         // Raw BG readings (noise = raw Libre) for the rΔ columns; 20-min lead-in for the oldest rows
         allRawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(sixHoursAgo - 20 * 60_000L, now, ascending = false)
 
@@ -121,7 +121,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // own write); doing it here too just means an open dialog doesn't wait up to 6h to see it.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
-                val writtenFiles = autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allMjNotes, allRawReadings, now)
+                val writtenFiles = autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allCarePortalNotes, allRawReadings, now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
                 if (writtenFiles.size == 3)
                     aapsLogger.info(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
@@ -214,7 +214,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 60)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "--", colorHeader),
-                    Cell(autoIsfHistoryExporter.mjStateStr(r.timestamp, allMjNotes), colorTime)
+                    Cell(autoIsfHistoryExporter.mjStateStr(r.timestamp, allCarePortalNotes), colorTime),
+                    Cell(autoIsfHistoryExporter.carePortalNotesStr(r.timestamp, allCarePortalNotes), colorTime)
                 )
             )
         }
@@ -281,7 +282,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 // Group is Req/TBR/IOB/IOBd5/Basal/COB/COBt/carbAbs/HP/HP2/LowBG.
                 Cell("Insulin", colorInsulin, span = 11, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
-                Cell("MJ", colorTime, bold = true)
+                Cell("MJ", colorTime, bold = true),
+                Cell("Notes", colorTime, bold = true)
             )
         )
 
@@ -331,7 +333,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("S30",    colorHeader, bold = true),
                 Cell("S60",    colorHeader, bold = true),
                 Cell("S180",   colorHeader, bold = true),
-                Cell("MJ",     colorTime, bold = true)
+                Cell("MJ",     colorTime, bold = true),
+                Cell("Notes",  colorTime, bold = true)
             )
         )
     }

@@ -2223,8 +2223,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // Silenced in quiet hours (see gentleHypoQuiet above) -- enacted either way, so the
                     // acce/iobTH changes and the BGLstate write below still happen overnight.
                     if (!gentleHypoQuiet) {
-                        sendSms(ghSmsText)
-                        sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
+                        if (g <= 6.0 * GlucoseUnit.MMOLL_TO_MGDL && mealData.mealCOB <= 9.0) {
+                            sendSms(ghSmsText)
+                            sendSmsToNumbers(ghSmsText, StringKey.SmsGentleHypoAlertNumbers)
+                        }
                         uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     }
                     addGraphAnnouncement("________________Gentle5")
@@ -2534,6 +2536,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             switchProfileIfNeeded("Current Profile50", 0)
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
+            addCarePortalNote("Bt<1%")
             sendSms("LowBattery")
             sendSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)   // additionally targets SmsBattAlertNumbers
             markRun("Battery1pc")
@@ -2553,7 +2556,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 0)
             sendSms("AllOK Batt")
             setAutomationState("Profile", "AllOK")
-            addCarePortalNote("AOK")
+            addCarePortalNote("bat>1")
             markRun("BatteryOver1pc")
         }
 
@@ -4185,8 +4188,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // be woken for a genuine severe low regardless of the hour, change this to
                 // (!alarmHypoQuiet || ah1b2).
                 if (!alarmHypoQuiet) {
-                    sendSms(ah1SmsText)
-                    sendSmsToNumbers(ah1SmsText, StringKey.SmsAlarmHypo1Numbers)
+                    if (g <= 6.0 * GlucoseUnit.MMOLL_TO_MGDL && mealData.mealCOB <= 9.0) {
+                        sendSms(ah1SmsText)
+                        sendSmsToNumbers(ah1SmsText, StringKey.SmsAlarmHypo1Numbers)
+                    }
                     uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
                 }
                 addGraphAnnouncement("_____H4")
@@ -4224,8 +4229,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 if (!alarmHypo2Quiet) {
-                    sendSms(ah2SmsText)
-                    sendSmsToNumbers(ah2SmsText, StringKey.SmsAlarmHypo2Numbers)
+                    if (g <= 6.0 * GlucoseUnit.MMOLL_TO_MGDL && mealData.mealCOB <= 9.0) {
+                        sendSms(ah2SmsText)
+                        sendSmsToNumbers(ah2SmsText, StringKey.SmsAlarmHypo2Numbers)
+                    }
                     uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
                 }
                 addGraphAnnouncement("__________A4")
