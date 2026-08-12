@@ -466,7 +466,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         shortAvgDeltaMgdl: Double,
         longAvgDeltaMgdl: Double,
         iob: Double,
-        cob: Double
+        cob: Double,
+        bgAcceleration: Double
     ): Double? {
         val ukfDelta5Mgdl = ukfRawMetrics().third ?: return null
         val sdeltaMmol = shortAvgDeltaMgdl / 18.0182
@@ -1026,7 +1027,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 glucoseStatus.longAvgDelta,
                 iobData.iob,
                 mealData.mealCOB,
-                glucoseStatus.bgAcceleration
+                bgAcce
             )
             variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2)
         }
