@@ -15,7 +15,8 @@ class AdaptiveSwitchPreference(
     attrs: AttributeSet? = null,
     booleanKey: BooleanPreferenceKey?,
     @StringRes summary: Int? = null,
-    @StringRes title: Int?
+    @StringRes title: Int?,
+    mutuallyExclusiveKey: BooleanPreferenceKey? = null
 ) : SwitchPreference(ctx, attrs) {
 
     @Inject lateinit var preferences: Preferences
@@ -54,6 +55,12 @@ class AdaptiveSwitchPreference(
                 isVisible = false
         }
         setDefaultValue(preferenceKey.defaultValue)
+        mutuallyExclusiveKey?.let { otherKey ->
+            setOnPreferenceChangeListener { _, newValue ->
+                if (newValue == true) preferences.put(otherKey, false)
+                true
+            }
+        }
     }
 
     override fun onAttached() {

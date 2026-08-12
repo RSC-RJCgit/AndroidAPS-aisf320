@@ -447,12 +447,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun ukfRawMetrics(): UkfRawMetrics {
         val now = dateUtil.now()
+        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
-            .filter { it.noise != null && it.noise!! > 10.0 }
+            .filter { if (useLibreSpecial) it.value > 10.0 else it.noise != null && it.noise!! > 10.0 }
             .sortedByDescending { it.timestamp }
         if (readings.isEmpty()) return UkfRawMetrics(null, null, null)
 
-        val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        val smoothed = if (useLibreSpecial)
+            readings.map { it.value }
+        else ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
         if (smoothed.isEmpty()) return UkfRawMetrics(null, null, null)
         val rawG = smoothed[0]
         val rawD1 = if (smoothed.size >= 2) {
@@ -1311,7 +1314,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val recentHighBglSeen = recentLibreOver12(24)
 
             val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             // Tier slopes/offsets are derived from the user's own base Libre slope/offset
             // (ApsAutoIsfLibreSlopeOrig currently 0.72, ApsAutoIsfLibreOffsetOrig currently 1.4) rather
@@ -1331,12 +1333,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else -> null
             }
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
-            // Only active while the pod/cannula is 6-72h old — avoids applying this alongside the very
-            // early (<=6h, not yet settled) or very late (>=72h, unreliable delivery) pod states. Also
-            // requires recentHighBglSeen (see above) — without a genuine high-BGL reading in the last
-            // 24h, there's nothing to confirm the compensation is still warranted, so it's blocked and
-            // falls through to the same revert-to-baseline branch below as any other disqualified case.
-            if (oldSensorEnabled && oldSensorTier != null && cannulaH > 6.0 && cannulaH < 72.0 && recentHighBglSeen) {
+            // Sensor-age calibration is independent of cannula/pod age. It still requires
+            // recentHighBglSeen (see above); cannula protections remain in their own pod automations.
+            if (oldSensorEnabled && oldSensorTier != null && recentHighBglSeen) {
                 if (!oldSensorActive) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
@@ -4427,12 +4426,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // raw signal; when disabled, preserve the existing immediate Libre .noise deltas. The recent-
         // boost reversion gate below and DetermineBasal's early-morning fresh-reversal guard deliberately
         // continue to use immediate raw values because their purpose is to see a turn before smoothing.
-        val useUkfRawForSmb = preferences.get(BooleanKey.FslUseUkfSmoothing)
+        val useUkfLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+        val useUkfRawForSmb = preferences.get(BooleanKey.FslUseUkfSmoothing) || useUkfLibreSpecial
         val smbUkfRaw = if (useUkfRawForSmb) ukfRawMetrics() else null
         val smbDelta1Raw = if (useUkfRawForSmb) smbUkfRaw?.delta1 else rawDelta1Raw
         val smbDelta5Raw = if (useUkfRawForSmb) smbUkfRaw?.delta5 else rawDelta5Raw
         consoleLog.add(
-            "SMB raw source=${if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
+            "SMB raw source=${if (useUkfLibreSpecial) "UKFLIBRE" else if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
         )
 
         determineBasalAutoISF.determine_basal(
@@ -4601,14 +4601,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // uses -- so this never touches the live BG smoothing pipeline's own persisted/adaptive state either.
     private fun computeUkfRawBgl(): Double {
         val lookbackMs = T.mins(60).msecs()
+        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
         val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(dateUtil.now() - lookbackMs, dateUtil.now(), false)
-            .filter { it.noise != null && it.noise!! > 10.0 }
+            .filter { if (useLibreSpecial) it.value > 10.0 else it.noise != null && it.noise!! > 10.0 }
             .sortedByDescending { it.timestamp }
         if (rawReadings.isEmpty()) return 0.0
-        val calibratedPoints = rawReadings.map { it.timestamp to it.noise!! }
         // Newest-first in, newest-first out (see smoothForDisplay()'s own contract) -- index 0 is the
         // smoothed value for the most recent reading, i.e. "right now."
-        return ukfSmoothing.smoothForDisplay(calibratedPoints).firstOrNull() ?: 0.0
+        return if (useLibreSpecial) rawReadings.first().value
+        else ukfSmoothing.smoothForDisplay(rawReadings.map { it.timestamp to it.noise!! }).firstOrNull() ?: 0.0
     }
 
     override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)

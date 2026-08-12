@@ -90,11 +90,11 @@ enum class BooleanKey(
     // disables both boost automations together, not just one.
     ApsAutoIsfBoostAutomationsEnabled("autoisf_boost_automations_enabled", true, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
-    // Only consulted when FslApplySmoothing is also on. Off (default) = current fsl_exp1 single-pole
-    // EMA smoother (NsIncomingDataProcessor.kt). On = UnscentedKalmanFilterPlugin.smoothRawRealtime()
-    // instead -- a genuine incremental Kalman filter over the same raw/calibrated stream, replacing
-    // the real BG value dosing sees. Defaults off since this changes live dosing input; opt in deliberately.
+    // Mutually-exclusive UKF modes. The first replaces LibreSpecial EMA with smoothRawRealtime().
+    // The second retains the original LibreSpecial EMA and passes that result through the full-history
+    // smoothForDisplayNEW() UKF. Both change the live BG used for dosing.
     FslUseUkfSmoothing("fsl_use_ukf_smoothing", false, defaultedBySM = true),
+    FslUseUkfLibreSpecialSmoothing("fsl_use_ukf_libre_special_smoothing", false, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),
     // Master on/off for OldSensorAdj (the 11-15 elapsed-day aging-sensor FslCalSlope/FslCalOffset override).

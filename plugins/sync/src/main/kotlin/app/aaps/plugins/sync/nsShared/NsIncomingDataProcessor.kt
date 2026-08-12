@@ -141,13 +141,14 @@ class NsIncomingDataProcessor @Inject constructor(
                 val offset = preferences.get(DoubleKey.FslCalOffset)
                 val factor = preferences.get(DoubleKey.FslSmoothAlpha)
                 val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
-                val useUkf = preferences.get(BooleanKey.FslUseUkfSmoothing)
+                val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) && !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+                val useLibreSpecialUkf = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
                 val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
                 glucoseValues.sortBy { it.timestamp }
                 for (gv in glucoseValues) {
                     val calibrated = max(40.0, gv.value * slope + offset * unitFactor)
                     val smooth: Double
-                    if (useUkf) {
+                    if (useRawUkf) {
                         // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- incremental, own persisted
                         // state (see that function's doc comment), replaces the fsl_exp1 EMA below
                         // entirely when this toggle is on. Same calibrated-value input either way.
@@ -158,10 +159,13 @@ class NsIncomingDataProcessor @Inject constructor(
                         val lastTimeRaw = preferences.get(LongKey.FslSmoothLastTimeRaw)
                         val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
                         val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
-                        smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                        preferences.put(DoubleKey.FslLastSmooth, smooth)
+                        val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+                        smooth = if (useLibreSpecialUkf)
+                            ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                        else libreSpecial
+                        preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
-                        aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated smooth=$smooth alpha=$effectiveAlpha")
+                        aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated libreSpecial=$libreSpecial smooth=$smooth alpha=$effectiveAlpha")
                     }
                     gv.noise = gv.value     // preserve pre-calibration mgdl as raw reference
                     gv.raw = calibrated     // calibrated but unsmoothed

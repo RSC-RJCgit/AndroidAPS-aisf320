@@ -33,8 +33,10 @@
     <string name="aapsclient_libre_settings">Libre Special Settings (NS BGL result)</string>
     <string name="fsl_apply_smoothing_title">Enable Libre calibration + smoothing</string>
     <string name="fsl_apply_smoothing_summary">Apply offset/slope calibration and exponential smoothing to readings from xDrip source</string>
-    <string name="fsl_use_ukf_smoothing_title">Use UKF instead of exponential smoothing</string>
-    <string name="fsl_use_ukf_smoothing_summary">Only applies when Libre calibration + smoothing is on. Replaces the exponential (single-pole) smoother above with an incremental Unscented Kalman Filter over the same calibrated raw stream. Changes the actual BG value dosing sees.</string>
+    <string name="fsl_use_ukf_smoothing_title">UKF using raw Libre values</string>
+    <string name="fsl_use_ukf_smoothing_summary">Replaces the LibreSpecial exponential smoother with realtime UKF over calibrated Libre values. Mutually exclusive with LibreSpecial full UKF.</string>
+    <string name="fsl_use_ukf_libre_special_smoothing_title">UKF using LibreSpecial values</string>
+    <string name="fsl_use_ukf_libre_special_smoothing_summary">Keeps the original LibreSpecial exponential smoothing, then applies the full-history UKF to that result for the live dosing BG, graph and SMB calculations. Does not use realtime UKF. Mutually exclusive with raw Libre UKF.</string>
     <string name="fsl_cal_offset_title">Calibration offset</string>
     <string name="fsl_cal_offset_summary">OFFSET in: calibrated = OFFSET + slope × raw</string>
     <string name="fsl_cal_slope_title">Calibration slope</string>

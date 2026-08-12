@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -172,8 +173,10 @@ class PrepareBgDataWorker(
         // computeUkfRawBgl() (the persisted AIV value/exporter delta columns), for consistency.
         data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
             val newestFirst = rawReadings.sortedByDescending { it.timestamp }
-            val calibratedPoints = newestFirst.map { it.timestamp to it.noise!! }
-            val smoothedMgdl = ukfSmoothing.smoothForDisplay(calibratedPoints)
+            val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+            val smoothedMgdl = if (useLibreSpecial)
+                newestFirst.map { it.value }
+            else ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
             val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
             }.asReversed() // back to ascending time order for the line series
@@ -306,30 +309,27 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
-        // area — see Shape.HP_ROW_BOTTOM). HP = (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol]
-        // + COB/12. BGL/IOB/SDelta from the same latestAiv record (internally consistent timestamp);
-        // LibreDelta5 from libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion
-        // is fixed (Constants.MGDL_TO_MMOLL), not display-unit-relative, since the formula is defined in
-        // mmol. Requires libreDelta5 non-null (falls back to "--" like the rest of this row when
-        // unavailable). No steps term: AutoISF already cuts SMB size directly on high recent steps
-        // (DetermineBasalAutoISF.kt's "HIGH STEPS: SMB SIZE CHANGE" block) and on the multi-day AIV-export
-        // accuracy check, subtracting steps here just made HP chronically predict lower than reality
-        // without improving correlation — the low it anticipated had usually already been headed off by
-        // the reduced dosing, not merely delayed.
+        // area — see Shape.HP_ROW_BOTTOM). Uses the same HP2 formula and COB gating as graph3:
+        // (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - gated COB/12.
+        // Live COB substitutes for the exporter's historically reconstructed COBt. Requires UKF delta.
         data.overviewData.hpSeries =
-            if (latest != null && latestAiv != null && libreDelta5 != null) {
+            if (latest != null && latestAiv != null && ukfDeltaResult != null) {
                 val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
-                val libreDelta5Mmol = libreDelta5 * Constants.MGDL_TO_MMOLL
+                val ldeltaMmol = latestAiv.longAvgDelta * Constants.MGDL_TO_MMOLL
+                val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
+                val gated = ((latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
+                    (sdeltaMmol < 0 && ldeltaMmol < 0)) && latestAiv.insulinReq <= 0.0
+                val cobTerm = if (gated) cob / 12.0 else 0.0
+                val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobTerm
                 // targetBgOffset is the final live offset threshold actually used by DetermineBasal,
                 // not a reconstruction from the current preferences. Reading it from the latest APS
                 // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
                 val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
-                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp)
+                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
                 data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTDataPoint(
@@ -552,9 +552,11 @@ class PrepareBgDataWorker(
     private fun ukfFiveMinuteDelta(readings: List<GV>): Pair<Double, Double>? {
         if (readings.size < 2) return null
         val newestFirst = readings.sortedByDescending { it.timestamp }
-        if (newestFirst.any { it.noise == null }) return null
-        val calibratedPoints = newestFirst.map { it.timestamp to it.noise!! }
-        val smoothedMgdl = ukfSmoothing.smoothForDisplay(calibratedPoints)
+        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+        if (!useLibreSpecial && newestFirst.any { it.noise == null }) return null
+        val smoothedMgdl = if (useLibreSpecial)
+            newestFirst.map { it.value }
+        else ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
         val newest = newestFirst.first()
         val target = newest.timestamp - 5 * 60_000L
         var bestIdx = -1

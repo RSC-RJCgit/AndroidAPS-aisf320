@@ -1296,6 +1296,54 @@ private fun savePersistedParameters() {
         return result.toList()
     }
 
+    /**
+     * Second full, stateless UKF/RTS entry point for the original LibreSpecial EMA result.
+     *
+     * It intentionally shares [smoothForDisplay]'s implementation and tuning, but has a distinct name
+     * so raw-Libre and LibreSpecial call sites cannot be confused.
+     */
+    fun smoothForDisplayNEW(points: List<Pair<Long, Double>>): List<Double> = smoothForDisplay(points)
+
+    /**
+     * Adds one original LibreSpecial EMA result to a persisted rolling series and returns the newest
+     * result of [smoothForDisplayNEW]. This is the live-dosing bridge for the second UKF mode:
+     * calibration -> original EMA -> full UKF, with no [smoothRawRealtime] in that path.
+     */
+    @Synchronized
+    fun smoothLibreSpecialRealtime(timestamp: Long, libreSpecialValue: Double): Double {
+        return try {
+            val history = sp.getString("ukf_librespecial_full_history", "")
+                .split(';')
+                .mapNotNull { entry ->
+                    val fields = entry.split(',')
+                    if (fields.size != 2) null
+                    else {
+                        val time = fields[0].toLongOrNull()
+                        val value = fields[1].toDoubleOrNull()
+                        if (time == null || value == null) null else time to value
+                    }
+                }
+                .toMutableList()
+            history.removeAll { it.first == timestamp }
+            history.add(timestamp to libreSpecialValue)
+            val oldest = timestamp - 90L * 60_000L
+            val newestFirst = history
+                .filter { it.first >= oldest && it.first <= timestamp + 5L * 60_000L }
+                .sortedByDescending { it.first }
+                .take(120)
+            sp.putString(
+                "ukf_librespecial_full_history",
+                newestFirst.joinToString(";") { "${it.first},${it.second}" }
+            )
+            val currentIndex = newestFirst.indexOfFirst { it.first == timestamp }
+            smoothForDisplayNEW(newestFirst).getOrNull(currentIndex).takeIf { currentIndex >= 0 }
+                ?: max(libreSpecialValue, 39.0)
+        } catch (_: Exception) {
+            max(libreSpecialValue, 39.0)
+        }
+    }
+
+
     private fun smoothSegmentForDisplay(points: List<Pair<Long, Double>>, startIdx: Int, endIdx: Int, result: DoubleArray) {
         val segmentSize = endIdx - startIdx + 1
 

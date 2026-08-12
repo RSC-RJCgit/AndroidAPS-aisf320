@@ -61,7 +61,16 @@ class NSClientSourcePlugin @Inject constructor(
             title = rh.gs(R.string.libre_special_settings)
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslApplySmoothing, title = R.string.fsl_apply_smoothing_title, summary = R.string.fsl_apply_smoothing_summary))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslUseUkfSmoothing, title = R.string.fsl_use_ukf_smoothing_title, summary = R.string.fsl_use_ukf_smoothing_summary))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.FslUseUkfSmoothing, mutuallyExclusiveKey = BooleanKey.FslUseUkfLibreSpecialSmoothing, title = R.string.fsl_use_ukf_smoothing_title, summary = R.string.fsl_use_ukf_smoothing_summary))
+            addPreference(
+                AdaptiveSwitchPreference(
+                    ctx = context,
+                    booleanKey = BooleanKey.FslUseUkfLibreSpecialSmoothing,
+                    mutuallyExclusiveKey = BooleanKey.FslUseUkfSmoothing,
+                    title = R.string.fsl_use_ukf_libre_special_smoothing_title,
+                    summary = R.string.fsl_use_ukf_libre_special_smoothing_summary
+                )
+            )
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, title = R.string.fsl_cal_offset_title, dialogMessage = R.string.fsl_cal_offset_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, title = R.string.fsl_cal_slope_title, dialogMessage = R.string.fsl_cal_slope_summary))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, title = R.string.fsl_smooth_alpha_title, dialogMessage = R.string.fsl_smooth_alpha_summary))
