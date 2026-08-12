@@ -789,6 +789,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return "T$sign$roundedValue"
     }
 
+    private fun compactSettingNote(prefix: String, value: Double, decimals: Int, omitLeadingZero: Boolean = false): String {
+        val formattedValue = String.format(Locale.US, "%.${decimals}f", value)
+        var note = prefix + if (omitLeadingZero) formattedValue.removePrefix("0") else formattedValue
+        while (note.length > 5 && note.endsWith("0") && note.contains(".")) note = note.dropLast(1)
+        return note
+    }
+
+
 
     // Mirrors ActionNotification's TherapyEvent handling exactly (confirmed on-device working:
     // shows on the BGL graph and in Treatments/Notes) — unlike addCarePortalNote()'s TE.Type.NOTE,
@@ -1429,8 +1437,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("SDd${round(newBaseline, 2).toString().takeLast(2)}")
-            addCarePortalNote("SDd${round(newMildBoost, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
+            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
             markRun("SmbDeliveryDownTT")
         }
 
@@ -1444,8 +1452,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("SDu${round(newBaseline, 2).toString().takeLast(2)}")
-            addCarePortalNote("SDu${round(newMildBoost, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
+            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
             markRun("SmbDeliveryUpTT")
         }
 
@@ -1463,7 +1471,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive - 0.01).coerceAtLeast(0.0))
             cancelCurrentTempTarget()
             sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
-            addCarePortalNote("PPd${round(newPp, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
             markRun("PpWeightDownTT")
         }
 
@@ -1477,7 +1485,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive + 0.01).coerceAtMost(0.15))
             cancelCurrentTempTarget()
             sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
-            addCarePortalNote("PPu${round(newPp, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
             markRun("PpWeightUpTT")
         }
 
@@ -1493,7 +1501,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
             cancelCurrentTempTarget()
             sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}")
-            addCarePortalNote("PHd${round(newPpHigh, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
             markRun("PpWeightHighDownTT")
         }
 
@@ -1505,7 +1513,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
             cancelCurrentTempTarget()
             sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}")
-            addCarePortalNote("PHu${round(newPpHigh, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
             markRun("PpWeightHighUpTT")
         }
 
@@ -1566,7 +1574,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive - 0.05).coerceAtLeast(0.55))
             cancelCurrentTempTarget()
             sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
-            addCarePortalNote("ACd${round(newAcce, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
             markRun("AcceWeightDownTT")
         }
 
@@ -1580,7 +1588,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive + 0.05).coerceAtMost(1.00))
             cancelCurrentTempTarget()
             sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
-            addCarePortalNote("ACu${round(newAcce, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
             markRun("AcceWeightUpTT")
         }
 
@@ -1596,7 +1604,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
             cancelCurrentTempTarget()
             sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}")
-            addCarePortalNote("AHd${round(newAcceHigh, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
             markRun("AcceWeightHighDownTT")
         }
 
@@ -1609,7 +1617,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
             cancelCurrentTempTarget()
             sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}")
-            addCarePortalNote("AHu${round(newAcceHigh, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
             markRun("AcceWeightHighUpTT")
         }
 
@@ -1622,7 +1630,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
             cancelCurrentTempTarget()
             sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}")
-            addCarePortalNote("Hd${round(newHigh, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
             markRun("HigherIsfRangeWeightDownTT")
         }
 
@@ -1634,7 +1642,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
             cancelCurrentTempTarget()
             sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}")
-            addCarePortalNote("Hu${round(newHigh, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
             markRun("HigherIsfRangeWeightUpTT")
         }
 
@@ -1646,7 +1654,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(IntKey.InsulinOrefPeak, newPeak)
             cancelCurrentTempTarget()
             sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak")
-            addCarePortalNote("IPd${newPeak.toString().takeLast(2)}")
+            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
             markRun("PeakInsulinTimeDownTT")
         }
 
@@ -1657,7 +1665,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(IntKey.InsulinOrefPeak, newPeak)
             cancelCurrentTempTarget()
             sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak")
-            addCarePortalNote("IPu${newPeak.toString().takeLast(2)}")
+            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
             markRun("PeakInsulinTimeUpTT")
         }
 
@@ -1670,7 +1678,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
             cancelCurrentTempTarget()
             sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}")
-            addCarePortalNote("MLd${round(newMaxLow, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
             markRun("AutoIsfMaxLowDownTT")
         }
 
@@ -1681,7 +1689,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
             cancelCurrentTempTarget()
             sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}")
-            addCarePortalNote("MLu${round(newMaxLow, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
             markRun("AutoIsfMaxLowUpTT")
         }
 
@@ -1694,7 +1702,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
             cancelCurrentTempTarget()
             sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}")
-            addCarePortalNote("MNd${round(newMax, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("MN", newMax, 1))
             markRun("AutoIsfMaxNormalDownTT")
         }
 
@@ -1705,7 +1713,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
             cancelCurrentTempTarget()
             sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}")
-            addCarePortalNote("MNu${round(newMax, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("MN", newMax, 1))
             markRun("AutoIsfMaxNormalUpTT")
         }
 
@@ -2004,7 +2012,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
             // 3 trailing chars (not 2) — Dura's 0-3.00 range needs the whole-number digit too, e.g. "Dd2.4"
-            addCarePortalNote("Dd${round(newDura, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("D", newDura, 2))
             markRun("DuraWeightDownTT")
         }
 
@@ -2018,7 +2026,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive + 0.1).coerceAtMost(3.00))
             cancelCurrentTempTarget()
             sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
-            addCarePortalNote("Du${round(newDura, 2).toString().takeLast(3)}")
+            addCarePortalNote(compactSettingNote("D", newDura, 2))
             markRun("DuraWeightUpTT")
         }
 
@@ -2030,7 +2038,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
-            addCarePortalNote("SOd${round(newOffset, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
             markRun("SmbOffsetDownTT")
         }
 
@@ -2041,7 +2049,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
             sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
-            addCarePortalNote("SOu${round(newOffset, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
             markRun("SmbOffsetUpTT")
         }
 
@@ -2057,7 +2065,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive - 0.01).coerceAtLeast(0.60))
             cancelCurrentTempTarget()
             sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
-            addCarePortalNote("LSd${round(newSlope, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
             markRun("LibreSlopeDownTT")
         }
 
@@ -2071,7 +2079,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive + 0.01).coerceAtMost(1.00))
             cancelCurrentTempTarget()
             sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
-            addCarePortalNote("LSu${round(newSlope, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
             markRun("LibreSlopeUpTT")
         }
 
@@ -2089,7 +2097,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive - 0.05).coerceAtLeast(1.20))
             cancelCurrentTempTarget()
             sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote("Ld${round(newOffsetOrig, 2).toString().takeLast(4)}")
+            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
             markRun("LibreOffsetDownTT")
         }
 
@@ -2103,7 +2111,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive + 0.05).coerceAtMost(1.60))
             cancelCurrentTempTarget()
             sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote("Lu${round(newOffsetOrig, 2).toString().takeLast(4)}")
+            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
             markRun("LibreOffsetUpTT")
         }
 
@@ -2130,7 +2138,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
             sendSms("WizardPctDown: BolusPct=$newPct")
-            addCarePortalNote("WPd${newPct.toString().takeLast(2)}")
+            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
             markRun("WizardPctDownTT")
         }
 
@@ -2141,7 +2149,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
             sendSms("WizardPctUp: BolusPct=$newPct")
-            addCarePortalNote("WPu${newPct.toString().takeLast(2)}")
+            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
             markRun("WizardPctUpTT")
         }
 
@@ -2154,7 +2162,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("MBd${round(newMildBoost, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
             markRun("MildBoostDownTT")
         }
 
@@ -2165,7 +2173,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote("MBu${round(newMildBoost, 2).toString().takeLast(2)}")
+            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
             markRun("MildBoostUpTT")
         }
 

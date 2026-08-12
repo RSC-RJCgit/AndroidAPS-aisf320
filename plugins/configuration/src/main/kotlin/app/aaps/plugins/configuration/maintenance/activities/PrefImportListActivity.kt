@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.aaps.core.interfaces.maintenance.FileListProvider
@@ -39,12 +40,55 @@ class PrefImportListActivity : TranslatedDaggerAppCompatActivity() {
         supportActionBar?.setDisplayShowTitleEnabled(true)
 
         binding.recyclerview.layoutManager = LinearLayoutManager(this)
-        binding.recyclerview.adapter = RecyclerViewAdapter(fileListProvider.listPreferenceFiles())
+        val preferenceFiles = fileListProvider.listPreferenceFiles()
+        if (preferenceFiles.size > LOCAL_IMPORT_FILE_LIMIT) {
+            showFileCountChoice(preferenceFiles)
+        } else {
+            showPreferenceFiles(preferenceFiles)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         binding.recyclerview.adapter = null
+    }
+
+    private fun showFileCountChoice(preferenceFiles: List<PrefsFile>) {
+        val choices = arrayOf(
+            rh.gs(R.string.preferences_import_show_all_files, preferenceFiles.size),
+            rh.gs(R.string.preferences_import_show_latest_files, LOCAL_IMPORT_FILE_LIMIT)
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle(rh.gs(R.string.preferences_import_file_count_title))
+            .setMessage(rh.gs(R.string.preferences_import_file_count_message, preferenceFiles.size))
+            .setItems(choices) { _, which ->
+                val filesToShow = when (which) {
+                    0    -> preferenceFiles
+                    else -> preferenceFiles.take(LOCAL_IMPORT_FILE_LIMIT)
+                }
+                showPreferenceFiles(filesToShow, preferenceFiles.size)
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
+    }
+
+    private fun showPreferenceFiles(preferenceFiles: List<PrefsFile>, totalCount: Int = preferenceFiles.size) {
+        binding.recyclerview.adapter = RecyclerViewAdapter(preferenceFiles)
+        if (totalCount > LOCAL_IMPORT_FILE_LIMIT) {
+            binding.fileCount.visibility = View.VISIBLE
+            binding.fileCount.text = if (preferenceFiles.size == totalCount) {
+                rh.gs(R.string.cloud_import_file_count_all, totalCount)
+            } else {
+                rh.gs(R.string.cloud_import_file_count, preferenceFiles.size, totalCount)
+            }
+        }
+    }
+
+    companion object {
+
+        private const val LOCAL_IMPORT_FILE_LIMIT = 10
     }
 
     inner class RecyclerViewAdapter internal constructor(private var prefFileList: List<PrefsFile>) : RecyclerView.Adapter<RecyclerViewAdapter.PrefFileViewHolder>() {
