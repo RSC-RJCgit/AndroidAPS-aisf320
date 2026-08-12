@@ -1004,7 +1004,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val COBforCarbsReq = max(0.0, meal_data.mealCOB - 0.25 * meal_data.carbs)
         val carbsReq = round(((bgUndershoot - zeroTempEffectDouble) / csf - COBforCarbsReq))
         val zeroTempEffect = round(zeroTempEffectDouble)
-        consoleError.add("naive_eventualBG: ${convert_bg(naive_eventualBG)} bgUndershoot: ${convert_bg(bgUndershoot)} zeroTempDuration $zeroTempDuration zeroTempEffect: ${convert_bg(zeroTempEffect)} carbsReq: $carbsReq")
+        consoleError.add("naive_eventualBG: ${convert_bg(naive_eventualBG)} bgUndershoot: ${convert_bg(bgUndershoot)} zeroTempDuration $zeroTempDuration zeroTempEffect: ${convert_bg(zeroTempEffect.toDouble())} carbsReq: $carbsReq")
         if (carbsReq >= profile.carbsReqThreshold && minutesAboveThreshold <= 45) {
             rT.carbsReq = carbsReq
             rT.carbsReqWithin = minutesAboveThreshold
