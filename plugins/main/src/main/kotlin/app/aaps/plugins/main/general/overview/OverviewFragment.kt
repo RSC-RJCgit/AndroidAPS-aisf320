@@ -1233,7 +1233,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun ttCodesList(): List<TtCode> = listOf(
         // SmbDeliveryDownTT/UpTT nudges BOTH ApsAutoIsfSmbDeliveryBaseline and ApsAutoIsfMildBoostRatio, both by the same ±0.01.
         TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004, "-0.01", "+0.01"),
-        TtCode.Single("Tog SensorAge adjust on/off", 5.006),
+        TtCode.Single("Tog Libre sens on/off", 5.006),
         TtCode.Single("Tog Bst autos(all) on/off", 5.008),
         TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01"),
         TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018, "-0.05", "+0.05"),
@@ -1274,7 +1274,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("Profile (manual override)", 5.148, 5.150, "Standard", "Low"),
         // Selecting the active mode again turns it off; selecting the other mode enables it and turns
         // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
-        TtCode.Stepped("Libre UKF mode", 5.152, 5.154, "UKF1", "UKF2")
+        TtCode.Stepped("Libre UKF mode", 5.152, 5.154, "UKF1", "UKF2"),
+        TtCode.Single("Run SensorAge code on/off", 5.156)
     )
 
     // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via

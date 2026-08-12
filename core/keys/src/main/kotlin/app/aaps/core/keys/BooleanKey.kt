@@ -100,6 +100,10 @@ enum class BooleanKey(
     // Master on/off for OldSensorAdj (the 11-15 elapsed-day aging-sensor FslCalSlope/FslCalOffset override).
     // Off = stay at whatever's configured in Libre special settings as usual, no override ever applied.
     ApsAutoIsfOldSensorAdjEnabled("autoisf_old_sensor_adj_enabled", true, defaultedBySM = true),
+    // Independent master gate for executing the complete SensorAge calibration routine. This is
+    // intentionally separate from OldSensorAdjEnabled: switching execution off restores any active
+    // slope/offset override and then skips sensor-age tracking/tier evaluation entirely.
+    ApsAutoIsfSensorAgeCodeEnabled("autoisf_sensor_age_code_enabled", true, defaultedBySM = true),
     // Internal-only: tracks whether OldSensorAdj currently has FslCalSlope/FslCalOffset overridden, so
     // it knows whether to snapshot (first activation) or restore (once the 11-15 day window or MJ
     // condition ends, or the toggle above is turned off). Not shown in any preference screen.

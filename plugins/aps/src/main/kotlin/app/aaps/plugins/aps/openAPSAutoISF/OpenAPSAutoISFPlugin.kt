@@ -1302,6 +1302,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // delivery ratio). No readyToRun throttle — deliberately checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
+            val sensorAgeCodeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
+            val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
+            if (!sensorAgeCodeEnabled) {
+                // Never leave a tier override applied when execution is disabled. Restore the snapshot
+                // captured when the override first activated, then skip every other SensorAge action.
+                if (oldSensorActive) {
+                    preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfFslCalSlopeNormal))
+                    preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfFslCalOffsetNormal))
+                    preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
+                    addCarePortalNote("SensorAgeCodeOff")
+                }
+                return@run
+            }
+
             // Track the last time raw Libre BGL was seen over 12.0mmol -- updated every cycle it's
             // observed (not a "since it started" latch like OldPodHighSinceTs above; just "when did this
             // last happen"). Gates OldSensorAdj below: the tier compensation is calibrated against
@@ -1332,11 +1346,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
                 else -> null
             }
-            val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
+            val oldSensorActiveNow = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             // Sensor-age calibration is independent of cannula/pod age. It still requires
             // recentHighBglSeen (see above); cannula protections remain in their own pod automations.
             if (oldSensorEnabled && oldSensorTier != null && recentHighBglSeen) {
-                if (!oldSensorActive) {
+                if (!oldSensorActiveNow) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
                     preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, true)
@@ -1347,7 +1361,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     preferences.put(DoubleKey.FslCalOffset, offset)
                     addCarePortalNote("OldSensor$tierLabel")
                 }
-            } else if (oldSensorActive) {
+            } else if (oldSensorActiveNow) {
                 preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfFslCalSlopeNormal))
                 preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfFslCalOffsetNormal))
                 preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
@@ -2013,6 +2027,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("LibreUKF2: ${if (newState) "ON" else "OFF"}")
             addCarePortalNote("UK2${if (newState) "On" else "Off"}")
             markRun("LibreUkf2ToggleTT")
+        }
+
+        // --- SensorAgeCodeToggleTT: master execution toggle for the complete SensorAge calibration
+        // routine, separate from the existing 5.006 aging-sensor adjustment preference toggle.
+        if (readyToRun("SensorAgeCodeToggleTT", 2) && activeTtNear(5.156, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("SAC${if (newState) "On" else "Off"}")
+            markRun("SensorAgeCodeToggleTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
