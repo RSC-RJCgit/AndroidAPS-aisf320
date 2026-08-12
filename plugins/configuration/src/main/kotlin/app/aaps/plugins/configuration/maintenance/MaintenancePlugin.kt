@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.toast.ToastUtils
@@ -566,6 +567,23 @@ class MaintenancePlugin @Inject constructor(
             else -> "LOGF1"
         }
         val now = System.currentTimeMillis()
+        if (note == "LGs6") {
+            val accepted = synchronized(cloudLogSuccessNoteLock) {
+                val lastNote = preferences.get(LongNonKey.LastCloudLogSuccessNote)
+                if (lastNote >= now - TimeUnit.HOURS.toMillis(6)) {
+                    false
+                } else {
+                    // Reserve before the asynchronous database insert so overlapping export callbacks
+                    // cannot both create an automatic six-hour success note.
+                    preferences.put(LongNonKey.LastCloudLogSuccessNote, now)
+                    true
+                }
+            }
+            if (!accepted) {
+                aapsLogger.info(LTag.CORE, "Suppressing duplicate LGs6 CarePortal note inside six-hour window")
+                return
+            }
+        }
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(now),
             duration = TimeUnit.MINUTES.toMillis(1),
@@ -581,6 +599,8 @@ class MaintenancePlugin @Inject constructor(
             listValues = listOf(ValueWithUnit.SimpleString(note))
         ).subscribe({}, { error -> aapsLogger.error(LTag.CORE, "Failed to add cloud-log CarePortal note $note", error) })
     }
+
+    private val cloudLogSuccessNoteLock = Any()
     
     private fun fallbackToEmailLogs(zipFile: DocumentFile) {
         aapsLogger.debug("Falling back to email for log sending")
