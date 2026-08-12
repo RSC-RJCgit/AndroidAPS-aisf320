@@ -296,7 +296,7 @@ class PrepareBgDataWorker(
         data.overviewData.ukfDeltaSeries =
             if (latest != null && ukfDeltaResult != null) {
                 val (ukfDeltaMgdl, ukfNowMgdl) = ukfDeltaResult
-                val label = "U" + formatMmolDelta(ukfDeltaMgdl)
+                val label = "U=" + formatMmolDelta(ukfDeltaMgdl)
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         UkfDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(ukfNowMgdl), label, rh)
