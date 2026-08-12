@@ -4278,14 +4278,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val acceActiveMinutes = recentAdaptationMinutes { it.acceIsf }
             val stepsOk = recentSteps60Minutes < 600 ||
                 (glucoseStatus.glucose > 11.0 * GlucoseUnit.MMOLL_TO_MGDL && recentSteps60Minutes < 1500)
+            val adaptationDurationOk = duraActiveMinutes > 5.0 && acceActiveMinutes > 4.0
+            val hp2HighBgBypass = hp != null && hp > 7.5 &&
+                glucoseStatus.glucose > 10.0 * GlucoseUnit.MMOLL_TO_MGDL
             val cooldownReady = readyToRun(actionKey, 90)
             val conditionsMet = virtualPump &&
                 ukfBgl > 12.0 * GlucoseUnit.MMOLL_TO_MGDL &&
                 bgAcce > 3.0 &&
                 glucoseStatus.shortAvgDelta > 0.5 * GlucoseUnit.MMOLL_TO_MGDL &&
                 allBgHigh &&
-                duraActiveMinutes > 5.0 &&
-                acceActiveMinutes > 4.0 &&
+                (adaptationDurationOk || hp2HighBgBypass) &&
                 mealData.mealCOB == 0.0 &&
                 noTempTarget &&
                 stepsOk &&
@@ -4299,7 +4301,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "virtual=$virtualPump ukf=${String.format(Locale.US, "%.1f", ukfBgl / GlucoseUnit.MMOLL_TO_MGDL)} " +
                     "acce=${String.format(Locale.US, "%.2f", bgAcce)} SDelta=${String.format(Locale.US, "%.2f", glucoseStatus.shortAvgDelta / GlucoseUnit.MMOLL_TO_MGDL)} " +
                     "allBG90>8=$allBgHigh duraMin=${String.format(Locale.US, "%.1f", duraActiveMinutes)} " +
-                    "acceMin=${String.format(Locale.US, "%.1f", acceActiveMinutes)} COB=${String.format(Locale.US, "%.1f", mealData.mealCOB)} " +
+                    "acceMin=${String.format(Locale.US, "%.1f", acceActiveMinutes)} adaptationOk=$adaptationDurationOk HP2+BGL10bypass=$hp2HighBgBypass " +
+                    "COB=${String.format(Locale.US, "%.1f", mealData.mealCOB)} " +
                     "noTT=$noTempTarget steps60=$recentSteps60Minutes stepsOk=$stepsOk HP2=${hp?.let { String.format(Locale.US, "%.1f", it) } ?: "--"} " +
                     "noNormalBolus120=$noNormalBolus120 lastNormalBolusMin=$lastNormalBolusMinutes " +
                     "cooldown90=$cooldownReady queueFree=${!commandQueue.bolusInQueue()} ;;"
