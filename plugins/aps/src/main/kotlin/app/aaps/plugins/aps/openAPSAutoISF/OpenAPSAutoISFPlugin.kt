@@ -436,18 +436,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return newest - (ref.noise ?: return null)
     }
 
-    // One UKF-smoothed view of the raw/noise signal for GentleHypo and both AlarmHypo automations. Computing all three values from
-    // the same smoothing pass keeps rawG/rawD1/rawD5 internally consistent and matches the ukfRaw line
-    // shown on the graphs rather than mixing that line with unsmoothed raw trigger values.
-    private fun ukfRawMetrics(): Triple<Double?, Double?, Double?> {
+    // One UKF-smoothed view of the raw/noise signal for hypo checks and SMB confirmations. Computing all
+    // values from the same smoothing pass keeps rawG/rawD1/rawD5 internally consistent and matches the
+    // ukfRaw graph line rather than mixing that line with unsmoothed raw trigger values.
+    private data class UkfRawMetrics(
+        val glucose: Double?,
+        val delta1: Double?,
+        val delta5: Double?
+    )
+
+    private fun ukfRawMetrics(): UkfRawMetrics {
         val now = dateUtil.now()
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
             .filter { it.noise != null && it.noise!! > 10.0 }
             .sortedByDescending { it.timestamp }
-        if (readings.isEmpty()) return Triple(null, null, null)
+        if (readings.isEmpty()) return UkfRawMetrics(null, null, null)
 
         val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
-        if (smoothed.isEmpty()) return Triple(null, null, null)
+        if (smoothed.isEmpty()) return UkfRawMetrics(null, null, null)
         val rawG = smoothed[0]
         val rawD1 = if (smoothed.size >= 2) {
             val minutes = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
@@ -456,7 +462,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val fiveMinAgo = now - T.mins(5).msecs()
         val refIndex = readings.indices.minByOrNull { kotlin.math.abs(readings[it].timestamp - fiveMinAgo) }
         val rawD5 = refIndex?.takeIf { it != 0 }?.let { rawG - smoothed[it] }
-        return Triple(rawG, rawD1, rawD5)
+        return UkfRawMetrics(rawG, rawD1, rawD5)
     }
 
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
@@ -469,7 +475,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         cob: Double,
         bgAcceleration: Double
     ): Double? {
-        val ukfDelta5Mgdl = ukfRawMetrics().third ?: return null
+        val ukfDelta5Mgdl = ukfRawMetrics().delta5 ?: return null
         val sdeltaMmol = shortAvgDeltaMgdl / 18.0182
         val ldeltaMmol = longAvgDeltaMgdl / 18.0182
         val cobPenaltyApplies =
@@ -4417,6 +4423,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val rawDelta5Raw = rawDelta5MinMgdl()
         val aapsDelta1Raw = aapsDelta1MinMgdl()
         val rawDelta15Raw = rawDelta15MinMgdl()
+        // SMB adjustment confirmations follow the LibreUKF toggle. When enabled, use the UKF-smoothed
+        // raw signal; when disabled, preserve the existing immediate Libre .noise deltas. The recent-
+        // boost reversion gate below and DetermineBasal's early-morning fresh-reversal guard deliberately
+        // continue to use immediate raw values because their purpose is to see a turn before smoothing.
+        val useUkfRawForSmb = preferences.get(BooleanKey.FslUseUkfSmoothing)
+        val smbUkfRaw = if (useUkfRawForSmb) ukfRawMetrics() else null
+        val smbDelta1Raw = if (useUkfRawForSmb) smbUkfRaw?.delta1 else rawDelta1Raw
+        val smbDelta5Raw = if (useUkfRawForSmb) smbUkfRaw?.delta5 else rawDelta5Raw
+        consoleLog.add(
+            "SMB raw source=${if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
+        )
+
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -4466,8 +4484,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && iobData.iob < 0.33 * oapsProfile.max_iob,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
-            rawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
-            rawDelta1Mgdl = rawDelta1Raw ?: 9999.0,
+            rawDelta5Mgdl = smbDelta5Raw ?: 9999.0,
+            immediateRawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
+            rawDelta1Mgdl = smbDelta1Raw ?: 9999.0,
             aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0,
             rawDelta15Mgdl = rawDelta15Raw ?: 9999.0,
             // Same LowBG state BolusWizard reads to halve carb insulin -- see the recent-low rebound

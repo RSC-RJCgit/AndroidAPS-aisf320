@@ -188,6 +188,9 @@ class DetermineBasalAutoISF @Inject constructor(
         // satisfied, so a caller that doesn't pass these (tests, replay) sees unchanged behaviour, and a
         // momentary sensor gap can't itself block a cap the original Delta/SDelta logic would have applied.
         rawDelta5Mgdl: Double = 9999.0,
+        // Always-unsmoothed companion used only by checks whose purpose is to see a turn before UKF.
+        // All other SMB confirmations use rawDelta5Mgdl, selected by the LibreUKF toggle upstream.
+        immediateRawDelta5Mgdl: Double = 9999.0,
         rawDelta1Mgdl: Double = 9999.0,
         aapsDelta1Mgdl: Double = 9999.0,
         // Raw 15-min delta (mg/dL, normalised to a per-5-min rate to match rawDelta5Mgdl's scale — same
@@ -1570,13 +1573,13 @@ class DetermineBasalAutoISF @Inject constructor(
                         nowHour >= 6 && nowHour < 10 &&
                         IOB > 0.075 * profile.max_iob &&
                         COB <= 25 &&
-                        rawDelta5Mgdl >= 0.5 * 18 &&
+                        immediateRawDelta5Mgdl >= 0.5 * 18 &&
                         (rawDelta15Mgdl >= 9999.0 ||
-                            (rawDelta15Mgdl >= 0.2 * 18 && rawDelta5Mgdl > rawDelta15Mgdl * 1.5))
+                            (rawDelta15Mgdl >= 0.2 * 18 && immediateRawDelta5Mgdl > rawDelta15Mgdl * 1.5))
                     ) {
                         microBolus = microBolus * 0.8
                         rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${round(microBolus, 2)} ")
-                        rT.reason.append(" CHANGED SIZE 0.810b early-AM raw-rise guard: rawD5 ${convert_bg2(rawDelta5Mgdl)} rawD15 ${convert_bg2(rawDelta15Mgdl)} ")
+                        rT.reason.append(" CHANGED SIZE 0.810b early-AM immediate-raw-rise guard: rawD5 ${convert_bg2(immediateRawDelta5Mgdl)} rawD15 ${convert_bg2(rawDelta15Mgdl)} ")
 //=====================================================
 // TWILIGHT / OTHER HOURS SMB LIMITING
 // =====================================================
