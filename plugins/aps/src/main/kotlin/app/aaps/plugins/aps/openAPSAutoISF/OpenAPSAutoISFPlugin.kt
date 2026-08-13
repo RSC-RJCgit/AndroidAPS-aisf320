@@ -1210,6 +1210,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Reverse-direction remote command: Virtual Pump writes the exact Note "ADesk" to its NS;
+        // the real-pump phone's secondary-NS worker records that server revision, and this sends one
+        // implicit broadcast per revision. Tasker's Intent Received profile owns the existing AnyDesk
+        // restart task. Do not target Tasker's package: its dynamically registered receiver requires
+        // an implicit broadcast.
+        if (activePlugin.activePump !is VirtualPump) {
+            val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
+            val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
+            if (commandRevision > handledRevision) {
+                context.sendBroadcast(
+                    Intent("app.aaps.action.RESTART_ANYDESK")
+                        .putExtra("source", "AAPS secondary NS Note")
+                        .putExtra("command", "ADesk")
+                        .putExtra("revision", commandRevision)
+                )
+                preferences.put(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt, commandRevision)
+                aapsLogger.info(LTag.APS, "ADesk secondary-NS command sent to Tasker")
+            }
+        }
+
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 
         // Code port of the "Test" automation (MJ=MJ4). Self-guarding: state change prevents re-fire.

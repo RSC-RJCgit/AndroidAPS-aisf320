@@ -33,9 +33,14 @@ enum class LongKey(
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.
     ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0, defaultedBySM = true),
-    // Virtual-Pump phone cursor for the newest StorageLow Note already alerted. A later NS Note has a
+    // Virtual-Pump phone cursor for the newest StLow/legacy StorageLow Note already alerted. A later NS Note has a
     // new timestamp and is handled once, including across app restarts.
-    ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0, defaultedBySM = true, exportable = false),
+    ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0, defaultedBySM = true),
+    // Secondary-NS server revision of the newest ADesk command, and the newest revision already sent
+    // to Tasker on the real-pump phone. Separate values make the hand-off persistent across restarts.
+    ApsAutoIsfAnyDeskSecondaryCommandAt("autoisf_anydesk_secondary_command_at", 0, defaultedBySM = true),
+    ApsAutoIsfAnyDeskTaskerHandledAt("autoisf_anydesk_tasker_handled_at", 0, defaultedBySM = true),
+
     // Internal-only: timestamp (ms) when the current SMB anti-stacking window started (see the
     // smbInt5Sec <=70s trim in DetermineBasalAutoISF.kt) — 0 means no active stack. Reset to 0 the
     // instant stacking stops (avg gap rises above 70s), so a later rapid-fire sequence always starts a

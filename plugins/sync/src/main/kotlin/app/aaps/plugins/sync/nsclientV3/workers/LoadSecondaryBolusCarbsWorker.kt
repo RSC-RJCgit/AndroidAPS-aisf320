@@ -56,7 +56,8 @@ class LoadSecondaryBolusCarbsWorker(
         // Therapy-event types imported from the secondary NS: the device-lifecycle events the
         // cannula/sensor-age automations read (TE.Type.CANNULA_CHANGE / SENSOR_CHANGE via
         // getLastTherapyRecordUpToNow), plus their close siblings so pod/sensor sessions stay complete.
-        // StorageLow Notes are included so the real-pump phone can alert the Virtual Pump phone.
+        // StLow/legacy StorageLow Notes carry storage alerts to Virtual Pump; the exact ADesk Note
+        // carries the reverse-direction Tasker command to the real-pump phone.
         private val secondaryTherapyEventTypes = setOf(
             TE.Type.SENSOR_CHANGE,
             TE.Type.SENSOR_STARTED,
@@ -146,11 +147,21 @@ class LoadSecondaryBolusCarbsWorker(
                         is NSTherapyEvent -> {
                             if (acceptTherapyEvents) {
                                 val te = treatment.toTherapyEvent()
-                                val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes &&
-                                    (te.type != TE.Type.NOTE || te.note?.startsWith("StorageLow ") == true)
+                                val note = te.note.orEmpty()
+                                val anyDeskCommand = te.type == TE.Type.NOTE && note.trim() == "ADesk"
+                                val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes && (te.type != TE.Type.NOTE ||
+                                    note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand)
                                 if (acceptedSecondaryEvent) {
                                     storeDataForDb.addToTherapyEvents(te)
                                     pageTherapyEvents++
+                                }
+                                // Do not execute commands found by the first 16-day recovery scan. On
+                                // ordinary incremental syncs, srvModified makes the two-hour overlap safe:
+                                // the same NS record cannot create another command revision.
+                                if (anyDeskCommand && !recoveryScan) {
+                                    val commandRevision = treatment.srvModified ?: treatment.srvCreated ?: te.timestamp
+                                    if (commandRevision > preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt))
+                                        preferences.put(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt, commandRevision)
                                 }
                             }
                         }
