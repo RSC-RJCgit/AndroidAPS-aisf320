@@ -2359,6 +2359,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     }
                     addGraphAnnouncement("________________Gentle5")
+                    addCarePortalNote("Gntl5")
                     //setAutomationState("MJstate", "MJon")
                     setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
