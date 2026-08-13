@@ -1305,9 +1305,27 @@ private fun savePersistedParameters() {
     fun smoothForDisplayNEW(points: List<Pair<Long, Double>>): List<Double> = smoothForDisplay(points)
 
     /**
+     * Exact original LibreSpecial EMA values retained for the UKF2 pre-UKF comparison graph.
+     */
+    @Synchronized
+    fun libreSpecialPreUkfHistory(fromTime: Long, toTime: Long): List<Pair<Long, Double>> =
+        sp.getString("ukf_librespecial_full_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val time = fields[0].toLongOrNull()
+                    val value = fields[1].toDoubleOrNull()
+                    if (time == null || value == null || time !in fromTime..toTime) null else time to value
+                }
+            }
+            .sortedBy { it.first }
+
+    /**
      * Adds one original LibreSpecial EMA result to a persisted rolling series and returns the newest
-     * result of [smoothForDisplayNEW]. This is the live-dosing bridge for the second UKF mode:
-     * calibration -> original EMA -> full UKF, with no [smoothRawRealtime] in that path.
+     * result of [smoothForDisplayNEW]. The graph retains 12 hours, but UKF still receives only its
+     * original 90-minute/120-point working window.
      */
     @Synchronized
     fun smoothLibreSpecialRealtime(timestamp: Long, libreSpecialValue: Double): Double {
@@ -1326,17 +1344,19 @@ private fun savePersistedParameters() {
                 .toMutableList()
             history.removeAll { it.first == timestamp }
             history.add(timestamp to libreSpecialValue)
-            val oldest = timestamp - 90L * 60_000L
-            val newestFirst = history
-                .filter { it.first >= oldest && it.first <= timestamp + 5L * 60_000L }
+            val graphOldest = timestamp - 12L * 60L * 60_000L
+            val graphNewestFirst = history
+                .filter { it.first >= graphOldest && it.first <= timestamp + 5L * 60_000L }
                 .sortedByDescending { it.first }
-                .take(120)
+                .take(900)
             sp.putString(
                 "ukf_librespecial_full_history",
-                newestFirst.joinToString(";") { "${it.first},${it.second}" }
+                graphNewestFirst.joinToString(";") { "${it.first},${it.second}" }
             )
-            val currentIndex = newestFirst.indexOfFirst { it.first == timestamp }
-            smoothForDisplayNEW(newestFirst).getOrNull(currentIndex).takeIf { currentIndex >= 0 }
+            val ukfOldest = timestamp - 90L * 60_000L
+            val ukfNewestFirst = graphNewestFirst.filter { it.first >= ukfOldest }.take(120)
+            val currentIndex = ukfNewestFirst.indexOfFirst { it.first == timestamp }
+            smoothForDisplayNEW(ukfNewestFirst).getOrNull(currentIndex).takeIf { currentIndex >= 0 }
                 ?: max(libreSpecialValue, 39.0)
         } catch (_: Exception) {
             max(libreSpecialValue, 39.0)

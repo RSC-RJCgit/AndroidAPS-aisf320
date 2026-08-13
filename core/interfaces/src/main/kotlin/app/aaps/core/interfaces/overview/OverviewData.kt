@@ -168,6 +168,9 @@ interface OverviewData {
     // (unlike rawBgSeries, doesn't need color-banding) drawn alongside it. See PrepareBgDataWorker.kt
     // and UnscentedKalmanFilterPlugin.smoothForDisplay().
     var rawBgSmoothedSeries: SeriesData
+    // Original LibreSpecial EMA values immediately before UKF2; empty unless UKF2 is active.
+    // Drawn with rawBgSmoothedSeries under the existing Raw BG (UKF smoothed) graph selection.
+    var libreSpecialPreUkfSeries: SeriesData
     var noisyBgDeltaSeries: SeriesData
     var ukfDeltaSeries: SeriesData
     // AAPS (smoothed) 1-min delta label attached to the current smoothed BG graph point — see A1DeltaDataPoint/Shape.A1_DELTA_POINT.
