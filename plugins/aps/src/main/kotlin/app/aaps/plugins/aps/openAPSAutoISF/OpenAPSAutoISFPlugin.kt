@@ -1327,7 +1327,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val recentHighBglSeen = recentLibreOver12(24)
 
-            val sensorAgeDays = (hoursSinceLastSensorChange() ?: 0.0) / 24.0
+            // Missing sensor age is unknown, never day 0. A null age produces no tier below; if an
+            // override was active, the normal restore branch runs rather than keeping/creating Day1.
+            val sensorAgeDays = hoursSinceLastSensorChange()?.div(24.0)
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             // Tier slopes/offsets are derived from the user's own base Libre slope/offset
             // (ApsAutoIsfLibreSlopeOrig currently 0.72, ApsAutoIsfLibreOffsetOrig currently 1.4) rather
@@ -1336,15 +1338,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // together.
             val libreSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
             val libreOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
-            val oldSensorTier = when {
-                sensorAgeDays < 1.0                            -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
-                sensorAgeDays >= 1.0 && sensorAgeDays < 2.0    -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
-                // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
-                sensorAgeDays >= 11.0 && sensorAgeDays < 13.0 -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
-                sensorAgeDays >= 13.0 && sensorAgeDays < 14.0 -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                sensorAgeDays >= 14.0 && sensorAgeDays < 15.0 -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
-                else -> null
+            val oldSensorTier = sensorAgeDays?.let { ageDays ->
+                when {
+                    ageDays < 1.0                         -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                    ageDays >= 1.0 && ageDays < 2.0       -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                    ageDays >= 2.0 && ageDays < 3.0       -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                    // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
+                    ageDays >= 11.0 && ageDays < 13.0     -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                    ageDays >= 13.0 && ageDays < 14.0     -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                    ageDays >= 14.0 && ageDays < 15.0     -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                    else -> null
+                }
             }
             val oldSensorActiveNow = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             // Sensor-age calibration is independent of cannula/pod age. It still requires

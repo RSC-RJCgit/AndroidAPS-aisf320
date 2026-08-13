@@ -24,6 +24,9 @@ enum class LongKey(
     FslCalibrationStart("fsl_cal_start_time", -1, -1, defaultedBySM = true),
     AppStart("app_start_time", 0, defaultedBySM = true),
     NsClientSecondaryLastLoaded("nsclient_secondary_last_loaded", 0, defaultedBySM = true),
+    // Server-modified cursor for the secondary-NS treatment downloader. Separate from the legacy
+    // event-time cursor above so the first upgraded run performs a recovery scan for backdated entries.
+    NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0, defaultedBySM = true),
     SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
     DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
     // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for

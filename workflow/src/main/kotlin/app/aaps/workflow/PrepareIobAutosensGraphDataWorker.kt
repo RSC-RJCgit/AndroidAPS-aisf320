@@ -847,7 +847,7 @@ class PrepareIobAutosensGraphDataWorker(
             }
             data.overviewData.bgParabolaSeries = FixedLineGraphSeries(Array(bgParabolaArrayHist.size) { i -> bgParabolaArrayHist[i] }).also {
                 it.isDrawBackground = false
-                it.color = android.graphics.Color.RED
+                it.color = android.graphics.Color.YELLOW
                 it.thickness = 14
             }
             data.overviewData.bgParabolaPredictionSeries = FixedLineGraphSeries(Array(bgParabolaArrayPrediction.size) { i -> bgParabolaArrayPrediction[i] }).also {
@@ -855,7 +855,7 @@ class PrepareIobAutosensGraphDataWorker(
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = 14f
                     paint.pathEffect = DashPathEffect(floatArrayOf(6f, 6f), 0f)
-                    paint.color = android.graphics.Color.RED
+                    paint.color = android.graphics.Color.YELLOW
                 })
             }
         }

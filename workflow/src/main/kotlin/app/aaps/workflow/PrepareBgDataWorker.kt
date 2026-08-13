@@ -329,13 +329,19 @@ class PrepareBgDataWorker(
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
                 val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
+                val ukfMode = when {
+                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKF2"
+                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKF1"
+                    else                                                       -> "UKFoff"
+                }
+                val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  duTTime= $duraTaperTime  UKF= $ukfMode"
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
                 data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTDataPoint(
                             latest.timestamp,
                             profileUtil.fromMgdlToUnits(75.6),
-                            "targetOffset= $targetOffsetText  duTTime= $duraTaperTime",
+                            targetOffsetDuTLabel,
                             rh
                         )
                     )
@@ -345,7 +351,7 @@ class PrepareBgDataWorker(
                         TargetOffsetDuTGraph1DataPoint(
                             latest.timestamp,
                             profileUtil.fromMgdlToUnits(75.6),
-                            "targetOffset= $targetOffsetText  duTTime= $duraTaperTime",
+                            targetOffsetDuTLabel,
                             rh
                         )
                     )
