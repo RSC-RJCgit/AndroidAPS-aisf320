@@ -262,7 +262,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         mjUserActionDisposable += rxBus
             .toObservable(EventSteroidUserAction::class.java)
             .observeOn(Schedulers.io())
-            .subscribe({ handleDirectSteroidUserAction(it.directMenu) }) {
+            .subscribe({ handleDirectSteroidUserAction(it.action, it.directMenu) }) {
                 aapsLogger.error(LTag.APS, "Direct Steroid Kotlin button failed", it)
             }
         mjUserActionDisposable += rxBus
@@ -331,17 +331,53 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         rxBus.send(EventRefreshOverview("MJ Kotlin button", true))
     }
 
-    /** Kotlin-only port of the native Steroids-ON user action, including its original conditions. */
-    private fun handleDirectSteroidUserAction(directMenu: Boolean = false) {
+    /** Kotlin-only ports of the native Steroid 110% start and 110% -> 130% user actions. */
+    private fun handleDirectSteroidUserAction(
+        action: EventSteroidUserAction.Action = EventSteroidUserAction.Action.START_110,
+        directMenu: Boolean = false
+    ) {
         if ((!directMenu && !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) ||
             (directMenu && config.AAPSCLIENT) ||
             !preferences.get(BooleanKey.AutomationStatesEnabled)
         ) return
 
-        val conditionStillMatches = directMenu || try {
-            isTimeBetween(6, 0, 0, 0) &&
-                automationStateService.inState("MJ", "NOMJremains") &&
-                automationStateService.inState("Steroids", "Steroids Off")
+        val steroidKotlinButtonsEnabled = preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+        val conditionStillMatches = try {
+            when (action) {
+                EventSteroidUserAction.Action.START_110 ->
+                    directMenu ||
+                        (isTimeBetween(6, 0, 0, 0) &&
+                            automationStateService.inState("MJ", "NOMJremains") &&
+                            automationStateService.inState("Steroids", "Steroids Off"))
+
+                EventSteroidUserAction.Action.INCREASE_130 ->
+                    automationStateService.inState("Steroids", "SteroidsON") &&
+                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile110")
+
+                EventSteroidUserAction.Action.INCREASE_150 ->
+                    automationStateService.inState("Steroids", "SteroidsON") &&
+                        automationStateService.inState("MJ", "NOMJremains") &&
+                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile130")
+
+                EventSteroidUserAction.Action.INCREASE_190 ->
+                    automationStateService.inState("Steroids", "SteroidsON") &&
+                        automationStateService.inState("MJ", "NOMJremains") &&
+                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile150")
+
+                EventSteroidUserAction.Action.INCREASE_250 ->
+                    automationStateService.inState("Steroids", "SteroidsON") &&
+                        automationStateService.inState("MJ", "NOMJremains") &&
+                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Current Profile190Real")
+
+                EventSteroidUserAction.Action.TURN_OFF ->
+                    automationStateService.inState("Steroids", "SteroidsON") &&
+                        automationStateService.inState("MJ", "NOMJremains") &&
+                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100
+            }
         } catch (e: IllegalStateException) {
             aapsLogger.error(LTag.APS, "Direct Steroid button cannot read automation states", e)
             false
@@ -352,12 +388,57 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             return
         }
 
-        sendSms("Turn SteroidsON")
-        setAutomationState("Steroids", "SteroidsON")
-        switchProfileIfNeeded("Steroid Profile110")
-        preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
-        setBgAccelIsfWeight(0.70)
-        addCarePortalNote("SteroidsON")
+        when (action) {
+            EventSteroidUserAction.Action.START_110 -> {
+                sendSms("Turn SteroidsON")
+                setAutomationState("Steroids", "SteroidsON")
+                switchProfileIfNeeded("Steroid Profile110")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("SteroidsON")
+            }
+
+            EventSteroidUserAction.Action.INCREASE_130 -> {
+                sendSms("Steroids 110% are ON.. press to increase? to 130")
+                switchProfileIfNeeded("Steroid Profile130")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 73)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Steroids130")
+            }
+
+            EventSteroidUserAction.Action.INCREASE_150 -> {
+                sendSms("Steroids 130% are ON.. press to increase? to 150")
+                switchProfileIfNeeded("Steroid Profile150")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 74)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Steroids150")
+            }
+
+            EventSteroidUserAction.Action.INCREASE_190 -> {
+                sendSms("Steroids 150% are ON.. press to increase? to 190")
+                switchProfileIfNeeded("Current Profile190Real")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 75)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Steroids190")
+            }
+
+            EventSteroidUserAction.Action.INCREASE_250 -> {
+                sendSms("Steroids 190% are ON.. press to increase? to 250")
+                switchProfileIfNeeded("Current ProfileReal250")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 76)
+                setBgAccelIsfWeight(0.70)
+                addCarePortalNote("Steroids250")
+            }
+
+            EventSteroidUserAction.Action.TURN_OFF -> {
+                switchProfileIfNeeded("Current ProfileReal")
+                sendSms("Steroids are ON.. press to turn OFF? 71_0.71")
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
+                setBgAccelIsfWeight(0.71)
+                setAutomationState("Steroids", "Steroids Off")
+                addCarePortalNote("SteroidsOff")
+            }
+        }
         rxBus.send(EventRefreshOverview("Steroid Kotlin button", true))
     }
 
@@ -1095,6 +1176,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "LibreUkf1ToggleTT" -> 5.152
         "LibreUkf2ToggleTT" -> 5.154
         "SensorAgeCodeToggleTT" -> 5.156
+        "MjKotlinButtonsToggleTT" -> 5.164
+        "SteroidKotlinButtonToggleTT" -> 5.166
         else -> null
     }
 
@@ -2324,6 +2407,71 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             handleDirectSteroidUserAction(directMenu = true)
             markRun("SteroidStartActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease130ActionTT", 2) && activeTtNear(5.168, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_130,
+                directMenu = true
+            )
+            markRun("SteroidIncrease130ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease150ActionTT", 2) && activeTtNear(5.170, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_150,
+                directMenu = true
+            )
+            markRun("SteroidIncrease150ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease190ActionTT", 2) && activeTtNear(5.172, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_190,
+                directMenu = true
+            )
+            markRun("SteroidIncrease190ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease250ActionTT", 2) && activeTtNear(5.174, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_250,
+                directMenu = true
+            )
+            markRun("SteroidIncrease250ActionTT")
+        }
+
+        if (readyToRun("SteroidTurnOffActionTT", 2) && activeTtNear(5.176, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.TURN_OFF,
+                directMenu = true
+            )
+            markRun("SteroidTurnOffActionTT")
+        }
+
+        if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("MJ Kotlin buttons: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("MJB${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("MJ Kotlin buttons toggled", true))
+            markRun("MjKotlinButtonsToggleTT")
+        }
+
+        if (readyToRun("SteroidKotlinButtonToggleTT", 2) && activeTtNear(5.166, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Steroid Kotlin button: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("StB${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Steroid Kotlin button toggled", true))
+            markRun("SteroidKotlinButtonToggleTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log

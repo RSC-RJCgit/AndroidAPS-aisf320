@@ -816,13 +816,221 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     }
                 }
             }
+            val steroid130ButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                    profileName == "Steroid Profile110" &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("Steroids") == "SteroidsON"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroid130ButtonAllowed) {
+                val title = "Steroids 110% are ON.. press to increase? to 130"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable {
+                                    rxBus.send(
+                                        EventSteroidUserAction(
+                                            action = EventSteroidUserAction.Action.INCREASE_130
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
+            val steroid150ButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                    profileName == "Steroid Profile130" &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("Steroids") == "SteroidsON" &&
+                            automationStateService.getState("MJ") == "NOMJremains"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroid150ButtonAllowed) {
+                val title = "Steroids 130% are ON.. press to increase? to 150"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable {
+                                    rxBus.send(
+                                        EventSteroidUserAction(
+                                            action = EventSteroidUserAction.Action.INCREASE_150
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
+            val steroid190ButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                    profileName == "Steroid Profile150" &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("Steroids") == "SteroidsON" &&
+                            automationStateService.getState("MJ") == "NOMJremains"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroid190ButtonAllowed) {
+                val title = "Steroids 150% are ON.. press to increase? to 190"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable {
+                                    rxBus.send(
+                                        EventSteroidUserAction(
+                                            action = EventSteroidUserAction.Action.INCREASE_190
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
+            val steroid250ButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                    profileName == "Current Profile190Real" &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("Steroids") == "SteroidsON" &&
+                            automationStateService.getState("MJ") == "NOMJremains"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroid250ButtonAllowed) {
+                val title = "Steroids 190% are ON.. press to increase? to 250"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable {
+                                    rxBus.send(
+                                        EventSteroidUserAction(
+                                            action = EventSteroidUserAction.Action.INCREASE_250
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
+            val steroidOffButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("Steroids") == "SteroidsON" &&
+                            automationStateService.getState("MJ") == "NOMJremains"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroidOffButtonAllowed) {
+                val title = "Steroids are ON..or restart over 8.0 .turn OFF?"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable {
+                                    rxBus.send(
+                                        EventSteroidUserAction(
+                                            action = EventSteroidUserAction.Action.TURN_OFF
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
             val events = automation.userEvents()
             if (!loop.runningMode.isSuspended() && pump.isInitialized() && profile != null && !config.showUserActionsOnWatchOnly())
                 for (event in events)
                     if (event.isEnabled && event.canRun() && !(
                             preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
                                 event.title.lowercase(Locale.ROOT).replace(" ", "").let { title ->
-                                    title.contains("steroidsareoff") && title.contains("turnsteroidson")
+                                    (title.contains("steroidsareoff") && title.contains("turnsteroidson")) ||
+                                        (title.contains("steroids110") && title.contains("increase") && title.contains("130")) ||
+                                        (title.contains("steroids130") && title.contains("increase") && title.contains("150")) ||
+                                        (title.contains("steroids150") && title.contains("increase") && title.contains("190")) ||
+                                        (title.contains("steroids190") && title.contains("increase") && title.contains("250")) ||
+                                        (title.contains("steroidsareon") && title.contains("turnoff"))
                                 }
                             )) {
                         context?.let { context ->
@@ -1027,7 +1235,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private enum class BasalDirectAction(val label: String, val clientRelayMmol: Double) {
         MJ_START("MJ start", 5.158),
         MJ_RESTORE("MJ restore", 5.160),
-        STEROID_START("Steroid start", 5.162)
+        STEROID_START("Steroid start", 5.162),
+        MJ_BUTTONS_TOGGLE("MJ Kotlin buttons on/off", 5.164),
+        STEROID_BUTTON_TOGGLE("Steroid Kotlin button on/off", 5.166),
+        STEROID_INCREASE_130("Steroid increase 110 to 130", 5.168),
+        STEROID_INCREASE_150("Steroid increase 130 to 150", 5.170),
+        STEROID_INCREASE_190("Steroid increase 150 to 190", 5.172),
+        STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
+        STEROID_TURN_OFF("Steroids OFF", 5.176)
     }
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
@@ -1043,6 +1258,50 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
                 BasalDirectAction.STEROID_START ->
                     rxBus.send(EventSteroidUserAction(directMenu = true))
+
+                BasalDirectAction.STEROID_INCREASE_130 ->
+                    rxBus.send(
+                        EventSteroidUserAction(
+                            action = EventSteroidUserAction.Action.INCREASE_130,
+                            directMenu = true
+                        )
+                    )
+
+                BasalDirectAction.STEROID_INCREASE_150 ->
+                    rxBus.send(
+                        EventSteroidUserAction(
+                            action = EventSteroidUserAction.Action.INCREASE_150,
+                            directMenu = true
+                        )
+                    )
+
+                BasalDirectAction.STEROID_INCREASE_190 ->
+                    rxBus.send(
+                        EventSteroidUserAction(
+                            action = EventSteroidUserAction.Action.INCREASE_190,
+                            directMenu = true
+                        )
+                    )
+
+                BasalDirectAction.STEROID_INCREASE_250 ->
+                    rxBus.send(
+                        EventSteroidUserAction(
+                            action = EventSteroidUserAction.Action.INCREASE_250,
+                            directMenu = true
+                        )
+                    )
+
+                BasalDirectAction.STEROID_TURN_OFF ->
+                    rxBus.send(
+                        EventSteroidUserAction(
+                            action = EventSteroidUserAction.Action.TURN_OFF,
+                            directMenu = true
+                        )
+                    )
+
+                BasalDirectAction.MJ_BUTTONS_TOGGLE,
+                BasalDirectAction.STEROID_BUTTON_TOGGLE ->
+                    rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
             }
         }
     }
