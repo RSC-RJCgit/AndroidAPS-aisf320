@@ -266,6 +266,9 @@ class GraphData @Inject constructor(
             maxY = overviewData.maxBgValue
         }
         addSeries(overviewData.rawBgSmoothedSeries as LineGraphSeries<*>)
+        // With UKF2 this is the original LibreSpecial EMA immediately before UKF; otherwise empty.
+        // It shares this graph selection so no saved chart-menu ordinals/configurations are disturbed.
+        addSeries(overviewData.libreSpecialPreUkfSeries as LineGraphSeries<*>)
     }
 
     fun addBgParabola(addPredictions: Boolean, scale: Double) {

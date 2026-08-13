@@ -193,6 +193,25 @@ class PrepareBgDataWorker(
             LineGraphSeries<DataPoint>()
         }
 
+        // UKF2 comparison trace: the exact original LibreSpecial EMA values immediately before the
+        // full-history UKF. Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
+        data.overviewData.libreSpecialPreUkfSeries =
+            if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)) {
+                val points = ukfSmoothing.libreSpecialPreUkfHistory(fromTime, toTime)
+                    .map { (timestamp, mgdl) ->
+                        DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
+                    }
+                LineGraphSeries(points.toTypedArray()).also {
+                    it.setCustomPaint(Paint().also { paint ->
+                        paint.style = Paint.Style.STROKE
+                        paint.strokeWidth = 4f
+                        paint.color = android.graphics.Color.parseColor("#66BB6A")
+                    })
+                }
+            } else {
+                LineGraphSeries<DataPoint>()
+            }
+
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.
         val latest = data.overviewData.bgReadingsArray.firstOrNull()
