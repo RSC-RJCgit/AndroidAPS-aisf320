@@ -173,10 +173,9 @@ class PrepareBgDataWorker(
         // computeUkfRawBgl() (the persisted AIV value/exporter delta columns), for consistency.
         data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
             val newestFirst = rawReadings.sortedByDescending { it.timestamp }
-            val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-            val smoothedMgdl = if (useLibreSpecial)
-                newestFirst.map { it.value }
-            else ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
+            // UKFraw is always an independent view of the raw/noise signal. Live UKF1/UKF2 selection
+            // changes the AAPS dosing BGL only and must never substitute that stored value here.
+            val smoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
             val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
             }.asReversed() // back to ascending time order for the line series
@@ -558,11 +557,9 @@ class PrepareBgDataWorker(
     private fun ukfFiveMinuteDelta(readings: List<GV>): Pair<Double, Double>? {
         if (readings.size < 2) return null
         val newestFirst = readings.sortedByDescending { it.timestamp }
-        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-        if (!useLibreSpecial && newestFirst.any { it.noise == null }) return null
-        val smoothedMgdl = if (useLibreSpecial)
-            newestFirst.map { it.value }
-        else ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
+        if (newestFirst.any { it.noise == null }) return null
+        // Same independent raw/noise batch pass as rawBgSmoothedSeries in every live UKF mode.
+        val smoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
         val newest = newestFirst.first()
         val target = newest.timestamp - 5 * 60_000L
         var bestIdx = -1

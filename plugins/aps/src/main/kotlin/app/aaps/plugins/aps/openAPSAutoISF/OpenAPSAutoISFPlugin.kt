@@ -447,15 +447,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun ukfRawMetrics(): UkfRawMetrics {
         val now = dateUtil.now()
-        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
-            .filter { if (useLibreSpecial) it.value > 10.0 else it.noise != null && it.noise!! > 10.0 }
+            .filter { it.noise != null && it.noise!! > 10.0 }
             .sortedByDescending { it.timestamp }
         if (readings.isEmpty()) return UkfRawMetrics(null, null, null)
 
-        val smoothed = if (useLibreSpecial)
-            readings.map { it.value }
-        else ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        // Always independent raw/noise UKF, regardless of whether live AAPS BGL is EMA, UKF1 or UKF2.
+        val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
         if (smoothed.isEmpty()) return UkfRawMetrics(null, null, null)
         val rawG = smoothed[0]
         val rawD1 = if (smoothed.size >= 2) {
@@ -1172,6 +1170,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
+
+        // Phone-storage warning is independent of the custom-automation master switch. The graph
+        // announcement is also a persisted Treatments/Notes entry, so one event provides both the
+        // requested main-graph notification and its note. Fire once per low-storage episode, then
+        // re-arm only after recovery above 10.5 GiB to avoid chatter around the 10 GiB threshold.
+        run {
+            val bytesPerGiB = 1024.0 * 1024.0 * 1024.0
+            val freeBytes = context.filesDir.usableSpace
+            val freeGiB = freeBytes / bytesPerGiB
+            val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
+            when {
+                freeBytes > 0L && freeGiB < 10.0 && !notified -> {
+                    val note = String.format(Locale.US, "StorageLow %.1fGB free", freeGiB)
+                    addGraphAnnouncement(note)
+                    preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
+                }
+
+                freeGiB >= 10.5 && notified ->
+                    preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
+            }
+        }
 
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 
@@ -4485,7 +4504,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val smbDelta1Raw = if (useUkfRawForSmb) smbUkfRaw?.delta1 else rawDelta1Raw
         val smbDelta5Raw = if (useUkfRawForSmb) smbUkfRaw?.delta5 else rawDelta5Raw
         consoleLog.add(
-            "SMB raw source=${if (useUkfLibreSpecial) "UKFLIBRE" else if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
+            "SMB raw source=${if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
         )
 
         determineBasalAutoISF.determine_basal(
@@ -4654,15 +4673,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // uses -- so this never touches the live BG smoothing pipeline's own persisted/adaptive state either.
     private fun computeUkfRawBgl(): Double {
         val lookbackMs = T.mins(60).msecs()
-        val useLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
         val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(dateUtil.now() - lookbackMs, dateUtil.now(), false)
-            .filter { if (useLibreSpecial) it.value > 10.0 else it.noise != null && it.noise!! > 10.0 }
+            .filter { it.noise != null && it.noise!! > 10.0 }
             .sortedByDescending { it.timestamp }
         if (rawReadings.isEmpty()) return 0.0
         // Newest-first in, newest-first out (see smoothForDisplay()'s own contract) -- index 0 is the
-        // smoothed value for the most recent reading, i.e. "right now."
-        return if (useLibreSpecial) rawReadings.first().value
-        else ukfSmoothing.smoothForDisplay(rawReadings.map { it.timestamp to it.noise!! }).firstOrNull() ?: 0.0
+        // smoothed raw/noise value for "right now", independent of the live AAPS BGL mode.
+        return ukfSmoothing.smoothForDisplay(rawReadings.map { it.timestamp to it.noise!! }).firstOrNull() ?: 0.0
     }
 
     override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)
