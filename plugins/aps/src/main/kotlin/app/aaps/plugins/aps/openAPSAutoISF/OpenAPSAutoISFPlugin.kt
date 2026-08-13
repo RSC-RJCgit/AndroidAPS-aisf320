@@ -1182,7 +1182,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
             when {
                 freeBytes > 0L && freeGiB < 10.0 && !notified -> {
-                    val note = String.format(Locale.US, "StorageLow %.1fGB free", freeGiB)
+                    val note = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
                     uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
                     sendSms(note)
                     addCarePortalNote(note)
@@ -1196,7 +1196,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lastHandled = preferences.get(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt)
             val searchFrom = if (lastHandled > 0L) lastHandled + 1L else dateUtil.now() - T.days(7).msecs()
             val receivedNote = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, false)
-                .filter { it.isValid && it.timestamp > lastHandled && it.note?.startsWith("StorageLow ") == true }
+                .filter {
+                    val note = it.note.orEmpty()
+                    it.isValid && it.timestamp > lastHandled && (note.startsWith("StLow ") || note.startsWith("StorageLow "))
+                }
                 .maxByOrNull { it.timestamp }
             receivedNote?.let {
                 val note = it.note ?: return@let
@@ -5686,5 +5689,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_571
+OpenAPSAutoISFPlugin.ktaisf321_572
 */
