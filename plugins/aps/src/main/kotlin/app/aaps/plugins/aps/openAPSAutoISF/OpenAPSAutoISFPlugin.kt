@@ -63,6 +63,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
+import app.aaps.core.interfaces.rx.events.EventSteroidUserAction
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.Sms
@@ -255,6 +256,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .subscribe({ handleDirectMjUserAction(it.action) }) {
                 aapsLogger.error(LTag.APS, "Direct MJ Kotlin button failed", it)
             }
+        mjUserActionDisposable += rxBus
+            .toObservable(EventSteroidUserAction::class.java)
+            .observeOn(Schedulers.io())
+            .subscribe({ handleDirectSteroidUserAction() }) {
+                aapsLogger.error(LTag.APS, "Direct Steroid Kotlin button failed", it)
+            }
     }
 
     override fun onStop() {
@@ -295,6 +302,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
                 setAutomationState("MJ", "MJ active")
+                addCarePortalNote("MJ active")
             }
 
             EventMjUserAction.Action.RESTORE -> {
@@ -303,10 +311,39 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setAutomationState("MJ", "NOMJremains")
-                addCarePortalNote("NOMJremains", 0)
+                addCarePortalNote("NOMJremains")
             }
         }
         rxBus.send(EventRefreshOverview("MJ Kotlin button", true))
+    }
+
+    /** Kotlin-only port of the native Steroids-ON user action, including its original conditions. */
+    private fun handleDirectSteroidUserAction() {
+        if (!preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) ||
+            !preferences.get(BooleanKey.AutomationStatesEnabled)
+        ) return
+
+        val conditionStillMatches = try {
+            isTimeBetween(6, 0, 0, 0) &&
+                automationStateService.inState("MJ", "NOMJremains") &&
+                automationStateService.inState("Steroids", "Steroids Off")
+        } catch (e: IllegalStateException) {
+            aapsLogger.error(LTag.APS, "Direct Steroid button cannot read automation states", e)
+            false
+        }
+        if (!conditionStillMatches) {
+            aapsLogger.info(LTag.APS, "Direct Steroid button ignored because its conditions changed before execution")
+            rxBus.send(EventRefreshOverview("Steroid Kotlin state changed", true))
+            return
+        }
+
+        sendSms("Turn SteroidsON")
+        setAutomationState("Steroids", "SteroidsON")
+        switchProfileIfNeeded("Steroid Profile110")
+        preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
+        setBgAccelIsfWeight(0.70)
+        addCarePortalNote("SteroidsON")
+        rxBus.send(EventRefreshOverview("Steroid Kotlin button", true))
     }
 
     // irrelevant here but gets called by other profile functions and must be TRUE; otherwise averageISF falls back to profile sens
@@ -851,7 +888,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             source = Sources.Automation, // matches ActionCarePortalEvent, which your working automations use
             note = "AutoISF code-based note",
             listValues = listOf(ValueWithUnit.SimpleString(note))
-        ).subscribe()
+        ).subscribe(
+            { rxBus.send(EventRefreshOverview("AutoISF CarePortal note", true)) },
+            { error -> aapsLogger.error(LTag.APS, "Failed to save AutoISF CarePortal note: $note", error) }
+        )
     }
     private fun todOffsetCarePortalNote(value: Double): String {
         val roundedValue = round(value, 1).let { if (it == 0.0) 0.0 else it }
@@ -2567,7 +2607,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // clearly-normal state, restore iobTH to the usual 70% whenever it has dropped to 50% or below.
         //  - rescues from <= 50% (bumps 12/15/16/18/…/50 up to 70; leaves intentional 51+ alone)
         //  - requires profile 100%, LowBG=NO50rec (not in a back-off), no active TT, Steroids Off,
-        //    BGL >= 6.5 mmol and not falling. 30-min throttle.
+        //  - runs 08:00-22:00 only; EvCap owns 22:00-midnight, so the two cannot raise/lower iobTH
+        //    against each other. BGL >= 6.5 mmol and not falling. 30-min throttle.
         if (readyToRun("iobTHDaytimeFloor", 30)
             && isTimeBetween(8, 0, 22, 0)
             && profile_percentage == 100
@@ -4059,7 +4100,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // while MJ is still clear, then flips to a higher iobTH floor once MJ goes active overnight.
         // No live-pump gate: the original's Note field described a recent MJ-state change, not a
         // virtual-pump restriction.
-        // --- EveningIobCeiling: caps iobTH at 45% through the evening, independent of BGL direction ---
+        // --- EveningIobCeiling: caps iobTH at 45% from 22:00 to midnight, independent of BGL direction ---
         // Motivated by 27 Jul 2026 21:48-21:59: nine SMBs ~60s apart took IOB 3.02 -> 4.56 at BG 10.7-11.3,
         // and BG then fell to 3.8 by 04:38. Nothing stopped it -- the iobTH actually in force was 6.65-7.32U
         // (~70-77% of max_iob), roughly 2U above where the harm occurred, and EveningTH could not fire
@@ -4076,7 +4117,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 15) by raising it back up. Window ends at midnight rather than running into the small hours,
         // specifically to avoid overlapping MJrec (00:00-08:00), which sets iobTH to 70 -- the two would
         // otherwise contradict each other every cycle in the 00:00-01:00 overlap.
-        if (readyToRun("EveningIobCeiling", 5) && isTimeBetween(20, 0, 0, 0) && iobThresholdPercent > 45) {
+        if (readyToRun("EveningIobCeiling", 5)
+            && isTimeBetween(22, 0, 0, 0)
+            && checkAutomationState("MJ", "NOMJremains")
+            && iobThresholdPercent > 45
+        ) {
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
             sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> 45")
             addCarePortalNote("EvCap")
@@ -5645,6 +5690,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             key = "openapsautoisf_settings"
             title = rh.gs(R.string.openaps_auto_isf)
             initialExpandedChildrenCount = 0
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, summary = R.string.mj_kotlin_buttons_enabled_summary, title = R.string.mj_kotlin_buttons_enabled_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))

@@ -937,7 +937,9 @@ class BolusWizard @Inject constructor(
     // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
     // an explicit stop press, OR by a newer bolus/carbs entry superseding this schedule — see
     // ScheduledDoseSupersession), profile% still >=100, pump not suspended, AND a live BG safety check
-    // (>=7.0mmol, not falling on either delta) — any failure cancels all further parts. SMBs are never
+    // (>=7.0mmol, not falling on either delta). An unsafe BG result is checked at three consecutive
+    // split intervals: the first two unsafe checks defer the part by another full configured interval;
+    // only the third consecutive unsafe check cancels all further parts. SMBs are never
     // blocked (the old equal-parts/SplitBolusBlockSmbUntil mode is gone entirely).
     //
     // Dose sizing is IOB-delta driven: iobBaselineForNextGap is "IOB right before the previous dose was
@@ -952,12 +954,13 @@ class BolusWizard @Inject constructor(
     // FIRST call (computed once, threaded unchanged through every recursive call) — past that, a stale
     // bolus intent gets abandoned for good rather than firing hours later into a very different
     // situation. The hard-stop conditions above (explicit cancel, superseded, profile switch, pump
-    // unavailable, superbolus, and a genuinely unsafe BG reading) are NOT subject to this deadline —
-    // those end the schedule immediately, same as before.
+    // unavailable and superbolus) end the schedule immediately. A genuinely unsafe BG reading is
+    // allowed the three interval checks described above, still bounded by the same overall deadline.
     private fun scheduleReducedPartsSplitBolus(
         remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
-        retryDeadline: Long = dateUtil.now() + T.mins(60).msecs()
+        retryDeadline: Long = dateUtil.now() + T.mins(60).msecs(),
+        consecutiveUnsafeChecks: Int = 0
     ) {
         if (remainingResidual <= 0) return
         val pollMs = T.mins(2).msecs()
@@ -991,7 +994,10 @@ class BolusWizard @Inject constructor(
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
-                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, deliverAt, retryDeadline)
+                scheduleReducedPartsSplitBolus(
+                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
+                    deliverAt, retryDeadline, consecutiveUnsafeChecks
+                )
                 return@postDelayed
             }
             if (dateUtil.now() > retryDeadline) {
@@ -1004,18 +1010,43 @@ class BolusWizard @Inject constructor(
             // into two cases: missing/stale data (gs == null, e.g. a sensor gap >7min — see
             // GlucoseStatusCalculatorAutoIsf's allowOldData cutoff) is a DATA problem, not a safety
             // veto — retry shortly rather than losing the residual to a transient gap. An actual unsafe
-            // reading (BG low or falling) stays a hard, permanent cancel: retrying to deliver more
-            // insulin while already low/falling would be actively dangerous, unlike the no-data case.
+            // reading (BG low or falling) advances the consecutive interval counter below; it cancels
+            // only when it is still unsafe at the third configured split interval.
             val gs = glucoseStatusProvider.glucoseStatusData
             if (gs == null) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: no fresh glucose data — retrying in 2min, remaining ${remainingResidual}U")
-                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(2).msecs(), retryDeadline)
+                scheduleReducedPartsSplitBolus(
+                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
+                    dateUtil.now() + T.mins(2).msecs(), retryDeadline, consecutiveUnsafeChecks
+                )
                 return@postDelayed
             }
             val bgUnsafe = gs.glucose < 126.1 /* 7.0 mmol */ || gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */
             if (bgUnsafe) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: BG unsafe (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U")
-                cancelDoseNote(remainingResidual, "BG safety check failed")
+                val unsafeCheckNumber = consecutiveUnsafeChecks + 1
+                if (unsafeCheckNumber < 3) {
+                    aapsLogger.info(
+                        LTag.CORE,
+                        "ReducedSplitBolus: BG unsafe check $unsafeCheckNumber/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
+                    )
+                    scheduleReducedPartsSplitBolus(
+                        remainingResidual,
+                        previousPartDose,
+                        iobBaselineForNextGap,
+                        intervalMins,
+                        schedulingPct,
+                        myScheduleToken,
+                        dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
+                        retryDeadline,
+                        unsafeCheckNumber
+                    )
+                    return@postDelayed
+                }
+                aapsLogger.info(
+                    LTag.CORE,
+                    "ReducedSplitBolus: BG unsafe check 3/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U"
+                )
+                cancelDoseNote(remainingResidual, "BG safety check failed 3 consecutive intervals")
                 return@postDelayed
             }
             val liveIob = currentTotalIob()

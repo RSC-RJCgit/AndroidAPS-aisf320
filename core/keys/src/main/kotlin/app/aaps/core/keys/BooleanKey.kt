@@ -67,6 +67,8 @@ enum class BooleanKey(
     ApsAutoIsfCustomAutomationsEnabled("autoisf_custom_automations_enabled", true),
     // Shows the two direct Kotlin MJ buttons on Overview. Independent of native Automation events.
     ApsAutoIsfMjKotlinButtonsEnabled("autoisf_mj_kotlin_buttons_enabled", true),
+    // Shows the direct Kotlin Steroids-ON button on Overview. Independent of native Automation events.
+    ApsAutoIsfSteroidKotlinButtonEnabled("autoisf_steroid_kotlin_button_enabled", true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),

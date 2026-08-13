@@ -82,6 +82,7 @@ import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventRunningModeChange
 import app.aaps.core.interfaces.rx.events.EventScale
+import app.aaps.core.interfaces.rx.events.EventSteroidUserAction
 import app.aaps.core.interfaces.rx.events.EventTempBasalChange
 import app.aaps.core.interfaces.rx.events.EventTempTargetChange
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewCalcProgress
@@ -128,6 +129,7 @@ import com.jjoe64.graphview.GraphView
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -734,10 +736,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled) &&
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
-                    !loop.runningMode.isSuspended() &&
-                    pump.isInitialized() &&
-                    profile != null &&
-                    !config.showUserActionsOnWatchOnly() &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
                     } catch (_: Exception) {
@@ -780,10 +778,52 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     }
                 }
             }
+            // Direct Kotlin port of the native "Steroids are Off? Turn Steroids ON" user action.
+            // This deliberately has no live/virtual-pump restriction, so it is also available on
+            // aapsVirtual. The exact native conditions are reproduced here and checked again by AutoISF.
+            val steroidButtonAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= 6 &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
+                            automationStateService.getState("MJ") == "NOMJremains" &&
+                            automationStateService.getState("Steroids") == "Steroids Off"
+                    } catch (_: Exception) {
+                        false
+                    }
+            if (steroidButtonAllowed) {
+                val title = "Steroids are Off? Turn Steroids ON"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable { rxBus.send(EventSteroidUserAction()) }
+                            )
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
             val events = automation.userEvents()
             if (!loop.runningMode.isSuspended() && pump.isInitialized() && profile != null && !config.showUserActionsOnWatchOnly())
                 for (event in events)
-                    if (event.isEnabled && event.canRun()) {
+                    if (event.isEnabled && event.canRun() && !(
+                            preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                                event.title.lowercase(Locale.ROOT).replace(" ", "").let { title ->
+                                    title.contains("steroidsareoff") && title.contains("turnsteroidson")
+                                }
+                            )) {
                         context?.let { context ->
                             SingleClickButton(context, null, app.aaps.core.ui.R.attr.customBtnStyle).also {
                                 it.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.userOptionColor))
