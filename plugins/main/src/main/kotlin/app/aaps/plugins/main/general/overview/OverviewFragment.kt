@@ -70,6 +70,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAcceptOpenLoopChange
+import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
 import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
@@ -1021,6 +1022,74 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // at tap time, so the detector itself doesn't need to be rebuilt each refresh just to close over a
     // fresh value.
     private var iobDialogTextCached = ""
+    private var basalDialogTextCached = ""
+
+    private enum class BasalDirectAction(val label: String, val clientRelayMmol: Double) {
+        MJ_START("MJ start", 5.158),
+        MJ_RESTORE("MJ restore", 5.160),
+        STEROID_START("Steroid start", 5.162)
+    }
+
+    private fun runBasalDirectAction(action: BasalDirectAction) {
+        if (config.AAPSCLIENT) {
+            setRelayTt(action.clientRelayMmol, "basal double-tap action")
+        } else {
+            when (action) {
+                BasalDirectAction.MJ_START ->
+                    rxBus.send(EventMjUserAction(EventMjUserAction.Action.START, directMenu = true))
+
+                BasalDirectAction.MJ_RESTORE ->
+                    rxBus.send(EventMjUserAction(EventMjUserAction.Action.RESTORE, directMenu = true))
+
+                BasalDirectAction.STEROID_START ->
+                    rxBus.send(EventSteroidUserAction(directMenu = true))
+            }
+        }
+    }
+
+    private val basalGestureDetector by lazy {
+        android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.basal), basalDialogTextCached) }
+                return true
+            }
+
+            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                activity?.let { act ->
+                    val entries = BasalDirectAction.values().toList()
+                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
+                        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                            val tv = convertView as? TextView ?: TextView(act).apply {
+                                setPadding(24, 8, 24, 8)
+                                textSize = 15f
+                            }
+                            tv.text = getItem(position)
+                            return tv
+                        }
+                    }
+                    androidx.appcompat.app.AlertDialog.Builder(act)
+                        .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" else "Direct actions")
+                        .setAdapter(adapter) { _, which ->
+                            val action = entries[which]
+                            OKDialog.showConfirmation(
+                                act,
+                                rh.gs(R.string.run_question, action.label),
+                                Runnable { runBasalDirectAction(action) }
+                            )
+                        }
+                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                        .show()
+                }
+                return true
+            }
+
+            override fun onLongPress(e: android.view.MotionEvent) {
+                PointsWithLabelGraphSeries.basalToggleIndex += 1
+                PointsWithLabelGraphSeries.carbLine1QuickShow = PointsWithLabelGraphSeries.basalToggleIndex != 0
+                rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
+            }
+        })
+    }
 
     // Created ONCE (not per-refresh) — double-tap detection needs the same detector instance to see
     // both taps of a pair. Rebuilding it inside updateIobCob()'s periodic refresh meant a refresh
@@ -1052,7 +1121,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         }
                     }
                     androidx.appcompat.app.AlertDialog.Builder(act)
-                        .setTitle("TT remote-trigger codes — tap to set")
+                        .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" else "Direct AutoISF settings")
                         .setAdapter(adapter) { _, which ->
                             // The mmol number (and, for Stepped, which direction) only ever surface here,
                             // never in the outer list -- picking a button both chooses and confirms.
@@ -1060,7 +1129,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 is TtCode.Single  ->
                                     androidx.appcompat.app.AlertDialog.Builder(act)
                                         .setTitle(entry.label)
-                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> setTt(entry.value) }
+                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
                                         .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
                                         .show()
 
@@ -1089,8 +1158,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                         .setView(container)
                                         .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                                             when {
-                                                downBox.isChecked -> setTt(entry.down)
-                                                upBox.isChecked   -> setTt(entry.up)
+                                                downBox.isChecked -> applyTtControl(entry.down)
+                                                upBox.isChecked   -> applyTtControl(entry.up)
                                                 // Neither checked: OK with no selection is a no-op, not an error.
                                             }
                                         }
@@ -1234,18 +1303,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.baseBasal.text = temporaryBasalText
             binding.infoLayout.baseBasal.setTextColor(temporaryBasalColor)
             binding.infoLayout.baseBasalIcon.setImageResource(temporaryBasalIcon)
-            binding.infoLayout.basalLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.basal), temporaryBasalDialogText) } }
-            binding.infoLayout.basalLayout.setOnLongClickListener {
-                // Cycles 3 presets: 0=arrowheads on/normal colors/transparent noisy line,
-                // 1=arrowheads off/normal colors/opaque noisy line, 2=arrowheads off/uniform green/opaque noisy line.
-                PointsWithLabelGraphSeries.basalToggleIndex += 1
-                // Line1 (Carbs Absorption) quick show/hide: this is a direct push0/1/2 ACTION (this
-                // specific long-press just landed on this value), not a passive read of the counter's
-                // current state -- see carbLine1QuickShow's own doc comment for why that distinction
-                // matters (the IOB icon's long-press also resets basalToggleIndex to 0, but must NOT be
-                // treated as a push0 press for this purpose).
-                PointsWithLabelGraphSeries.carbLine1QuickShow = PointsWithLabelGraphSeries.basalToggleIndex != 0
-                rxBus.send(EventRefreshOverview("toggleBglArrowheads", now = true))
+            basalDialogTextCached = temporaryBasalDialogText
+            binding.infoLayout.basalLayout.setOnTouchListener { _, event ->
+                basalGestureDetector.onTouchEvent(event)
                 true
             }
         }
@@ -1318,12 +1378,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String) : TtCode(label)
     }
 
-    // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. Tapping an entry creates a real TT at
-    // that mmol value (see setTt() below) rather than applying the change directly — the AutoISF cycle
-    // picks it up and cancels the TT itself, same as manually typing the value into AAPS's own TT-entry
-    // UI. Setting a real TT (not a direct preference write from here) is deliberate: it's the only
-    // mechanism that also works remotely from an AAPSClient follower device, since preferences
-    // themselves never sync but a TT does.
+    // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. On a pump or Virtual build the chosen
+    // handler runs locally without a TT and without its two-minute repeat guard. AAPSClient alone
+    // creates the matching TT because preferences do not sync; the pump receives that relay, applies
+    // the setting, cancels the TT, and retains the two-minute relay guard.
     // Abbreviated for narrow-phone display: weight->Wt, SMB delivery->SMBdel, boost->Bst, normal->N,
     // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
     private fun ttCodesList(): List<TtCode> = listOf(
@@ -1374,10 +1432,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Single("Run SensorAge code on/off", 5.156)
     )
 
-    // Creates a real 5-min TT at exactly [mmol] — long enough for the AutoISF cycle to detect it via
-    // activeTtNear() and act on it within its own throttle; the matching *TT block then cancels the TT
-    // itself, so this never lingers as an actual target.
-    private fun setTt(mmol: Double) {
+    // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
+    // create the relay TT; Client does not alter its own local setting.
+    private fun applyTtControl(mmol: Double) {
+        if (config.AAPSCLIENT) {
+            setRelayTt(mmol, "IOB double-tap settings")
+        } else {
+            rxBus.send(EventAutoIsfDirectTtCode(mmol))
+        }
+    }
+
+    private fun setRelayTt(mmol: Double, origin: String) {
         val mgdl = mmol * app.aaps.core.data.configuration.Constants.MMOLL_TO_MGDL
         val tt = TT(
             timestamp = dateUtil.now(),
@@ -1390,7 +1455,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             temporaryTarget = tt,
             action = Action.TT,
             source = Sources.TTDialog,
-            note = "TT code $mmol (IOB double-tap list)",
+            note = "TT code $mmol ($origin)",
             listValues = listOf(
                 ValueWithUnit.TETTReason(TT.Reason.CUSTOM),
                 ValueWithUnit.Mgdl(mgdl),

@@ -62,6 +62,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
 import app.aaps.core.interfaces.rx.events.EventSteroidUserAction
 import app.aaps.core.interfaces.rx.events.EventNewNotification
@@ -215,6 +216,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val disposable = CompositeDisposable()
     private val mjUserActionDisposable = CompositeDisposable()
+    @Volatile private var pendingDirectTtCode: Double? = null
+    @Volatile private var directTtCodeMatchActive = false
 
     // create array for key AutoISF results with defaults
     var autoIsfValues = AIV(
@@ -253,14 +256,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         mjUserActionDisposable += rxBus
             .toObservable(EventMjUserAction::class.java)
             .observeOn(Schedulers.io())
-            .subscribe({ handleDirectMjUserAction(it.action) }) {
+            .subscribe({ handleDirectMjUserAction(it.action, it.directMenu) }) {
                 aapsLogger.error(LTag.APS, "Direct MJ Kotlin button failed", it)
             }
         mjUserActionDisposable += rxBus
             .toObservable(EventSteroidUserAction::class.java)
             .observeOn(Schedulers.io())
-            .subscribe({ handleDirectSteroidUserAction() }) {
+            .subscribe({ handleDirectSteroidUserAction(it.directMenu) }) {
                 aapsLogger.error(LTag.APS, "Direct Steroid Kotlin button failed", it)
+            }
+        mjUserActionDisposable += rxBus
+            .toObservable(EventAutoIsfDirectTtCode::class.java)
+            .subscribe({ event ->
+                if (!config.AAPSCLIENT) {
+                    pendingDirectTtCode = event.mmol
+                    aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
+                }
+            }) {
+                aapsLogger.error(LTag.APS, "Direct AutoISF settings control failed", it)
             }
     }
 
@@ -273,8 +286,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
      * Executes the direct Overview MJ buttons without AutomationEvent/Action objects. The state is
      * checked again here after confirmation so a stale visible button cannot run the wrong branch.
      */
-    private fun handleDirectMjUserAction(action: EventMjUserAction.Action) {
-        if (!preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled) ||
+    private fun handleDirectMjUserAction(action: EventMjUserAction.Action, directMenu: Boolean = false) {
+        if ((!directMenu && !preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) ||
+            (directMenu && config.AAPSCLIENT) ||
             !preferences.get(BooleanKey.AutomationStatesEnabled)
         ) return
 
@@ -284,9 +298,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.error(LTag.APS, "Direct MJ button cannot read State MJ", e)
             return
         }
-        val conditionStillMatches =
+        val conditionStillMatches = directMenu ||
             (action == EventMjUserAction.Action.START && nomjRemains) ||
-                (action == EventMjUserAction.Action.RESTORE && !nomjRemains)
+            (action == EventMjUserAction.Action.RESTORE && !nomjRemains)
         if (!conditionStillMatches) {
             aapsLogger.info(LTag.APS, "Direct MJ button ignored because State MJ changed before execution")
             rxBus.send(EventRefreshOverview("MJ Kotlin state changed", true))
@@ -318,12 +332,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     /** Kotlin-only port of the native Steroids-ON user action, including its original conditions. */
-    private fun handleDirectSteroidUserAction() {
-        if (!preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) ||
+    private fun handleDirectSteroidUserAction(directMenu: Boolean = false) {
+        if ((!directMenu && !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) ||
+            (directMenu && config.AAPSCLIENT) ||
             !preferences.get(BooleanKey.AutomationStatesEnabled)
         ) return
 
-        val conditionStillMatches = try {
+        val conditionStillMatches = directMenu || try {
             isTimeBetween(6, 0, 0, 0) &&
                 automationStateService.inState("MJ", "NOMJremains") &&
                 automationStateService.inState("Steroids", "Steroids Off")
@@ -803,6 +818,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // "identify which manually-set TT is active" pattern (5.7/5.8mmol reversal, 6.8mmol Activity,
     // 8.0mmol hyp) so the conversion constant and tolerance are correct and consistent everywhere.
     private fun activeTtNear(targetMmol: Double, toleranceMmol: Double): Boolean {
+        directTtCodeMatchActive = pendingDirectTtCode?.let {
+            kotlin.math.abs(it - targetMmol) <= toleranceMmol
+        } == true
+        if (directTtCodeMatchActive) return true
         val ttMgdl = activeTtMgdl() ?: return false
         return kotlin.math.abs(ttMgdl - mmolToMgdl(targetMmol)) <= mmolToMgdl(toleranceMmol)
     }
@@ -818,6 +837,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Cancels the current TT unconditionally. Mirrors ActionStopTempTarget.
     private fun cancelCurrentTempTarget() {
+        // A pump/Virtual popup command uses the same handler without creating a TT. In that path an
+        // unrelated therapeutic TT must be left untouched.
+        if (directTtCodeMatchActive) return
         disposable += persistenceLayer.cancelCurrentTemporaryTargetIfAny(
             timestamp = dateUtil.now(),
             action = Action.CANCEL_TT,
@@ -1013,10 +1035,82 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // `key` should be unique per ported condition (e.g. its old automation title).
     private val lastRunTimestamps = mutableMapOf<String, Long>()
 
+    private fun directTtCodeForRunKey(key: String): Double? = when (key) {
+        "SmbDeliveryDownTT" -> 5.002
+        "SmbDeliveryUpTT" -> 5.004
+        "SensorAgeToggleTT" -> 5.006
+        "BoostToggleTT" -> 5.008
+        "PpWeightDownTT" -> 5.012
+        "PpWeightUpTT" -> 5.014
+        "AcceWeightDownTT" -> 5.016
+        "AcceWeightUpTT" -> 5.018
+        "DuraWeightDownTT" -> 5.022
+        "DuraWeightUpTT" -> 5.024
+        "LibreSlopeDownTT" -> 5.026
+        "LibreSlopeUpTT" -> 5.028
+        "LibreOffsetDownTT" -> 5.032
+        "LibreOffsetUpTT" -> 5.034
+        "SmbOffsetDownTT" -> 5.036
+        "SmbOffsetUpTT" -> 5.038
+        "CleanGraphTT" -> 5.042
+        "WizardPctDownTT" -> 5.046
+        "WizardPctUpTT" -> 5.048
+        "MildBoostDownTT" -> 5.052
+        "MildBoostUpTT" -> 5.054
+        "PpWeightHighDownTT" -> 5.056
+        "PpWeightHighUpTT" -> 5.058
+        "AcceWeightHighDownTT" -> 5.062
+        "AcceWeightHighUpTT" -> 5.064
+        "HigherIsfRangeWeightDownTT" -> 5.068
+        "HigherIsfRangeWeightUpTT" -> 5.070
+        "PeakInsulinTimeDownTT" -> 5.074
+        "PeakInsulinTimeUpTT" -> 5.076
+        "AutoIsfMaxLowDownTT" -> 5.080
+        "AutoIsfMaxLowUpTT" -> 5.082
+        "AutoIsfMaxNormalDownTT" -> 5.086
+        "AutoIsfMaxNormalUpTT" -> 5.088
+        "TodOffset0002DownTT" -> 5.092
+        "TodOffset0002UpTT" -> 5.094
+        "TodOffset0204DownTT" -> 5.098
+        "TodOffset0204UpTT" -> 5.100
+        "TodOffset0406DownTT" -> 5.104
+        "TodOffset0406UpTT" -> 5.106
+        "TodOffset0609DownTT" -> 5.110
+        "TodOffset0609UpTT" -> 5.112
+        "TodOffset0912DownTT" -> 5.116
+        "TodOffset0912UpTT" -> 5.118
+        "TodOffset1218DownTT" -> 5.122
+        "TodOffset1218UpTT" -> 5.124
+        "TodOffset1822DownTT" -> 5.128
+        "TodOffset1822UpTT" -> 5.130
+        "TodOffset2200DownTT" -> 5.134
+        "TodOffset2200UpTT" -> 5.136
+        "Graph2ToggleTT" -> 5.138
+        "CloudLogsUploadTT" -> 5.140
+        "Graph5ToggleTT" -> 5.142
+        "MjStateNoMjTT" -> 5.144
+        "MjStateMj3TT" -> 5.146
+        "ProfileStandardTT" -> 5.148
+        "ProfileLowTT" -> 5.150
+        "LibreUkf1ToggleTT" -> 5.152
+        "LibreUkf2ToggleTT" -> 5.154
+        "SensorAgeCodeToggleTT" -> 5.156
+        else -> null
+    }
+
     private fun readyToRun(key: String, minIntervalMinutes: Int): Boolean =
-        (lastRunTimestamps[key] ?: 0L) <= dateUtil.now() - T.mins(minIntervalMinutes.toLong()).msecs()
+        directTtCodeForRunKey(key)?.let { expected ->
+            pendingDirectTtCode?.let { kotlin.math.abs(it - expected) <= 0.0000001 }
+        } == true ||
+            (lastRunTimestamps[key] ?: 0L) <= dateUtil.now() - T.mins(minIntervalMinutes.toLong()).msecs()
 
     private fun markRun(key: String) {
+        if (directTtCodeMatchActive) {
+            pendingDirectTtCode = null
+            directTtCodeMatchActive = false
+            rxBus.send(EventRefreshOverview("AutoISF direct settings control", true))
+            return
+        }
         lastRunTimestamps[key] = dateUtil.now()
     }
 
@@ -1451,25 +1545,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // eases away from the 12-15 day window as it ages — day 0 (<1 day, the WHOLE first day, no
         // separate <6h sub-tier) mirrors the MOST extreme 14-15 day tier (0.65/1.6), day 1 mirrors 13-14
         // (0.68/1.5), day 2 mirrors 12-13 (0.70/1.45). Tiered FslCalSlope/FslCalOffset override applies
-        // by sensor age (no MJ/hypo-state gating), but ONLY while cannula age is 6-72h (see the
-        // cannulaH check below) — skipped during the very early unsettled or very late unreliable pod
-        // states.
-        // Snapshots whatever FslCalSlope/FslCalOffset are currently configured to (the user's own
-        // "normal" GUI values) the FIRST time the override activates, into ApsAutoIsfFslCalSlopeNormal/
-        // ApsAutoIsfFslCalOffsetNormal, then restores exactly that snapshot once outside the 0-3/12-15
-        // day windows — there's no fixed fallback value, since the user's actual normal calibration
-        // isn't known to this code otherwise (same reasoning as ApsAutoIsfSmbDeliveryBaseline for SMB
-        // delivery ratio). No readyToRun throttle — deliberately checked every cycle like DelOff, so day
+        // by sensor age (no MJ/hypo-state or cannula-age gating).
+        // The configured LibreSlope_orig/LibreOffset_orig pair is the explicit baseline. Once outside
+        // the 0-3/12-15 day tiers, the live slope/offset are restored to that baseline even if the
+        // oldSensorActive latch was lost during restart/import. No readyToRun throttle — deliberately
+        // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
             val sensorAgeCodeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             if (!sensorAgeCodeEnabled) {
-                // Never leave a tier override applied when execution is disabled. Restore the snapshot
-                // captured when the override first activated, then skip every other SensorAge action.
-                if (oldSensorActive) {
-                    preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfFslCalSlopeNormal))
-                    preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfFslCalOffsetNormal))
+                // Restore the explicit Libre baseline even if the active latch was lost on restart.
+                val baselineSlope = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+                val baselineOffset = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+                if (oldSensorActive ||
+                    !fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), baselineSlope) ||
+                    !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), baselineOffset)
+                ) {
+                    preferences.put(DoubleKey.FslCalSlope, baselineSlope)
+                    preferences.put(DoubleKey.FslCalOffset, baselineOffset)
                     preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
                     addCarePortalNote("SensorAgeCodeOff")
                 }
@@ -1525,11 +1619,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     preferences.put(DoubleKey.FslCalOffset, offset)
                     addCarePortalNote("OldSensor$tierLabel")
                 }
-            } else if (oldSensorActiveNow) {
-                preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfFslCalSlopeNormal))
-                preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfFslCalOffsetNormal))
+            } else {
+                // At 3 full days and outside the old-sensor tiers, always restore the configured
+                // Libre baseline. The old latch alone is insufficient because it can be lost while
+                // the live day-3 value (for example 0.70) remains behind.
+                val baselineMismatch =
+                    !fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), libreSlopeOrig) ||
+                        !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), libreOffsetOrig)
+                if (baselineMismatch) {
+                    preferences.put(DoubleKey.FslCalSlope, libreSlopeOrig)
+                    preferences.put(DoubleKey.FslCalOffset, libreOffsetOrig)
+                }
                 preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
-                addCarePortalNote("OldSensorOff")
+                if (oldSensorActiveNow || baselineMismatch) addCarePortalNote("OldSensorOff")
             }
         }
 
@@ -2202,6 +2304,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
             addCarePortalNote("SAC${if (newState) "On" else "Off"}")
             markRun("SensorAgeCodeToggleTT")
+        }
+
+        // Client-only relay codes for the basal-icon direct action menu. On the pump phone these run
+        // the full Kotlin actions; pump/Virtual selections do not create these TTs at all.
+        if (readyToRun("MjStartActionTT", 2) && activeTtNear(5.158, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectMjUserAction(EventMjUserAction.Action.START, directMenu = true)
+            markRun("MjStartActionTT")
+        }
+
+        if (readyToRun("MjRestoreActionTT", 2) && activeTtNear(5.160, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectMjUserAction(EventMjUserAction.Action.RESTORE, directMenu = true)
+            markRun("MjRestoreActionTT")
+        }
+
+        if (readyToRun("SteroidStartActionTT", 2) && activeTtNear(5.162, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(directMenu = true)
+            markRun("SteroidStartActionTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
