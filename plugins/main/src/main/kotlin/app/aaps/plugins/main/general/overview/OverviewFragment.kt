@@ -41,6 +41,7 @@ import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
+import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -74,6 +75,7 @@ import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
 import app.aaps.core.interfaces.rx.events.EventMobileToWear
+import app.aaps.core.interfaces.rx.events.EventMjUserAction
 import app.aaps.core.interfaces.rx.events.EventNewOpenLoopNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
@@ -168,6 +170,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var overview: Overview
     @Inject lateinit var lastBgData: LastBgData
     @Inject lateinit var automation: Automation
+    @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var bgQualityCheck: BgQualityCheck
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var decimalFormatter: DecimalFormatter
@@ -724,6 +727,57 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
             // Automation buttons
             binding.buttonsLayout.userButtonsLayout.removeAllViews()
+
+            // Direct Kotlin MJ button: no AutomationEvent is created or executed. The state controls
+            // which of the mutually-exclusive buttons is visible; AutoISF checks it again on execution.
+            val mjButtonBaseAllowed =
+                preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled) &&
+                    preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                    !config.AAPSCLIENT &&
+                    !loop.runningMode.isSuspended() &&
+                    pump.isInitialized() &&
+                    profile != null &&
+                    !config.showUserActionsOnWatchOnly() &&
+                    try {
+                        activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
+                    } catch (_: Exception) {
+                        false
+                    }
+            val mjState = if (mjButtonBaseAllowed) {
+                try {
+                    automationStateService.getState("MJ")
+                } catch (_: IllegalStateException) {
+                    null
+                }
+            } else null
+            val mjAction = when (mjState) {
+                "NOMJremains" -> EventMjUserAction.Action.START
+                null -> null
+                else -> EventMjUserAction.Action.RESTORE
+            }
+            if (mjAction != null) {
+                val title = if (mjAction == EventMjUserAction.Action.START)
+                    "Press if MJ or WANT 3 days of 80% as hypo concern"
+                else
+                    "Press if MJ dose 4+ days old (Or want to restore 100% Profile)"
+                context?.let { buttonContext ->
+                    SingleClickButton(buttonContext, null, app.aaps.core.ui.R.attr.customBtnStyle).also { button ->
+                        button.setTextColor(rh.gac(buttonContext, app.aaps.core.ui.R.attr.userOptionColor))
+                        button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                        button.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 0.5f).also { params ->
+                            params.setMargins(rh.dpToPx(1), 0, rh.dpToPx(1), 0)
+                        }
+                        button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
+                        button.text = title
+                        button.setOnClickListener {
+                            OKDialog.showConfirmation(buttonContext, rh.gs(R.string.run_question, title)) {
+                                rxBus.send(EventMjUserAction(mjAction))
+                            }
+                        }
+                        binding.buttonsLayout.userButtonsLayout.addView(button)
+                    }
+                }
+            }
             val events = automation.userEvents()
             if (!loop.runningMode.isSuspended() && pump.isInitialized() && profile != null && !config.showUserActionsOnWatchOnly())
                 for (event in events)
@@ -756,7 +810,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         }
                         list += event.hashCode()
                     }
-            binding.buttonsLayout.userButtonsLayout.visibility = events.isNotEmpty().toVisibility()
+            binding.buttonsLayout.userButtonsLayout.visibility = (binding.buttonsLayout.userButtonsLayout.childCount > 0).toVisibility()
         }
         if (list != lastUserAction) {
             // Synchronize Watch Tiles with overview

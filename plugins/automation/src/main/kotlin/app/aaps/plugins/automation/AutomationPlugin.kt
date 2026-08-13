@@ -546,6 +546,16 @@ class AutomationPlugin @Inject constructor(
         rxBus.send(EventAutomationDataChanged())
     }
 
+    /** Removes an obsolete generated user action by exact title during source migrations. */
+    @Synchronized
+    fun removeSystemUserActionByTitle(title: String) {
+        val removed = automationEvents.removeAll { it.title == title && it.systemAction && it.userAction }
+        if (removed) {
+            storeToSP()
+            rxBus.send(EventAutomationDataChanged())
+        }
+    }
+
     @Synchronized
     fun removeIfExists(event: AutomationEvent) {
         for (e in automationEvents.reversed()) {

@@ -265,6 +265,8 @@
     <string name="keep_screen_on_summary">Prevent Android to turn screen off. It will consume lot of energy when not plugged to power outlet.</string>
     <string name="custom_automations_enabled_title">Custom AutoISF automations</string>
     <string name="custom_automations_enabled_summary">Enable the ported MJ/Skittles/prepare50/etc. custom automation blocks that run each loop cycle. Turning this off does not reset any preference values those blocks may have already changed.</string>
+    <string name="mj_kotlin_buttons_enabled_title">MJ Kotlin buttons</string>
+    <string name="mj_kotlin_buttons_enabled_summary">Show the direct Start/Restore MJ buttons on Overview. These do not use native Automation entries.</string>
     <string name="treatments">Treatments</string>
     <string name="carb_increment_button_message">Number of carbs to add when button is pressed</string>
     <string name="insulin_increment_button_message">Amount of insulin to add when button is pressed</string>

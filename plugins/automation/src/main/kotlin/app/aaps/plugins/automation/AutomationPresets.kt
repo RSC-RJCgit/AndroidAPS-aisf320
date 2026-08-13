@@ -6,12 +6,9 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
-import app.aaps.plugins.automation.actions.ActionNotification
 import app.aaps.plugins.automation.actions.ActionProfileSwitch
-import app.aaps.plugins.automation.actions.ActionSendSMS
 import app.aaps.plugins.automation.actions.ActionSetAcceWeight
 import app.aaps.plugins.automation.actions.ActionSetAutomationState
-import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.triggers.TriggerAutomationState
@@ -42,9 +39,11 @@ class AutomationPresets @Inject constructor(
 ) {
 
     fun registerAll(plugin: AutomationPlugin) {
-        aapsLogger.debug(LTag.AUTOMATION, "Registering MJ user-action buttons")
-        plugin.addIfNotExists(buildMjStartUserAction())
-        plugin.addIfNotExists(buildMjRestoreUserAction())
+        // The MJ controls are now direct Kotlin Overview buttons. Remove the two generated native
+        // Automation entries left by older builds so duplicate buttons/actions cannot remain.
+        aapsLogger.debug(LTag.AUTOMATION, "Removing obsolete native MJ user-action buttons")
+        plugin.removeSystemUserActionByTitle("Press if MJ or WANT 3 days of 80% as hypo concern")
+        plugin.removeSystemUserActionByTitle("Press if MJ dose 4+ days old (Or want to restore 100% Profile)")
 
         // Disabled: these 7 presets are being recreated manually in the AAPS Automation tab instead.
         // build*() functions below are left in place as a reference for the tuned trigger values.
@@ -57,73 +56,6 @@ class AutomationPresets @Inject constructor(
         // plugin.addIfNotExists(buildSkittlesA3ok8056())
         // plugin.addIfNotExists(buildTest())
     }
-
-    // ---------------------------------------------------------------------------
-    // MJ manual controls. These remain Automation user actions so Overview and Wear use the
-    // normal confirmation and action-processing path. Their conditions are mutually exclusive:
-    // start is offered only while MJ is off; restore is offered throughout an active MJ cycle.
-    // ---------------------------------------------------------------------------
-    private fun buildMjStartUserAction(): AutomationEventObject =
-        AutomationEventObject(injector).apply {
-            title = "Press if MJ or WANT 3 days of 80% as hypo concern"
-            systemAction = true
-            userAction = true
-            repeatInterval = 5
-            trigger = TriggerConnector(injector, TriggerConnector.Type.AND).apply {
-                list.add(TriggerAutomationState(injector).apply {
-                    fromJSON("""{"stateName":"MJ","stateValue":"NOMJremains"}""")
-                })
-            }
-            actions.add(ActionSendSMS(injector).apply {
-                fromJSON("""{"text":"Injection MJ 0.35_.70"}""")
-            })
-            actions.add(ActionNotification(injector).apply {
-                fromJSON("""{"text":"MJ"}""")
-            })
-            actions.add(ActionSetAcceWeight(injector).apply {
-                fromJSON("""{"weight":0.35}""")
-            })
-            actions.add(ActionSetIobTH(injector).apply {
-                fromJSON("""{"percentage":70}""")
-            })
-            actions.add(ActionProfileSwitch(injector).apply {
-                fromJSON("""{"profileToSwitchTo":"${preferences.get(StringKey.ApsAutoIsfLowProfileName)}","durationInMinutes":0}""")
-            })
-            actions.add(ActionSetAutomationState(injector).apply {
-                fromJSON("""{"inputStateName":"MJ","inputState":"MJ active"}""")
-            })
-        }
-
-    private fun buildMjRestoreUserAction(): AutomationEventObject =
-        AutomationEventObject(injector).apply {
-            title = "Press if MJ dose 4+ days old (Or want to restore 100% Profile)"
-            systemAction = true
-            userAction = true
-            repeatInterval = 5
-            trigger = TriggerConnector(injector, TriggerConnector.Type.NOT).apply {
-                list.add(TriggerAutomationState(injector).apply {
-                    fromJSON("""{"stateName":"MJ","stateValue":"NOMJremains"}""")
-                })
-            }
-            actions.add(ActionSendSMS(injector).apply {
-                fromJSON("""{"text":"MJ dose 4+ days old"}""")
-            })
-            actions.add(ActionProfileSwitch(injector).apply {
-                fromJSON("""{"profileToSwitchTo":"${preferences.get(StringKey.ApsAutoIsfStandardProfileName)}","durationInMinutes":0}""")
-            })
-            actions.add(ActionSetAcceWeight(injector).apply {
-                fromJSON("""{"weight":0.50}""")
-            })
-            actions.add(ActionSetIobTH(injector).apply {
-                fromJSON("""{"percentage":70}""")
-            })
-            actions.add(ActionSetAutomationState(injector).apply {
-                fromJSON("""{"inputStateName":"MJ","inputState":"NOMJremains"}""")
-            })
-            actions.add(ActionCarePortalEvent(injector).apply {
-                fromJSON("""{"cpEvent":"NOTE","note":"NOMJremains","durationInMinutes":0}""")
-            })
-        }
 
     // ---------------------------------------------------------------------------
     // Skittles3ok2BG9.0: falling BG with high IOB and no temp target

@@ -62,6 +62,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.rx.events.EventMjUserAction
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.Sms
@@ -107,6 +108,7 @@ import app.aaps.plugins.aps.openAPSSMB.StepService
 import com.google.gson.Gson
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import io.reactivex.rxjava3.schedulers.Schedulers
 import org.json.JSONObject
 import java.time.LocalDateTime
 import java.util.Locale
@@ -211,6 +213,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     val calibrationDuration = preferences.get(IntKey.FslCalibrationDuration)
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val disposable = CompositeDisposable()
+    private val mjUserActionDisposable = CompositeDisposable()
 
     // create array for key AutoISF results with defaults
     var autoIsfValues = AIV(
@@ -245,6 +248,65 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             count++
         }
         aapsLogger.debug(LTag.APS, "Loaded $count variable sensitivity values from database")
+        mjUserActionDisposable.clear()
+        mjUserActionDisposable += rxBus
+            .toObservable(EventMjUserAction::class.java)
+            .observeOn(Schedulers.io())
+            .subscribe({ handleDirectMjUserAction(it.action) }) {
+                aapsLogger.error(LTag.APS, "Direct MJ Kotlin button failed", it)
+            }
+    }
+
+    override fun onStop() {
+        mjUserActionDisposable.clear()
+        super.onStop()
+    }
+
+    /**
+     * Executes the direct Overview MJ buttons without AutomationEvent/Action objects. The state is
+     * checked again here after confirmation so a stale visible button cannot run the wrong branch.
+     */
+    private fun handleDirectMjUserAction(action: EventMjUserAction.Action) {
+        if (!preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled) ||
+            !preferences.get(BooleanKey.AutomationStatesEnabled)
+        ) return
+
+        val nomjRemains = try {
+            automationStateService.inState("MJ", "NOMJremains")
+        } catch (e: IllegalStateException) {
+            aapsLogger.error(LTag.APS, "Direct MJ button cannot read State MJ", e)
+            return
+        }
+        val conditionStillMatches =
+            (action == EventMjUserAction.Action.START && nomjRemains) ||
+                (action == EventMjUserAction.Action.RESTORE && !nomjRemains)
+        if (!conditionStillMatches) {
+            aapsLogger.info(LTag.APS, "Direct MJ button ignored because State MJ changed before execution")
+            rxBus.send(EventRefreshOverview("MJ Kotlin state changed", true))
+            return
+        }
+
+        when (action) {
+            EventMjUserAction.Action.START -> {
+                sendSms("Injection MJ 0.35_.70")
+                rxBus.send(EventNewNotification(NotificationUserMessage("MJ", Notification.URGENT)))
+                addGraphAnnouncement("MJ")
+                setBgAccelIsfWeight(0.35)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                setAutomationState("MJ", "MJ active")
+            }
+
+            EventMjUserAction.Action.RESTORE -> {
+                sendSms("MJ dose 4+ days old")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                setBgAccelIsfWeight(0.50)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                setAutomationState("MJ", "NOMJremains")
+                addCarePortalNote("NOMJremains", 0)
+            }
+        }
+        rxBus.send(EventRefreshOverview("MJ Kotlin button", true))
     }
 
     // irrelevant here but gets called by other profile functions and must be TRUE; otherwise averageISF falls back to profile sens
