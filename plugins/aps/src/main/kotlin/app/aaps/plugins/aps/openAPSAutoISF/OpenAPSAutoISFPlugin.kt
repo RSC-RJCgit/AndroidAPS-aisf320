@@ -1171,11 +1171,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
 
-        // Phone-storage warning is independent of the custom-automation master switch. The graph
-        // announcement is also a persisted Treatments/Notes entry, so one event provides both the
-        // requested main-graph notification and its note. Fire once per low-storage episode, then
-        // re-arm only after recovery above 10.5 GiB to avoid chatter around the 10 GiB threshold.
-        run {
+        // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
+        // relay the warning to the Virtual Pump phone without putting anything on the pump graph.
+        // The Virtual Pump does not inspect its own storage here; it reacts once to each relayed Note
+        // and adds the graph announcement locally. The real-phone latch re-arms only above 10.5 GiB.
+        if (activePlugin.activePump !is VirtualPump) {
             val bytesPerGiB = 1024.0 * 1024.0 * 1024.0
             val freeBytes = context.filesDir.usableSpace
             val freeGiB = freeBytes / bytesPerGiB
@@ -1183,12 +1183,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             when {
                 freeBytes > 0L && freeGiB < 10.0 && !notified -> {
                     val note = String.format(Locale.US, "StorageLow %.1fGB free", freeGiB)
-                    addGraphAnnouncement(note)
+                    uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
+                    sendSms(note)
+                    addCarePortalNote(note)
                     preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
                 }
 
                 freeGiB >= 10.5 && notified ->
                     preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
+            }
+        } else {
+            val lastHandled = preferences.get(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt)
+            val searchFrom = if (lastHandled > 0L) lastHandled + 1L else dateUtil.now() - T.days(7).msecs()
+            val receivedNote = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, false)
+                .filter { it.isValid && it.timestamp > lastHandled && it.note?.startsWith("StorageLow ") == true }
+                .maxByOrNull { it.timestamp }
+            receivedNote?.let {
+                val note = it.note ?: return@let
+                uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
+                sendSms(note)
+                addGraphAnnouncement(note)
+                preferences.put(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt, it.timestamp)
             }
         }
 

@@ -56,12 +56,14 @@ class LoadSecondaryBolusCarbsWorker(
         // Therapy-event types imported from the secondary NS: the device-lifecycle events the
         // cannula/sensor-age automations read (TE.Type.CANNULA_CHANGE / SENSOR_CHANGE via
         // getLastTherapyRecordUpToNow), plus their close siblings so pod/sensor sessions stay complete.
+        // StorageLow Notes are included so the real-pump phone can alert the Virtual Pump phone.
         private val secondaryTherapyEventTypes = setOf(
             TE.Type.SENSOR_CHANGE,
             TE.Type.SENSOR_STARTED,
             TE.Type.CANNULA_CHANGE,
             TE.Type.INSULIN_CHANGE,
-            TE.Type.PUMP_BATTERY_CHANGE
+            TE.Type.PUMP_BATTERY_CHANGE,
+            TE.Type.NOTE
         )
     }
 
@@ -144,7 +146,9 @@ class LoadSecondaryBolusCarbsWorker(
                         is NSTherapyEvent -> {
                             if (acceptTherapyEvents) {
                                 val te = treatment.toTherapyEvent()
-                                if (te.type in secondaryTherapyEventTypes) {
+                                val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes &&
+                                    (te.type != TE.Type.NOTE || te.note?.startsWith("StorageLow ") == true)
+                                if (acceptedSecondaryEvent) {
                                     storeDataForDb.addToTherapyEvents(te)
                                     pageTherapyEvents++
                                 }
@@ -179,7 +183,7 @@ class LoadSecondaryBolusCarbsWorker(
                 EventNSClientNewLog(
                     "◄ SEC-NS",
                     "$totalTreatments treatments in $page page(s): $totalBoluses boluses $totalCarbs carbs " +
-                        "$totalTherapyEvents device events from secondary NS"
+                        "$totalTherapyEvents therapy events from secondary NS"
                 )
             )
             if (page >= MAX_PAGES && continueLoading) {

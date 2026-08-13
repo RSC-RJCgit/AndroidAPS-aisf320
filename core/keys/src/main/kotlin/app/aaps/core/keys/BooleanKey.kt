@@ -114,8 +114,8 @@ enum class BooleanKey(
     // false once cannula age drops back under 60h (i.e. a new pod was actually inserted), re-arming it
     // for the next old pod. Not shown in any preference screen.
     ApsAutoIsfOldPodNotified("autoisf_old_pod_notified", false, defaultedBySM = true, exportable = false),
-    // Internal latch for the main-graph low-storage announcement. It prevents one note per APS cycle;
-    // re-armed only after storage recovers above the hysteresis threshold.
+    // Real-pump phone latch for its low-storage alert/SMS/NS Note. It prevents one set per APS cycle;
+    // re-armed only after that phone's storage recovers above the hysteresis threshold.
     ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, defaultedBySM = true, exportable = false),
     // Internal-only, one-shot cross-module signal: set true by the CleanGraphTT trigger (see
     // OpenAPSAutoISFPlugin.kt, TT=5.42), consumed and cleared back to false by OverviewFragment's
