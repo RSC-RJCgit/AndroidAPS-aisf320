@@ -770,9 +770,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         button.setPadding(rh.dpToPx(1), button.paddingTop, rh.dpToPx(1), button.paddingBottom)
                         button.text = title
                         button.setOnClickListener {
-                            OKDialog.showConfirmation(buttonContext, rh.gs(R.string.run_question, title)) {
-                                rxBus.send(EventMjUserAction(mjAction))
-                            }
+                            OKDialog.showConfirmation(
+                                buttonContext,
+                                rh.gs(R.string.run_question, title),
+                                Runnable { rxBus.send(EventMjUserAction(mjAction)) }
+                            )
                         }
                         binding.buttonsLayout.userButtonsLayout.addView(button)
                     }
