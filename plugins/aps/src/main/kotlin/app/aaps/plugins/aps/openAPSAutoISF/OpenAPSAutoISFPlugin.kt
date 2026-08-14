@@ -2406,8 +2406,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
             if (newState) preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, false)
             cancelCurrentTempTarget()
-            sendSms("LibreUKF1: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("UK1${if (newState) "On" else "Off"}")
+            sendSms("LibreUKFset1: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("UKFset1${if (newState) "On" else "Off"}")
             markRun("LibreUkf1ToggleTT")
         }
 
@@ -2416,8 +2416,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, newState)
             if (newState) preferences.put(BooleanKey.FslUseUkfSmoothing, false)
             cancelCurrentTempTarget()
-            sendSms("LibreUKF2: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("UK2${if (newState) "On" else "Off"}")
+            sendSms("LibreUKFset2: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("UKFset2${if (newState) "On" else "Off"}")
             markRun("LibreUkf2ToggleTT")
         }
 
@@ -4967,7 +4967,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val smbDelta1Raw = if (useUkfRawForSmb) smbUkfRaw?.delta1 else rawDelta1Raw
         val smbDelta5Raw = if (useUkfRawForSmb) smbUkfRaw?.delta5 else rawDelta5Raw
         consoleLog.add(
-            "SMB raw source=${if (useUkfRawForSmb) "UKFRAW" else "RAW"}: D1=${smbDelta1Raw ?: "--"} D5=${smbDelta5Raw ?: "--"}"
+            "SMB raw source=${if (useUkfRawForSmb) "UKFRAW" else "RAW"}: " +
+                "D1=${smbDelta1Raw?.let { String.format("%.2f", it) } ?: "--"} " +
+                "D5=${smbDelta5Raw?.let { String.format("%.2f", it) } ?: "--"}"
         )
 
         determineBasalAutoISF.determine_basal(

@@ -1779,7 +1779,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
     private fun ttCodesList(): List<TtCode> = listOf(
         // SmbDeliveryDownTT/UpTT nudges BOTH ApsAutoIsfSmbDeliveryBaseline and ApsAutoIsfMildBoostRatio, both by the same ±0.01.
-        TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004, "-0.01", "+0.01"),
+        // Dual-key: SmbDeliveryDownTT/UpTT nudges BOTH keys by the same amount, so unlike the
+        // single-key rows above, both current values are shown rather than picking just one.
+        TtCode.Stepped(
+            "SMBdel base + mild-Bst", 5.002, 5.004, "-0.01", "+0.01",
+            currentValue = {
+                "Current: base=${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))}" +
+                    ", mildBst=${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}"
+            }
+        ),
         TtCode.Single("Tog Libre sens on/off", 5.006),
         TtCode.Single("Tog Bst autos(all) on/off", 5.008),
         TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))}" }),
@@ -1821,7 +1829,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("Profile (manual override)", 5.148, 5.150, "Standard", "Low"),
         // Selecting the active mode again turns it off; selecting the other mode enables it and turns
         // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
-        TtCode.Stepped("Libre UKF mode", 5.152, 5.154, "UKF1", "UKF2"),
+        TtCode.Stepped(
+            // Labeled UKFset1/UKFset2 (not UKF1/UKF2) -- these are the live dosing-BGL settings, kept
+            // visually distinct from list2's UKF1/UKF2/UKF3 graph-comparison-line entries, which are
+            // unrelated functions that happen to share the same digit.
+            "Libre UKF mode", 5.152, 5.154, "UKFset1", "UKFset2",
+            currentValue = {
+                "Current: " + when {
+                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKFset2"
+                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
+                    else                                                       -> "off"
+                }
+            }
+        ),
         TtCode.Single("Run SensorAge code on/off", 5.156)
         // Graph toggle entries (UKF1/UKF2/UKF3) live in list2 (basal rate icon,
         // BasalDirectAction/showBasalDirectActionListDialog() below), not list1 (this one, IOB icon)

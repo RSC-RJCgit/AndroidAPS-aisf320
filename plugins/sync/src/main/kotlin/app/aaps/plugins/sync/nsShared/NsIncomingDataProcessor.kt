@@ -160,9 +160,15 @@ class NsIncomingDataProcessor @Inject constructor(
                         val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
                         val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
                         val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                        smooth = if (useLibreSpecialUkf)
-                            ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
-                        else libreSpecial
+                        // TEMP DISABLED 2026-08-14 (aisf321_58x) -- UKF2 (smoothLibreSpecialRealtime)
+                        // taken out of the live pipeline pending retest; falls through to plain
+                        // libreSpecial unconditionally even if useLibreSpecialUkf is still true. To
+                        // re-enable, restore the commented condition below (same change needed in
+                        // XdripSourcePlugin.kt's mirrored block).
+                        // smooth = if (useLibreSpecialUkf)
+                        //     ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                        // else libreSpecial
+                        smooth = libreSpecial
                         preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
                         aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated libreSpecial=$libreSpecial smooth=$smooth alpha=$effectiveAlpha")

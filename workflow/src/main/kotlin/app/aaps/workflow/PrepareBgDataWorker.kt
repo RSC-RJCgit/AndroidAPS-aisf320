@@ -262,9 +262,14 @@ class PrepareBgDataWorker(
             LineGraphSeries(points.toTypedArray()).also {
                 it.setCustomPaint(Paint().also { paint ->
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 4f
-                    paint.pathEffect = DashPathEffect(floatArrayOf(2f, 3f), 0f) // dotted, distinct from UKF2's solid green
-                    paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800 -- darker than UKF2's #66BB6A so the two are never pixel-identical if both are ever shown together
+                    // Same weight/dash pattern as UKF1's line (strokeWidth 6f, 6f/4f dashes) -- the
+                    // original 4f/2f-3f combo was too fine to read against the other lines. Still a
+                    // dashed (not solid) style and a darker green (#2E7D32 vs UKF2's #66BB6A) so it stays
+                    // visually distinct from UKF1 (light blue) and UKF2 (solid green) if all three show
+                    // together.
+                    paint.strokeWidth = 6f
+                    paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                    paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800
                 })
             }
         } else {
@@ -406,9 +411,11 @@ class PrepareBgDataWorker(
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
                 val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
+                // Labeled UKFset1/UKFset2 (not UKF1/UKF2) to stay distinct from the graph-comparison-line
+                // names of the same number -- those are unrelated functions that happen to share a digit.
                 val ukfMode = when {
-                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKF2"
-                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKF1"
+                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKFset2"
+                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
                     else                                                       -> "UKFoff"
                 }
                 val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  duTTime= $duraTaperTime  UKF= $ukfMode"
