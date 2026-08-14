@@ -3521,6 +3521,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && readyToRun("BolusGivenBg3", 10)
                 // Movement guard: same reasoning as bg3's mirror check above.
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                // Sub-7.5mmol delivery-rate ceiling, added 2026-08-14 after two real hypos (4.4mmol and
+                // a sustained 4.5mmol) both traced to this exact mechanism: BG still under 7.5mmol (not
+                // genuinely high), a strong rise confirmed, mild fires and keeps re-arming every couple
+                // minutes, and iobChange5 climbs well past what the eventual (modest) peak BG actually
+                // needed by the time delivery caught up. The existing 10-min/30-min cumulative caps in
+                // DetermineBasalAutoISF.kt only trim AFTER the fact; this stops mild from re-arming in
+                // the first place once delivery is already running hot while BG hasn't earned it yet.
+                // 0.8U/5min is anchored on both real events: episode 1 peaked ~0.91U/5min (this would
+                // have trimmed its last few minutes), episode 2 spiked to ~1.7-1.8U/5min in a single
+                // cycle (this would have caught it almost immediately). Only applies below 7.5mmol —
+                // above that, bg3's own territory takes over and this guard doesn't apply at all. First
+                // cut, not yet device-verified against a case that needed the full-strength tier and
+                // would have been wrongly capped by this -- watch for that before trusting the number.
+                && !(g < 135.1 /* 7.5 mmol */ && iobChange5 > 0.8)
             if (fire) {
                 // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
                 // response; at/above 9.0 mmol, the unadjusted base. Tiers are relative bumps on top of
@@ -3636,6 +3650,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenBg3", 10) && movementOk
+                && !(g < 135.1 && iobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
             val mildDeliveryRatioWould = when {
                 g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
@@ -3734,7 +3749,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
                 readyToRun("BolusGivenBg3", 10) &&
-                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200 &&
+                !(g < 135.1 && mildIobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
 
             val which = when { off2 -> "off2"; off3 -> "off3"; off4 -> "off4"; off5 -> "off5"; off1 -> "off1"; else -> null }
             if (which != null) {
@@ -4983,6 +4999,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "D5=${smbDelta5Raw?.let { String.format("%.2f", it) } ?: "--"}"
         )
 
+        // --- Sub75HeavyDelivery: arms a hard 10-min cooldown once smbSum10Min() exceeds 1.0U while
+        // glucose is still under 7.5mmol -- see determine_basal()'s sub75HeavyDeliveryCooldown param
+        // (DetermineBasalAutoISF.kt) for the two real events (4.4mmol, sustained 4.5mmol) this is
+        // anchored on. Deliberately a plain markRun/readyToRun cooldown, not another rolling-window
+        // amount cap like smbSum10Min/30Min below it -- this forces a genuine pause instead of
+        // re-permitting delivery the instant the oldest minute ages out of its own window, giving
+        // already-delivered insulin time to actually show up in BG before more goes in. First cut, not
+        // yet device-verified against a case that genuinely needed to keep dosing through this window.
+        if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.0) {
+            markRun("Sub75HeavyDelivery")
+        }
+
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -5043,7 +5071,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // recent-low detector that could disagree with it.
             recentLowActive = checkAutomationState("LowBG", "50recent"),
             smbSum10Min = smbSum10Min(),
-            smbSum30Min = smbSum30Min()
+            smbSum30Min = smbSum30Min(),
+            sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

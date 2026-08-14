@@ -211,7 +211,19 @@ class DetermineBasalAutoISF @Inject constructor(
         smbSum10Min: Double = 0.0,
         // Total units of SMB delivered in the last 30 min. Used by the late FastRise taper and the
         // final 30-min cumulative cap below. Default 0.0 preserves existing callers/tests.
-        smbSum30Min: Double = 0.0
+        smbSum30Min: Double = 0.0,
+        // True for a fixed 10-min window once smbSum10Min() has exceeded 1.0U while glucose was under
+        // 7.5mmol -- see Sub75HeavyDelivery in OpenAPSAutoISFPlugin.kt. A hard cooldown, not another
+        // rolling-window amount cap: added 2026-08-14 after two real hypos (4.4mmol, sustained 4.5mmol)
+        // where ordinary-ratio SMB kept flowing on a still-high acce-ISF term for 10+ minutes despite
+        // substantial insulin already delivered -- the existing smbSum10Min/30Min caps below eventually
+        // stopped both, but only after enough had already gone in to overshoot the eventual (modest)
+        // peak BG's real need. A rolling amount cap alone doesn't fix that: as soon as the oldest minute
+        // ages out of its own window, headroom reopens even though nothing has actually caught up with
+        // the insulin already in flight. This forces a genuine pause instead, giving already-delivered
+        // insulin time to actually show up in BG before more goes in. Default false preserves existing
+        // callers/tests, same convention as the other optional params above.
+        sub75HeavyDeliveryCooldown: Boolean = false
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1776,6 +1788,15 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = if (smbAllowanceLeft > 0.0) smbAllowanceLeft else 0.0
                     rT.reason.append(" 10min SMB cap: ${round(beforeCumCap, 2)} -> ${round(microBolus, 2)} (last10min ${round(smbSum10Min, 2)}U of ${round(smbCap10Min, 2)}U cap) ")
                     consoleError.add("Cumulative SMB cap: ${round(smbSum10Min, 2)}U already delivered in last 10min vs ${round(smbCap10Min, 2)}U cap -> microBolus ${round(beforeCumCap, 2)} trimmed to ${round(microBolus, 2)} ")
+                }
+// =====================================================
+// SUB-7.5MMOL HEAVY-DELIVERY COOLDOWN (hard pause, not a rolling cap)
+// =====================================================
+                if (sub75HeavyDeliveryCooldown) {
+                    val beforeSub75Cooldown = microBolus
+                    microBolus = 0.0
+                    rT.reason.append(" Sub75HeavyDelivery cooldown: ${round(beforeSub75Cooldown, 2)} -> 0.0 ")
+                    consoleError.add("Sub75HeavyDelivery cooldown active -> microBolus ${round(beforeSub75Cooldown, 2)} zeroed ")
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB
