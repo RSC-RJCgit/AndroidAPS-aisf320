@@ -17,3 +17,4 @@ object Versions {
     val javaVersion = JavaVersion.VERSION_21
     val jvmTarget = JvmTarget.JVM_21
     const val jacoco = "0.8.11"
+}
