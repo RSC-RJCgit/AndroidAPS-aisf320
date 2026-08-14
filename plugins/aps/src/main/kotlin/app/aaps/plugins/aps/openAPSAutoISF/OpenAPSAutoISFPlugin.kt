@@ -5007,7 +5007,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // re-permitting delivery the instant the oldest minute ages out of its own window, giving
         // already-delivered insulin time to actually show up in BG before more goes in. First cut, not
         // yet device-verified against a case that genuinely needed to keep dosing through this window.
-        if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.0) {
+        // readyToRun() gates the trigger itself (not just markRun's own effect) so the note/SMS fires
+        // once per 10-min window, not every single cycle the condition happens to stay true.
+        if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.0 && readyToRun("Sub75HeavyDelivery", 10)) {
+            sendSms("Sub75HeavyDelivery: SMB cooldown armed (10min=${round(smbSum10Min(), 2)}U, g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)})")
+            addCarePortalNote("Sub75Cap")
             markRun("Sub75HeavyDelivery")
         }
 
