@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -46,6 +47,9 @@ import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import kotlinx.coroutines.Dispatchers
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 class PrepareBgDataWorker(
@@ -171,12 +175,17 @@ class PrepareBgDataWorker(
         // does raw look like under a different calibration" comparison; reverted to smoothing the raw
         // noise value completely as-is instead. Same removal in OpenAPSAutoISFPlugin.kt's
         // computeUkfRawBgl() (the persisted AIV value/exporter delta columns), for consistency.
-        data.overviewData.rawBgSmoothedSeries = if (rawReadings.isNotEmpty()) {
-            val newestFirst = rawReadings.sortedByDescending { it.timestamp }
-            // UKFraw is always an independent view of the raw/noise signal. Live UKF1/UKF2 selection
-            // changes the AAPS dosing BGL only and must never substitute that stored value here.
-            val smoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirst.map { it.timestamp to it.noise!! })
-            val smoothedPoints = newestFirst.zip(smoothedMgdl) { reading, mgdl ->
+        // newestFirst/ukf1SmoothedMgdl shared by rawBgSmoothedSeries (UKF1's own line) and
+        // libreSpecialFromUkf1Series (UKF3, below) -- computed once, reused by both.
+        val newestFirstRaw = rawReadings.sortedByDescending { it.timestamp }
+        // UKFraw is always an independent view of the raw/noise signal. Live UKF1/UKF2 selection
+        // changes the AAPS dosing BGL only and must never substitute that stored value here.
+        val ukf1SmoothedMgdl = if (newestFirstRaw.isNotEmpty())
+            ukfSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
+        else emptyList()
+
+        data.overviewData.rawBgSmoothedSeries = if (newestFirstRaw.isNotEmpty()) {
+            val smoothedPoints = newestFirstRaw.zip(ukf1SmoothedMgdl) { reading, mgdl ->
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
             }.asReversed() // back to ascending time order for the line series
             LineGraphSeries(smoothedPoints.toTypedArray()).also {
@@ -211,6 +220,43 @@ class PrepareBgDataWorker(
             } else {
                 LineGraphSeries<DataPoint>()
             }
+
+        // UKF3 (display-only, always computed regardless of any toggle -- opposite composition order
+        // from UKF2): the LibreSpecial EMA formula (same math as NsIncomingDataProcessor.kt's live
+        // fsl_exp1 branch, kept in sync by hand) run fresh against UKF1's own smoothForDisplay() output
+        // instead of raw/noise values. Uses local lastSmooth/lastTimeRaw vars, NOT
+        // DoubleKey.FslLastSmooth/LongKey.FslSmoothLastTimeRaw -- same never-touch-persisted-state
+        // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries above, recomputed from scratch every
+        // call so multiple graph refreshes can't corrupt the live pipeline's own EMA state.
+        data.overviewData.libreSpecialFromUkf1Series = if (newestFirstRaw.isNotEmpty()) {
+            val slope = preferences.get(DoubleKey.FslCalSlope)
+            val offset = preferences.get(DoubleKey.FslCalOffset)
+            val factor = preferences.get(DoubleKey.FslSmoothAlpha)
+            val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+            val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+            var lastSmooth = 0.0
+            var lastTimeRaw = 0L
+            val oldestFirst = newestFirstRaw.zip(ukf1SmoothedMgdl).asReversed()
+            val points = oldestFirst.map { (reading, ukf1Mgdl) ->
+                val calibrated = max(40.0, ukf1Mgdl * slope + offset * unitFactor)
+                val elapsedMinutes = (reading.timestamp - lastTimeRaw) / 60000.0
+                val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
+                val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+                lastSmooth = smooth
+                lastTimeRaw = reading.timestamp
+                DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(smooth))
+            }
+            LineGraphSeries(points.toTypedArray()).also {
+                it.setCustomPaint(Paint().also { paint ->
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 4f
+                    paint.pathEffect = DashPathEffect(floatArrayOf(2f, 3f), 0f) // dotted, distinct from UKF2's solid green
+                    paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800 -- darker than UKF2's #66BB6A so the two are never pixel-identical if both are ever shown together
+                })
+            }
+        } else {
+            LineGraphSeries<DataPoint>()
+        }
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.

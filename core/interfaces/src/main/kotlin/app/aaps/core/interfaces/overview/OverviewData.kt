@@ -171,6 +171,12 @@ interface OverviewData {
     // Original LibreSpecial EMA values immediately before UKF2; empty unless UKF2 is active.
     // Drawn with rawBgSmoothedSeries under the existing Raw BG (UKF smoothed) graph selection.
     var libreSpecialPreUkfSeries: SeriesData
+    // UKF3 (display-only, always computed regardless of any toggle): the LibreSpecial EMA formula run
+    // fresh against UKF1's (smoothForDisplay()) own output instead of raw/noise values -- opposite
+    // composition order from UKF2 (which EMAs first, then UKF-refines). Same non-persisted-state
+    // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries: never touches FslLastSmooth/
+    // FslSmoothLastTimeRaw, recomputed from scratch every call. See PrepareBgDataWorker.kt.
+    var libreSpecialFromUkf1Series: SeriesData
     var noisyBgDeltaSeries: SeriesData
     var ukfDeltaSeries: SeriesData
     // AAPS (smoothed) 1-min delta label attached to the current smoothed BG graph point — see A1DeltaDataPoint/Shape.A1_DELTA_POINT.

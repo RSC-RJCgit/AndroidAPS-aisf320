@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.ue.Action
@@ -97,6 +98,7 @@ import app.aaps.core.interfaces.source.XDripSource
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.interfaces.utils.TrendCalculator
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
@@ -1242,10 +1244,41 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_INCREASE_150("Steroid increase 130 to 150", 5.170),
         STEROID_INCREASE_190("Steroid increase 150 to 190", 5.172),
         STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
-        STEROID_TURN_OFF("Steroids OFF", 5.176)
+        STEROID_TURN_OFF("Steroids OFF", 5.176),
+        ANYDESK_RESTART("Send AnyDesk restart", 0.0)
+    }
+
+    // Client is the command sender. This exact Note is uploaded to Client's NS; the real-pump
+    // phone reads it through its configured secondary NS and broadcasts the Tasker intent.
+    // This deliberately creates no relay TT and has no repeat-interval guard.
+    private fun sendAnyDeskRestartNoteFromClient() {
+        if (!config.AAPSCLIENT) return
+        val note = "ADesk"
+        val therapyEvent = TE(
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            this.note = note
+            duration = TimeUnit.MINUTES.toMillis(1)
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = "AnyDesk restart command",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe(
+            { rxBus.send(EventRefreshOverview("AnyDesk restart Note", true)) },
+            { error -> aapsLogger.error(LTag.CORE, "Failed to save ADesk command Note", error) }
+        )
     }
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
+        if (action == BasalDirectAction.ANYDESK_RESTART) {
+            sendAnyDeskRestartNoteFromClient()
+            return
+        }
         if (config.AAPSCLIENT) {
             setRelayTt(action.clientRelayMmol, "basal double-tap action")
         } else {
@@ -1315,7 +1348,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
                 activity?.let { act ->
-                    val entries = BasalDirectAction.values().toList()
+                    val entries = BasalDirectAction.values().filter {
+                        it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
+                    }
                     val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
                         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                             val tv = convertView as? TextView ?: TextView(act).apply {
