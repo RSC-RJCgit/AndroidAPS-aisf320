@@ -1335,6 +1335,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.MJ_BUTTONS_TOGGLE,
                 BasalDirectAction.STEROID_BUTTON_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
+
+                // Unreachable here -- the early-return guard above (action == ANYDESK_RESTART) always
+                // exits before this when is reached for that case. Listed explicitly (not folded into an
+                // else) so a genuinely new BasalDirectAction value still fails to compile until handled.
+                BasalDirectAction.ANYDESK_RESTART -> Unit
             }
         }
     }
