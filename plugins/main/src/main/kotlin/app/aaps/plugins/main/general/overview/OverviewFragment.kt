@@ -1695,6 +1695,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         is TtCode.Single  ->
                             androidx.appcompat.app.AlertDialog.Builder(act)
                                 .setTitle(entry.label)
+                                .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(reader()) } }
                                 .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                                 // setNegativeButton alone only catches an explicit tap on the Cancel
@@ -1758,7 +1759,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // both directions offered as buttons (pick one = confirm), so the mmol number/direction only ever
     // surface at that final step, never in the scannable list itself.
     private sealed class TtCode(val label: String) {
-        class Single(label: String, val value: Double) : TtCode(label)
+        // currentValue: same "what is it right now" mechanism as Stepped's below, for the boolean-toggle
+        // rows (shown as the popup's plain message text, since Single has no checkbox container to add
+        // a line above). For the two genuinely stateless one-shot triggers (clean grph view, Cloud logs
+        // upload), there's nothing live to read, so this instead holds a fixed "Effect: ..." description
+        // of what OK actually does -- same field, same display spot, just a constant string instead of a
+        // preference reader, since the mechanism (show one line of context before confirming) is the
+        // same need either way.
+        class Single(label: String, val value: Double, val currentValue: (() -> String)? = null) : TtCode(label)
         // downLabel/upLabel: the actual magnitude each direction applies, pulled from the matching
         // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt (not derivable from down/up themselves — those
         // are just this TT-signal's own mmol trigger values, unrelated in magnitude to the real setting
@@ -1788,15 +1796,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     ", mildBst=${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}"
             }
         ),
-        TtCode.Single("Tog Libre sens on/off", 5.006),
-        TtCode.Single("Tog Bst autos(all) on/off", 5.008),
+        TtCode.Single("Tog Libre sens on/off", 5.006, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)) "ON" else "OFF"}" }),
+        TtCode.Single("Tog Bst autos(all) on/off", 5.008, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)) "ON" else "OFF"}" }),
         TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))}" }),
         TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018, "-0.05", "+0.05", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))}" }),
         TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal))}" }),
         TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig))}" }),
         TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))}" }),
         TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride))}" }),
-        TtCode.Single("clean grph view", 5.042),
+        TtCode.Single(
+            "clean grph view", 5.042,
+            // Matches CleanGraphTT's own sendSms text in OpenAPSAutoISFPlugin.kt.
+            currentValue = { "Effect: hides SMB dose labels/arrows, shows a plain solid green line only" }
+        ),
         TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%", currentValue = { "Current: ${preferences.get(IntKey.OverviewBolusPercentage)}%" }),
         // MildBoostDownTT/UpTT nudges ApsAutoIsfMildBoostRatio ALONE (unlike SMBdel base + mild-Bst above, which nudges it together with the baseline).
         TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}" }),
@@ -1814,19 +1826,43 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset1218))}" }),
         TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset1822))}" }),
         TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset2200))}" }),
-        TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
-        TtCode.Single("Cloud logs upload", 5.140),
-        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142),
+        TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)) "ON" else "OFF"}" }),
+        TtCode.Single(
+            "Cloud logs upload", 5.140,
+            // Matches CloudLogsUploadTT's own doc comment in OpenAPSAutoISFPlugin.kt.
+            currentValue = { "Effect: zips logs and sends to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
+        ),
+        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
         // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
         // MJ state), so they belong behind one label as a mutually-exclusive checkbox pair — same shape
         // as the -0.1/+0.1 rows above, just with named states instead of a numeric delta. downLabel/
         // upLabel are the states themselves, matching MjStateNoMjTT/MjStateMj3TT in OpenAPSAutoISFPlugin.kt.
-        TtCode.Stepped("MJ state (manual override)", 5.144, 5.146, "NOMJremains", "MJ3"),
+        TtCode.Stepped(
+            "MJ state (manual override)", 5.144, 5.146, "NOMJremains", "MJ3",
+            // Real current state value (not just an equality check against one candidate) -- MJ has more
+            // values than just the two this row toggles between (e.g. "MJ active", "MJ2"), so this can
+            // show something other than either checkbox label.
+            currentValue = { "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}" }
+        ),
         // Same Stepped shape as the MJ row above: one label, the two profiles as a mutually-exclusive
         // checkbox pair. Labels are the two ROLES (Standard/Low), not the profiles' actual configured
         // names — those are user-picked via StringKey.ApsAutoIsfStandardProfileName/...LowProfileName,
         // so naming them here would go stale the moment either is repointed.
-        TtCode.Stepped("Profile (manual override)", 5.148, 5.150, "Standard", "Low"),
+        TtCode.Stepped(
+            "Profile (manual override)", 5.148, 5.150, "Standard", "Low",
+            // Compares the actual active profile name against the two configured role names, same
+            // resolution logic used throughout OpenAPSAutoISFPlugin.kt (e.g. onNormalProfile in
+            // BolusGiven) -- shows the real name too since neither role name is fixed text.
+            currentValue = {
+                val name = profileFunction.getProfileName()
+                val roleLabel = when (name) {
+                    preferences.get(StringKey.ApsAutoIsfStandardProfileName) -> "Standard"
+                    preferences.get(StringKey.ApsAutoIsfLowProfileName)      -> "Low"
+                    else                                                     -> "neither"
+                }
+                "Current: $roleLabel ($name)"
+            }
+        ),
         // Selecting the active mode again turns it off; selecting the other mode enables it and turns
         // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
         TtCode.Stepped(
@@ -1842,7 +1878,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
         ),
-        TtCode.Single("Run SensorAge code on/off", 5.156)
+        TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" })
         // Graph toggle entries (UKF1/UKF2/UKF3) live in list2 (basal rate icon,
         // BasalDirectAction/showBasalDirectActionListDialog() below), not list1 (this one, IOB icon)
         // -- moved there per explicit request. See GraphToggleEntry's doc comment.

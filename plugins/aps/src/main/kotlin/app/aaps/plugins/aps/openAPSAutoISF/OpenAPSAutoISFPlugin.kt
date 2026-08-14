@@ -3410,7 +3410,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // interval — and so can't detect stacking — with fewer than 2 SMBs in the window), so
             // scaling by it here would be dead weight implying a scaling that can never actually apply.
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val bg3 = isTimeBetween(8, 30, 22, 0)
+            // Window extended 22:00 -> end of day (2026-08-14): a real event showed bg3's own signal
+            // thresholds satisfied at 9:57pm, with iobChange5 closing fast, only to be cut off by the
+            // old 22:00 boundary before it could fire -- the rise then ran uncontested another 30+ min.
+            // Later meals are common enough that the boost shouldn't structurally stop working for them.
+            // Safety is NOT reopened by this: the cumulative 30-min/10-min SMB caps in
+            // DetermineBasalAutoISF.kt (built from the Aug 6-7 hypo incident) trim/zero microBolus
+            // AFTER this fires regardless of time of day -- they're what actually prevents stacking, not
+            // this window. Deliberately NOT extended into the 00:00-06:00 overnight guard territory
+            // (NightIobCeiling, MJrec, etc.) -- see isTimeBetween()'s own doc comment for why endH=0/
+            // endM=0 here means "runs to end of day," not "wraps past midnight."
+            val bg3 = isTimeBetween(8, 30, 0, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
@@ -3496,7 +3506,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
             // cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            val fire = isTimeBetween(8, 30, 22, 0)
+            // Window extended to end of day, same reasoning/date as bg3's identical change above.
+            val fire = isTimeBetween(8, 30, 0, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
@@ -3609,7 +3620,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 22, 0)
+            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 0, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
@@ -3618,7 +3629,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes < 300 && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 22, 0)
+            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 0, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
@@ -3715,7 +3726,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mildRawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || mildRawDelta1 >= 4.5 * mildStackK
             val mildDeliverySuppressed = smbCount5Min() <= 1 && mildRawDelta5 >= 5.4 && mildRawDelta5 < 14.4 && mildRawDelta1 < 14.4
             val mildConfirmed = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
-                isTimeBetween(8, 30, 22, 0) &&
+                isTimeBetween(8, 30, 0, 0) &&
                 mildLastBolusMin >= 120 && mildLastCarbMin >= 120 &&
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
