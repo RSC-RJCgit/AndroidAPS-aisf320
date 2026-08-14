@@ -210,11 +210,13 @@ class PrepareBgDataWorker(
             LineGraphSeries<DataPoint>()
         }
 
-        // UKF2 comparison trace: the exact original LibreSpecial EMA values immediately before the
-        // full-history UKF. Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
+        // UKF2 comparison trace: the actual post-refinement value smoothLibreSpecialRealtime() returned
+        // on each cycle -- i.e. exactly what became the real dosing BGL while UKFset2 was live, not the
+        // pre-refinement libreSpecial stage this used to show (see libreSpecialPostUkfHistory's own doc
+        // comment). Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
         data.overviewData.libreSpecialPreUkfSeries =
             if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) && preferences.get(BooleanKey.ShowUkf2Graph)) {
-                val points = ukfSmoothing.libreSpecialPreUkfHistory(fromTime, toTime)
+                val points = ukfSmoothing.libreSpecialPostUkfHistory(fromTime, toTime)
                     .map { (timestamp, mgdl) ->
                         DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
                     }

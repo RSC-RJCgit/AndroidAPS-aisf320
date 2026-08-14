@@ -1305,11 +1305,37 @@ private fun savePersistedParameters() {
     fun smoothForDisplayNEW(points: List<Pair<Long, Double>>): List<Double> = smoothForDisplay(points)
 
     /**
-     * Exact original LibreSpecial EMA values retained for the UKF2 pre-UKF comparison graph.
+     * Exact original LibreSpecial EMA values (pre-refinement) -- kept for reference/debugging, but no
+     * longer what the UKF2 graph line reads (see [libreSpecialPostUkfHistory] below, added 2026-08-15:
+     * the graph line used to show this pre-refinement stage, one step behind the value UKFset2 actually
+     * used for dosing -- see that function's own doc comment for why).
      */
     @Synchronized
     fun libreSpecialPreUkfHistory(fromTime: Long, toTime: Long): List<Pair<Long, Double>> =
         sp.getString("ukf_librespecial_full_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val time = fields[0].toLongOrNull()
+                    val value = fields[1].toDoubleOrNull()
+                    if (time == null || value == null || time !in fromTime..toTime) null else time to value
+                }
+            }
+            .sortedBy { it.first }
+
+    /**
+     * The actual post-refinement value [smoothLibreSpecialRealtime] returned for each timestamp -- i.e.
+     * exactly what became gv.value (the real dosing BGL) on the cycles UKFset2 was live. Added
+     * 2026-08-15 so the UKF2 graph line can show what UKFset2 genuinely delivered instead of the
+     * pre-refinement libreSpecial stage above, which was always one step behind the real dosed number.
+     * Same 12h retention/900-point cap as [libreSpecialPreUkfHistory], kept in its own persisted key so
+     * neither history's format has to change to support the other.
+     */
+    @Synchronized
+    fun libreSpecialPostUkfHistory(fromTime: Long, toTime: Long): List<Pair<Long, Double>> =
+        sp.getString("ukf_librespecial_refined_history", "")
             .split(';')
             .mapNotNull { entry ->
                 val fields = entry.split(',')
@@ -1356,8 +1382,34 @@ private fun savePersistedParameters() {
             val ukfOldest = timestamp - 90L * 60_000L
             val ukfNewestFirst = graphNewestFirst.filter { it.first >= ukfOldest }.take(120)
             val currentIndex = ukfNewestFirst.indexOfFirst { it.first == timestamp }
-            smoothForDisplayNEW(ukfNewestFirst).getOrNull(currentIndex).takeIf { currentIndex >= 0 }
+            val refined = smoothForDisplayNEW(ukfNewestFirst).getOrNull(currentIndex).takeIf { currentIndex >= 0 }
                 ?: max(libreSpecialValue, 39.0)
+            // Mirrors the pre-refinement history's own save above (same 12h window, same 900 cap, same
+            // per-timestamp de-dup) but in its own key, so this doesn't disturb libreSpecialPreUkfHistory
+            // or its format for anything still reading it.
+            val refinedHistory = sp.getString("ukf_librespecial_refined_history", "")
+                .split(';')
+                .mapNotNull { entry ->
+                    val fields = entry.split(',')
+                    if (fields.size != 2) null
+                    else {
+                        val time = fields[0].toLongOrNull()
+                        val value = fields[1].toDoubleOrNull()
+                        if (time == null || value == null) null else time to value
+                    }
+                }
+                .toMutableList()
+            refinedHistory.removeAll { it.first == timestamp }
+            refinedHistory.add(timestamp to refined)
+            val refinedGraphNewestFirst = refinedHistory
+                .filter { it.first >= graphOldest && it.first <= timestamp + 5L * 60_000L }
+                .sortedByDescending { it.first }
+                .take(900)
+            sp.putString(
+                "ukf_librespecial_refined_history",
+                refinedGraphNewestFirst.joinToString(";") { "${it.first},${it.second}" }
+            )
+            refined
         } catch (_: Exception) {
             max(libreSpecialValue, 39.0)
         }

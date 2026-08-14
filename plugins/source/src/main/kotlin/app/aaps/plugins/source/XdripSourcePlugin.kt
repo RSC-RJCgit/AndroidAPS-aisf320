@@ -210,14 +210,11 @@ class XdripSourcePlugin @Inject constructor(
                     val libreSpecial = if (lastSmooth > 0.0)
                         lastSmooth + effectiveAlpha * (extraBgEstimate - lastSmooth)
                     else extraBgEstimate
-                    // TEMP DISABLED 2026-08-14 (aisf321_58x) -- UKF2 (smoothLibreSpecialRealtime) taken
-                    // out of the live pipeline pending retest; falls through to plain libreSpecial
-                    // unconditionally even if FslUseUkfLibreSpecialSmoothing is still true. To re-enable,
-                    // restore the commented condition below (same change needed in
-                    // NsIncomingDataProcessor.kt's mirrored block).
-                    // smooth = if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing))
-                    //     ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
-                    // else libreSpecial
+                    // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF
+                    // so its separate graph history can be retested, but deliberately keep the live
+                    // main-BG/dosing value on plain LibreSpecial during this comparison.
+                    if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing))
+                        ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
                     smooth = libreSpecial
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
