@@ -104,6 +104,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -1248,6 +1249,25 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         ANYDESK_RESTART("Send AnyDesk restart", 0.0)
     }
 
+    // Local display-only graph settings for the three raw/noise-derived UKF comparison lines (UKF1 =
+    // rawBgSmoothedSeries, UKF2 = libreSpecialPreUkfSeries, UKF3 = libreSpecialFromUkf1Series -- see
+    // PrepareBgDataWorker.kt). Appended to double-tap list2 (basal rate icon area, see
+    // showBasalDirectActionListDialog() below), not list1 (IOB icon, showTtCodesListDialog()) -- moved
+    // here per explicit request. Never relayed via TT the way BasalDirectAction's mmol codes are -- reads/writes
+    // BooleanKey preferences directly on whichever device the double-tap happens on, since graph
+    // rendering is inherently per-device. calibKey null (UKF2) means that line's underlying value is
+    // already calibrated upstream and has no real toggle to offer -- shown as a disabled, checked box
+    // instead of omitted, so all three popups keep the same two-checkbox shape.
+    private data class GraphToggleEntry(val label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String)
+
+    // Order matters: appended after every BasalDirectAction entry (including ANYDESK_RESTART when
+    // present), so UKF3 is always the last row in the combined list regardless of build type.
+    private val graphToggleEntries = listOf(
+        GraphToggleEntry("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
+        GraphToggleEntry("Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)"),
+        GraphToggleEntry("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset")
+    )
+
     // Client is the command sender. This exact Note is uploaded to Client's NS; the real-pump
     // phone reads it through its configured secondary NS and broadcasts the Tasker intent.
     // This deliberately creates no relay TT and has no repeat-interval guard.
@@ -1344,6 +1364,75 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
     }
 
+    // Entry point for double-tap list2 (basal rate icon area): BasalDirectAction's real actions,
+    // followed by the 3 GraphToggleEntry rows appended at the end (UKF3 last -- see graphToggleEntries'
+    // doc comment). Extracted out of basalGestureDetector.onDoubleTap so that cancelling an INNER
+    // confirmation/popup can re-show this same list instead of dismissing out to the plain Overview
+    // screen behind it -- same pattern/rationale as showTtCodesListDialog() on list1 (IOB icon area).
+    // OKDialog.showConfirmation's 5-arg (title, message, ok, cancel) overload is used instead of the
+    // simpler 3-arg one specifically so a cancel callback can be supplied.
+    private fun showBasalDirectActionListDialog() {
+        activity?.let { act ->
+            val actionEntries = BasalDirectAction.values().filter {
+                it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
+            }
+            val labels = actionEntries.map { it.label } + graphToggleEntries.map { it.label }
+            val adapter = object : ArrayAdapter<String>(act, 0, labels) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val tv = convertView as? TextView ?: TextView(act).apply {
+                        setPadding(24, 8, 24, 8)
+                        textSize = 15f
+                    }
+                    tv.text = getItem(position)
+                    return tv
+                }
+            }
+            androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" else "Direct actions")
+                .setAdapter(adapter) { _, which ->
+                    if (which < actionEntries.size) {
+                        val action = actionEntries[which]
+                        OKDialog.showConfirmation(
+                            act,
+                            act.getString(app.aaps.core.ui.R.string.confirmation),
+                            rh.gs(R.string.run_question, action.label),
+                            Runnable { runBasalDirectAction(action) },
+                            Runnable { showBasalDirectActionListDialog() }
+                        )
+                    } else {
+                        val entry = graphToggleEntries[which - actionEntries.size]
+                        val calibBox = CheckBox(act).apply {
+                            text = entry.calibLabel
+                            isChecked = entry.calibKey?.let { preferences.get(it) } ?: true
+                            isEnabled = entry.calibKey != null
+                        }
+                        val showBox = CheckBox(act).apply {
+                            text = "Graph on"
+                            isChecked = preferences.get(entry.showKey)
+                        }
+                        val container = LinearLayout(act).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(48, 24, 48, 0)
+                            addView(calibBox)
+                            addView(showBox)
+                        }
+                        androidx.appcompat.app.AlertDialog.Builder(act)
+                            .setTitle(entry.label)
+                            .setView(container)
+                            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                preferences.put(entry.showKey, showBox.isChecked)
+                                entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
+                            }
+                            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showBasalDirectActionListDialog() }
+                            .setOnCancelListener { showBasalDirectActionListDialog() }
+                            .show()
+                    }
+                }
+                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                .show()
+        }
+    }
+
     private val basalGestureDetector by lazy {
         android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
@@ -1352,33 +1441,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
 
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                activity?.let { act ->
-                    val entries = BasalDirectAction.values().filter {
-                        it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
-                    }
-                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
-                        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                            val tv = convertView as? TextView ?: TextView(act).apply {
-                                setPadding(24, 8, 24, 8)
-                                textSize = 15f
-                            }
-                            tv.text = getItem(position)
-                            return tv
-                        }
-                    }
-                    androidx.appcompat.app.AlertDialog.Builder(act)
-                        .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" else "Direct actions")
-                        .setAdapter(adapter) { _, which ->
-                            val action = entries[which]
-                            OKDialog.showConfirmation(
-                                act,
-                                rh.gs(R.string.run_question, action.label),
-                                Runnable { runBasalDirectAction(action) }
-                            )
-                        }
-                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                        .show()
-                }
+                showBasalDirectActionListDialog()
                 return true
             }
 
@@ -1597,14 +1660,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolusIob().iob) + "\n" +
             rh.gs(app.aaps.core.ui.R.string.basal) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, basalIob().basaliob)
 
-    // Entry point for double-tap list 2 (IOB graph area / TT-nudge settings, ttCodesList() below).
+    // Entry point for double-tap list1 (IOB graph area / TT-nudge settings, ttCodesList() below).
     // Extracted out of iobGestureDetector.onDoubleTap so that cancelling an INNER confirmation dialog
     // (a TtCode.Single "Set <name>?" popup, or a TtCode.Stepped -/+ picker) can re-show this same list
     // instead of just dismissing out to the plain Overview screen behind it -- see the two inner
     // .setNegativeButton(cancel) callbacks below, which call this function again instead of passing
     // null (plain no-op dismiss). The OUTER list's own Cancel stays a no-op dismiss on purpose --
     // cancelling the list itself is meant to close out to the main screen, only cancelling a
-    // confirmation popup should return to the list.
+    // confirmation popup should return to the list. See showBasalDirectActionListDialog() for list2
+    // (basal rate icon area).
     private fun showTtCodesListDialog() {
         activity?.let { act ->
             val entries = ttCodesList()
@@ -1633,6 +1697,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 .setTitle(entry.label)
                                 .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                                // setNegativeButton alone only catches an explicit tap on the Cancel
+                                // button -- back-press or tapping outside the dialog goes through
+                                // onCancel() instead, a separate callback that bypasses it entirely.
+                                // Without this, those two dismiss paths fell straight through to the
+                                // main screen exactly as before this feature existed.
+                                .setOnCancelListener { showTtCodesListDialog() }
                                 .show()
 
                         // Selection (checkbox) is decoupled from confirmation (OK/Cancel) here, unlike
@@ -1652,6 +1722,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             val container = LinearLayout(act).apply {
                                 orientation = LinearLayout.VERTICAL
                                 setPadding(48, 24, 48, 0)
+                                entry.currentValue?.let { reader ->
+                                    addView(TextView(act).apply {
+                                        text = reader()
+                                        setPadding(0, 0, 0, 16)
+                                    })
+                                }
                                 addView(downBox)
                                 addView(upBox)
                             }
@@ -1666,39 +1742,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                     }
                                 }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
-                                .show()
-                        }
-
-                        // Local-only settings (see TtCode.GraphToggle doc comment) -- reads/writes
-                        // preferences directly instead of going through applyTtControl(); both boxes are
-                        // pre-checked from current state, independent of each other (not mutually
-                        // exclusive like Stepped's pair above). calibKey null (UKF2) forces that box
-                        // checked and disabled instead of omitting it, so all three popups keep the same
-                        // two-checkbox shape.
-                        is TtCode.GraphToggle -> {
-                            val calibBox = CheckBox(act).apply {
-                                text = entry.calibLabel
-                                isChecked = entry.calibKey?.let { preferences.get(it) } ?: true
-                                isEnabled = entry.calibKey != null
-                            }
-                            val showBox = CheckBox(act).apply {
-                                text = "Graph on"
-                                isChecked = preferences.get(entry.showKey)
-                            }
-                            val container = LinearLayout(act).apply {
-                                orientation = LinearLayout.VERTICAL
-                                setPadding(48, 24, 48, 0)
-                                addView(calibBox)
-                                addView(showBox)
-                            }
-                            androidx.appcompat.app.AlertDialog.Builder(act)
-                                .setTitle(entry.label)
-                                .setView(container)
-                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                                    preferences.put(entry.showKey, showBox.isChecked)
-                                    entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
-                                }
-                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                                .setOnCancelListener { showTtCodesListDialog() } // see TtCode.Single's comment on this above
                                 .show()
                         }
                     }
@@ -1715,18 +1759,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // surface at that final step, never in the scannable list itself.
     private sealed class TtCode(val label: String) {
         class Single(label: String, val value: Double) : TtCode(label)
-        // Third shape: local display-only graph settings (per-line show/hide + calibration), never
-        // relayed via TT the way the mmol-coded Single/Stepped rows above are -- these read/write
-        // BooleanKey preferences directly on whichever device the double-tap happens on (see
-        // showTtCodesListDialog()'s handling below), since graph rendering is inherently per-device.
-        // calibKey null means that line's underlying value is already calibrated upstream and has no
-        // real toggle to offer -- see the UKF2 entry in ttCodesList() and its calibLabel.
-        class GraphToggle(label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String) : TtCode(label)
         // downLabel/upLabel: the actual magnitude each direction applies, pulled from the matching
         // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt (not derivable from down/up themselves — those
         // are just this TT-signal's own mmol trigger values, unrelated in magnitude to the real setting
         // delta). Shown on the checkboxes in the confirm dialog below instead of a generic "down"/"up".
-        class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String) : TtCode(label)
+        // currentValue: optional "what is it right now" reader, shown as a plain text line above the
+        // checkboxes in the confirm popup (see showTtCodesListDialog()) -- null for rows that don't map
+        // to one single readable preference (a dual-key nudge like SMBdel base + mild-Bst, or a named
+        // automation/profile state like MJ state or Profile override), so those popups look exactly as
+        // before rather than show something misleading or half-right.
+        class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String, val currentValue: (() -> String)? = null) : TtCode(label)
     }
 
     // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. On a pump or Virtual build the chosen
@@ -1740,30 +1782,30 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("SMBdel base + mild-Bst", 5.002, 5.004, "-0.01", "+0.01"),
         TtCode.Single("Tog Libre sens on/off", 5.006),
         TtCode.Single("Tog Bst autos(all) on/off", 5.008),
-        TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01"),
-        TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018, "-0.05", "+0.05"),
-        TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1"),
-        TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01"),
-        TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05"),
-        TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1"),
+        TtCode.Stepped("pp ISF Wt (Or)", 5.012, 5.014, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))}" }),
+        TtCode.Stepped("acce ISF Wt (Or)", 5.016, 5.018, "-0.05", "+0.05", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))}" }),
+        TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal))}" }),
+        TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig))}" }),
+        TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))}" }),
+        TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride))}" }),
         TtCode.Single("clean grph view", 5.042),
-        TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%"),
+        TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%", currentValue = { "Current: ${preferences.get(IntKey.OverviewBolusPercentage)}%" }),
         // MildBoostDownTT/UpTT nudges ApsAutoIsfMildBoostRatio ALONE (unlike SMBdel base + mild-Bst above, which nudges it together with the baseline).
-        TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.01", "+0.01"),
-        TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058, "-0.01", "+0.01"),
-        TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064, "-0.01", "+0.01"),
-        TtCode.Stepped("higher ISF range Wt", 5.068, 5.070, "-0.1", "+0.1"),
-        TtCode.Stepped("peak insulin time", 5.074, 5.076, "-5 min", "+5 min"),
-        TtCode.Stepped("autoISF max (lowBG)", 5.080, 5.082, "-0.1", "+0.1"),
-        TtCode.Stepped("autoISF max (N)", 5.086, 5.088, "-0.1", "+0.1"),
-        TtCode.Stepped("T1 tod offset 00-02h", 5.092, 5.094, "-0.1", "+0.1"),
-        TtCode.Stepped("T2 tod offset 02-04h", 5.098, 5.100, "-0.1", "+0.1"),
-        TtCode.Stepped("T3 tod offset 04-06h", 5.104, 5.106, "-0.1", "+0.1"),
-        TtCode.Stepped("T4 tod offset 06-09h", 5.110, 5.112, "-0.1", "+0.1"),
-        TtCode.Stepped("T5 tod offset 09-12h", 5.116, 5.118, "-0.1", "+0.1"),
-        TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124, "-0.1", "+0.1"),
-        TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130, "-0.1", "+0.1"),
-        TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136, "-0.1", "+0.1"),
+        TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}" }),
+        TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))}" }),
+        TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))}" }),
+        TtCode.Stepped("higher ISF range Wt", 5.068, 5.070, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight))}" }),
+        TtCode.Stepped("peak insulin time", 5.074, 5.076, "-5 min", "+5 min", currentValue = { "Current: ${preferences.get(IntKey.InsulinOrefPeak)} min" }),
+        TtCode.Stepped("autoISF max (lowBG)", 5.080, 5.082, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMaxLow))}" }),
+        TtCode.Stepped("autoISF max (N)", 5.086, 5.088, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMax))}" }),
+        TtCode.Stepped("T1 tod offset 00-02h", 5.092, 5.094, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset0002))}" }),
+        TtCode.Stepped("T2 tod offset 02-04h", 5.098, 5.100, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset0204))}" }),
+        TtCode.Stepped("T3 tod offset 04-06h", 5.104, 5.106, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset0406))}" }),
+        TtCode.Stepped("T4 tod offset 06-09h", 5.110, 5.112, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset0609))}" }),
+        TtCode.Stepped("T5 tod offset 09-12h", 5.116, 5.118, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset0912))}" }),
+        TtCode.Stepped("T6 tod offset 12-18h", 5.122, 5.124, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset1218))}" }),
+        TtCode.Stepped("T7 tod offset 18-22h", 5.128, 5.130, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset1822))}" }),
+        TtCode.Stepped("T8 tod offset 22-00h", 5.134, 5.136, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfTodOffset2200))}" }),
         TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138),
         TtCode.Single("Cloud logs upload", 5.140),
         TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142),
@@ -1780,14 +1822,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Selecting the active mode again turns it off; selecting the other mode enables it and turns
         // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
         TtCode.Stepped("Libre UKF mode", 5.152, 5.154, "UKF1", "UKF2"),
-        TtCode.Single("Run SensorAge code on/off", 5.156),
-        // Local display-only settings, not TT-coded (see TtCode.GraphToggle doc comment) -- one per
-        // raw/noise-derived comparison line, excluding raw itself (RAW_BG has no calibration concept of
-        // its own to toggle, it IS the uncalibrated signal). UKF2 has no real calibration toggle -- see
-        // its calibKey=null/calibLabel below.
-        TtCode.GraphToggle("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
-        TtCode.GraphToggle("Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)"),
-        TtCode.GraphToggle("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset")
+        TtCode.Single("Run SensorAge code on/off", 5.156)
+        // Graph toggle entries (UKF1/UKF2/UKF3) live in list2 (basal rate icon,
+        // BasalDirectAction/showBasalDirectActionListDialog() below), not list1 (this one, IOB icon)
+        // -- moved there per explicit request. See GraphToggleEntry's doc comment.
     )
 
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
