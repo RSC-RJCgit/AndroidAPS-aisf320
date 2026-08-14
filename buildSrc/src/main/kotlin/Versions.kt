@@ -1,7 +1,7 @@
 import org.gradle.api.JavaVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-@Suppress("ConstPropertyName")
+@Suppress ("ConstPropertyName")
 object Versions {
 
     // On change edit aaps-ci.yml
