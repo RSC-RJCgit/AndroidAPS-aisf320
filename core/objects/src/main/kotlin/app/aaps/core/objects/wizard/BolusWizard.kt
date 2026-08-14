@@ -1021,7 +1021,16 @@ class BolusWizard @Inject constructor(
                 )
                 return@postDelayed
             }
-            val bgUnsafe = gs.glucose < 126.1 /* 7.0 mmol */ || gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */
+            // BG<6.0mmol is unsafe outright, regardless of trend. Between 6.0-8.0mmol a declining trend
+            // is also unsafe (caution zone). At/above 8.0mmol a declining trend alone is NOT unsafe --
+            // added 2026-08-15 after noticing the previous flat OR meant a tiny, noise-level negative
+            // delta (e.g. -0.06mmol) at a comfortably high BG (8.5mmol+) could trip this on its own, and
+            // if a gentle, genuinely-safe decline from a high BG held that sign for 3 consecutive checks
+            // (entirely plausible over ~21min at the default 7min interval), the whole remaining
+            // residual got cancelled despite BG never coming near a genuinely low level. Floor lowered
+            // 7.0 -> 6.0mmol same day, per explicit request.
+            val bgUnsafe = gs.glucose < 108.1 /* 6.0 mmol */ ||
+                (gs.glucose < 144.1 /* 8.0 mmol */ && (gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */))
             if (bgUnsafe) {
                 val unsafeCheckNumber = consecutiveUnsafeChecks + 1
                 if (unsafeCheckNumber < 3) {
