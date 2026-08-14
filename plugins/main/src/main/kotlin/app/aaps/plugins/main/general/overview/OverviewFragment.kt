@@ -1258,16 +1258,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // rendering is inherently per-device. calibKey null (UKF2) means that line's underlying value is
     // already calibrated upstream and has no real toggle to offer -- shown as a disabled, checked box
     // instead of omitted, so all three popups keep the same two-checkbox shape.
-    // syncedLiveKey/syncedLiveKeyMutuallyExclusiveWith: added 2026-08-15, UKF2-only. UKFset2's live TT
-    // toggle (list1) was removed since it no longer has any dosing effect of its own (see the note on
-    // "Tog UKFset1" in ttCodesList()) -- checking this entry's "Graph on" box now ALSO writes
-    // syncedLiveKey (FslUseUkfLibreSpecialSmoothing for UKF2), and clears
-    // syncedLiveKeyMutuallyExclusiveWith (FslUseUkfSmoothing) when turning it on, same mutual-exclusion
-    // LibreUkf1ToggleTT/the old LibreUkf2ToggleTT always enforced. Null for UKF1/UKF3 -- their "Graph
-    // on" box only ever meant the display toggle, no live setting to keep in sync.
+    // syncedLiveKey: added 2026-08-15, UKF2-only. UKFset2's live TT toggle (list1) was removed since it
+    // no longer has any dosing effect of its own (see the note on "Tog UKFset1" in ttCodesList()) --
+    // checking this entry's "Graph on" box now ALSO writes syncedLiveKey (FslUseUkfLibreSpecialSmoothing
+    // for UKF2), which gates whether smoothLibreSpecialRealtime() even runs to populate this graph's
+    // history -- see XdripSourcePlugin.kt/NsIncomingDataProcessor.kt, both of which call it only for that
+    // side effect and discard its return value, so main BG/dosing stays on plain LibreSpecial regardless
+    // of this flag. Deliberately does NOT touch FslUseUkfSmoothing (UKFset1) -- purely graph-only, no
+    // mutual-exclusion write; the two live-mode toggles (UKFset1 in list1, this checkbox) are independent
+    // of each other now. Null for UKF1/UKF3 -- their "Graph on" box only ever meant the display toggle,
+    // no live setting to keep in sync.
     private data class GraphToggleEntry(
         val label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String,
-        val syncedLiveKey: BooleanKey? = null, val syncedLiveKeyMutuallyExclusiveWith: BooleanKey? = null
+        val syncedLiveKey: BooleanKey? = null
     )
 
     // Order matters: appended after every BasalDirectAction entry (including ANYDESK_RESTART when
@@ -1276,7 +1279,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         GraphToggleEntry("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
         GraphToggleEntry(
             "Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)",
-            syncedLiveKey = BooleanKey.FslUseUkfLibreSpecialSmoothing, syncedLiveKeyMutuallyExclusiveWith = BooleanKey.FslUseUkfSmoothing
+            syncedLiveKey = BooleanKey.FslUseUkfLibreSpecialSmoothing
         ),
         GraphToggleEntry("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset"),
         // Second checkbox here is repurposed (not calibration): ON = hide insulin activity + all 3
@@ -1441,10 +1444,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                                 preferences.put(entry.showKey, showBox.isChecked)
                                 entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
-                                entry.syncedLiveKey?.let { liveKey ->
-                                    preferences.put(liveKey, showBox.isChecked)
-                                    if (showBox.isChecked) entry.syncedLiveKeyMutuallyExclusiveWith?.let { preferences.put(it, false) }
-                                }
+                                entry.syncedLiveKey?.let { liveKey -> preferences.put(liveKey, showBox.isChecked) }
                             }
                             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showBasalDirectActionListDialog() }
                             .setOnCancelListener { showBasalDirectActionListDialog() }
