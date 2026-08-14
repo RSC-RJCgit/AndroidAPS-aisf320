@@ -2239,6 +2239,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // thresholds (10min sustain, 30min cooldown) are a first cut, not yet validated against a real
         // case that actually needed a genuine reset -- watch for whether a real hypo-relevant reset gets
         // meaningfully delayed by the 10min wait before trusting these numbers.
+        //
+        // Both HP2 threshold checks (not the NOMJ/StepsHigh/StepsLow branches) also now require
+        // todResetSdeltaMmol < 0.1 -- an HP2 crossing while BG is still actively rising is a self-
+        // correcting blip, not a genuine sustained low/high; requiring delta to have flattened first
+        // keeps the sustained-duration timer from starting on those blips.
         val nomjRemains = checkAutomationState("MJ", "NOMJremains")
         val todResetHp = hypoPrediction2Mmol(
             glucoseStatus.glucose,
@@ -2248,6 +2253,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             mealData.mealCOB,
             bgAcce
         )
+        // Same mmol conversion hypoPrediction2Mmol() uses internally for its own sdeltaMmol -- required
+        // alongside both HP2 threshold checks below so a momentary HP2 crossing while BG is still
+        // actively rising doesn't clear offsets on its own; BG needs to actually be flat/falling
+        // (negative branch) or have stopped rising (positive branch) too.
+        val todResetSdeltaMmol = glucoseStatus.shortAvgDelta / 18.0182
         val todOffsetKeys = listOf(
             DoubleKey.ApsAutoIsfTodOffset0002,
             DoubleKey.ApsAutoIsfTodOffset0204,
@@ -2260,10 +2270,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
         val stepsLow = checkAutomationState("Steps", "StepsLow")
         val stepsHigh = checkAutomationState("Steps", "StepsHigh")
-        val clearNegativeTodOffsetsNow = !nomjRemains || (todResetHp != null && todResetHp < 4.0) || stepsHigh
+        val clearNegativeTodOffsetsNow = !nomjRemains || (todResetHp != null && todResetHp < 4.0 && todResetSdeltaMmol < 0.1) || stepsHigh
         // A positive TOD offset delays/limits SMB, so remove that protection only when every
         // permissive signal agrees. Missing HP2 deliberately fails closed and preserves the offset.
-        val clearPositiveTodOffsetsNow = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0
+        val clearPositiveTodOffsetsNow = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0 && todResetSdeltaMmol < 0.1
 
         if (clearNegativeTodOffsetsNow) {
             if (todOffsetNegClearSince == 0L) todOffsetNegClearSince = dateUtil.now()
@@ -2292,10 +2302,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             resetTodOffsets.forEach { key -> preferences.put(key, 0.0) }
             val reason = when {
                 clearPositiveTodOffsets && resettingPositive ->
-                    "NOMJremains+StepsLow+HP2=${round(todResetHp ?: 0.0, 2)}>6.0"
+                    "NOMJremains+StepsLow+HP2=${round(todResetHp ?: 0.0, 2)}>6.0+SD=${round(todResetSdeltaMmol, 2)}<0.1"
                 stepsHigh && resettingNegative -> "StepsHigh"
                 !nomjRemains -> "NOT_NOMJremains"
-                else -> "HP2=${round(todResetHp ?: 0.0, 2)}<4.0"
+                else -> "HP2=${round(todResetHp ?: 0.0, 2)}<4.0+SD=${round(todResetSdeltaMmol, 2)}<0.1"
             }
             sendSms("TodOffsetsZero: $reason; $resetValues")
             addCarePortalNote("TOD0 $reason")
