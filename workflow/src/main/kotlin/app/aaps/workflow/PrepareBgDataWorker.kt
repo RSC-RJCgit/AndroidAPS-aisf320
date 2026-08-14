@@ -184,9 +184,17 @@ class PrepareBgDataWorker(
             ukfSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
         else emptyList()
 
-        data.overviewData.rawBgSmoothedSeries = if (newestFirstRaw.isNotEmpty()) {
+        data.overviewData.rawBgSmoothedSeries = if (newestFirstRaw.isNotEmpty() && preferences.get(BooleanKey.ShowUkf1Graph)) {
+            // Ukf1ApplyLibreCalibration off (default, preserves prior behavior): plot smoothForDisplay()'s
+            // raw-noise-derived mgdl as-is. On: apply the same FslCalSlope/FslCalOffset calibration UKF3
+            // applies, so UKF1 can be compared calibrated-vs-uncalibrated against UKF3/live BG.
+            val applyCalibration = preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)
+            val slope = preferences.get(DoubleKey.FslCalSlope)
+            val offset = preferences.get(DoubleKey.FslCalOffset)
+            val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
             val smoothedPoints = newestFirstRaw.zip(ukf1SmoothedMgdl) { reading, mgdl ->
-                DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
+                val plotted = if (applyCalibration) max(40.0, mgdl * slope + offset * unitFactor) else mgdl
+                DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(plotted))
             }.asReversed() // back to ascending time order for the line series
             LineGraphSeries(smoothedPoints.toTypedArray()).also {
                 // Light blue + dashed -- was rawBgColor (orange), same as the carb absorption/model
@@ -205,7 +213,7 @@ class PrepareBgDataWorker(
         // UKF2 comparison trace: the exact original LibreSpecial EMA values immediately before the
         // full-history UKF. Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
         data.overviewData.libreSpecialPreUkfSeries =
-            if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)) {
+            if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) && preferences.get(BooleanKey.ShowUkf2Graph)) {
                 val points = ukfSmoothing.libreSpecialPreUkfHistory(fromTime, toTime)
                     .map { (timestamp, mgdl) ->
                         DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
@@ -228,7 +236,12 @@ class PrepareBgDataWorker(
         // DoubleKey.FslLastSmooth/LongKey.FslSmoothLastTimeRaw -- same never-touch-persisted-state
         // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries above, recomputed from scratch every
         // call so multiple graph refreshes can't corrupt the live pipeline's own EMA state.
-        data.overviewData.libreSpecialFromUkf1Series = if (newestFirstRaw.isNotEmpty()) {
+        data.overviewData.libreSpecialFromUkf1Series = if (newestFirstRaw.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) {
+            // Ukf3ApplyLibreCalibration on (default, preserves prior behavior): calibrate UKF1's mgdl via
+            // FslCalSlope/FslCalOffset before the EMA pass, same as the live pipeline does. Off: run the
+            // EMA against UKF1's raw (uncalibrated) mgdl instead, for an apples-to-apples comparison
+            // against an uncalibrated UKF1 line.
+            val applyCalibration = preferences.get(BooleanKey.Ukf3ApplyLibreCalibration)
             val slope = preferences.get(DoubleKey.FslCalSlope)
             val offset = preferences.get(DoubleKey.FslCalOffset)
             val factor = preferences.get(DoubleKey.FslSmoothAlpha)
@@ -238,7 +251,7 @@ class PrepareBgDataWorker(
             var lastTimeRaw = 0L
             val oldestFirst = newestFirstRaw.zip(ukf1SmoothedMgdl).asReversed()
             val points = oldestFirst.map { (reading, ukf1Mgdl) ->
-                val calibrated = max(40.0, ukf1Mgdl * slope + offset * unitFactor)
+                val calibrated = if (applyCalibration) max(40.0, ukf1Mgdl * slope + offset * unitFactor) else ukf1Mgdl
                 val elapsedMinutes = (reading.timestamp - lastTimeRaw) / 60000.0
                 val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
                 val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated

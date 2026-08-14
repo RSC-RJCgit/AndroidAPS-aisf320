@@ -189,6 +189,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // rest of the time.
     private var lastDuraTaperTimestamp: Long = 0L
     private var lastDuraTaperInfo: String = ""
+    // TodOffsetsZero's own sustained-duration tracking -- see that block's doc comment. 0L means "not
+    // currently in a continuously-true streak"; set once when the streak starts, cleared the moment the
+    // condition goes false again, so a flickering condition never accumulates partial credit.
+    private var todOffsetNegClearSince: Long = 0L
+    private var todOffsetPosClearSince: Long = 0L
     private var virtualPseudoWizardLastStatus: String = "never fired"
     val autoIsfVersion = "3.2.0"
     val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
@@ -2221,7 +2226,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Automatically clear TOD offsets when their sign no longer suits the current MJ/HP2 state.
         // The NOMJ condition is the exact automation state MJ=NOMJremains. A missing HP2 does not
-        // satisfy HP2 < 5.0; the MJ-state part of either rule can still clear the applicable offsets.
+        // satisfy HP2 < 4.0; the MJ-state part of either rule can still clear the applicable offsets.
+        //
+        // Sustained-duration requirement (todOffsetNegClearSince/PosClearSince, >=10 consecutive
+        // minutes) and a cooldown (readyToRun, 30min) added after 2026-08-13/14 real Client data showed
+        // HP2 crosses 5.0 in ~20% of ordinary cycles, and this block previously had neither -- a single
+        // momentary HP2 dip was enough to instantly wipe every hand-tuned TOD offset (confirmed via a
+        // real logged "TOD0 HP2=4.98<5.0" event, no repeat evidence of the other two branches firing).
+        // Also lowered the HP2 threshold 5.0 -> 4.0 as a smaller ask on its own -- both changes are
+        // deliberately independent fixes (duration/cooldown protects against all three OR'd triggers;
+        // the threshold change only narrows the HP2 one), neither is a substitute for the other. Both
+        // thresholds (10min sustain, 30min cooldown) are a first cut, not yet validated against a real
+        // case that actually needed a genuine reset -- watch for whether a real hypo-relevant reset gets
+        // meaningfully delayed by the 10min wait before trusting these numbers.
         val nomjRemains = checkAutomationState("MJ", "NOMJremains")
         val todResetHp = hypoPrediction2Mmol(
             glucoseStatus.glucose,
@@ -2243,15 +2260,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
         val stepsLow = checkAutomationState("Steps", "StepsLow")
         val stepsHigh = checkAutomationState("Steps", "StepsHigh")
-        val clearNegativeTodOffsets = !nomjRemains || (todResetHp != null && todResetHp < 5.0) || stepsHigh
+        val clearNegativeTodOffsetsNow = !nomjRemains || (todResetHp != null && todResetHp < 4.0) || stepsHigh
         // A positive TOD offset delays/limits SMB, so remove that protection only when every
         // permissive signal agrees. Missing HP2 deliberately fails closed and preserves the offset.
-        val clearPositiveTodOffsets = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0
+        val clearPositiveTodOffsetsNow = nomjRemains && stepsLow && todResetHp != null && todResetHp > 6.0
+
+        if (clearNegativeTodOffsetsNow) {
+            if (todOffsetNegClearSince == 0L) todOffsetNegClearSince = dateUtil.now()
+        } else {
+            todOffsetNegClearSince = 0L
+        }
+        if (clearPositiveTodOffsetsNow) {
+            if (todOffsetPosClearSince == 0L) todOffsetPosClearSince = dateUtil.now()
+        } else {
+            todOffsetPosClearSince = 0L
+        }
+        val todOffsetSustainMs = T.mins(10).msecs()
+        val clearNegativeTodOffsets = todOffsetNegClearSince != 0L && dateUtil.now() - todOffsetNegClearSince >= todOffsetSustainMs
+        val clearPositiveTodOffsets = todOffsetPosClearSince != 0L && dateUtil.now() - todOffsetPosClearSince >= todOffsetSustainMs
+
         val resetTodOffsets = todOffsetKeys.filter { key ->
             val value = preferences.get(key)
             (value < 0.0 && clearNegativeTodOffsets) || (value > 0.0 && clearPositiveTodOffsets)
         }
-        if (resetTodOffsets.isNotEmpty()) {
+        if (resetTodOffsets.isNotEmpty() && readyToRun("TodOffsetsZero", 30)) {
             val resettingPositive = resetTodOffsets.any { preferences.get(it) > 0.0 }
             val resettingNegative = resetTodOffsets.any { preferences.get(it) < 0.0 }
             val resetValues = resetTodOffsets.joinToString(",") { key ->
@@ -2263,10 +2295,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "NOMJremains+StepsLow+HP2=${round(todResetHp ?: 0.0, 2)}>6.0"
                 stepsHigh && resettingNegative -> "StepsHigh"
                 !nomjRemains -> "NOT_NOMJremains"
-                else -> "HP2=${round(todResetHp ?: 0.0, 2)}<5.0"
+                else -> "HP2=${round(todResetHp ?: 0.0, 2)}<4.0"
             }
             sendSms("TodOffsetsZero: $reason; $resetValues")
             addCarePortalNote("TOD0 $reason")
+            markRun("TodOffsetsZero")
         }
 
         // --- Graph2ToggleTT: manually setting a TT of 5.138 mmol is used as a remote toggle for

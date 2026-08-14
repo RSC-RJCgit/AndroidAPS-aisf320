@@ -1403,73 +1403,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
 
             override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                activity?.let { act ->
-                    val entries = ttCodesList()
-                    // Compact adapter (small text, minimal padding) instead of the default
-                    // select_dialog_item row — that one reserves ~48dp min height per row plus its own
-                    // vertical padding, which wastes a lot of space on a narrow phone with this many
-                    // entries. No functional difference, just tighter rows with no gap between them.
-                    val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
-                        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                            val tv = convertView as? TextView ?: TextView(act).apply {
-                                setPadding(24, 2, 24, 2)
-                                textSize = 13f
-                            }
-                            tv.text = getItem(position)
-                            return tv
-                        }
-                    }
-                    androidx.appcompat.app.AlertDialog.Builder(act)
-                        .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" else "Direct AutoISF settings")
-                        .setAdapter(adapter) { _, which ->
-                            // The mmol number (and, for Stepped, which direction) only ever surface here,
-                            // never in the outer list -- picking a button both chooses and confirms.
-                            when (val entry = entries[which]) {
-                                is TtCode.Single  ->
-                                    androidx.appcompat.app.AlertDialog.Builder(act)
-                                        .setTitle(entry.label)
-                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
-                                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                                        .show()
-
-                                // Selection (checkbox) is decoupled from confirmation (OK/Cancel) here,
-                                // unlike Single above -- picking a direction no longer immediately applies
-                                // it, so a stray tap on the wrong direction can be corrected before
-                                // confirming. Checkboxes behave as a mutually-exclusive pair (same idiom
-                                // as OverviewMenusImpl.createCustomMenuItemView's per-row checkboxes) —
-                                // ticking one clears the other. Labeled with the real magnitude each
-                                // direction applies (entry.downLabel/upLabel, e.g. "-0.1"/"+0.1"), pulled
-                                // from the matching *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt — see
-                                // the comment on TtCode.Stepped above.
-                                is TtCode.Stepped -> {
-                                    val downBox = CheckBox(act).apply { text = entry.downLabel }
-                                    val upBox = CheckBox(act).apply { text = entry.upLabel }
-                                    downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
-                                    upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
-                                    val container = LinearLayout(act).apply {
-                                        orientation = LinearLayout.VERTICAL
-                                        setPadding(48, 24, 48, 0)
-                                        addView(downBox)
-                                        addView(upBox)
-                                    }
-                                    androidx.appcompat.app.AlertDialog.Builder(act)
-                                        .setTitle(entry.label)
-                                        .setView(container)
-                                        .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                                            when {
-                                                downBox.isChecked -> applyTtControl(entry.down)
-                                                upBox.isChecked   -> applyTtControl(entry.up)
-                                                // Neither checked: OK with no selection is a no-op, not an error.
-                                            }
-                                        }
-                                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                                        .show()
-                                }
-                            }
-                        }
-                        .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
-                        .show()
-                }
+                showTtCodesListDialog()
                 return true
             }
 
@@ -1663,6 +1597,117 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolusIob().iob) + "\n" +
             rh.gs(app.aaps.core.ui.R.string.basal) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, basalIob().basaliob)
 
+    // Entry point for double-tap list 2 (IOB graph area / TT-nudge settings, ttCodesList() below).
+    // Extracted out of iobGestureDetector.onDoubleTap so that cancelling an INNER confirmation dialog
+    // (a TtCode.Single "Set <name>?" popup, or a TtCode.Stepped -/+ picker) can re-show this same list
+    // instead of just dismissing out to the plain Overview screen behind it -- see the two inner
+    // .setNegativeButton(cancel) callbacks below, which call this function again instead of passing
+    // null (plain no-op dismiss). The OUTER list's own Cancel stays a no-op dismiss on purpose --
+    // cancelling the list itself is meant to close out to the main screen, only cancelling a
+    // confirmation popup should return to the list.
+    private fun showTtCodesListDialog() {
+        activity?.let { act ->
+            val entries = ttCodesList()
+            // Compact adapter (small text, minimal padding) instead of the default select_dialog_item
+            // row — that one reserves ~48dp min height per row plus its own vertical padding, which
+            // wastes a lot of space on a narrow phone with this many entries. No functional difference,
+            // just tighter rows with no gap between them.
+            val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val tv = convertView as? TextView ?: TextView(act).apply {
+                        setPadding(24, 2, 24, 2)
+                        textSize = 13f
+                    }
+                    tv.text = getItem(position)
+                    return tv
+                }
+            }
+            androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" else "Direct AutoISF settings")
+                .setAdapter(adapter) { _, which ->
+                    // The mmol number (and, for Stepped, which direction) only ever surface here, never
+                    // in the outer list -- picking a button both chooses and confirms.
+                    when (val entry = entries[which]) {
+                        is TtCode.Single  ->
+                            androidx.appcompat.app.AlertDialog.Builder(act)
+                                .setTitle(entry.label)
+                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
+                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                                .show()
+
+                        // Selection (checkbox) is decoupled from confirmation (OK/Cancel) here, unlike
+                        // Single above -- picking a direction no longer immediately applies it, so a
+                        // stray tap on the wrong direction can be corrected before confirming.
+                        // Checkboxes behave as a mutually-exclusive pair (same idiom as
+                        // OverviewMenusImpl.createCustomMenuItemView's per-row checkboxes) — ticking one
+                        // clears the other. Labeled with the real magnitude each direction applies
+                        // (entry.downLabel/upLabel, e.g. "-0.1"/"+0.1"), pulled from the matching
+                        // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt — see the comment on
+                        // TtCode.Stepped below.
+                        is TtCode.Stepped -> {
+                            val downBox = CheckBox(act).apply { text = entry.downLabel }
+                            val upBox = CheckBox(act).apply { text = entry.upLabel }
+                            downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
+                            upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
+                            val container = LinearLayout(act).apply {
+                                orientation = LinearLayout.VERTICAL
+                                setPadding(48, 24, 48, 0)
+                                addView(downBox)
+                                addView(upBox)
+                            }
+                            androidx.appcompat.app.AlertDialog.Builder(act)
+                                .setTitle(entry.label)
+                                .setView(container)
+                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                    when {
+                                        downBox.isChecked -> applyTtControl(entry.down)
+                                        upBox.isChecked   -> applyTtControl(entry.up)
+                                        // Neither checked: OK with no selection is a no-op, not an error.
+                                    }
+                                }
+                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                                .show()
+                        }
+
+                        // Local-only settings (see TtCode.GraphToggle doc comment) -- reads/writes
+                        // preferences directly instead of going through applyTtControl(); both boxes are
+                        // pre-checked from current state, independent of each other (not mutually
+                        // exclusive like Stepped's pair above). calibKey null (UKF2) forces that box
+                        // checked and disabled instead of omitting it, so all three popups keep the same
+                        // two-checkbox shape.
+                        is TtCode.GraphToggle -> {
+                            val calibBox = CheckBox(act).apply {
+                                text = entry.calibLabel
+                                isChecked = entry.calibKey?.let { preferences.get(it) } ?: true
+                                isEnabled = entry.calibKey != null
+                            }
+                            val showBox = CheckBox(act).apply {
+                                text = "Graph on"
+                                isChecked = preferences.get(entry.showKey)
+                            }
+                            val container = LinearLayout(act).apply {
+                                orientation = LinearLayout.VERTICAL
+                                setPadding(48, 24, 48, 0)
+                                addView(calibBox)
+                                addView(showBox)
+                            }
+                            androidx.appcompat.app.AlertDialog.Builder(act)
+                                .setTitle(entry.label)
+                                .setView(container)
+                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                                    preferences.put(entry.showKey, showBox.isChecked)
+                                    entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
+                                }
+                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                                .show()
+                        }
+                    }
+                }
+                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+                .show()
+        }
+    }
+
     // One row per SETTING (not per TT code) — the outer double-tap list now shows only the setting
     // name, never the raw mmol number or which direction it nudges. Single: one-shot/toggle action,
     // tapping opens a plain "Set <name>?" confirm. Stepped: a -/+ pair, tapping opens a confirm with
@@ -1670,6 +1715,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // surface at that final step, never in the scannable list itself.
     private sealed class TtCode(val label: String) {
         class Single(label: String, val value: Double) : TtCode(label)
+        // Third shape: local display-only graph settings (per-line show/hide + calibration), never
+        // relayed via TT the way the mmol-coded Single/Stepped rows above are -- these read/write
+        // BooleanKey preferences directly on whichever device the double-tap happens on (see
+        // showTtCodesListDialog()'s handling below), since graph rendering is inherently per-device.
+        // calibKey null means that line's underlying value is already calibrated upstream and has no
+        // real toggle to offer -- see the UKF2 entry in ttCodesList() and its calibLabel.
+        class GraphToggle(label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String) : TtCode(label)
         // downLabel/upLabel: the actual magnitude each direction applies, pulled from the matching
         // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt (not derivable from down/up themselves — those
         // are just this TT-signal's own mmol trigger values, unrelated in magnitude to the real setting
@@ -1728,7 +1780,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Selecting the active mode again turns it off; selecting the other mode enables it and turns
         // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
         TtCode.Stepped("Libre UKF mode", 5.152, 5.154, "UKF1", "UKF2"),
-        TtCode.Single("Run SensorAge code on/off", 5.156)
+        TtCode.Single("Run SensorAge code on/off", 5.156),
+        // Local display-only settings, not TT-coded (see TtCode.GraphToggle doc comment) -- one per
+        // raw/noise-derived comparison line, excluding raw itself (RAW_BG has no calibration concept of
+        // its own to toggle, it IS the uncalibrated signal). UKF2 has no real calibration toggle -- see
+        // its calibKey=null/calibLabel below.
+        TtCode.GraphToggle("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
+        TtCode.GraphToggle("Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)"),
+        TtCode.GraphToggle("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset")
     )
 
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
