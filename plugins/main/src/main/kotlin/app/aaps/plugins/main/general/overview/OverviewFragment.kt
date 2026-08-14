@@ -1258,14 +1258,30 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // rendering is inherently per-device. calibKey null (UKF2) means that line's underlying value is
     // already calibrated upstream and has no real toggle to offer -- shown as a disabled, checked box
     // instead of omitted, so all three popups keep the same two-checkbox shape.
-    private data class GraphToggleEntry(val label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String)
+    // syncedLiveKey/syncedLiveKeyMutuallyExclusiveWith: added 2026-08-15, UKF2-only. UKFset2's live TT
+    // toggle (list1) was removed since it no longer has any dosing effect of its own (see the note on
+    // "Tog UKFset1" in ttCodesList()) -- checking this entry's "Graph on" box now ALSO writes
+    // syncedLiveKey (FslUseUkfLibreSpecialSmoothing for UKF2), and clears
+    // syncedLiveKeyMutuallyExclusiveWith (FslUseUkfSmoothing) when turning it on, same mutual-exclusion
+    // LibreUkf1ToggleTT/the old LibreUkf2ToggleTT always enforced. Null for UKF1/UKF3 -- their "Graph
+    // on" box only ever meant the display toggle, no live setting to keep in sync.
+    private data class GraphToggleEntry(
+        val label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String,
+        val syncedLiveKey: BooleanKey? = null, val syncedLiveKeyMutuallyExclusiveWith: BooleanKey? = null
+    )
 
     // Order matters: appended after every BasalDirectAction entry (including ANYDESK_RESTART when
     // present), so UKF3 is always the last row in the combined list regardless of build type.
     private val graphToggleEntries = listOf(
         GraphToggleEntry("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
-        GraphToggleEntry("Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)"),
-        GraphToggleEntry("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset")
+        GraphToggleEntry(
+            "Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)",
+            syncedLiveKey = BooleanKey.FslUseUkfLibreSpecialSmoothing, syncedLiveKeyMutuallyExclusiveWith = BooleanKey.FslUseUkfSmoothing
+        ),
+        GraphToggleEntry("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset"),
+        // Second checkbox here is repurposed (not calibration): ON = hide insulin activity + all 3
+        // carb-related series, BGL/basal/annotation rows stay. Independent of the other entries above.
+        GraphToggleEntry("Graph: Graph5 panel", BooleanKey.ApsAutoIsfShowGraph5, BooleanKey.ApsAutoIsfGraph5BglOnly, "BGL only (hide IA/carbs x3)")
     )
 
     // Client is the command sender. This exact Note is uploaded to Client's NS; the real-pump
@@ -1407,7 +1423,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             isEnabled = entry.calibKey != null
                         }
                         val showBox = CheckBox(act).apply {
-                            text = "Graph on"
+                            // UKF2's box also reflects/drives its synced live setting (see
+                            // syncedLiveKey's doc comment) -- labeled differently so it's clear this one
+                            // does more than just the display toggle the other two entries' boxes do.
+                            text = if (entry.syncedLiveKey != null) "UKF2 mode + graph on" else "Graph on"
                             isChecked = preferences.get(entry.showKey)
                         }
                         val container = LinearLayout(act).apply {
@@ -1422,6 +1441,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                                 preferences.put(entry.showKey, showBox.isChecked)
                                 entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
+                                entry.syncedLiveKey?.let { liveKey ->
+                                    preferences.put(liveKey, showBox.isChecked)
+                                    if (showBox.isChecked) entry.syncedLiveKeyMutuallyExclusiveWith?.let { preferences.put(it, false) }
+                                }
                             }
                             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showBasalDirectActionListDialog() }
                             .setOnCancelListener { showBasalDirectActionListDialog() }
@@ -1832,7 +1855,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Matches CloudLogsUploadTT's own doc comment in OpenAPSAutoISFPlugin.kt.
             currentValue = { "Effect: zips logs and sends to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
         ),
-        TtCode.Single("Tog Graph5 (main clone, no basal) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
+        TtCode.Single("Tog Graph5 (main clone) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
         // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
         // MJ state), so they belong behind one label as a mutually-exclusive checkbox pair — same shape
         // as the -0.1/+0.1 rows above, just with named states instead of a numeric delta. downLabel/
@@ -1863,20 +1886,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 "Current: $roleLabel ($name)"
             }
         ),
-        // Selecting the active mode again turns it off; selecting the other mode enables it and turns
-        // the first one off. The AutoISF TT handlers enforce the same mutual exclusion as Settings.
-        TtCode.Stepped(
-            // Labeled UKFset1/UKFset2 (not UKF1/UKF2) -- these are the live dosing-BGL settings, kept
-            // visually distinct from list2's UKF1/UKF2/UKF3 graph-comparison-line entries, which are
-            // unrelated functions that happen to share the same digit.
-            "Libre UKF mode", 5.152, 5.154, "UKFset1", "UKFset2",
-            currentValue = {
-                "Current: " + when {
-                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKFset2"
-                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
-                    else                                                       -> "off"
-                }
-            }
+        // UKFset2 removed from here 2026-08-15: it no longer has any live dosing effect (its function
+        // call in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt now discards its return value and
+        // always dosages on plain LibreSpecial), so it's no longer a "live setting" in any meaningful
+        // sense -- it now only feeds a persisted graph history. Toggling it moved entirely to list2's
+        // "Graph: UKF2" entry instead (see GraphToggleEntry's syncedLiveKey), so there's exactly one
+        // place to turn it on/off rather than two. UKFset1 stays here since it's still a real, live
+        // dosing-BGL setting -- 5.154 (LibreUkf2ToggleTT) is now unused, freed up.
+        TtCode.Single(
+            "Tog UKFset1 (live dosing) on/off", 5.152,
+            currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
         ),
         TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" })
         // Graph toggle entries (UKF1/UKF2/UKF3) live in list2 (basal rate icon,
@@ -2235,7 +2254,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // the main graph's own checkboxes/quick-toggles (menuChartSettings[0][...], isActiveCharTypeData,
         // carbLine1QuickShow) -- graph5 shows all of these regardless of what's switched off on graph 0.
         // Not part of the CharTypeData/secondary-graphs menu system (that only lets primary types target
-        // graph 0) -- just one on/off switch for the whole panel. See BooleanKey.ApsAutoIsfShowGraph5.
+        // graph 0) -- one on/off switch for the whole panel (BooleanKey.ApsAutoIsfShowGraph5), plus an
+        // independent BGL-only sub-toggle (BooleanKey.ApsAutoIsfGraph5BglOnly) that hides insulin activity
+        // and the 3 carb-related lines while leaving BGL/basal/annotation rows alone. Both reachable from
+        // list2's "Graph: Graph5 panel" GraphToggleEntry; the panel on/off is also mirrored in list1 as a
+        // quick single-tap toggle (5.142) for convenience -- same underlying key, no divergence risk.
         // No treatments/therapy-events/notes/delta-annotations/hypo-prediction row -- those are
         // label/marker-bearing (bolus doses, carb grams, note text); this panel is plain data lines only.
         if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
@@ -2251,14 +2274,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // initializes graph5's glucose Y scale when drawSeries=false so the remaining curves retain
             // their normal height; the next basal press (or IOB reset) restores everything.
             val hideGraph5BglAndUam = PointsWithLabelGraphSeries.uniformGreenBg
+            // BooleanKey.ApsAutoIsfGraph5BglOnly, reachable from list2's "Graph: Graph5 panel" entry
+            // (second checkbox, normally calibration -- repurposed here). false (default) = unchanged
+            // prior behaviour, every series below stays on; true = skip insulin activity and all 3
+            // carb-related lines, BGL/basal/annotation rows untouched.
+            val graph5BglOnly = preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)
             graph5Data.addBgReadings(true, context, drawSeries = !hideGraph5BglAndUam)
             if (!hideGraph5BglAndUam) graph5Data.addBucketedData()
-            graph5Data.addActivity(0.8)             // insulin activity
-            graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
-                                                      // globally on for there to be any data -- that's a data-availability
-                                                      // flag, not a "switched off on graph 0" toggle, so it's left alone)
-            if (!hideGraph5BglAndUam) graph5Data.addUamCarbImpact(0.8) // UAM assumed carbs
-            graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
+            if (!graph5BglOnly) {
+                graph5Data.addActivity(0.8)             // insulin activity
+                graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
+                                                          // globally on for there to be any data -- that's a data-availability
+                                                          // flag, not a "switched off on graph 0" toggle, so it's left alone)
+                if (!hideGraph5BglAndUam) graph5Data.addUamCarbImpact(0.8) // UAM assumed carbs
+                graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
+            }
             if (!hideGraph5BglAndUam) {
                 graph5Data.addBgParabola(true, 1.0)
                 graph5Data.addRawBg(false)

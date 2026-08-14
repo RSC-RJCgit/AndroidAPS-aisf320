@@ -86,6 +86,12 @@ enum class BooleanKey(
     // Graph5ToggleTT remote TT-signal (OpenAPSAutoISFPlugin.kt, TT=5.142, same pattern as
     // ApsAutoIsfShowCarbModelCurve/Graph2ToggleTT above). See OverviewFragment.updateGraph().
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
+    // When graph5 is on: false (default, preserves prior behaviour) = show every series it always has
+    // (BGL lines + insulin activity + all 3 carb-related lines + basal). true = BGL-only, skipping
+    // addActivity/addCarbModelCurve/addUamCarbImpact/addCombinedCarbs -- see the gating in
+    // OverviewFragment's graph5-building block. Reachable from list2 (basal icon), reusing
+    // GraphToggleEntry's second checkbox slot (normally calibration) for this instead.
+    ApsAutoIsfGraph5BglOnly("graph5_bgl_only", false, defaultedBySM = true),
     // When enabled, bypasses the entire varOffset/targetBgOffset derivation (smb_delivery_ratio_max as a
     // base, carbsReqThreshold-encoded offset1/2/3 flags, hour-of-day and delta_accl adjustments) in favor
     // of a single fixed mmol value (DoubleKey.ApsAutoIsfSmbOffsetOverride) — see DetermineBasalAutoISF.kt.

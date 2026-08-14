@@ -1179,7 +1179,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "ProfileStandardTT" -> 5.148
         "ProfileLowTT" -> 5.150
         "LibreUkf1ToggleTT" -> 5.152
-        "LibreUkf2ToggleTT" -> 5.154
+        // 5.154 (LibreUkf2ToggleTT) freed up 2026-08-15 -- UKFset2 toggling moved to list2's
+        // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
+        // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code.
         "SensorAgeCodeToggleTT" -> 5.156
         "MjKotlinButtonsToggleTT" -> 5.164
         "SteroidKotlinButtonToggleTT" -> 5.166
@@ -2397,10 +2399,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("ProfileLowTT")
         }
 
-        // --- LibreUkf1ToggleTT / LibreUkf2ToggleTT: 5.152 / 5.154 are the two choices behind one
-        // "Libre UKF mode" row in the IOB double-tap popup. Each choice toggles its own mode. Turning
-        // one on always turns the other off, matching the mutually-exclusive switches in Settings;
-        // choosing the currently-active mode again leaves both modes off (original non-UKF path).
+        // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
+        // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
+        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
+        // FslUseUkfLibreSpecialSmoothing directly and enforces the same mutual exclusion there.
         if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
             val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
             preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
@@ -2409,16 +2411,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("LibreUKFset1: ${if (newState) "ON" else "OFF"}")
             addCarePortalNote("UKFset1${if (newState) "On" else "Off"}")
             markRun("LibreUkf1ToggleTT")
-        }
-
-        if (readyToRun("LibreUkf2ToggleTT", 2) && activeTtNear(5.154, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-            preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, newState)
-            if (newState) preferences.put(BooleanKey.FslUseUkfSmoothing, false)
-            cancelCurrentTempTarget()
-            sendSms("LibreUKFset2: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("UKFset2${if (newState) "On" else "Off"}")
-            markRun("LibreUkf2ToggleTT")
         }
 
         // --- SensorAgeCodeToggleTT: master execution toggle for the complete SensorAge calibration
