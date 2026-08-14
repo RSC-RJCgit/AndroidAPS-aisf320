@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 object Versions {
 
     // On change edit aaps-ci.yml
-    const val appVersion = "3.4.2.6+aisf321_581"
+    const val appVersion = "3.4.2.6+aisf321_582"
     const val versionCode = 1500
 
     const val compileSdk = 36
@@ -17,4 +17,4 @@ object Versions {
     val javaVersion = JavaVersion.VERSION_21
     val jvmTarget = JvmTarget.JVM_21
     const val jacoco = "0.8.11"
-}
+2
