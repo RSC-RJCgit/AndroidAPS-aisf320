@@ -963,7 +963,15 @@ class ImportExportPrefsImpl @Inject constructor(
                                 "AutomationStates import check: hasStates=$hasStates, totalImportedKeys=${prefs.values.size}, " +
                                     "hasServiceKey=${prefs.values.containsKey("automation_state_service")}, " +
                                     "hasValuesKey=${prefs.values.containsKey("automation_state_values")}, " +
-                                    "matchingKeys=${prefs.values.keys.filter { it.contains("automation_state") }}"
+                                    "matchingKeys=${prefs.values.keys.filter { it.contains("automation_state") }}, " +
+                                    // Presence alone doesn't distinguish "missing" from "present but empty/stale" --
+                                    // print the actual imported VALUE content (small enough to be safe in a log line;
+                                    // these are just state-name/value-name JSON, not sensitive medical data) plus what
+                                    // was on THIS device before sp.clear() wiped it, for direct before/after comparison.
+                                    "importedServiceValue=${prefs.values["automation_state_service"]}, " +
+                                    "importedValuesValue=${prefs.values["automation_state_values"]}, " +
+                                    "previousServiceValue=${currentSp["automation_state_service"]}, " +
+                                    "previousValuesValue=${currentSp["automation_state_values"]}"
                             )
                             if (hasStates) {
                                 val checkBox = android.widget.CheckBox(activity).apply {
