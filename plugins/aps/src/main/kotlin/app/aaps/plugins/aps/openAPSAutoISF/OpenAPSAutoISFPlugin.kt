@@ -691,6 +691,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cobtTerm
     }
 
+    // Live HP1, matching AutoIsfHistoryExporter.hpStr(): (BGL - IOB) + 0.25*SDelta + 0.25*raw-Libre-delta5
+    // + COB/12 (ungated, always additive -- unlike HP2's gated -COBt/12, COB here is treated as
+    // straightforwardly protective, never a risk flag). rawDelta5MinMgdl() is the same raw/noise window
+    // hpStr's rawDelta5Mmol reads, just "now"-anchored instead of an arbitrary export-row timestamp. Null
+    // when that raw-delta window doesn't have enough data (same condition hpStr falls back to "--" for).
+    private fun hypoPrediction1Mmol(glucoseMgdl: Double, iob: Double, shortAvgDeltaMgdl: Double, cob: Double): Double? {
+        val libreDelta5Mgdl = rawDelta5MinMgdl() ?: return null
+        val sdeltaMmol = shortAvgDeltaMgdl / 18.0182
+        return (glucoseMgdl / 18.0182 - iob) +
+            0.25 * sdeltaMmol +
+            0.25 * (libreDelta5Mgdl / 18.0182) +
+            cob / 12.0
+    }
+
     /** Strict 90-minute BG coverage check for the Virtual-Pump pseudo-wizard experiment. */
     private fun allRecentBgAbove90Minutes(minimumMgdl: Double): Boolean {
         val now = dateUtil.now()
@@ -4727,6 +4741,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ukfRaw = ukfRawMetrics()
             val (ukfG, ukfD1, ukfD5) = ukfRaw
             val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce, ukfRaw)
+            val hp1 = hypoPrediction1Mmol(g, iobData.iob, sd, mealData.mealCOB)
             // ah1b1's 07:30-23:30 gate REMOVED so this branch also covers the small hours. It exists to
             // catch a slow decline into hypo, and that is no less real at 04:00 -- on 6->7 Aug 2026 BGL sat
             // at 3.5 from 04:00-05:30 and this block could not fire at all, because ah1b1 was outside its
@@ -4744,13 +4759,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ah1b2 = g < 54.0 /* 3.0 mmol */
             val ah1b3 = isTimeBetween(7, 0, 23, 0) && d <= -0.9 /* -0.05 mmol */
                 && recentSteps60Minutes >= 102 && g < 77.5 /* 4.3 mmol */ && acceW <= 0.08
-            val ah1b4 = hp != null && hp <= 3.8 && acceW <= 0.08
+            // 3.8 -> 3.4 (tightened), AND'd with HP1 <= 3.8 as a second, differently-weighted predictor
+            // that must also agree -- HP1 uses raw Libre delta5 (not UKF) and treats COB as always
+            // protective (no gating), so requiring both narrows this branch to cases where the two
+            // formulas' disagreements (COB handling, delta source, delta weight) don't matter.
+            val ah1b4 = hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && acceW <= 0.08
             if (ah1b1 || ah1b2 || ah1b3 || ah1b4) {
                 setBgAccelIsfWeight(0.10)
                 val ah1SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
                     " UKFrawG=${ukfG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " UKFrawD1=${ukfD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " UKFrawD5=${ukfD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " HP=${hp1?.let { String.format("%.1f", it) } ?: "--"}" +
                     " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 // Alerting only outside quiet hours. The URGENT notification is what actually wakes you,
@@ -4785,9 +4805,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ukfRaw = ukfRawMetrics()
             val (ukfG, ukfD1, ukfD5) = ukfRaw
             val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce, ukfRaw)
+            val hp1 = hypoPrediction1Mmol(g, iobData.iob, sd, mealData.mealCOB)
+            // 3.8 -> 3.4 (tightened), AND'd with HP1 <= 3.8 -- same reasoning as AlarmHypo1's ah1b4.
             val lowOk = g <= 77.5 /* 4.3 mmol */ ||
                 (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000) ||
-                (hp != null && hp <= 3.8)
+                (hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8)
             // 07:30-23:30 gate REMOVED, alerting silenced in quiet hours instead -- same treatment and
             // reasoning as AlarmHypo1 above and GentleHypoRisk. This one matters most of the three for
             // the LowBG=50recent write, since that is what arms the recent-low rebound guard in
@@ -4799,6 +4821,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     " UKFrawG=${ukfG?.let { String.format("%.1f", it / 18.016) } ?: "--"}" +
                     " UKFrawD1=${ukfD1?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
                     " UKFrawD5=${ukfD5?.let { String.format("%.2f", it / 18.016) } ?: "--"}" +
+                    " HP=${hp1?.let { String.format("%.1f", it) } ?: "--"}" +
                     " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                     " iob=${String.format("%.2f", iobData.iob)}"
                 if (!alarmHypo2Quiet) {

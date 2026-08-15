@@ -221,6 +221,18 @@ class PrepareBgDataWorker(
                         DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
                     }
                 LineGraphSeries(points.toTypedArray()).also {
+                    // TEMP diagnostic 2026-08-15: large yellow dots instead of the thin green line, to
+                    // confirm points are actually landing in ukf_librespecial_refined_history while it's
+                    // still freshly accumulating (empty until now). NOTE: LineGraphSeries.java's dot-draw
+                    // is gated on i>0 in its render loop and the i==0 case is an unimplemented TODO stub
+                    // (canvas.drawCircle commented out there) -- so a series with exactly ONE point draws
+                    // NOTHING at all, dots or line, regardless of this styling. Needs >=2 accumulated
+                    // points before anything appears on screen. setColor (not setCustomPaint's color)
+                    // drives the dot color -- dot-drawing always uses mPaint via getColor(), never the
+                    // custom paint object, even when one's set for the line.
+                    it.setColor(android.graphics.Color.YELLOW)
+                    it.setDrawDataPoints(true)
+                    it.setDataPointsRadius(14f)
                     it.setCustomPaint(Paint().also { paint ->
                         paint.style = Paint.Style.STROKE
                         paint.strokeWidth = 4f
@@ -231,36 +243,39 @@ class PrepareBgDataWorker(
                 LineGraphSeries<DataPoint>()
             }
 
-        // UKF3 (display-only, always computed regardless of any toggle -- opposite composition order
-        // from UKF2): the LibreSpecial EMA formula (same math as NsIncomingDataProcessor.kt's live
-        // fsl_exp1 branch, kept in sync by hand) run fresh against UKF1's own smoothForDisplay() output
-        // instead of raw/noise values. Uses local lastSmooth/lastTimeRaw vars, NOT
-        // DoubleKey.FslLastSmooth/LongKey.FslSmoothLastTimeRaw -- same never-touch-persisted-state
+        // UKF3's own raw-mgdl smoothed values (oldest-first): the LibreSpecial EMA formula (same math as
+        // NsIncomingDataProcessor.kt's live fsl_exp1 branch, kept in sync by hand) run fresh against UKF1's
+        // own smoothForDisplay() output instead of raw/noise values. Uses local lastSmooth/lastTimeRaw
+        // vars, NOT DoubleKey.FslLastSmooth/LongKey.FslSmoothLastTimeRaw -- same never-touch-persisted-state
         // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries above, recomputed from scratch every
         // call so multiple graph refreshes can't corrupt the live pipeline's own EMA state.
-        data.overviewData.libreSpecialFromUkf1Series = if (newestFirstRaw.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) {
-            // Ukf3ApplyLibreCalibration on (default, preserves prior behavior): calibrate UKF1's mgdl via
-            // FslCalSlope/FslCalOffset before the EMA pass, same as the live pipeline does. Off: run the
-            // EMA against UKF1's raw (uncalibrated) mgdl instead, for an apples-to-apples comparison
-            // against an uncalibrated UKF1 line.
-            val applyCalibration = preferences.get(BooleanKey.Ukf3ApplyLibreCalibration)
-            val slope = preferences.get(DoubleKey.FslCalSlope)
-            val offset = preferences.get(DoubleKey.FslCalOffset)
-            val factor = preferences.get(DoubleKey.FslSmoothAlpha)
-            val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
-            val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        // Computed UNCONDITIONALLY (independent of ShowUkf3Graph, which only gates the graph line below) so
+        // HP3 (see the targetOffsetDuT block further down) can use it as its base-glucose/delta5 source even
+        // when the UKF3 graph line itself is hidden.
+        val ukf3ApplyCalibration = preferences.get(BooleanKey.Ukf3ApplyLibreCalibration)
+        val ukf3Slope = preferences.get(DoubleKey.FslCalSlope)
+        val ukf3Offset = preferences.get(DoubleKey.FslCalOffset)
+        val ukf3Factor = preferences.get(DoubleKey.FslSmoothAlpha)
+        val ukf3MaxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+        val ukf3UnitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        val ukf3RawMgdl: List<Pair<Long, Double>> = if (newestFirstRaw.isNotEmpty()) {
             var lastSmooth = 0.0
             var lastTimeRaw = 0L
-            val oldestFirst = newestFirstRaw.zip(ukf1SmoothedMgdl).asReversed()
-            val points = oldestFirst.map { (reading, ukf1Mgdl) ->
-                val calibrated = if (applyCalibration) max(40.0, ukf1Mgdl * slope + offset * unitFactor) else ukf1Mgdl
+            newestFirstRaw.zip(ukf1SmoothedMgdl).asReversed().map { (reading, ukf1Mgdl) ->
+                val calibrated = if (ukf3ApplyCalibration) max(40.0, ukf1Mgdl * ukf3Slope + ukf3Offset * ukf3UnitFactor) else ukf1Mgdl
                 val elapsedMinutes = (reading.timestamp - lastTimeRaw) / 60000.0
-                val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
+                val effectiveAlpha = min(1.0, ukf3Factor + (1.0 - ukf3Factor) * ((max(0.0, elapsedMinutes - 1.0) / (ukf3MaxGap - 1.0)).pow(2.0)))
                 val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
                 lastSmooth = smooth
                 lastTimeRaw = reading.timestamp
-                DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(smooth))
+                reading.timestamp to smooth
             }
+        } else emptyList()
+
+        // UKF3 graph line (display-only, opposite composition order from UKF2): gated purely on
+        // ShowUkf3Graph -- always computed above regardless of live UKF toggle state, only drawn here.
+        data.overviewData.libreSpecialFromUkf1Series = if (ukf3RawMgdl.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) {
+            val points = ukf3RawMgdl.map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
             LineGraphSeries(points.toTypedArray()).also {
                 it.setCustomPaint(Paint().also { paint ->
                     paint.style = Paint.Style.STROKE
@@ -366,13 +381,16 @@ class PrepareBgDataWorker(
                     "acc=${String.format(Locale.getDefault(), "%.2f", acceW)} " +
                     "du=${String.format(Locale.getDefault(), "%.2f", duraW)} " +
                     "IOBth=$iobThTxt HP2=$hp2Txt"
-                // Fixed near 4.0 mmol (75.6 mg/dL), NOT the live current BG -- see Shape.PP_ACC_DU_ROW's
-                // own comment for why a real value on the actual glucose scale is used here rather than a
-                // pixel fraction (graph5's basal bars occupy negative Y below the glucose floor, so a
-                // pixel-fraction-of-height approach lands in that zone instead of near BGL=4).
+                // Fixed near 3.3 mmol (60 mg/dL), NOT the live current BG -- see Shape.PP_ACC_DU_ROW's own
+                // comment for why a real value on the actual glucose scale is used here rather than a pixel
+                // fraction (graph5's basal bars occupy negative Y below the glucose floor, so a
+                // pixel-fraction-of-height approach lands in that zone instead of near BGL=4). Lowered from
+                // 75.6 (4.2mmol) 2026-08-15: that sat too close to/inside the in-range (green) BG trace on
+                // graph5, overlapping it whenever live BG was anywhere near target; 60 sits clearly below
+                // any in-range green point, only overlapping actual BG during a real low.
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(75.6), label, rh)
+                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(60.0), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -412,7 +430,6 @@ class PrepareBgDataWorker(
                 // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
-                val duraTaperTime = latestApsReason?.let { duraTaperTimeFromReason(it) } ?: "--"
                 // Labeled UKFset1/UKFset2 (not UKF1/UKF2) to stay distinct from the graph-comparison-line
                 // names of the same number -- those are unrelated functions that happen to share a digit.
                 val ukfMode = when {
@@ -420,23 +437,48 @@ class PrepareBgDataWorker(
                     preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
                     else                                                       -> "UKFoff"
                 }
-                val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  duTTime= $duraTaperTime  UKF= $ukfMode"
+                // HP3: same formula/COB-gating as HP2 above, but BOTH the base-glucose term and the delta5
+                // term are swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
+                // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction
+                // say if UKF3's own retrospective smoothing were the BGL source instead of whatever's
+                // actually dosing right now". "--" if UKF3's window doesn't have a point ~5min back yet
+                // (mirrors HP2's own ukfDeltaResult-unavailable fallback).
+                val ukf3Latest = ukf3RawMgdl.lastOrNull()
+                val ukf3Delta5Mgdl = ukf3Latest?.let { (latestTs, latestMgdl) ->
+                    val target = latestTs - 5 * 60_000L
+                    val ref = ukf3RawMgdl.minByOrNull { kotlin.math.abs(it.first - target) }
+                    if (ref != null && ref.first != latestTs) latestMgdl - ref.second else null
+                }
+                val hp3Text = if (ukf3Latest != null && ukf3Delta5Mgdl != null) {
+                    val ukf3BglMmol = ukf3Latest.second * Constants.MGDL_TO_MMOLL
+                    val ukf3Delta5Mmol = ukf3Delta5Mgdl * Constants.MGDL_TO_MMOLL
+                    val hp3 = (ukf3BglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukf3Delta5Mmol - cobTerm
+                    String.format(Locale.getDefault(), "%.1f", hp3)
+                } else "--"
+                val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  UKF= $ukfMode"
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
+                // 75.6 (4.2mmol) -> 60.0 (3.3mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
+                // anchor above -- the renderer draws this row at endY + a small pixel offset BELOW the
+                // pp= row's anchor, so lowering both keeps that same relative "one line below" spacing
+                // while moving the whole pair clear of the in-range (green) BG trace on graph5.
                 data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTDataPoint(
                             latest.timestamp,
-                            profileUtil.fromMgdlToUnits(75.6),
+                            profileUtil.fromMgdlToUnits(60.0),
                             targetOffsetDuTLabel,
                             rh
                         )
                     )
                 )
+                // Graph1's copy renders at a fixed pixel row (targetOffsetDuTGraph1RowPy) regardless of
+                // this Y value -- kept in sync with the graph5 anchor above purely for consistency, no
+                // visual effect on graph1 either way.
                 data.overviewData.targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTGraph1DataPoint(
                             latest.timestamp,
-                            profileUtil.fromMgdlToUnits(75.6),
+                            profileUtil.fromMgdlToUnits(60.0),
                             targetOffsetDuTLabel,
                             rh
                         )
@@ -721,16 +763,12 @@ class PrepareBgDataWorker(
     private val acceWeightRegex = Regex("""AcceIsfWeight:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
     private val fslSlopeRegex = Regex("""FslCalSlope:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
     private val targetOffsetRegex = Regex("""targetBgOffset:\s*(-?[0-9.]+)""", RegexOption.IGNORE_CASE)
-    private val duraTaperTimeRegex = Regex("""dura_ISF taper last engaged:\s*(.+?)\s*\(""", RegexOption.IGNORE_CASE)
 
     private fun doubleFromReason(reason: String, regex: Regex): Double? =
         regex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
 
     private fun targetOffsetFromReason(reason: String): Double? =
         targetOffsetRegex.findAll(reason).lastOrNull()?.groupValues?.get(1)?.toDoubleOrNull()
-
-    private fun duraTaperTimeFromReason(reason: String): String? =
-        duraTaperTimeRegex.findAll(reason).lastOrNull()?.groupValues?.get(1)
 
     // Mirrors AutoIsfHistoryExporter.iob5MinChangeStr(): change in AIV.iob over ~5 minutes, using
     // whichever AIV record is nearest the 5-min-ago mark (within a 3-min tolerance, since AIV rows
