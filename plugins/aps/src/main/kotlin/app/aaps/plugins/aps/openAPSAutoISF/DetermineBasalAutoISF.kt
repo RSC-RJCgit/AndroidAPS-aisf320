@@ -223,7 +223,17 @@ class DetermineBasalAutoISF @Inject constructor(
         // the insulin already in flight. This forces a genuine pause instead, giving already-delivered
         // insulin time to actually show up in BG before more goes in. Default false preserves existing
         // callers/tests, same convention as the other optional params above.
-        sub75HeavyDeliveryCooldown: Boolean = false
+        sub75HeavyDeliveryCooldown: Boolean = false,
+        // True for a fixed 5-min window once BasalUp (OpenAPSAutoISFPlugin.kt) has fired -- armed
+        // unconditionally on every BasalUp firing, but only actually forces varOffset to 0 (see below,
+        // same effect as ApsAutoIsfMildOffsetZeroActive) on cycles where bg is still under targetBgOffset
+        // at that point, re-checked live each cycle rather than snapshotted once. BasalUp already
+        // requires g>=4.5mmol to fire at all, but that's typically still below the ~5.0-5.4mmol
+        // targetBgOffset threshold, so the existing offsetSoZeroSMB gate could otherwise keep zeroing SMB
+        // for several cycles right after BasalUp just switched back to the Standard profile -- defeating
+        // the point of the switch. Default false preserves existing callers/tests, same convention as the
+        // other optional params above.
+        basalUpOffsetZeroActive: Boolean = false
     ): RT {
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -906,6 +916,15 @@ class DetermineBasalAutoISF @Inject constructor(
         if (preferences.get(BooleanKey.ApsAutoIsfMildOffsetZeroActive)) {
             varOffset = 0.0
             rT.reason.append("MildOffsetZero active (BolusGivenMild fired under 5.9mmol): varOffset forced to 0 ;")
+        }
+
+        // BasalUpOffsetZero: see determine_basal()'s basalUpOffsetZeroActive param doc comment. Window is
+        // armed unconditionally by every BasalUp firing, but the effect only applies on cycles where bg is
+        // still under targetBgOffset AS IT STANDS HERE (post todOffset, pre this block's own zeroing) --
+        // re-checked live each cycle of the 5-min window, not a one-time snapshot from when BasalUp fired.
+        if (basalUpOffsetZeroActive && bg < targetBgOffset) {
+            varOffset = 0.0
+            rT.reason.append("BasalUpOffsetZero active (BasalUp fired, bg still under targetOffset): varOffset forced to 0 ;")
         }
 
         var offsetSoZeroSMB = false

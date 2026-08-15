@@ -1528,6 +1528,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 )
                 preferences.put(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt, commandRevision)
                 aapsLogger.info(LTag.APS, "ADesk secondary-NS command sent to Tasker")
+                // Ack note back to Client: written to THIS device's own primary NS, which Client reads as
+                // ITS secondary NS -- the reverse direction of the "ADesk" note above. Distinct text
+                // ("ADeskAck" vs "ADesk") so Client's own secondary-NS acceptance logic
+                // (LoadSecondaryBolusCarbsWorker.kt) can tell its own sent note apart from this
+                // confirmation, and so the two show as visually distinguishable Notes on Client.
+                addCarePortalNote("ADeskAck")
             }
         }
 
@@ -2415,12 +2421,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
         // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
-        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
-        // FslUseUkfLibreSpecialSmoothing directly and enforces the same mutual exclusion there.
+        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt). The mutual-exclusion
+        // write here (turning UKFset1 on used to also force FslUseUkfLibreSpecialSmoothing off) was
+        // removed 2026-08-15 for the same reason it was dropped from list2's popup: that flag no longer
+        // has any dosing effect (XdripSourcePlugin.kt/NsIncomingDataProcessor.kt call
+        // smoothLibreSpecialRealtime() only for its graph-history side effect and discard the return
+        // value) -- it now only gates whether UKF2's graph history accumulates. Silently clearing it here
+        // every time UKFset1 got toggled on was the actual cause of UKF2's graph never accumulating
+        // points: the two settings are independent now, so toggling one must not touch the other.
         if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
             val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
             preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
-            if (newState) preferences.put(BooleanKey.FslUseUkfLibreSpecialSmoothing, false)
             cancelCurrentTempTarget()
             sendSms("LibreUKFset1: ${if (newState) "ON" else "OFF"}")
             addCarePortalNote("UKFset1${if (newState) "On" else "Off"}")
@@ -4170,6 +4181,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
                 markRun("BasalUp")
+                // Arms a 5-min window (see determine_basal()'s basalUpOffsetZeroActive param) that lets
+                // DetermineBasalAutoISF.kt force varOffset to 0 on cycles within it where bg is still under
+                // targetBgOffset -- armed unconditionally here since BasalUp already requires g>=4.5mmol,
+                // and the "under targetOffset" check itself needs determine_basal()'s own accurate
+                // time-of-day-dependent value, not a re-derived approximation here.
+                markRun("BasalUpOffsetZero")
             }
         }
 
@@ -5029,6 +5046,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Sub75Cap")
             markRun("Sub75HeavyDelivery")
         }
+        // Early release: if the cooldown is currently active but bg has already recovered above 7.5mmol
+        // AND is climbing fast (delta > 0.7mmol), clear it rather than waiting out the remaining minutes.
+        // A fast rise past the trigger threshold is itself evidence the earlier heavy delivery is already
+        // taking effect, not still stacking -- continuing to block SMB through the rest of the window at
+        // that point risks under-treating the recovery rather than protecting against it. Clearing (not
+        // just letting it lapse) resets lastRunTimestamps directly so the very next cycle can dose again,
+        // instead of waiting for the 10-min mark. Separate note (not "Sub75Cap" again) so an early release
+        // is distinguishable from a fresh arm/re-arm in the careportal history.
+        if (!readyToRun("Sub75HeavyDelivery", 10) && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.delta > 12.6 /* 0.7 mmol */) {
+            lastRunTimestamps.remove("Sub75HeavyDelivery")
+            addCarePortalNote("Sub75Clr")
+        }
 
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
@@ -5091,7 +5120,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             recentLowActive = checkAutomationState("LowBG", "50recent"),
             smbSum10Min = smbSum10Min(),
             smbSum30Min = smbSum30Min(),
-            sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
+            sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10),
+            basalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5)
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
