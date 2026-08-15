@@ -177,6 +177,16 @@ interface OverviewData {
     // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries: never touches FslLastSmooth/
     // FslSmoothLastTimeRaw, recomputed from scratch every call. See PrepareBgDataWorker.kt.
     var libreSpecialFromUkf1Series: SeriesData
+    // Graph5-only counterparts of the three series above: same underlying values (ukf1SmoothedMgdl /
+    // libreSpecialPostUkfHistory() / ukf3RawMgdl -- see PrepareBgDataWorker.kt), just mapped into
+    // DataPoints unconditionally instead of gated behind ShowUkf1Graph / (FslUseUkfLibreSpecialSmoothing
+    // && ShowUkf2Graph) / ShowUkf3Graph. Added 2026-08-15 so graph5 shows these regardless of graph0's
+    // own List2 toggles, matching graph5's "independent of graph 0" design elsewhere -- no duplicate
+    // smoothing work, since the expensive computation those toggles actually gate is either already
+    // unconditional (UKF1/UKF3) or happens during live BG ingestion, not graph-build (UKF2).
+    var rawBgSmoothedSeriesGraph5: SeriesData
+    var libreSpecialPreUkfSeriesGraph5: SeriesData
+    var libreSpecialFromUkf1SeriesGraph5: SeriesData
     var noisyBgDeltaSeries: SeriesData
     var ukfDeltaSeries: SeriesData
     // AAPS (smoothed) 1-min delta label attached to the current smoothed BG graph point — see A1DeltaDataPoint/Shape.A1_DELTA_POINT.

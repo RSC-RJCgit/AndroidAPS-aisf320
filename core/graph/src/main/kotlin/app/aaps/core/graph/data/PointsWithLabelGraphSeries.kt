@@ -263,6 +263,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.SMB_GRAPH2 || value.shape == Shape.ISF_INDICES ||
                 value.shape == Shape.STEPS_EXTRA_ROW || value.shape == Shape.HP_ROW_BOTTOM || value.shape == Shape.TARGET_OFFSET_DUT_GRAPH5 || value.shape == Shape.NOTE_ARROWHEAD_GRAPH3 ||
                 value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1 ||
+                // Missed when PP_ACC_DU_ROW was added -- its old 4.2mmol anchor usually stayed inside the
+                // visible glucose range so this never got culled in practice, but lowering it to 3.3mmol
+                // (2026-08-15, alongside TARGET_OFFSET_DUT_GRAPH5's own anchor) pushed it below the
+                // typical visible floor and it started disappearing whenever BG hadn't been low recently.
+                value.shape == Shape.PP_ACC_DU_ROW ||
                 value.shape == Shape.SMB_STACK_TOTAL ||
                 value.shape == Shape.IOB_PEAK_MAIN_BOTTOM
             if (!yIndependentShape) {

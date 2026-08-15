@@ -184,64 +184,65 @@ class PrepareBgDataWorker(
             ukfSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
         else emptyList()
 
-        data.overviewData.rawBgSmoothedSeries = if (newestFirstRaw.isNotEmpty() && preferences.get(BooleanKey.ShowUkf1Graph)) {
-            // Ukf1ApplyLibreCalibration off (default, preserves prior behavior): plot smoothForDisplay()'s
-            // raw-noise-derived mgdl as-is. On: apply the same FslCalSlope/FslCalOffset calibration UKF3
-            // applies, so UKF1 can be compared calibrated-vs-uncalibrated against UKF3/live BG.
+        // Ukf1ApplyLibreCalibration off (default, preserves prior behavior): plot smoothForDisplay()'s
+        // raw-noise-derived mgdl as-is. On: apply the same FslCalSlope/FslCalOffset calibration UKF3
+        // applies, so UKF1 can be compared calibrated-vs-uncalibrated against UKF3/live BG. Computed
+        // unconditionally (cheap -- ukf1SmoothedMgdl, the actual smoothing pass, is already unconditional
+        // above) so both the ShowUkf1Graph-gated series below and graph5's own always-on copy can reuse it
+        // without recomputing.
+        val ukf1Points = if (newestFirstRaw.isNotEmpty()) {
             val applyCalibration = preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)
             val slope = preferences.get(DoubleKey.FslCalSlope)
             val offset = preferences.get(DoubleKey.FslCalOffset)
             val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
-            val smoothedPoints = newestFirstRaw.zip(ukf1SmoothedMgdl) { reading, mgdl ->
+            newestFirstRaw.zip(ukf1SmoothedMgdl) { reading, mgdl ->
                 val plotted = if (applyCalibration) max(40.0, mgdl * slope + offset * unitFactor) else mgdl
                 DataPoint(reading.timestamp.toDouble(), profileUtil.fromMgdlToUnits(plotted))
             }.asReversed() // back to ascending time order for the line series
-            LineGraphSeries(smoothedPoints.toTypedArray()).also {
-                // Light blue + dashed -- was rawBgColor (orange), same as the carb absorption/model
-                // lines; switched so it's visually distinct from those rather than blending in.
-                it.setCustomPaint(Paint().also { paint ->
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 6f
-                    paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
-                    paint.color = android.graphics.Color.parseColor("#4FC3F7") // Material Light Blue 300
-                })
-            }
-        } else {
-            LineGraphSeries<DataPoint>()
+        } else emptyList()
+
+        fun ukf1LineSeries() = LineGraphSeries(ukf1Points.toTypedArray()).also {
+            // Light blue + dashed -- was rawBgColor (orange), same as the carb absorption/model
+            // lines; switched so it's visually distinct from those rather than blending in.
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 6f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = android.graphics.Color.parseColor("#4FC3F7") // Material Light Blue 300
+            })
         }
+        data.overviewData.rawBgSmoothedSeries =
+            if (ukf1Points.isNotEmpty() && preferences.get(BooleanKey.ShowUkf1Graph)) ukf1LineSeries() else LineGraphSeries<DataPoint>()
+        // Graph5-only: same points, always shown regardless of ShowUkf1Graph -- see OverviewData.kt's
+        // rawBgSmoothedSeriesGraph5 doc comment.
+        data.overviewData.rawBgSmoothedSeriesGraph5 =
+            if (ukf1Points.isNotEmpty()) ukf1LineSeries() else LineGraphSeries<DataPoint>()
 
         // UKF2 comparison trace: the actual post-refinement value smoothLibreSpecialRealtime() returned
         // on each cycle -- i.e. exactly what became the real dosing BGL while UKFset2 was live, not the
         // pre-refinement libreSpecial stage this used to show (see libreSpecialPostUkfHistory's own doc
         // comment). Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
+        // Reads the already-persisted history -- cheap (SharedPreferences read/parse), NOT the expensive
+        // RTS smoothing pass itself (that only ever runs during live BG ingestion, gated purely by
+        // FslUseUkfLibreSpecialSmoothing there -- unrelated to graph-drawing). Computed unconditionally so
+        // graph5's always-on copy below doesn't need a second read.
+        val ukf2Points = ukfSmoothing.libreSpecialPostUkfHistory(fromTime, toTime)
+            .map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
+        fun ukf2LineSeries() = LineGraphSeries(ukf2Points.toTypedArray()).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f
+                paint.color = android.graphics.Color.parseColor("#66BB6A")
+            })
+        }
         data.overviewData.libreSpecialPreUkfSeries =
-            if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) && preferences.get(BooleanKey.ShowUkf2Graph)) {
-                val points = ukfSmoothing.libreSpecialPostUkfHistory(fromTime, toTime)
-                    .map { (timestamp, mgdl) ->
-                        DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl))
-                    }
-                LineGraphSeries(points.toTypedArray()).also {
-                    // TEMP diagnostic 2026-08-15: large yellow dots instead of the thin green line, to
-                    // confirm points are actually landing in ukf_librespecial_refined_history while it's
-                    // still freshly accumulating (empty until now). NOTE: LineGraphSeries.java's dot-draw
-                    // is gated on i>0 in its render loop and the i==0 case is an unimplemented TODO stub
-                    // (canvas.drawCircle commented out there) -- so a series with exactly ONE point draws
-                    // NOTHING at all, dots or line, regardless of this styling. Needs >=2 accumulated
-                    // points before anything appears on screen. setColor (not setCustomPaint's color)
-                    // drives the dot color -- dot-drawing always uses mPaint via getColor(), never the
-                    // custom paint object, even when one's set for the line.
-                    it.setColor(android.graphics.Color.YELLOW)
-                    it.setDrawDataPoints(true)
-                    it.setDataPointsRadius(14f)
-                    it.setCustomPaint(Paint().also { paint ->
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = 4f
-                        paint.color = android.graphics.Color.parseColor("#66BB6A")
-                    })
-                }
-            } else {
-                LineGraphSeries<DataPoint>()
-            }
+            if (ukf2Points.isNotEmpty() && preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) && preferences.get(BooleanKey.ShowUkf2Graph))
+                ukf2LineSeries()
+            else LineGraphSeries<DataPoint>()
+        // Graph5-only: same points, always shown regardless of the toggle pair above -- see
+        // OverviewData.kt's libreSpecialPreUkfSeriesGraph5 doc comment.
+        data.overviewData.libreSpecialPreUkfSeriesGraph5 =
+            if (ukf2Points.isNotEmpty()) ukf2LineSeries() else LineGraphSeries<DataPoint>()
 
         // UKF3's own raw-mgdl smoothed values (oldest-first): the LibreSpecial EMA formula (same math as
         // NsIncomingDataProcessor.kt's live fsl_exp1 branch, kept in sync by hand) run fresh against UKF1's
@@ -274,24 +275,26 @@ class PrepareBgDataWorker(
 
         // UKF3 graph line (display-only, opposite composition order from UKF2): gated purely on
         // ShowUkf3Graph -- always computed above regardless of live UKF toggle state, only drawn here.
-        data.overviewData.libreSpecialFromUkf1Series = if (ukf3RawMgdl.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) {
-            val points = ukf3RawMgdl.map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
-            LineGraphSeries(points.toTypedArray()).also {
-                it.setCustomPaint(Paint().also { paint ->
-                    paint.style = Paint.Style.STROKE
-                    // Same weight/dash pattern as UKF1's line (strokeWidth 6f, 6f/4f dashes) -- the
-                    // original 4f/2f-3f combo was too fine to read against the other lines. Still a
-                    // dashed (not solid) style and a darker green (#2E7D32 vs UKF2's #66BB6A) so it stays
-                    // visually distinct from UKF1 (light blue) and UKF2 (solid green) if all three show
-                    // together.
-                    paint.strokeWidth = 6f
-                    paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
-                    paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800
-                })
-            }
-        } else {
-            LineGraphSeries<DataPoint>()
+        val ukf3Points = ukf3RawMgdl.map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
+        fun ukf3LineSeries() = LineGraphSeries(ukf3Points.toTypedArray()).also {
+            it.setCustomPaint(Paint().also { paint ->
+                paint.style = Paint.Style.STROKE
+                // Same weight/dash pattern as UKF1's line (strokeWidth 6f, 6f/4f dashes) -- the
+                // original 4f/2f-3f combo was too fine to read against the other lines. Still a
+                // dashed (not solid) style and a darker green (#2E7D32 vs UKF2's #66BB6A) so it stays
+                // visually distinct from UKF1 (light blue) and UKF2 (solid green) if all three show
+                // together.
+                paint.strokeWidth = 6f
+                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800
+            })
         }
+        data.overviewData.libreSpecialFromUkf1Series =
+            if (ukf3Points.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) ukf3LineSeries() else LineGraphSeries<DataPoint>()
+        // Graph5-only: same points, always shown regardless of ShowUkf3Graph -- see OverviewData.kt's
+        // libreSpecialFromUkf1SeriesGraph5 doc comment.
+        data.overviewData.libreSpecialFromUkf1SeriesGraph5 =
+            if (ukf3Points.isNotEmpty()) ukf3LineSeries() else LineGraphSeries<DataPoint>()
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.
@@ -386,11 +389,12 @@ class PrepareBgDataWorker(
                 // fraction (graph5's basal bars occupy negative Y below the glucose floor, so a
                 // pixel-fraction-of-height approach lands in that zone instead of near BGL=4). Lowered from
                 // 75.6 (4.2mmol) 2026-08-15: that sat too close to/inside the in-range (green) BG trace on
-                // graph5, overlapping it whenever live BG was anywhere near target; 60 sits clearly below
-                // any in-range green point, only overlapping actual BG during a real low.
+                // graph5, overlapping it whenever live BG was anywhere near target. Lowered again same day,
+                // 60->50 (2.8mmol), now that PP_ACC_DU_ROW is in yIndependentShape (see
+                // PointsWithLabelGraphSeries.kt) so it can go lower without risking Y-scale culling.
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(60.0), label, rh)
+                        IsfWeightsRowDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(50.0), label, rh)
                     )
                 )
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
@@ -457,7 +461,7 @@ class PrepareBgDataWorker(
                 } else "--"
                 val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  UKF= $ukfMode"
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
-                // 75.6 (4.2mmol) -> 60.0 (3.3mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
+                // 75.6 (4.2mmol) -> 50.0 (2.8mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
                 // anchor above -- the renderer draws this row at endY + a small pixel offset BELOW the
                 // pp= row's anchor, so lowering both keeps that same relative "one line below" spacing
                 // while moving the whole pair clear of the in-range (green) BG trace on graph5.
@@ -465,7 +469,7 @@ class PrepareBgDataWorker(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTDataPoint(
                             latest.timestamp,
-                            profileUtil.fromMgdlToUnits(60.0),
+                            profileUtil.fromMgdlToUnits(50.0),
                             targetOffsetDuTLabel,
                             rh
                         )
@@ -478,7 +482,7 @@ class PrepareBgDataWorker(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTGraph1DataPoint(
                             latest.timestamp,
-                            profileUtil.fromMgdlToUnits(60.0),
+                            profileUtil.fromMgdlToUnits(50.0),
                             targetOffsetDuTLabel,
                             rh
                         )

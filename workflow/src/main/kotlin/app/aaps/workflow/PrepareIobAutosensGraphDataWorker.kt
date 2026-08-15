@@ -374,6 +374,10 @@ class PrepareIobAutosensGraphDataWorker(
                 absLastIob = absIob.iob
             }
 
+            // Set below (Combined Carbs section) when this bucket has one; read by the carb model curve
+            // section further down, same iteration -- see combinedThisBucket usage there for why.
+            var combinedThisBucket = 0.0
+
             // COB
             if (autosensData != null) {
                 val cob = autosensData.cob.toInt()
@@ -419,6 +423,7 @@ class PrepareIobAutosensGraphDataWorker(
                         // known meal. Equivalent to max(smoothedCarbAbs, smoothedUam). Display only.
                         val excessUam = (smoothedUam - smoothedCarbAbs).coerceAtLeast(0.0)
                         val combined = smoothedCarbAbs + excessUam
+                        combinedThisBucket = combined
                         combinedCarbsArrayHist.add(ScaledDataPoint(time, combined, data.overviewData.combinedCarbsScale))
                         rawCombinedCarbsPoints.add(combined)
                         // Scale against the positive peak drawn above the graph baseline. Using abs()
@@ -469,6 +474,17 @@ class PrepareIobAutosensGraphDataWorker(
                         raPer5Min += 5.0 * carbEntry.amount * carbModelF * carbModelK * carbModelK * tauMin * exp(-carbModelK * tauMin)
                     }
                 }
+                // When Combined Carbs (combinedThisBucket, same g/5min rate this curve is already in --
+                // see its own computation above) is genuinely above a small-signal floor, add half of it
+                // to the model curve -- surfaces excess/unexplained absorption the pure carb-entry model
+                // has no way to account for on its own. NOTE: maxCarbModelValue's scale is deliberately
+                // analytical/window-independent (see the comment on it above), so this addition is NOT
+                // reflected there -- a bucket with a large combinedThisBucket contribution can render
+                // above the curve's own scale line. Accepted trade-off rather than making the scale
+                // window-dependent again.
+                if (combinedThisBucket > 0.10) {
+                    raPer5Min += 0.5 * combinedThisBucket
+                }
                 // maxCarbModelValue is NOT updated here anymore -- precomputed analytically above,
                 // window-independently, before this loop runs (see that comment for why).
                 carbModelArrayHist.add(ScaledDataPoint(time, raPer5Min, data.overviewData.carbModelScale))
@@ -492,6 +508,15 @@ class PrepareIobAutosensGraphDataWorker(
 
             time += 5 * 60 * 1000L
         }
+
+        // The Combined Carbs bonus added into raPer5Min above (combinedThisBucket > 0.10) isn't covered
+        // by maxCarbModelValue's pre-loop analytical precompute -- that stays deliberately window-
+        // independent (see its own comment), computed purely from carb entries' theoretical peaks, which
+        // has no way to know Combined Carbs' actual peak ahead of time (an empirical signal, not a
+        // deterministic one like Ra). Folded in here instead, post-loop, once maxCombinedCarbsValue is
+        // fully known -- a floor/max only, so it can't shrink the analytical value below what carb entries
+        // alone already require, but does stop the curve exceeding its own scale line from this addition.
+        data.overviewData.maxCarbModelValue = max(data.overviewData.maxCarbModelValue, 0.5 * data.overviewData.maxCombinedCarbsValue)
 
         // Peak labels for the two derived carb-rate curves. Use the same dominant-peak filtering as
         // activity/IOB labels so five-minute noise does not create a label at every small bump. Values

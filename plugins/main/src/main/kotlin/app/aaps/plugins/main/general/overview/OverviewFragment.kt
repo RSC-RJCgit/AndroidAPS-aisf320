@@ -2294,7 +2294,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
             graph5Data.addBgParabola(true, 1.0)
             graph5Data.addRawBg(false)
-            graph5Data.addRawBgSmoothed(false)
+            // Graph5-only version: shows UKF1/2/3 comparison lines regardless of List2's own
+            // ShowUkf1Graph/ShowUkf2Graph/ShowUkf3Graph toggles -- see GraphData.addRawBgSmoothedGraph5().
+            graph5Data.addRawBgSmoothedGraph5(false)
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.
