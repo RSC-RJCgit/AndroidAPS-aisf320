@@ -372,7 +372,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ aisf321_592")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ aisf321_593")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -748,7 +748,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " aisf321_592 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " aisf321_593 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1864,5 +1864,5 @@ class DetermineBasalAutoISF @Inject constructor(
 }
 
 /*
-DetermineBasalAutoISF.ktaisf321_592
+DetermineBasalAutoISF.ktaisf321_593
 */
