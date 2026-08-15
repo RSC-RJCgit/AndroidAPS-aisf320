@@ -2269,31 +2269,32 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 preferences.get(UnitDoubleKey.OverviewLowMark),
                 preferences.get(UnitDoubleKey.OverviewHighMark)
             )
-            // Basal preset 2 temporarily removes ISF colouring on the main graph. During that same
-            // temporary state, hide graph5's BGL traces and standalone UAMci line. addBgReadings still
-            // initializes graph5's glucose Y scale when drawSeries=false so the remaining curves retain
-            // their normal height; the next basal press (or IOB reset) restores everything.
-            val hideGraph5BglAndUam = PointsWithLabelGraphSeries.uniformGreenBg
+            // hideGraph5BglAndUam (basalToggleIndex==2 / uniformGreenBg) used to suppress graph5's own
+            // BGL traces + UAM line whenever that basal-icon short-press state was active on the MAIN
+            // graph -- removed 2026-08-15: graph5 is meant to be independent of anything switched off/on
+            // via graph 0's own toggles (see the panel's top comment), and this was the one place graph5
+            // still inherited a graph-0-scoped state. addBasals() below still applies its own internal
+            // uniformGreenBg suppression to the ISF-weighted temp-basal overlay lines specifically (see
+            // GraphData.addBasals()) -- that one's left alone, it's about the basal lines themselves, not
+            // the BGL lines this block draws.
             // BooleanKey.ApsAutoIsfGraph5BglOnly, reachable from list2's "Graph: Graph5 panel" entry
             // (second checkbox, normally calibration -- repurposed here). false (default) = unchanged
             // prior behaviour, every series below stays on; true = skip insulin activity and all 3
             // carb-related lines, BGL/basal/annotation rows untouched.
             val graph5BglOnly = preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)
-            graph5Data.addBgReadings(true, context, drawSeries = !hideGraph5BglAndUam)
-            if (!hideGraph5BglAndUam) graph5Data.addBucketedData()
+            graph5Data.addBgReadings(true, context, drawSeries = true)
+            graph5Data.addBucketedData()
             if (!graph5BglOnly) {
                 graph5Data.addActivity(0.8)             // insulin activity
                 graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve (still needs ApsAutoIsfShowCarbModelCurve
                                                           // globally on for there to be any data -- that's a data-availability
                                                           // flag, not a "switched off on graph 0" toggle, so it's left alone)
-                if (!hideGraph5BglAndUam) graph5Data.addUamCarbImpact(0.8) // UAM assumed carbs
+                graph5Data.addUamCarbImpact(0.8) // UAM assumed carbs
                 graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
             }
-            if (!hideGraph5BglAndUam) {
-                graph5Data.addBgParabola(true, 1.0)
-                graph5Data.addRawBg(false)
-                graph5Data.addRawBgSmoothed(false)
-            }
+            graph5Data.addBgParabola(true, 1.0)
+            graph5Data.addRawBg(false)
+            graph5Data.addRawBgSmoothed(false)
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.
