@@ -954,6 +954,17 @@ class ImportExportPrefsImpl @Inject constructor(
                             activePlugin.afterImport()
                             // Warn if imported settings contained automation states
                             val hasStates = prefs.values.keys.any { it == "automation_state_service" || it == "automation_state_values" }
+                            // TEMP diagnostic 2026-08-15: hasStates has been consistently false on-device despite
+                            // export-time logs showing no "not exportable" skip for either key -- logging the
+                            // actual imported key set here to see directly what prefs.values contains at this
+                            // exact point, rather than continuing to infer it indirectly.
+                            aapsLogger.info(
+                                LTag.CORE,
+                                "AutomationStates import check: hasStates=$hasStates, totalImportedKeys=${prefs.values.size}, " +
+                                    "hasServiceKey=${prefs.values.containsKey("automation_state_service")}, " +
+                                    "hasValuesKey=${prefs.values.containsKey("automation_state_values")}, " +
+                                    "matchingKeys=${prefs.values.keys.filter { it.contains("automation_state") }}"
+                            )
                             if (hasStates) {
                                 val checkBox = android.widget.CheckBox(activity).apply {
                                     text = rh.gs(app.aaps.plugins.configuration.R.string.automation_states_enable_now)
