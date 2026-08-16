@@ -113,7 +113,7 @@
             <!-- 5th graph: mirrors overview_graphs_layout.xml's graph5_container, gated by the same
                  BooleanKey.ApsAutoIsfShowGraph5. Visibility toggled at runtime in
                  HistoryBrowseActivity.updateGUI(); gone by default. 300dp placeholder height overridden
-                 at runtime (see bg_graph_layout above) -- match_parent inner GraphView, not this file's
+                 at runtime (see bg_graph_layout above): match_parent inner GraphView, not this file's
                  own bg_graph_layout pattern, not Overview's weight-based one (this screen scrolls, so
                  layout_weight sizing doesn't apply the same way here). -->
             <RelativeLayout
