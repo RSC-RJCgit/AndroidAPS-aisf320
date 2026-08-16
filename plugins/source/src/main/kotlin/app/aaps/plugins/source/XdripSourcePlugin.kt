@@ -199,6 +199,17 @@ class XdripSourcePlugin @Inject constructor(
                     // entirely when this toggle is on. Same calibrated extraBgEstimate input either
                     // way; mirrors the NS ingestion wiring in NsIncomingDataProcessor.kt.
                     smooth = ukfSmoothing.smoothRawRealtime(thisTimeRaw, extraBgEstimate)
+                    // UKF2 graph feed (2026-08-16): keeps ukf_librespecial_refined_history current even
+                    // while UKFset1 is the live/dosing engine -- see
+                    // UnscentedKalmanFilterPlugin.feedLibreSpecialEma()'s own doc comment for why this
+                    // needs its own separate EMA state rather than reusing FslLastSmooth. Never assigned
+                    // to smooth; dosing stays on UKFset1 exactly as before.
+                    val libreSpecialFeed = ukfSmoothing.feedLibreSpecialEma(
+                        thisTimeRaw, extraBgEstimate, factor,
+                        preferences.get(IntKey.FslMaxSmoothGap).toDouble(),
+                        if (sourceCGM == "G7") 5.0 else 1.0
+                    )
+                    ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecialFeed)
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     aapsLogger.debug(LTag.BGSOURCE, "FSL xDrip calibration (UKF): raw=$extraRaw calibrated=$extraBgEstimate smooth=$smooth")
                 } else {
@@ -210,11 +221,15 @@ class XdripSourcePlugin @Inject constructor(
                     val libreSpecial = if (lastSmooth > 0.0)
                         lastSmooth + effectiveAlpha * (extraBgEstimate - lastSmooth)
                     else extraBgEstimate
-                    // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF
-                    // so its separate graph history can be retested, but deliberately keep the live
-                    // main-BG/dosing value on plain LibreSpecial during this comparison.
-                    if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing))
-                        ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
+                    // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so its
+                    // separate graph history can be retested, but deliberately keep the live
+                    // main-BG/dosing value on plain LibreSpecial during this comparison. Unconditional
+                    // as of 2026-08-16 -- was gated on FslUseUkfLibreSpecialSmoothing, which meant
+                    // ukf_librespecial_refined_history went stale the moment that toggle was off (i.e.
+                    // whenever UKFset1 was live); now always kept current so the UKF2 graph line stays
+                    // meaningful regardless of the display toggle. See feedLibreSpecialEma() above for
+                    // the matching UKFset1-live-branch feed.
+                    ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
                     smooth = libreSpecial
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     preferences.put(DoubleKey.FslLastSmooth, libreSpecial)

@@ -1194,8 +1194,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "ProfileLowTT" -> 5.150
         "LibreUkf1ToggleTT" -> 5.152
         // 5.154 (LibreUkf2ToggleTT) freed up 2026-08-15 -- UKFset2 toggling moved to list2's
-        // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
-        // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code.
+        // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which wrote
+        // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code. That syncedLiveKey write
+        // was itself removed 2026-08-16 (see OverviewFragment.kt's own updated doc comment) --
+        // FslUseUkfLibreSpecialSmoothing currently has no toggle path anywhere in this file or
+        // OverviewFragment.kt; 5.154 remains free if a plain toggle needs restoring.
         "SensorAgeCodeToggleTT" -> 5.156
         "AnyDeskRestartActionTT" -> 5.178
         "MjKotlinButtonsToggleTT" -> 5.164
@@ -2432,15 +2435,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
-        // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
-        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt). The mutual-exclusion
-        // write here (turning UKFset1 on used to also force FslUseUkfLibreSpecialSmoothing off) was
-        // removed 2026-08-15 for the same reason it was dropped from list2's popup: that flag no longer
-        // has any dosing effect (XdripSourcePlugin.kt/NsIncomingDataProcessor.kt call
-        // smoothLibreSpecialRealtime() only for its graph-history side effect and discard the return
-        // value) -- it now only gates whether UKF2's graph history accumulates. Silently clearing it here
-        // every time UKFset1 got toggled on was the actual cause of UKF2's graph never accumulating
-        // points: the two settings are independent now, so toggling one must not touch the other.
+        // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling used to live at list2's
+        // "Graph: UKF2" entry via GraphToggleEntry.syncedLiveKey in OverviewFragment.kt, itself removed
+        // 2026-08-16 (see that file's doc comment) once the graph's real staleness bug was fixed at the
+        // root instead. The mutual-exclusion write here (turning UKFset1 on used to also force
+        // FslUseUkfLibreSpecialSmoothing off) was removed 2026-08-15 for the same underlying reason:
+        // that flag no longer has any dosing effect on the graph history (smoothLibreSpecialRealtime()
+        // is called unconditionally now regardless of it) -- the two settings are independent, so
+        // toggling one must not touch the other.
         if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
             val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
             preferences.put(BooleanKey.FslUseUkfSmoothing, newState)

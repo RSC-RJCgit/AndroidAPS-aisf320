@@ -25,6 +25,7 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -1415,6 +1416,33 @@ private fun savePersistedParameters() {
         }
     }
 
+    /**
+     * Lightweight standalone fix (2026-08-16) for the UKF2 graph going stale whenever UKFset1
+     * (FslUseUkfSmoothing) is the live/dosing engine: XdripSourcePlugin.kt/NsIncomingDataProcessor.kt's
+     * UKFset1-live branch has no LibreSpecial EMA value to feed [smoothLibreSpecialRealtime] with,
+     * since that computation only happens in the LibreSpecial-live branch. This reproduces that same
+     * EMA formula against its own separate persisted state (NOT FslLastSmooth/FslSmoothLastTimeRaw,
+     * the real live-dosing EMA's state) so feeding the UKF2 graph while UKFset1 is live never disturbs
+     * the live EMA's own continuity -- if it shared that state, switching back to LibreSpecial-live
+     * later would resume from wherever this computation last left off, an unintended jump. Return
+     * value is fed into smoothLibreSpecialRealtime() only, never assigned to the actual dosing BG.
+     *
+     * This is deliberately NOT the full shadow-computation approach (separate LibreSpecial "type" with
+     * its own delta/accel comparison metrics) built on the UKF3426 branch for the 5-type smoothing
+     * comparison investigation -- this branch doesn't need that machinery, just enough to keep the
+     * UKF2 graph fed regardless of which engine is live.
+     */
+    @Synchronized
+    fun feedLibreSpecialEma(timestamp: Long, calibrated: Double, factor: Double, maxGapMinutes: Double, cgmDeltaMinutes: Double = 1.0): Double {
+        val lastSmooth = sp.getDouble("ukf2_feed_last_smooth", 0.0)
+        val lastTimeRaw = sp.getLong("ukf2_feed_last_time_raw", 0L)
+        val elapsedMinutes = if (lastTimeRaw > 0) (timestamp - lastTimeRaw) / 60000.0 else -1.0
+        val effectiveAlpha = min(1.0, factor + (1.0 - factor) * (max(0.0, elapsedMinutes - cgmDeltaMinutes) / (maxGapMinutes - cgmDeltaMinutes)).pow(2.0))
+        val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+        sp.putDouble("ukf2_feed_last_smooth", smooth)
+        sp.putLong("ukf2_feed_last_time_raw", timestamp)
+        return smooth
+    }
 
     private fun smoothSegmentForDisplay(points: List<Pair<Long, Double>>, startIdx: Int, endIdx: Int, result: DoubleArray) {
         val segmentSize = endIdx - startIdx + 1

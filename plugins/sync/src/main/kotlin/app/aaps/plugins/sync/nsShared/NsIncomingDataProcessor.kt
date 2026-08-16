@@ -142,7 +142,6 @@ class NsIncomingDataProcessor @Inject constructor(
                 val factor = preferences.get(DoubleKey.FslSmoothAlpha)
                 val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
                 val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) && !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-                val useLibreSpecialUkf = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
                 val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
                 glucoseValues.sortBy { it.timestamp }
                 for (gv in glucoseValues) {
@@ -153,6 +152,14 @@ class NsIncomingDataProcessor @Inject constructor(
                         // state (see that function's doc comment), replaces the fsl_exp1 EMA below
                         // entirely when this toggle is on. Same calibrated-value input either way.
                         smooth = ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
+                        // UKF2 graph feed (2026-08-16): keeps ukf_librespecial_refined_history current
+                        // even while UKFset1 is the live/dosing engine -- see
+                        // UnscentedKalmanFilterPlugin.feedLibreSpecialEma()'s own doc comment (and the
+                        // identical fix in XdripSourcePlugin.kt) for why this needs its own separate EMA
+                        // state rather than reusing FslLastSmooth. Never assigned to smooth; dosing
+                        // stays on UKFset1 exactly as before.
+                        val libreSpecialFeed = ukfSmoothing.feedLibreSpecialEma(gv.timestamp, calibrated, factor, maxGap)
+                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecialFeed)
                         aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration (UKF): raw=${gv.value} calibrated=$calibrated smooth=$smooth")
                     } else {
                         val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
@@ -160,11 +167,15 @@ class NsIncomingDataProcessor @Inject constructor(
                         val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
                         val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
                         val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                        // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF
-                        // so its separate graph history can be retested, but deliberately keep the live
+                        // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so
+                        // its separate graph history can be retested, but deliberately keep the live
                         // main-BG/dosing value on plain LibreSpecial during this comparison.
-                        if (useLibreSpecialUkf)
-                            ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                        // Unconditional as of 2026-08-16 -- was gated on useLibreSpecialUkf, which meant
+                        // ukf_librespecial_refined_history went stale the moment that toggle was off
+                        // (i.e. whenever UKFset1 was live); now always kept current so the UKF2 graph
+                        // line stays meaningful regardless of the display toggle. Same fix as
+                        // XdripSourcePlugin.kt.
+                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
                         smooth = libreSpecial
                         preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
