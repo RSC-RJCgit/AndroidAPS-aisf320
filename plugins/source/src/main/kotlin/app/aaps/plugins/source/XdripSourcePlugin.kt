@@ -200,15 +200,23 @@ class XdripSourcePlugin @Inject constructor(
                     // way; mirrors the NS ingestion wiring in NsIncomingDataProcessor.kt.
                     smooth = ukfSmoothing.smoothRawRealtime(thisTimeRaw, extraBgEstimate)
                     // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call in
-                    // the else branch below), added 2026-08-16 (UKF3426 branch). Same "call for its side
-                    // effect, discard the return value" idiom -- keeps LibreSpecial's own EMA/history
-                    // current even while UKFset1 is the actual live/dosing source. Never assigned to
+                    // the else branch below), added 2026-08-16 (UKF3426 branch). Never assigned to
                     // smooth; dosing stays on UKFset1 exactly as before.
-                    ukfSmoothing.smoothLibreSpecialShadow(
+                    //
+                    // The returned raw EMA value is now ALSO fed through smoothLibreSpecialRealtime()
+                    // (added 2026-08-16, fixing a real gap): that's the only call that persists
+                    // ukf_librespecial_refined_history, which is what the always-on UKF2 graph line
+                    // actually reads (see libreSpecialPostUkfHistory()'s own doc comment) -- without
+                    // this, the UKF2 graph line went stale and disappeared off its lookback window
+                    // every time UKFset1 (not LibreSpecial) was the live/dosing engine, i.e. whenever
+                    // this branch runs. Mirrors the else branch's own unconditional call below exactly,
+                    // just fed from the shadow EMA instead of the live one.
+                    val libreSpecialShadow = ukfSmoothing.smoothLibreSpecialShadow(
                         thisTimeRaw, extraBgEstimate, factor,
                         preferences.get(IntKey.FslMaxSmoothGap).toDouble(),
                         if (sourceCGM == "G7") 5.0 else 1.0
                     )
+                    ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecialShadow)
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     aapsLogger.debug(LTag.BGSOURCE, "FSL xDrip calibration (UKF): raw=$extraRaw calibrated=$extraBgEstimate smooth=$smooth")
                 } else {

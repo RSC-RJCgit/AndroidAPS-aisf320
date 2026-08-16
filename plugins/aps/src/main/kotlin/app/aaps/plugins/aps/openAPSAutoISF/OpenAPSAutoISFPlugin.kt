@@ -1358,8 +1358,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "ProfileLowTT" -> 5.150
         "LibreUkf1ToggleTT" -> 5.152
         // 5.154 (LibreUkf2ToggleTT) freed up 2026-08-15 -- UKFset2 toggling moved to list2's
-        // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
-        // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code.
+        // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which wrote
+        // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code. That syncedLiveKey write
+        // was itself removed 2026-08-16 (UKF3426 branch, see OverviewFragment.kt's own updated doc
+        // comment) -- FslUseUkfLibreSpecialSmoothing currently has no toggle path anywhere in this file
+        // or OverviewFragment.kt; 5.154 remains free if a plain toggle needs restoring.
         "SensorAgeCodeToggleTT" -> 5.156
         "AnyDeskRestartActionTT" -> 5.178
         "MjKotlinButtonsToggleTT" -> 5.164

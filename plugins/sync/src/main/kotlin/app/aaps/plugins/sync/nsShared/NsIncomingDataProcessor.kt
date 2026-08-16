@@ -153,11 +153,19 @@ class NsIncomingDataProcessor @Inject constructor(
                         // entirely when this toggle is on. Same calibrated-value input either way.
                         smooth = ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
                         // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call
-                        // in the else branch below), added 2026-08-16 (UKF3426 branch). Same "call for
-                        // its side effect, discard the return value" idiom. Never assigned to smooth;
-                        // dosing stays on UKFset1. No G7 distinction here (matches this file's own live
-                        // LibreSpecial branch, which also always uses 1.0), unlike XdripSourcePlugin.kt.
-                        ukfSmoothing.smoothLibreSpecialShadow(gv.timestamp, calibrated, factor, maxGap)
+                        // in the else branch below), added 2026-08-16 (UKF3426 branch). Never assigned
+                        // to smooth; dosing stays on UKFset1. No G7 distinction here (matches this
+                        // file's own live LibreSpecial branch, which also always uses 1.0), unlike
+                        // XdripSourcePlugin.kt.
+                        //
+                        // The returned raw EMA value is now ALSO fed through smoothLibreSpecialRealtime()
+                        // (added 2026-08-16, fixing a real gap -- see the identical fix/comment in
+                        // XdripSourcePlugin.kt): that's the only call that persists
+                        // ukf_librespecial_refined_history, the always-on UKF2 graph line's actual data
+                        // source, which otherwise went stale and disappeared whenever UKFset1 (not
+                        // LibreSpecial) was the live/dosing engine.
+                        val libreSpecialShadow = ukfSmoothing.smoothLibreSpecialShadow(gv.timestamp, calibrated, factor, maxGap)
+                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecialShadow)
                         aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration (UKF): raw=${gv.value} calibrated=$calibrated smooth=$smooth")
                     } else {
                         val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
