@@ -6536,5 +6536,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_614
+OpenAPSAutoISFPlugin.ktaisf321TD_614
 */
