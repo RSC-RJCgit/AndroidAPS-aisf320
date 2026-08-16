@@ -699,6 +699,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun ukf2AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
         accelerationCalculator.fitBestParabola(ukf2RecentHistory(47))
 
+    // UKFset1's own shadow-persisted history (ukf_rawrt_output_history via rawRealtimeHistory() --
+    // see that function's own doc comment in UnscentedKalmanFilterPlugin.kt, and the shadow-call sites
+    // in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt that keep it current even while LibreSpecial
+    // is the actual live source). Same newest-first reversal as ukf2RecentHistory() above --
+    // rawRealtimeHistory() also returns oldest-first.
+    private fun ukfSet1RecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
+        val now = dateUtil.now()
+        return ukfSmoothing.rawRealtimeHistory(now - T.mins(lookbackMinutes).msecs(), now)
+            .sortedByDescending { it.first }
+    }
+
+    // UKFset1's own delta5/delta15/delta30 and bgAcceleration/deltaPl/deltaPn, same idea as the UKF2
+    // pair above but from its own shadow history. Second type in the per-type delta/acceleration
+    // comparison work on the UKF3426 branch, after UKF2.
+    private fun ukfSet1DeltaMetrics(): DeltaCalculator.DeltaResult =
+        deltaCalculator.calculateDeltasGeneric(ukfSet1RecentHistory(45))
+
+    private fun ukfSet1AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
+        accelerationCalculator.fitBestParabola(ukfSet1RecentHistory(47))
+
+    // LibreSpecial's own shadow-persisted history (fsl_shadow_history via libreSpecialShadowHistory()
+    // -- see that function's own doc comment in UnscentedKalmanFilterPlugin.kt, and the shadow-call
+    // sites in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt that keep it current even while UKFset1
+    // is the actual live source). Completes the live pair, after UKFset1. Same newest-first reversal
+    // as the other two RecentHistory functions above.
+    private fun libreSpecialShadowRecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
+        val now = dateUtil.now()
+        return ukfSmoothing.libreSpecialShadowHistory(now - T.mins(lookbackMinutes).msecs(), now)
+            .sortedByDescending { it.first }
+    }
+
+    private fun libreSpecialShadowDeltaMetrics(): DeltaCalculator.DeltaResult =
+        deltaCalculator.calculateDeltasGeneric(libreSpecialShadowRecentHistory(45))
+
+    private fun libreSpecialShadowAccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
+        accelerationCalculator.fitBestParabola(libreSpecialShadowRecentHistory(47))
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
     // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
     private fun hypoPrediction2Mmol(
@@ -5146,6 +5183,41 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             markRun("Ukf2DeltaMetricsLog")
+        }
+
+        // TEMP diagnostic 2026-08-15 (UKF3426 branch): second type in the per-type comparison, same
+        // shape as Ukf2DeltaMetricsLog above but separate log line/throttle key rather than combined
+        // into one line -- that one's already dense with two sets of numbers, a third would be
+        // unreadable. loopStatus reused from the block above (same glucoseStatus cast).
+        if (readyToRun("UkfSet1DeltaMetricsLog", 5)) {
+            val ukfSet1Deltas = ukfSet1DeltaMetrics()
+            val ukfSet1Accel = ukfSet1AccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+            aapsLogger.debug(
+                LTag.APS,
+                "UkfSet1DeltaMetrics: delta5=${round(ukfSet1Deltas.delta, 2)} delta15=${round(ukfSet1Deltas.shortAvgDelta, 2)} delta30=${round(ukfSet1Deltas.longAvgDelta, 2)} " +
+                    "accel=${round(ukfSet1Accel.bgAcceleration, 3)} deltaPl=${round(ukfSet1Accel.deltaPl, 2)} deltaPn=${round(ukfSet1Accel.deltaPn, 2)} window=${round(ukfSet1Accel.windowMinutes, 1)}min corrSqu=${round(ukfSet1Accel.corrSqu, 3)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
+                    "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+            )
+            markRun("UkfSet1DeltaMetricsLog")
+        }
+
+        // TEMP diagnostic 2026-08-16 (UKF3426 branch): third and final type completing the live pair
+        // (LibreSpecial's own shadow computation) -- same shape as the two logs above, own separate
+        // line/throttle key.
+        if (readyToRun("LibreSpecialShadowMetricsLog", 5)) {
+            val libreSpecialDeltas = libreSpecialShadowDeltaMetrics()
+            val libreSpecialAccel = libreSpecialShadowAccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+            aapsLogger.debug(
+                LTag.APS,
+                "LibreSpecialShadowMetrics: delta5=${round(libreSpecialDeltas.delta, 2)} delta15=${round(libreSpecialDeltas.shortAvgDelta, 2)} delta30=${round(libreSpecialDeltas.longAvgDelta, 2)} " +
+                    "accel=${round(libreSpecialAccel.bgAcceleration, 3)} deltaPl=${round(libreSpecialAccel.deltaPl, 2)} deltaPn=${round(libreSpecialAccel.deltaPn, 2)} window=${round(libreSpecialAccel.windowMinutes, 1)}min corrSqu=${round(libreSpecialAccel.corrSqu, 3)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
+                    "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+            )
+            markRun("LibreSpecialShadowMetricsLog")
         }
 
         determineBasalAutoISF.determine_basal(

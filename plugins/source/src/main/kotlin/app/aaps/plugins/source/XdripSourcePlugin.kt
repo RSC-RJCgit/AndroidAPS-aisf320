@@ -199,6 +199,16 @@ class XdripSourcePlugin @Inject constructor(
                     // entirely when this toggle is on. Same calibrated extraBgEstimate input either
                     // way; mirrors the NS ingestion wiring in NsIncomingDataProcessor.kt.
                     smooth = ukfSmoothing.smoothRawRealtime(thisTimeRaw, extraBgEstimate)
+                    // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call in
+                    // the else branch below), added 2026-08-16 (UKF3426 branch). Same "call for its side
+                    // effect, discard the return value" idiom -- keeps LibreSpecial's own EMA/history
+                    // current even while UKFset1 is the actual live/dosing source. Never assigned to
+                    // smooth; dosing stays on UKFset1 exactly as before.
+                    ukfSmoothing.smoothLibreSpecialShadow(
+                        thisTimeRaw, extraBgEstimate, factor,
+                        preferences.get(IntKey.FslMaxSmoothGap).toDouble(),
+                        if (sourceCGM == "G7") 5.0 else 1.0
+                    )
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     aapsLogger.debug(LTag.BGSOURCE, "FSL xDrip calibration (UKF): raw=$extraRaw calibrated=$extraBgEstimate smooth=$smooth")
                 } else {
@@ -220,6 +230,14 @@ class XdripSourcePlugin @Inject constructor(
                     // display toggle. Real always-on cost: one more smoothForDisplay() batch pass over
                     // up to 120 points, every reading, even when nobody's looking at the UKF2 graph.
                     ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
+                    // UKFset1 shadow: same "call for its side effect, discard the return value" idiom
+                    // as the UKF2 line above, added 2026-08-15 (UKF3426 branch) so UKFset1's own Kalman
+                    // state/history (ukf_rawrt_* -- see UnscentedKalmanFilterPlugin.rawRealtimeHistory())
+                    // stays warm and current even while LibreSpecial is the actual live/dosing source.
+                    // Same calibrated extraBgEstimate input the live branch above uses -- keeps this
+                    // apples-to-apples with what UKFset1 would compute if it WERE live right now. Never
+                    // assigned to smooth; dosing stays on LibreSpecial exactly as before.
+                    ukfSmoothing.smoothRawRealtime(thisTimeRaw, extraBgEstimate)
                     smooth = libreSpecial
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     preferences.put(DoubleKey.FslLastSmooth, libreSpecial)

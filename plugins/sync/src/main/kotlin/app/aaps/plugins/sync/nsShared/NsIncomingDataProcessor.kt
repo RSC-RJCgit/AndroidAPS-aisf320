@@ -152,6 +152,12 @@ class NsIncomingDataProcessor @Inject constructor(
                         // state (see that function's doc comment), replaces the fsl_exp1 EMA below
                         // entirely when this toggle is on. Same calibrated-value input either way.
                         smooth = ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
+                        // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call
+                        // in the else branch below), added 2026-08-16 (UKF3426 branch). Same "call for
+                        // its side effect, discard the return value" idiom. Never assigned to smooth;
+                        // dosing stays on UKFset1. No G7 distinction here (matches this file's own live
+                        // LibreSpecial branch, which also always uses 1.0), unlike XdripSourcePlugin.kt.
+                        ukfSmoothing.smoothLibreSpecialShadow(gv.timestamp, calibrated, factor, maxGap)
                         aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration (UKF): raw=${gv.value} calibrated=$calibrated smooth=$smooth")
                     } else {
                         val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
@@ -168,6 +174,13 @@ class NsIncomingDataProcessor @Inject constructor(
                         // delta5/delta15 stay meaningful regardless of the display toggle. Same
                         // always-on-cost tradeoff as the identical change in XdripSourcePlugin.kt.
                         ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                        // UKFset1 shadow: same "call for its side effect, discard the return value"
+                        // idiom as the UKF2 line above, added 2026-08-15 (UKF3426 branch) so UKFset1's
+                        // own Kalman state/history (ukf_rawrt_* -- see
+                        // UnscentedKalmanFilterPlugin.rawRealtimeHistory()) stays warm and current even
+                        // while LibreSpecial is the actual live/dosing source. Same calibrated input the
+                        // live branch above uses. Never assigned to smooth; dosing stays on LibreSpecial.
+                        ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
                         smooth = libreSpecial
                         preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)

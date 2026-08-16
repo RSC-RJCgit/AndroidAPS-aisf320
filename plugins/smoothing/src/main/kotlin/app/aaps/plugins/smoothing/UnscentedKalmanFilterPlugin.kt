@@ -1519,6 +1519,7 @@ private fun savePersistedParameters() {
      *   choice; this function just smooths whatever series it's fed consistently over time)
      * @return smoothed value in mg/dL
      */
+    @Synchronized
     fun smoothRawRealtime(timestamp: Long, rawValue: Double): Double {
         try {
             val lastTimestamp = sp.getLong("ukf_rawrt_last_timestamp", 0L)
@@ -1527,6 +1528,7 @@ private fun savePersistedParameters() {
             if (lastTimestamp <= 0L || dtMin <= 0.0 || dtMin > MAJOR_GAP_THRESHOLD) {
                 val fresh = max(rawValue, 39.0)
                 persistRawRealtimeState(fresh, 0.0, 16.0, 0.0, 0.0, 1.0, timestamp)
+                persistRawRealtimeHistory(timestamp, fresh)
                 return fresh
             }
 
@@ -1555,9 +1557,12 @@ private fun savePersistedParameters() {
 
             val smoothed = max(x[0], 39.0)
             persistRawRealtimeState(smoothed, x[1], P[0], P[1], P[2], P[3], timestamp)
+            persistRawRealtimeHistory(timestamp, smoothed)
             return smoothed
         } catch (e: Exception) {
             aapsLogger.error(LTag.GLUCOSE, "UKF: Error during raw realtime smoothing, falling back to raw value", e)
+            // Deliberately NOT added to the history below -- a fallback/degraded value here isn't a
+            // real filter output, so it's better to leave a gap than record a misleading point.
             return max(rawValue, 39.0)
         }
     }
@@ -1571,4 +1576,135 @@ private fun savePersistedParameters() {
         sp.putDouble("ukf_rawrt_p3", p3)
         sp.putLong("ukf_rawrt_last_timestamp", timestamp)
     }
+
+    // UKFset1's own retrospective output history -- persisted separately from its live Kalman state
+    // above (ukf_rawrt_x0/x1/p0-p3/last_timestamp), which only tracks the CURRENT filter state, not a
+    // series of past outputs. Added 2026-08-15 for the per-type delta/acceleration comparison work on
+    // the UKF3426 branch, mirroring libreSpecialPostUkfHistory()'s exact contract. ~60min
+    // retention/90-point cap -- only needs to cover DeltaCalculator/AccelerationCalculator's widest
+    // windows (42.5min/47min respectively), no graph-line use planned for it (unlike UKF2's 12h
+    // graph-scale history), so kept deliberately smaller/cheaper.
+    private val RAWRT_HISTORY_RETENTION_MIN = 60L
+    private val RAWRT_HISTORY_MAX_POINTS = 90
+
+    private fun persistRawRealtimeHistory(timestamp: Long, value: Double) {
+        val history = sp.getString("ukf_rawrt_output_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val t = fields[0].toLongOrNull()
+                    val v = fields[1].toDoubleOrNull()
+                    if (t == null || v == null) null else t to v
+                }
+            }
+            .toMutableList()
+        history.removeAll { it.first == timestamp }
+        history.add(timestamp to value)
+        val oldest = timestamp - RAWRT_HISTORY_RETENTION_MIN * 60_000L
+        val trimmed = history
+            .filter { it.first >= oldest && it.first <= timestamp + 5L * 60_000L }
+            .sortedByDescending { it.first }
+            .take(RAWRT_HISTORY_MAX_POINTS)
+        sp.putString("ukf_rawrt_output_history", trimmed.joinToString(";") { "${it.first},${it.second}" })
+    }
+
+    /**
+     * Reads UKFset1's own retrospective output history -- see [persistRawRealtimeHistory]'s doc
+     * comment above.
+     */
+    @Synchronized
+    fun rawRealtimeHistory(fromTime: Long, toTime: Long): List<Pair<Long, Double>> =
+        sp.getString("ukf_rawrt_output_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val time = fields[0].toLongOrNull()
+                    val value = fields[1].toDoubleOrNull()
+                    if (time == null || value == null || time !in fromTime..toTime) null else time to value
+                }
+            }
+            .sortedBy { it.first }
+
+    /**
+     * Shadow-mode LibreSpecial EMA: same core formula as the live LibreSpecial calculation in
+     * XdripSourcePlugin.kt/NsIncomingDataProcessor.kt, but using its own separate persisted state
+     * (fsl_shadow_last_smooth/fsl_shadow_last_time_raw) so it can keep running even while UKFset1 is
+     * the actual live source, without disturbing FslLastSmooth/FslSmoothLastTimeRaw (which the live
+     * LibreSpecial path owns and would otherwise conflict with). Persists its own retrospective
+     * history (fsl_shadow_history), same idea as UKFset1's shadow history above -- second/third type
+     * (completing the live pair, after UKFset1) in the per-type delta/acceleration comparison work on
+     * the UKF3426 branch. Added 2026-08-16.
+     *
+     * Simplified vs the live calculation: does NOT replicate XdripSourcePlugin's active-calibration
+     * effectiveAlpha=1.0 override (a narrow, dosing-safety-related edge case not meaningful for a
+     * comparison-only shadow value) -- always uses the gap-ramp formula.
+     *
+     * @param timestamp reading time (ms epoch)
+     * @param calibrated calibrated glucose value in mg/dL (same input the live LibreSpecial calc uses)
+     * @param factor FslSmoothAlpha preference value
+     * @param maxGapMinutes FslMaxSmoothGap preference value
+     * @param cgmDeltaMinutes 5.0 for G7 sources, 1.0 otherwise (matches XdripSourcePlugin's own
+     *   cgmDelta; NsIncomingDataProcessor's live calc always uses 1.0, no G7 distinction there)
+     */
+    @Synchronized
+    fun smoothLibreSpecialShadow(timestamp: Long, calibrated: Double, factor: Double, maxGapMinutes: Double, cgmDeltaMinutes: Double = 1.0): Double {
+        val lastSmooth = sp.getDouble("fsl_shadow_last_smooth", 0.0)
+        val lastTimeRaw = sp.getLong("fsl_shadow_last_time_raw", 0L)
+        val elapsedMinutes = if (lastTimeRaw > 0) (timestamp - lastTimeRaw) / 60000.0 else -1.0
+        val effectiveAlpha = min(1.0, factor + (1.0 - factor) * (max(0.0, elapsedMinutes - cgmDeltaMinutes) / (maxGapMinutes - cgmDeltaMinutes)).pow(2.0))
+        val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+        sp.putDouble("fsl_shadow_last_smooth", smooth)
+        sp.putLong("fsl_shadow_last_time_raw", timestamp)
+        persistLibreSpecialShadowHistory(timestamp, smooth)
+        return smooth
+    }
+
+    private val LIBRESPECIAL_SHADOW_HISTORY_RETENTION_MIN = 60L
+    private val LIBRESPECIAL_SHADOW_HISTORY_MAX_POINTS = 90
+
+    private fun persistLibreSpecialShadowHistory(timestamp: Long, value: Double) {
+        val history = sp.getString("fsl_shadow_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val t = fields[0].toLongOrNull()
+                    val v = fields[1].toDoubleOrNull()
+                    if (t == null || v == null) null else t to v
+                }
+            }
+            .toMutableList()
+        history.removeAll { it.first == timestamp }
+        history.add(timestamp to value)
+        val oldest = timestamp - LIBRESPECIAL_SHADOW_HISTORY_RETENTION_MIN * 60_000L
+        val trimmed = history
+            .filter { it.first >= oldest && it.first <= timestamp + 5L * 60_000L }
+            .sortedByDescending { it.first }
+            .take(LIBRESPECIAL_SHADOW_HISTORY_MAX_POINTS)
+        sp.putString("fsl_shadow_history", trimmed.joinToString(";") { "${it.first},${it.second}" })
+    }
+
+    /**
+     * Reads LibreSpecial's own shadow-mode retrospective output history -- see
+     * [smoothLibreSpecialShadow]'s doc comment above.
+     */
+    @Synchronized
+    fun libreSpecialShadowHistory(fromTime: Long, toTime: Long): List<Pair<Long, Double>> =
+        sp.getString("fsl_shadow_history", "")
+            .split(';')
+            .mapNotNull { entry ->
+                val fields = entry.split(',')
+                if (fields.size != 2) null
+                else {
+                    val time = fields[0].toLongOrNull()
+                    val value = fields[1].toDoubleOrNull()
+                    if (time == null || value == null || time !in fromTime..toTime) null else time to value
+                }
+            }
+            .sortedBy { it.first }
 }
