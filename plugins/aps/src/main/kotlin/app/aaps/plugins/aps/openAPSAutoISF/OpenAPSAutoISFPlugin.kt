@@ -105,6 +105,7 @@ import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
+import app.aaps.plugins.aps.openAPS.DeltaCalculator
 import app.aaps.plugins.aps.openAPSSMB.PhoneMovementDetector
 import app.aaps.plugins.aps.openAPSSMB.StepService
 import com.google.gson.Gson
@@ -152,7 +153,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val context: Context,
     private val importExportPrefs: ImportExportPrefs,
     private val exportPasswordDataStore: ExportPasswordDataStore,
-    private val ukfSmoothing: UnscentedKalmanFilterPlugin
+    private val ukfSmoothing: UnscentedKalmanFilterPlugin,
+    private val deltaCalculator: DeltaCalculator
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -664,6 +666,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val refIndex = readings.indices.minByOrNull { kotlin.math.abs(readings[it].timestamp - fiveMinAgo) }
         val ukfD5 = refIndex?.takeIf { it != 0 }?.let { ukfG - smoothed[it] }
         return UkfRawMetrics(ukfG, ukfD1, ukfD5)
+    }
+
+    // UKF2's own delta5/delta15, computed from its always-current persisted history
+    // (ukf_librespecial_refined_history via libreSpecialPostUkfHistory() -- see that function's own
+    // call sites in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt for the 2026-08-15 change that made
+    // it update unconditionally) rather than whatever's actually live/dosing. First proof-of-concept
+    // for the per-type delta/acceleration comparison work on the UKF3426 branch -- see
+    // DeltaCalculator.calculateDeltasGeneric()'s own doc comment for the shared math this reuses.
+    // 45-min lookback covers calculateDeltasGeneric's widest window (17.5-42.5min, longAvgDelta) with
+    // a little headroom.
+    private fun ukf2DeltaMetrics(): DeltaCalculator.DeltaResult {
+        val now = dateUtil.now()
+        val history = ukfSmoothing.libreSpecialPostUkfHistory(now - T.mins(45).msecs(), now)
+            .sortedByDescending { it.first } // calculateDeltasGeneric expects newest-first; libreSpecialPostUkfHistory returns oldest-first
+        return deltaCalculator.calculateDeltasGeneric(history)
     }
 
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
@@ -5094,6 +5111,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Sub75Clr")
         }
 
+        // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKF2's own delta5/delta15 against
+        // the loop's actual (LibreSpecial/UKFset1) glucoseStatus.delta/shortAvgDelta -- first
+        // proof-of-concept for the per-type delta comparison work, log-only for now (see this branch's
+        // scope notes). 5-min throttle, just to avoid spamming every 1-min cycle during this
+        // investigation phase.
+        if (readyToRun("Ukf2DeltaMetricsLog", 5)) {
+            val ukf2Deltas = ukf2DeltaMetrics()
+            aapsLogger.debug(
+                LTag.APS,
+                "Ukf2DeltaMetrics: delta5=${round(ukf2Deltas.delta, 2)} delta15=${round(ukf2Deltas.shortAvgDelta, 2)} delta30=${round(ukf2Deltas.longAvgDelta, 2)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)})"
+            )
+            markRun("Ukf2DeltaMetricsLog")
+        }
+
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -6262,5 +6294,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_603
+OpenAPSAutoISFPlugin.ktaisf321_604
 */

@@ -28,7 +28,20 @@ class DeltaCalculator @Inject constructor(
      * @param data A list of historical glucose data, sorted from newest to oldest.
      * @return A [DeltaResult] containing the calculated deltas.
      */
-    fun calculateDeltas(data:  MutableList<InMemoryGlucoseValue>): DeltaResult {
+    fun calculateDeltas(data: MutableList<InMemoryGlucoseValue>): DeltaResult =
+        calculateDeltasGeneric(data.map { it.timestamp to it.recalculated })
+
+    /**
+     * Same exact window definitions/averaging logic as [calculateDeltas] above, but decoupled from
+     * [InMemoryGlucoseValue] -- takes any (timestamp, value) series instead, so a smoothing type's
+     * own reconstructed history (not just the live DB readings [calculateDeltas] reads) can be run
+     * through the identical math. [calculateDeltas] is now a thin wrapper over this; behavior for its
+     * existing callers is unchanged. Added 2026-08-15 for the per-type delta/acceleration comparison
+     * work on the UKF3426 branch -- see that branch's scope notes.
+     *
+     * @param data A list of (timestamp, value) pairs, sorted from newest to oldest.
+     */
+    fun calculateDeltasGeneric(data: List<Pair<Long, Double>>): DeltaResult {
         if (data.size < 2) {
             return DeltaResult(0.0, 0.0, 0.0)
         }
@@ -39,22 +52,15 @@ class DeltaCalculator @Inject constructor(
         val longDeltas = mutableListOf<Double>()
 
         val now = data[0]
-        val nowDate = now.timestamp
+        val nowDate = now.first
         // start at data[1] as data[0] is the value used in the now calculations
         for (i in 1 until data.size) {
-            if (data[i].recalculated > minBgValue) {
+            if (data[i].second > minBgValue) {
                 val then = data[i]
-                val thenDate = then.timestamp
+                val thenDate = then.first
                 val minutesAgo = (nowDate - thenDate).milliseconds.toDouble(DurationUnit.MINUTES)
-                change = now.recalculated - then.recalculated
+                change = now.second - then.second
                 val avgDel = change / minutesAgo * 5 // multiply by 5 to get the same units as delta, i.e. mg/dL/5m
-                // aapsLogger.debug(LTag.GLUCOSE, "$then Bucketed=$minutesAgo valueAgo=${then.value} recalcAgo=${then.recalculated} smooth=${then.smoothed} filled=${then.filledGap} avgDelta=$avgDel")
-
-                // use the average of all data points in the last 2.5m for all further "now" calculations
-                // if (0 < minutesAgo && minutesAgo < 2.5) {
-                //     // Keep and average all values within the last 2.5 minutes
-                //     nowValueList.add(then.recalculated)
-                //     now.value = average(nowValueList)
 
                 // values that are too recent are not considered (this check had been commented out before; now it's just being logged.)
                 if (minutesAgo in 0.0 .. minLastDeltaMinutes) {
@@ -63,17 +69,14 @@ class DeltaCalculator @Inject constructor(
 
                 // last_deltas are calculated from minLastDeltaMinutes to maxLastDeltaMinutes
                 if (minutesAgo in minLastDeltaMinutes .. maxLastDeltaMinutes) { //currently min: 2.5 max 7.5
-//                    aapsLogger.debug(LTag.GLUCOSE, "$avgDel from $minutesAgo minutes ago added to lastDeltas")
                     lastDeltas.add(avgDel)
                 }
                 // short_deltas are calculated from minShortDeltaMinutes to maxShortDeltaMinutes
                 if (minutesAgo in minShortDeltaMinutes .. maxShortDeltaMinutes) { //currently min: 2.5 max 17.5
-//                    aapsLogger.debug(LTag.GLUCOSE, "$avgDel from $minutesAgo minutes ago added to shortDeltas")
                     shortDeltas.add(avgDel)
                 }
                 // long_deltas are calculated from minLongDeltaMinutes to maxLongDeltaMinutes
                 if (minutesAgo in minLongDeltaMinutes .. maxLongDeltaMinutes) { //currently min: 17.5 max 42.5
-//                    aapsLogger.debug(LTag.GLUCOSE, "$avgDel from $minutesAgo minutes ago added to longDeltas")
                     longDeltas.add(avgDel)
                 } else if ( minutesAgo > maxLongDeltaMinutes){ //currently 42.5
                     break // Do not process any more records after maxLongDeltaMinutes

@@ -210,11 +210,16 @@ class XdripSourcePlugin @Inject constructor(
                     val libreSpecial = if (lastSmooth > 0.0)
                         lastSmooth + effectiveAlpha * (extraBgEstimate - lastSmooth)
                     else extraBgEstimate
-                    // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF
-                    // so its separate graph history can be retested, but deliberately keep the live
-                    // main-BG/dosing value on plain LibreSpecial during this comparison.
-                    if (preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing))
-                        ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
+                    // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so its
+                    // separate graph history can be retested, but deliberately keep the live
+                    // main-BG/dosing value on plain LibreSpecial during this comparison. Unconditional
+                    // as of 2026-08-15 (UKF3426 branch) -- was gated on FslUseUkfLibreSpecialSmoothing,
+                    // which meant ukf_librespecial_refined_history went stale the moment that toggle
+                    // was off; now always kept current so UKF2's own delta5/delta15 (see
+                    // DeltaCalculator.calculateDeltasGeneric()) stay meaningful regardless of the
+                    // display toggle. Real always-on cost: one more smoothForDisplay() batch pass over
+                    // up to 120 points, every reading, even when nobody's looking at the UKF2 graph.
+                    ukfSmoothing.smoothLibreSpecialRealtime(thisTimeRaw, libreSpecial)
                     smooth = libreSpecial
                     preferences.put(DoubleKey.FslLastRaw, extraBgEstimate)
                     preferences.put(DoubleKey.FslLastSmooth, libreSpecial)

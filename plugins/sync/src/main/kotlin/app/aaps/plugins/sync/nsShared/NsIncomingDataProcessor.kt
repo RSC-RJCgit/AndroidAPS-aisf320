@@ -142,7 +142,6 @@ class NsIncomingDataProcessor @Inject constructor(
                 val factor = preferences.get(DoubleKey.FslSmoothAlpha)
                 val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
                 val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) && !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-                val useLibreSpecialUkf = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
                 val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
                 glucoseValues.sortBy { it.timestamp }
                 for (gv in glucoseValues) {
@@ -160,11 +159,15 @@ class NsIncomingDataProcessor @Inject constructor(
                         val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
                         val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
                         val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                        // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF
-                        // so its separate graph history can be retested, but deliberately keep the live
+                        // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so
+                        // its separate graph history can be retested, but deliberately keep the live
                         // main-BG/dosing value on plain LibreSpecial during this comparison.
-                        if (useLibreSpecialUkf)
-                            ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                        // Unconditional as of 2026-08-15 (UKF3426 branch) -- was gated on
+                        // useLibreSpecialUkf, which meant ukf_librespecial_refined_history went stale
+                        // the moment that toggle was off; now always kept current so UKF2's own
+                        // delta5/delta15 stay meaningful regardless of the display toggle. Same
+                        // always-on-cost tradeoff as the identical change in XdripSourcePlugin.kt.
+                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
                         smooth = libreSpecial
                         preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
