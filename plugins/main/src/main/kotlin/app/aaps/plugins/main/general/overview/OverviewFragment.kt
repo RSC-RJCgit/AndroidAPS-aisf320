@@ -1246,7 +1246,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_INCREASE_190("Steroid increase 150 to 190", 5.172),
         STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
         STEROID_TURN_OFF("Steroids OFF", 5.176),
-        ANYDESK_RESTART("Send AnyDesk restart", 0.0)
+        ANYDESK_RESTART("Send AnyDesk restart", 5.178)
     }
 
     // Local display-only graph settings for the three raw/noise-derived UKF comparison lines (UKF1 =
@@ -1289,7 +1289,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     // Client is the command sender. This exact Note is uploaded to Client's NS; the real-pump
     // phone reads it through its configured secondary NS and broadcasts the Tasker intent.
-    // This deliberately creates no relay TT and has no repeat-interval guard.
+    // Has no repeat-interval guard of its own. This is now one of TWO independent channels for the
+    // same command -- see runBasalDirectAction()'s ANYDESK_RESTART branch, which also fires a relay
+    // TT (5.178) alongside this Note.
     private fun sendAnyDeskRestartNoteFromClient() {
         if (!config.AAPSCLIENT) return
         val note = "ADesk"
@@ -1315,7 +1317,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
         if (action == BasalDirectAction.ANYDESK_RESTART) {
+            // Two independent channels to the real-pump phone, both fired from this one tap: the
+            // "ADesk" secondary-NS Note above (arrives whenever the real-pump phone's secondary-NS
+            // worker next polls/syncs its revision counter) and a relay TT of 5.178 (arrives with
+            // Client's own primary NS sync, typically sooner). OpenAPSAutoISFPlugin.kt has an
+            // independent handler for each -- see its "ADesk secondary-NS command" broadcast and the
+            // "AnyDeskRestartActionTT" TT block -- each sends its own Tasker broadcast, and Tasker's
+            // restart task tolerates being re-triggered, so both landing is deliberate redundancy,
+            // not a bug to dedupe.
             sendAnyDeskRestartNoteFromClient()
+            if (config.AAPSCLIENT) setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
             return
         }
         if (config.AAPSCLIENT) {

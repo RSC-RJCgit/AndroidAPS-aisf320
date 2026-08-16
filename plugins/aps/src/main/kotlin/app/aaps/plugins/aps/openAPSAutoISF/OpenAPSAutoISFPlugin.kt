@@ -1197,6 +1197,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which writes
         // FslUseUkfLibreSpecialSmoothing directly rather than via a TT code.
         "SensorAgeCodeToggleTT" -> 5.156
+        "AnyDeskRestartActionTT" -> 5.178
         "MjKotlinButtonsToggleTT" -> 5.164
         "SteroidKotlinButtonToggleTT" -> 5.166
         else -> null
@@ -1691,8 +1692,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val recentHighBglSeen = recentLibreOver12(24)
 
-            // Missing sensor age is unknown, never day 0. A null age produces no tier below; if an
-            // override was active, the normal restore branch runs rather than keeping/creating Day1.
+            // Missing sensor age is unknown, never day 0. A null age produces no tier below (other than
+            // the NewDay2-by-pod-age fallback just below); if an override was active, the normal
+            // restore branch runs rather than keeping/creating Day1.
             val sensorAgeDays = hoursSinceLastSensorChange()?.div(24.0)
             val oldSensorEnabled = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             // Tier slopes/offsets are derived from the user's own base Libre slope/offset
@@ -1702,21 +1704,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // together.
             val libreSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
             val libreOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
-            val oldSensorTier = sensorAgeDays?.let { ageDays ->
-                when {
-                    ageDays < 1.0                         -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
-                    ageDays >= 1.0 && ageDays < 2.0       -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                    ageDays >= 2.0 && ageDays < 3.0       -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
-                    // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
-                    ageDays >= 11.0 && ageDays < 13.0     -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
-                    ageDays >= 13.0 && ageDays < 14.0     -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                    ageDays >= 14.0 && ageDays < 15.0     -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
-                    else -> null
-                }
+            // NewDay2 also fires on pod age alone (cannula age >60h, same threshold OldPod below uses
+            // for "pod is old"), OR'd with the normal 1-2 day sensor-age window — same entry criteria as
+            // every other tier here (oldSensorEnabled + recentHighBglSeen, checked below) otherwise. A
+            // fresh sensor on an aging pod reads the same as an aging sensor for this purpose. Sensor-age
+            // wins where it applies (NewDay1/NewDay3/the 11-15 day tiers are untouched by pod age); this
+            // OR only widens the NewDay2 window, it never narrows the sensor-age-only tiers.
+            val cannulaHoursForTier = hoursSinceLastCannulaChange()
+            val newDay2ByPodAge = cannulaHoursForTier != null && cannulaHoursForTier > 60.0
+            val oldSensorTier = when {
+                sensorAgeDays != null && sensorAgeDays < 1.0                           -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                (sensorAgeDays != null && sensorAgeDays >= 1.0 && sensorAgeDays < 2.0)
+                    || newDay2ByPodAge                                                 -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                sensorAgeDays != null && sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
+                sensorAgeDays != null && sensorAgeDays >= 11.0 && sensorAgeDays < 13.0  -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                sensorAgeDays != null && sensorAgeDays >= 13.0 && sensorAgeDays < 14.0  -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
+                sensorAgeDays != null && sensorAgeDays >= 14.0 && sensorAgeDays < 15.0  -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
+                else -> null
             }
             val oldSensorActiveNow = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
-            // Sensor-age calibration is independent of cannula/pod age. It still requires
-            // recentHighBglSeen (see above); cannula protections remain in their own pod automations.
+            // Sensor-age calibration is otherwise independent of cannula/pod age (see NewDay2's pod-age
+            // OR above for the one exception). It still requires recentHighBglSeen (see above); cannula
+            // protections remain in their own pod automations.
             if (oldSensorEnabled && oldSensorTier != null && recentHighBglSeen) {
                 if (!oldSensorActiveNow) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
@@ -2512,6 +2522,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 directMenu = true
             )
             markRun("SteroidTurnOffActionTT")
+        }
+
+        // --- AnyDeskRestartActionTT: second, redundant channel for the "Send AnyDesk restart" list2
+        // button (see runBasalDirectAction()'s ANYDESK_RESTART branch in OverviewFragment.kt), which
+        // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
+        // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
+        // worker's next poll picks up the Note's revision. Sends its own independent Tasker broadcast
+        // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
+        // pair belongs to the Note channel only) using a TT-local revision so the two channels can
+        // never suppress each other; Tasker's restart task tolerates a double-trigger. Live-pump-only,
+        // same as the Note channel's broadcast (Virtual Pump has no Tasker to restart). The
+        // "ADeskTTfired" note is local-only diagnostics on this device's own history -- deliberately
+        // NOT "ADeskAck": that exact text is Client's secondary-NS worker's allowlisted match for the
+        // Note channel's real ack, and this TT channel has no such round-trip to report.
+        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001) && activePlugin.activePump !is VirtualPump) {
+            cancelCurrentTempTarget()
+            context.sendBroadcast(
+                Intent("app.aaps.action.RESTART_ANYDESK")
+                    .putExtra("source", "AAPS relay TT")
+                    .putExtra("command", "AnyDeskRestartTT")
+                    .putExtra("revision", dateUtil.now())
+            )
+            aapsLogger.info(LTag.APS, "ADesk relay-TT command sent to Tasker")
+            addCarePortalNote("ADeskTTfired")
+            markRun("AnyDeskRestartActionTT")
         }
 
         if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
@@ -6227,5 +6262,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_599
+OpenAPSAutoISFPlugin.ktaisf321_600
 */
