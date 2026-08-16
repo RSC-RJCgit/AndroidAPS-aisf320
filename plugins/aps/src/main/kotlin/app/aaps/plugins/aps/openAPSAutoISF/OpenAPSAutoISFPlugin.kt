@@ -1512,12 +1512,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Reverse-direction remote command: Virtual Pump writes the exact Note "ADesk" to its NS;
-        // the real-pump phone's secondary-NS worker records that server revision, and this sends one
+        // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
+        // this device's secondary-NS worker records that server revision, and this sends one
         // implicit broadcast per revision. Tasker's Intent Received profile owns the existing AnyDesk
         // restart task. Do not target Tasker's package: its dynamically registered receiver requires
-        // an implicit broadcast.
-        if (activePlugin.activePump !is VirtualPump) {
+        // an implicit broadcast. This path also runs on Virtual Pump for testing.
+        run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
             if (commandRevision > handledRevision) {
@@ -2531,12 +2531,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // worker's next poll picks up the Note's revision. Sends its own independent Tasker broadcast
         // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
         // pair belongs to the Note channel only) using a TT-local revision so the two channels can
-        // never suppress each other; Tasker's restart task tolerates a double-trigger. Live-pump-only,
-        // same as the Note channel's broadcast (Virtual Pump has no Tasker to restart). The
+        // never suppress each other; Tasker's restart task tolerates a double-trigger.
+        // This path also runs on Virtual Pump for testing. The
         // "ADeskTTfired" note is local-only diagnostics on this device's own history -- deliberately
         // NOT "ADeskAck": that exact text is Client's secondary-NS worker's allowlisted match for the
         // Note channel's real ack, and this TT channel has no such round-trip to report.
-        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             context.sendBroadcast(
                 Intent("app.aaps.action.RESTART_ANYDESK")
