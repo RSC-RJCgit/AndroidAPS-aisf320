@@ -194,8 +194,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.ppWeightStr(r.timestamp, apsResults), colorHeader),
                     Cell(df2.format(r.fslCalSlope),                 colorHeader),
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
+                    Cell(autoIsfHistoryExporter.deltaAcceStr(r.timestamp, apsResults), colorGlucose),
+                    Cell(autoIsfHistoryExporter.deltaAcceUkfStr(r, allRecords),        colorGlucose),
+                    Cell(autoIsfHistoryExporter.deltaAcceU3Str(r, allUkf3RawMgdl),     colorGlucose),
                     Cell(df2.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
+                    Cell(df2.format(r.longAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(autoIsfHistoryExporter.rawBglStr(r.timestamp, allRawReadings),       colorGlucose),
                     Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 1),  colorGlucose),
                     Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 5),  colorGlucose),
@@ -287,8 +291,11 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SMB", colorInsulin, span = 4, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 3, bold = true),
-                // acce/Δ/SΔ/rBGL/rΔ1/rΔ5/rΔ15/ukfRBGL/RawUKF5/RawUKF15/u3RBGL/RawU3_5/RawU3_15 = 13.
-                Cell("BG", colorGlucose, span = 13, bold = true),
+                // acce/dAcc/dAccUkf/dAccU3/Δ/SΔ/LΔ/rBGL/rΔ1/rΔ5/rΔ15/ukfRBGL/RawUKF5/RawUKF15/u3RBGL/
+                // RawU3_5/RawU3_15/Int5 = 18. Int5 (reading interval) is grouped here rather than with
+                // Insulin below -- it's a BG-signal-quality metric, not an insulin/carb one -- closing
+                // the gap this section-header row previously had (Int5 wasn't covered by either group).
+                Cell("BG", colorGlucose, span = 18, bold = true),
                 // COBt is included in this group with the other calculated insulin/carb context fields.
                 // Group is Req/TBR/IOB/IOBd5/Basal/COB/COBt/carbAbs/HP/HP2/HP3/LowBG.
                 Cell("Insulin", colorInsulin, span = 12, bold = true),
@@ -319,8 +326,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("ppWt",   colorHeader, bold = true),
                 Cell("Lslope", colorHeader, bold = true),
                 Cell("acce",   colorGlucose, bold = true),
+                Cell("dAcc",     colorGlucose, bold = true),
+                Cell("dAccUkf",  colorGlucose, bold = true),
+                Cell("dAccU3",   colorGlucose, bold = true),
                 Cell("Δ",      colorGlucose, bold = true),
                 Cell("SΔ",     colorGlucose, bold = true),
+                Cell("LΔ",     colorGlucose, bold = true),
                 Cell("rBGL",   colorGlucose, bold = true),
                 Cell("rΔ1",    colorGlucose, bold = true),
                 Cell("rΔ5",    colorGlucose, bold = true),

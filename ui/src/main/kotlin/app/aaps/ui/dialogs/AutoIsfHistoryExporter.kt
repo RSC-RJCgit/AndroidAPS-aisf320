@@ -122,7 +122,13 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15",
+        "acceBG",
+        // delta_accl trio: the plain dosing value (already logged to RT.reason every cycle -- see
+        // deltaAcceStr()'s doc comment) plus two new UKF-domain analogs (see deltaAcceUkfStr()/
+        // deltaAcceU3Str()'s own comments for why UKF1's/UKF3's own 5-min/15-min deltas stand in for
+        // Delta/SDelta).
+        "deltaAcce", "deltaAcceUkf", "deltaAcceU3",
+        "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15",
         // UKF3 (LibreSpecial-from-UKF1) BGL/delta trio -- next to the UKF1 trio above, same
         // recomputed-from-rawReadings basis (see computeUkf3RawMgdl()'s doc comment), no persisted field.
         "ukf3RawBGL", "RawUKF3_5", "RawUKF3_15",
@@ -159,6 +165,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             ppWeightStr(r.timestamp, apsResults),
             df2.format(r.fslCalSlope),
             df2.format(r.bgAcceleration),
+            deltaAcceStr(r.timestamp, apsResults),
+            deltaAcceUkfStr(r, allRecords),
+            deltaAcceU3Str(r, ukf3RawMgdl),
             df2.format(r.delta / MGDL_TO_MMOL),
             df2.format(r.shortAvgDelta / MGDL_TO_MMOL),
             df2.format(r.longAvgDelta / MGDL_TO_MMOL),
@@ -432,6 +441,49 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
         val value = ppWeightRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return df2.format(value)
+    }
+
+    // "delta_accl: <value> ;" written into RT.reason every determineBasal cycle (DetermineBasalAutoISF.kt):
+    // 100 * round((Delta - SDelta) / |SDelta|, 2) -- a discrete BG-acceleration proxy, the immediate
+    // delta's deviation from the short-average delta, normalised against the short-average delta's own
+    // magnitude and expressed as roughly a whole-number percentage. Same nearest-APSResult reason-text
+    // pattern as ppWeightRegex above.
+    private val deltaAcclRegex = Regex("""delta_accl:\s*(-?[0-9.]+)""")
+
+    /** delta_accl value from the nearest APSResult within 15 min -- exactly what dosing already computed
+     *  and logged that cycle, no separate calculation here. "--" if none close enough or no match in the
+     *  reason text (e.g. rows from before delta_accl was added to RT.reason). */
+    fun deltaAcceStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val value = deltaAcclRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return df1.format(value)
+    }
+
+    /** Same shape as deltaAcceStr's formula (100 * (fast - slow) / |slow|), but built from UKF-domain
+     *  values instead of dosing's own Delta/SDelta: UKF1's own 5-min delta stands in for Delta (both
+     *  roughly "most recent ~5min move"), UKF1's own 15-min delta stands in for SDelta (both roughly a
+     *  short trailing-average move) -- the closest available UKF1 analogs, since UKF1 has no separate
+     *  ~5-17.5min-average signal the way AAPS's real SDelta does. Unit-invariant (a ratio of two
+     *  same-unit deltas), so using ukfDeltaMmol's mmol values rather than dosing's internal mg/dl ones
+     *  changes nothing. Rounds directly to a whole-number-ish percentage rather than replicating
+     *  delta_accl's own round(,2)-then-x100 two-step (mathematically equivalent to one decimal here, and
+     *  this is a new column, not a reproduction of an existing persisted/logged value the way hp3Str is).
+     *  "--" if either UKF1 delta is unavailable (same conditions ukfDeltaStr returns "--" for) or the
+     *  15-min delta is exactly 0 (undefined ratio). */
+    fun deltaAcceUkfStr(r: AIV, allRecords: List<AIV>): String {
+        val fast = ukfDeltaMmol(r, allRecords, 5) ?: return "--"
+        val slow = ukfDeltaMmol(r, allRecords, 15) ?: return "--"
+        if (slow == 0.0) return "--"
+        return df1.format((fast - slow) / kotlin.math.abs(slow) * 100.0)
+    }
+
+    /** Same as deltaAcceUkfStr, but against [computeUkf3RawMgdl]'s UKF3 series instead of UKF1's. */
+    fun deltaAcceU3Str(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>): String {
+        val fast = ukf3DeltaMmol(r, ukf3RawMgdl, 5) ?: return "--"
+        val slow = ukf3DeltaMmol(r, ukf3RawMgdl, 15) ?: return "--"
+        if (slow == 0.0) return "--"
+        return df1.format((fast - slow) / kotlin.math.abs(slow) * 100.0)
     }
 
     // Step counts get written into DetermineBasalAutoISF.kt's reason text as "StepsXM: <value> ;"
