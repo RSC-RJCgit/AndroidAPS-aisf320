@@ -1790,7 +1790,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val notified = preferences.get(BooleanKey.ApsAutoIsfOldPodNotified)
             if (podOld && highSustained && !notified) {
                 addGraphAnnouncement("______deadpod2hrs?")
-                sendSms("OldPod: pod >60h, BGL >10.0 for 2h+ - change pod")
+                val deadPodSmsText = "OldPod: pod >60h, BGL >10.0 for 2h+ - change pod"
+                sendSms(deadPodSmsText)
+                sendSmsToNumbers(deadPodSmsText, StringKey.SmsDeadPodNumbers)
                 preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, true)
             } else if (!podOld && notified) {
                 preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, false)
