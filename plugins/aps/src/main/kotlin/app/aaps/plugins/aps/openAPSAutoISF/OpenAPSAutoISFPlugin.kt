@@ -5260,6 +5260,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Sub75Clr")
         }
 
+        // TEMP diagnostic 2026-08-16 (UKF3426 branch): loop's own ground-truth drop-crossing timestamp,
+        // logged EVERY cycle (not gated by the 5-min throttle the five per-type blocks below use) so its
+        // timing precision isn't artificially coarsened to 5 minutes -- it's the reference point every
+        // other type's "lead/lag vs first" text is measured against, and glucoseStatus.delta is already
+        // computed at zero extra cost.
+        logDropDetection("Loop", glucoseStatus.delta)
+
         // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKF2's own delta5/delta15/delta30
         // and bgAcceleration/deltaPl/deltaPn against the loop's actual (LibreSpecial/UKFset1) values --
         // proof-of-concept for the per-type delta/acceleration comparison work, log-only for now (see
@@ -5279,6 +5286,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             logAccelSignDisagreement("UKF2", ukf2Accel.bgAcceleration, loopStatus?.bgAcceleration)
+            logDropDetection("UKF2", ukf2Deltas.delta)
             markRun("Ukf2DeltaMetricsLog")
         }
 
@@ -5298,6 +5306,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             logAccelSignDisagreement("UKFset1", ukfSet1Accel.bgAcceleration, loopStatus?.bgAcceleration)
+            logDropDetection("UKFset1", ukfSet1Deltas.delta)
             markRun("UkfSet1DeltaMetricsLog")
         }
 
@@ -5316,6 +5325,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             logAccelSignDisagreement("LibreSpecial", libreSpecialAccel.bgAcceleration, loopStatus?.bgAcceleration)
+            logDropDetection("LibreSpecial", libreSpecialDeltas.delta)
             markRun("LibreSpecialShadowMetricsLog")
         }
 
@@ -5335,6 +5345,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             logAccelSignDisagreement("UKF1", ukf1Accel.bgAcceleration, loopStatus?.bgAcceleration)
+            logDropDetection("UKF1", ukf1Deltas.delta)
             markRun("Ukf1DeltaMetricsLog")
         }
 
@@ -5350,6 +5361,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             logAccelSignDisagreement("UKF3", ukf3Accel.bgAcceleration, loopStatus?.bgAcceleration)
+            logDropDetection("UKF3", ukf3Deltas.delta)
             markRun("Ukf3DeltaMetricsLog")
         }
 
