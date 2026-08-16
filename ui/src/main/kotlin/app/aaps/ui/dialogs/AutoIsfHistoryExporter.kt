@@ -1,8 +1,10 @@
 package app.aaps.ui.dialogs
 
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
@@ -26,6 +28,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import java.io.File
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
@@ -33,6 +36,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -50,7 +56,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val preferences: Preferences,
     private val config: Config,
     private val aapsLogger: AAPSLogger,
-    private val iobCobCalculator: IobCobCalculator
+    private val iobCobCalculator: IobCobCalculator,
+    private val ukfSmoothing: UnscentedKalmanFilterPlugin
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -115,13 +122,23 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     val exportHeaders = listOf(
         "Time", "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
-        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15", "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2", "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
+        "acceBG", "Delta", "SDelta", "LDelta", "rawBGL", "rawD1", "rawD5", "rawD15", "ukfRawBGL", "RawUKF5", "RawUKF15",
+        // UKF3 (LibreSpecial-from-UKF1) BGL/delta trio -- next to the UKF1 trio above, same
+        // recomputed-from-rawReadings basis (see computeUkf3RawMgdl()'s doc comment), no persisted field.
+        "ukf3RawBGL", "RawUKF3_5", "RawUKF3_15",
+        "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2",
+        // HP3: same formula/COB-gating as HP2, base-glucose + delta5 swapped for UKF3's own values --
+        // see hp3Str()'s doc comment. Mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly.
+        "HP3",
+        "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
-     *  full (unfiltered) set, used for the IOB-5-min-change look-back. */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>): List<String> {
+     *  full (unfiltered) set, used for the IOB-5-min-change look-back. `ukf3RawMgdl` is the
+     *  once-per-export UKF3 series from [computeUkf3RawMgdl], shared by every row (feeds hp3Str/
+     *  ukf3BglStr/ukf3DeltaStr). */
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>, ukf3RawMgdl: List<Pair<Long, Double>>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -152,6 +169,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             if (r.ukfRawBgl > 0.0) df1.format(r.ukfRawBgl / MGDL_TO_MMOL) else "--",
             ukfDeltaStr(r, allRecords, 5),
             ukfDeltaStr(r, allRecords, 15),
+            ukf3BglStr(r, ukf3RawMgdl),
+            ukf3DeltaStr(r, ukf3RawMgdl, 5),
+            ukf3DeltaStr(r, ukf3RawMgdl, 15),
             readingIntervalStr(r.timestamp, rawReadings),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
@@ -163,6 +183,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             carbAbsStr(r),
             hpStr(r, rawReadings),
             hp2Str(r, allRecords, cobTByTimestamp),
+            hp3Str(r, ukf3RawMgdl, cobTByTimestamp),
             lowBgRecentStr(r.timestamp, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
@@ -187,7 +208,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val cobTByTimestamp = calculatedCobT(records)
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, carePortalNotes, rawReadings, cobTByTimestamp) }
+            val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, carePortalNotes, rawReadings, cobTByTimestamp, ukf3RawMgdl) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -245,7 +267,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
             val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
             val cobTByTimestamp = calculatedCobT(records)
-            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp) }
+            val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
+            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp, ukf3RawMgdl) }
             val text = formatTableText(rows)
 
             val outFile = File(outputDir, "combined$patientName.txt")
@@ -541,6 +564,72 @@ class AutoIsfHistoryExporter @Inject constructor(
         return (r.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0 / MGDL_TO_MMOL
     }
 
+    /** UKF3 (LibreSpecial-from-UKF1) raw-mgdl series, ascending time order, for the whole export
+     *  window in one pass -- mirrors PrepareBgDataWorker.kt's own `ukf3RawMgdl` computation exactly
+     *  (UKF1's smoothForDisplay() output, then the LibreSpecial EMA formula run fresh against it; same
+     *  math as NsIncomingDataProcessor.kt's live fsl_exp1 branch, kept in sync by hand -- see that
+     *  worker's own comment). No persisted field (unlike UKF1's r.ukfRawBgl): recomputed here from
+     *  `rawReadings` every export call instead, same "recompute from raw data" convention rawDeltaStr/
+     *  hpStr already use rather than adding a new DB migration for a third UKF variant. Computed ONCE
+     *  per export call (not per row) and threaded through exportFields/hp3Str/ukf3BglStr/ukf3DeltaStr,
+     *  same convention as cobTByTimestamp. Deliberately uses Constants.MMOLL_TO_MGDL (18.0) for the
+     *  offset-unit conversion below, NOT this file's own MGDL_TO_MMOL (18.0182) -- matching
+     *  PrepareBgDataWorker.kt's exact arithmetic is the point; every OTHER conversion in this file still
+     *  uses the local constant as before. Empty if `rawReadings` has no usable noise values. */
+    fun computeUkf3RawMgdl(rawReadings: List<GV>): List<Pair<Long, Double>> {
+        val newestFirstRaw = rawReadings.filter { it.noise != null }.sortedByDescending { it.timestamp }
+        if (newestFirstRaw.isEmpty()) return emptyList()
+        val ukf1SmoothedMgdl = ukfSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
+        val applyCalibration = preferences.get(BooleanKey.Ukf3ApplyLibreCalibration)
+        val slope = preferences.get(DoubleKey.FslCalSlope)
+        val offset = preferences.get(DoubleKey.FslCalOffset)
+        val factor = preferences.get(DoubleKey.FslSmoothAlpha)
+        val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+        val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        var lastSmooth = 0.0
+        var lastTimeRaw = 0L
+        return newestFirstRaw.zip(ukf1SmoothedMgdl).asReversed().map { (reading, ukf1Mgdl) ->
+            val calibrated = if (applyCalibration) max(40.0, ukf1Mgdl * slope + offset * unitFactor) else ukf1Mgdl
+            val elapsedMinutes = (reading.timestamp - lastTimeRaw) / 60000.0
+            val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
+            val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+            lastSmooth = smooth
+            lastTimeRaw = reading.timestamp
+            reading.timestamp to smooth
+        }
+    }
+
+    /** Nearest [computeUkf3RawMgdl] entry within 3 min of `timestamp`, or null if none close enough --
+     *  same tolerance/nearest-match convention as ukfDeltaMmol's own prior-row lookup. */
+    private fun ukf3ValueNear(ukf3RawMgdl: List<Pair<Long, Double>>, timestamp: Long): Double? {
+        val nearest = ukf3RawMgdl.minByOrNull { kotlin.math.abs(it.first - timestamp) } ?: return null
+        if (kotlin.math.abs(nearest.first - timestamp) > 3 * 60_000L) return null
+        return nearest.second
+    }
+
+    /** UKF3 BGL (mmol) at this row's timestamp -- same "--"-on-no-nearby-point fallback as
+     *  ukfRawBGL's own column. */
+    fun ukf3BglStr(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>): String =
+        ukf3ValueNear(ukf3RawMgdl, r.timestamp)?.let { df1.format(it / MGDL_TO_MMOL) } ?: "--"
+
+    /** Same windowed-delta shape as ukfDeltaMmol (nearest match at `timestamp` and at `timestamp -
+     *  minutesBack`, normalised to a per-5min rate for windows over 5 min), but against
+     *  [computeUkf3RawMgdl]'s series instead of the persisted r.ukfRawBgl chain. Null under the same
+     *  no-nearby-point conditions ukfDeltaMmol returns null for. */
+    private fun ukf3DeltaMmol(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>, minutesBack: Int): Double? {
+        val nowEntry = ukf3RawMgdl.minByOrNull { kotlin.math.abs(it.first - r.timestamp) } ?: return null
+        if (kotlin.math.abs(nowEntry.first - r.timestamp) > 3 * 60_000L) return null
+        val target = r.timestamp - minutesBack * 60_000L
+        val prior = ukf3RawMgdl.minByOrNull { kotlin.math.abs(it.first - target) } ?: return null
+        if (kotlin.math.abs(prior.first - target) > 3 * 60_000L || prior.first == nowEntry.first) return null
+        val actualMin = (nowEntry.first - prior.first) / 60_000.0
+        if (actualMin <= 0.0) return null
+        return (nowEntry.second - prior.second) / actualMin * 5.0 / MGDL_TO_MMOL
+    }
+
+    fun ukf3DeltaStr(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>, minutesBack: Int): String =
+        ukf3DeltaMmol(r, ukf3RawMgdl, minutesBack)?.let { df2.format(it) } ?: "--"
+
     /** Average gap in SECONDS between BG/Libre readings in the 5 min BEFORE this record's timestamp —
      *  same units/style as smbInterval5SecStr's Sint, so a Libre reporting every ~60s shows ~60, not a
      *  flat "1.00" minutes that hides the actual jitter. "--" if fewer than 2 readings fell in that
@@ -737,4 +826,23 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  insulin), which this closes. */
     private fun cobtPenaltyGated(bgAcceleration: Double, sdeltaMmol: Double, ldeltaMmol: Double, insulinReq: Double): Boolean =
         ((bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) || (sdeltaMmol < 0 && ldeltaMmol < 0)) && insulinReq <= 0.0
+
+    /** Third hypo-prediction variant: same formula/COB-gating as hp2Str, but BOTH the base-glucose term
+     *  and the delta5 term are swapped to UKF3's own values ([computeUkf3RawMgdl]) instead of the live
+     *  dosing BGL / UKF1-raw-delta5 -- mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly
+     *  (same weights, same cobtPenaltyGated() gate), just historically accurate here (COB from
+     *  historicalCob/cobTByTimestamp at the record's own timestamp, not today's live COB) the same way
+     *  hp2Str already is relative to its own live graph counterpart. "--" if UKF3's series doesn't have
+     *  a point within 3 min of this row, or one ~5min back. */
+    fun hp3Str(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>, cobTByTimestamp: Map<Long, Double>): String {
+        val ukf3NowMgdl = ukf3ValueNear(ukf3RawMgdl, r.timestamp) ?: return "--"
+        val ukf3Delta5Mmol = ukf3DeltaMmol(r, ukf3RawMgdl, 5) ?: return "--"
+        val ukf3BglMmol = ukf3NowMgdl / MGDL_TO_MMOL
+        val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
+        val ldeltaMmol = r.longAvgDelta / MGDL_TO_MMOL
+        val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
+        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol, r.insulinReq)) cobT / 12.0 else 0.0
+        val hp3 = (ukf3BglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukf3Delta5Mmol - cobtTerm
+        return df1.format(hp3)
+    }
 }
