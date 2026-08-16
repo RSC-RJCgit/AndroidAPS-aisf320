@@ -803,6 +803,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // "Who detected the drop first" tracker: prompted by a real visual observation (2026-08-16) that
+    // UKF1's graph line reacted to a drop before LibreSpecial's did -- logs the first time each type's
+    // own delta5 crosses below a "genuine decline" threshold, and how far ahead/behind that is relative
+    // to whichever type crossed first in the current episode. In-memory only (like lastRunTimestamps
+    // elsewhere in this file) -- resets on app restart, fine for a diagnostic-only feature. Threshold
+    // (-0.2mmol/5min) is a round, investigative choice, not anchored on specific real episode data like
+    // the dosing-safety guards elsewhere in this file. Per-type crossing state resets the moment that
+    // type's own delta5 recovers above threshold, so a sustained decline only logs once per type per
+    // episode, and a later, separate decline logs again as a fresh episode.
+    private val dropCrossedAt = mutableMapOf<String, Long>()
+
+    private fun logDropDetection(typeName: String, delta5: Double) {
+        val threshold = -3.6 /* -0.2 mmol/5min */
+        val now = dateUtil.now()
+        if (delta5 <= threshold) {
+            if (!dropCrossedAt.containsKey(typeName)) {
+                val earliestSoFar = dropCrossedAt.values.minOrNull()
+                val leadLagText = if (earliestSoFar == null) "first"
+                    else "${if (now >= earliestSoFar) "+" else ""}${round((now - earliestSoFar) / 1000.0, 1)}s vs first"
+                dropCrossedAt[typeName] = now
+                aapsLogger.warn(LTag.APS, "DropDetected[$typeName]: delta5=${round(delta5, 2)} ($leadLagText)")
+            }
+        } else {
+            dropCrossedAt.remove(typeName)
+        }
+    }
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
     // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
     private fun hypoPrediction2Mmol(
@@ -6494,5 +6521,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_609
+OpenAPSAutoISFPlugin.ktaisf321_610
 */
