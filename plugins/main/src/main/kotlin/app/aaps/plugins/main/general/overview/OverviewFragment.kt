@@ -1441,7 +1441,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             // syncedLiveKey's doc comment) -- labeled differently so it's clear this one
                             // does more than just the display toggle the other two entries' boxes do.
                             text = if (entry.syncedLiveKey != null) "UKF2 mode + graph on" else "Graph on"
-                            isChecked = preferences.get(entry.showKey)
+                            isChecked = preferences.get(entry.showKey) &&
+                                (entry.syncedLiveKey?.let { preferences.get(it) } ?: true)
                         }
                         val container = LinearLayout(act).apply {
                             orientation = LinearLayout.VERTICAL
@@ -1456,6 +1457,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 preferences.put(entry.showKey, showBox.isChecked)
                                 entry.calibKey?.let { preferences.put(it, calibBox.isChecked) }
                                 entry.syncedLiveKey?.let { liveKey -> preferences.put(liveKey, showBox.isChecked) }
+                                rxBus.send(EventRefreshOverview("UKF graph setting changed", true))
                             }
                             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showBasalDirectActionListDialog() }
                             .setOnCancelListener { showBasalDirectActionListDialog() }
