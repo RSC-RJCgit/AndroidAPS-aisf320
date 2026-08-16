@@ -1246,7 +1246,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_INCREASE_190("Steroid increase 150 to 190", 5.172),
         STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
         STEROID_TURN_OFF("Steroids OFF", 5.176),
-        ANYDESK_RESTART("Send AnyDesk restart", 5.178)
+        ANYDESK_RESTART("Send AnyDesk restart", 5.178),
+        // Local-test-only companion to ANYDESK_RESTART, added 2026-08-16 (UKF3426 branch): fires the
+        // identical "ADesk" Note (see sendAnyDeskRestartNoteLocalTest()) but works on ANY build, not
+        // just aapsclient/aapsclient2 -- lets the note-write half of the pipeline be exercised from a
+        // non-Client device (e.g. a virtual pump phone) without needing an actual Client install.
+        // Deliberately a separate action/function rather than relaxing ANYDESK_RESTART's own
+        // config.AAPSCLIENT guard -- production behavior of the real feature is untouched. Whether the
+        // note actually reaches the main phone still depends on this device's NS sync target matching
+        // whatever NS the main phone's secondary-NS worker polls -- see that function's own doc comment.
+        ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180)
     }
 
     // Local display-only graph settings for the three raw/noise-derived UKF comparison lines (UKF1 =
@@ -1315,7 +1324,43 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         )
     }
 
+    // Local-test-only companion to sendAnyDeskRestartNoteFromClient() above, added 2026-08-16
+    // (UKF3426 branch) -- identical "ADesk" Note write, but with that function's
+    // `if (!config.AAPSCLIENT) return` guard removed, so it can be fired from any build (see
+    // BasalDirectAction.ANYDESK_LOCAL_TEST's own doc comment). Distinct careportal upload-note text
+    // ("...local test") so a local test firing is distinguishable from a real Client-relayed one in
+    // the NS/careportal history, but the Note content itself ("ADesk") is identical on purpose -- the
+    // whole point is exercising the real receiving-side pipeline (main phone's secondary-NS worker ->
+    // Tasker broadcast), not a separate fake command. Whether it actually reaches the main phone still
+    // depends on this device's NS sync target matching whatever NS the main phone's secondary-NS
+    // worker polls -- if nothing happens on the main phone, check that before assuming this failed.
+    private fun sendAnyDeskRestartNoteLocalTest() {
+        val note = "ADesk"
+        val therapyEvent = TE(
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            this.note = note
+            duration = TimeUnit.MINUTES.toMillis(1)
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = "AnyDesk restart command (local test)",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe(
+            { rxBus.send(EventRefreshOverview("AnyDesk restart Note (local test)", true)) },
+            { error -> aapsLogger.error(LTag.CORE, "Failed to save ADesk local-test command Note", error) }
+        )
+    }
+
     private fun runBasalDirectAction(action: BasalDirectAction) {
+        if (action == BasalDirectAction.ANYDESK_LOCAL_TEST) {
+            sendAnyDeskRestartNoteLocalTest()
+            return
+        }
         if (action == BasalDirectAction.ANYDESK_RESTART) {
             // Two independent channels to the real-pump phone, both fired from this one tap: the
             // "ADesk" secondary-NS Note above (arrives whenever the real-pump phone's secondary-NS
@@ -1386,10 +1431,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.STEROID_BUTTON_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
-                // Unreachable here -- the early-return guard above (action == ANYDESK_RESTART) always
-                // exits before this when is reached for that case. Listed explicitly (not folded into an
-                // else) so a genuinely new BasalDirectAction value still fails to compile until handled.
+                // Unreachable here -- the early-return guards above (action == ANYDESK_RESTART /
+                // ANYDESK_LOCAL_TEST) always exit before this when is reached for either case. Listed
+                // explicitly (not folded into an else) so a genuinely new BasalDirectAction value still
+                // fails to compile until handled.
                 BasalDirectAction.ANYDESK_RESTART -> Unit
+                BasalDirectAction.ANYDESK_LOCAL_TEST -> Unit
             }
         }
     }
