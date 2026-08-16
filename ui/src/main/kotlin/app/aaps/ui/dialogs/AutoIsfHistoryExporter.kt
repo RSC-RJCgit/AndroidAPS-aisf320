@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
@@ -35,6 +36,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
 import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.min
@@ -57,7 +59,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val config: Config,
     private val aapsLogger: AAPSLogger,
     private val iobCobCalculator: IobCobCalculator,
-    private val ukfSmoothing: UnscentedKalmanFilterPlugin
+    private val ukfSmoothing: UnscentedKalmanFilterPlugin,
+    private val loggerUtils: LoggerUtils
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -89,6 +92,15 @@ class AutoIsfHistoryExporter @Inject constructor(
         // combined<Name>.txt covers a wider trailing window than the 6h table export so it reads as
         // one continuous history rather than needing several 6h exports stitched together.
         private const val COMBINED_WINDOW_HOURS = 30L
+
+        // TEMP diagnostic (UKF3426 branch): literal substrings of the message text logged by
+        // OpenAPSAutoISFPlugin's logDropDetection()/logAccelSignDisagreement()/the five XxxMetricsLog
+        // blocks -- see exportUkfCheckText(). "Metrics:" alone catches all five *Metrics: lines
+        // (Ukf2DeltaMetrics:, UkfSet1DeltaMetrics:, LibreSpecialShadowMetrics:, Ukf1DeltaMetrics:,
+        // Ukf3DeltaMetrics:) without needing one entry per type. Update this list if those message
+        // formats change; remove the whole feature once the UKF3426 investigation is done.
+        private val UKF_CHECK_PATTERNS = listOf("DropDetected[", "AccelSignDisagreement[", "Metrics:")
+        private const val UKF_CHECK_ZIP_COUNT = 6
     }
 
     /** Queries the last [WINDOW_HOURS] hours and writes the CSV + text + settings files, returning
@@ -230,6 +242,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
             exportTableAsText(dir, stamp, rows)?.let { written.add(it) }
             exportSettingsText(dir, stamp)?.let { written.add(it) }
+            exportUkfCheckText(dir, stamp)
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
@@ -349,6 +362,72 @@ class AutoIsfHistoryExporter @Inject constructor(
         val stableSettings = File(outputDir, stableName)
         stableSettings.writeText(settingsText(now))
         aapsLogger.debug(LTag.UI, "Current AutoISF settings written to ${stableSettings.absolutePath}")
+    }
+
+    /** TEMP diagnostic (UKF3426 branch): pulls just the per-type delta/acceleration comparison lines
+     *  (DropDetected[...]/AccelSignDisagreement[...]/the five *Metrics: lines -- see UKF_CHECK_PATTERNS)
+     *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
+     *  archives in loggerUtils.logDirectory, and writes the matches into dir/UKFcheck_$stamp.txt.
+     *
+     *  loggerUtils.logDirectory (Documents/aapsLogs, the raw logback.xml rolling-log destination) is a
+     *  DIFFERENT physical folder from fileListProvider.aapsLogsPath/resolveExportDir() (Documents/
+     *  AAPS/aapsLogs/<Name>, where the AIV CSV/TXT/settings exports themselves live) -- both happen to
+     *  be named "aapsLogs" but one nests under Documents/AAPS and the other doesn't.
+     *
+     *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is checked
+     *  for `== 3` in two places (KeepAliveWorker.exportAutoIsfHistoryIfDue, MaintenancePlugin.sendLogs)
+     *  to decide the AVLs/AVLf CarePortal note and EXPORT_STATUS log line, and to gate the explicit AIV
+     *  cloud upload -- a 4th file would misreport every future automatic export as a false FAILURE.
+     *  combinedClient.txt-style files avoid the same trap by being written directly to disk outside
+     *  that list; this follows the same pattern, so it rides along with whatever already pulls the
+     *  whole aapsLogs/<Name> folder (e.g. aaps.bat's copy_aaps_incremental) rather than the fixed
+     *  3-file upload. Silent on failure/no-data, matching exportSettingsText()'s own error handling
+     *  (log only, no user-facing failure). Remove this whole function (and its call in writeExport())
+     *  once the UKF3426 comparison investigation is done and the diagnostic logging in
+     *  OpenAPSAutoISFPlugin is removed. */
+    private fun exportUkfCheckText(dir: File, stamp: String) {
+        try {
+            val logDir = File(loggerUtils.logDirectory)
+            val sb = StringBuilder()
+
+            val liveLog = File(logDir, "AndroidAPS.log")
+            if (liveLog.exists()) {
+                appendUkfCheckMatches(sb, "AndroidAPS.log (live)", liveLog.readText().lineSequence())
+            }
+
+            val rotatedZips = logDir.listFiles { f -> f.isFile && f.name.endsWith(".log.zip") }
+                ?.sortedByDescending { it.lastModified() }
+                ?.take(UKF_CHECK_ZIP_COUNT)
+                .orEmpty()
+            for (zip in rotatedZips) {
+                ZipInputStream(zip.inputStream()).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) {
+                            val text = zis.readBytes().toString(Charsets.UTF_8)
+                            appendUkfCheckMatches(sb, zip.name, text.lineSequence())
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+
+            if (sb.isEmpty()) return
+            val file = File(dir, "UKFcheck_$stamp.txt")
+            file.writeText(sb.toString())
+            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath}")
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.UI, "UKFcheck diagnostic export failed", e)
+        }
+    }
+
+    private fun appendUkfCheckMatches(sb: StringBuilder, sourceName: String, lines: Sequence<String>) {
+        val matches = lines.filter { line -> UKF_CHECK_PATTERNS.any { line.contains(it) } }.toList()
+        if (matches.isEmpty()) return
+        sb.append("===== ").append(sourceName).append(" =====\n")
+        matches.forEach { sb.append(it).append('\n') }
+        sb.append('\n')
     }
 
     /** Pump writes local authoritative values; Client writes only the last mirrored Pump snapshot. */
