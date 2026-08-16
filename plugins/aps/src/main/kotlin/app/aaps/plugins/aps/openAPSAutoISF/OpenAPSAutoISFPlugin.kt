@@ -105,6 +105,7 @@ import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
+import app.aaps.plugins.aps.openAPS.AccelerationCalculator
 import app.aaps.plugins.aps.openAPS.DeltaCalculator
 import app.aaps.plugins.aps.openAPSSMB.PhoneMovementDetector
 import app.aaps.plugins.aps.openAPSSMB.StepService
@@ -154,7 +155,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val importExportPrefs: ImportExportPrefs,
     private val exportPasswordDataStore: ExportPasswordDataStore,
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
-    private val deltaCalculator: DeltaCalculator
+    private val deltaCalculator: DeltaCalculator,
+    private val accelerationCalculator: AccelerationCalculator
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -668,20 +670,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return UkfRawMetrics(ukfG, ukfD1, ukfD5)
     }
 
-    // UKF2's own delta5/delta15, computed from its always-current persisted history
-    // (ukf_librespecial_refined_history via libreSpecialPostUkfHistory() -- see that function's own
-    // call sites in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt for the 2026-08-15 change that made
-    // it update unconditionally) rather than whatever's actually live/dosing. First proof-of-concept
-    // for the per-type delta/acceleration comparison work on the UKF3426 branch -- see
-    // DeltaCalculator.calculateDeltasGeneric()'s own doc comment for the shared math this reuses.
-    // 45-min lookback covers calculateDeltasGeneric's widest window (17.5-42.5min, longAvgDelta) with
-    // a little headroom.
-    private fun ukf2DeltaMetrics(): DeltaCalculator.DeltaResult {
+    // UKF2's own always-current persisted history (ukf_librespecial_refined_history via
+    // libreSpecialPostUkfHistory() -- see that function's own call sites in
+    // XdripSourcePlugin.kt/NsIncomingDataProcessor.kt for the 2026-08-15 change that made it update
+    // unconditionally), newest-first as both calculateDeltasGeneric() and fitBestParabola() expect
+    // (libreSpecialPostUkfHistory returns oldest-first). Shared by ukf2DeltaMetrics() and
+    // ukf2AccelerationMetrics() below so the lookback/fetch isn't duplicated. lookbackMinutes should
+    // cover whichever consumer's widest window -- 45min for deltas (17.5-42.5min longAvgDelta), 47min
+    // for the parabola fit's own maxLookbackMinutes default.
+    private fun ukf2RecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
         val now = dateUtil.now()
-        val history = ukfSmoothing.libreSpecialPostUkfHistory(now - T.mins(45).msecs(), now)
-            .sortedByDescending { it.first } // calculateDeltasGeneric expects newest-first; libreSpecialPostUkfHistory returns oldest-first
-        return deltaCalculator.calculateDeltasGeneric(history)
+        return ukfSmoothing.libreSpecialPostUkfHistory(now - T.mins(lookbackMinutes).msecs(), now)
+            .sortedByDescending { it.first }
     }
+
+    // UKF2's own delta5/delta15, computed from its own history rather than whatever's actually
+    // live/dosing. First proof-of-concept for the per-type delta/acceleration comparison work on the
+    // UKF3426 branch -- see DeltaCalculator.calculateDeltasGeneric()'s own doc comment for the shared
+    // math this reuses.
+    private fun ukf2DeltaMetrics(): DeltaCalculator.DeltaResult =
+        deltaCalculator.calculateDeltasGeneric(ukf2RecentHistory(45))
+
+    // UKF2's own bgAcceleration/deltaPl/deltaPn, same idea as ukf2DeltaMetrics() above but via
+    // AccelerationCalculator.fitBestParabola() -- see its own doc comment for the shared math (a
+    // generalized port of GlucoseStatusCalculatorAutoIsf's parabola-fit section) this reuses. 47-min
+    // lookback matches fitBestParabola's own maxLookbackMinutes default with no extra headroom needed
+    // (the function itself stops scanning once it exceeds that window).
+    private fun ukf2AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
+        accelerationCalculator.fitBestParabola(ukf2RecentHistory(47))
 
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
     // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
@@ -5111,17 +5127,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Sub75Clr")
         }
 
-        // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKF2's own delta5/delta15 against
-        // the loop's actual (LibreSpecial/UKFset1) glucoseStatus.delta/shortAvgDelta -- first
-        // proof-of-concept for the per-type delta comparison work, log-only for now (see this branch's
-        // scope notes). 5-min throttle, just to avoid spamming every 1-min cycle during this
-        // investigation phase.
+        // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKF2's own delta5/delta15/delta30
+        // and bgAcceleration/deltaPl/deltaPn against the loop's actual (LibreSpecial/UKFset1) values --
+        // proof-of-concept for the per-type delta/acceleration comparison work, log-only for now (see
+        // this branch's scope notes). 5-min throttle, just to avoid spamming every 1-min cycle during
+        // this investigation phase. glucoseStatus itself doesn't expose bgAcceleration/deltaPl/deltaPn
+        // (those are AutoISF-specific, not on the base GlucoseStatus type -- same cast the existing
+        // determine_basal() call site already does), so cast once here for the comparison.
         if (readyToRun("Ukf2DeltaMetricsLog", 5)) {
             val ukf2Deltas = ukf2DeltaMetrics()
+            val ukf2Accel = ukf2AccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
             aapsLogger.debug(
                 LTag.APS,
                 "Ukf2DeltaMetrics: delta5=${round(ukf2Deltas.delta, 2)} delta15=${round(ukf2Deltas.shortAvgDelta, 2)} delta30=${round(ukf2Deltas.longAvgDelta, 2)} " +
-                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)})"
+                    "accel=${round(ukf2Accel.bgAcceleration, 3)} deltaPl=${round(ukf2Accel.deltaPl, 2)} deltaPn=${round(ukf2Accel.deltaPn, 2)} window=${round(ukf2Accel.windowMinutes, 1)}min corrSqu=${round(ukf2Accel.corrSqu, 3)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
+                    "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             markRun("Ukf2DeltaMetricsLog")
         }
