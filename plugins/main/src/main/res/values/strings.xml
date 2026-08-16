@@ -48,6 +48,8 @@
     <string name="smscommunicator_test3numbers_summary">+XXXXXXXXXX;+YYYYYYYYYY — these numbers receive an SMS when the Test3 automation fires, for testing the targeted-numbers mechanism itself</string>
     <string name="smscommunicator_pod2numbers">Pod2-alert numbers</string>
     <string name="smscommunicator_pod2numbers_summary">+XXXXXXXXXX;+YYYYYYYYYY — these numbers additionally receive the Pod2 (78-hour pod) alert, on top of (not instead of) the general automation broadcast</string>
+    <string name="smscommunicator_deadpodnumbers">DeadPod-alert numbers</string>
+    <string name="smscommunicator_deadpodnumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY - these numbers additionally receive the suspected dead-pod alert, on top of (not instead of) the general automation broadcast</string>
     <string name="smscommunicator_connectpodnumbers">ConnectPod-alert numbers</string>
     <string name="smscommunicator_connectpodnumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY — these numbers additionally receive the ConnectPod (pump-disconnected) alert, on top of (not instead of) the general automation broadcast</string>
     <string name="smscommunicator_bolus_reply_with_code">To deliver bolus %1$.2fU reply with code %2$s</string>

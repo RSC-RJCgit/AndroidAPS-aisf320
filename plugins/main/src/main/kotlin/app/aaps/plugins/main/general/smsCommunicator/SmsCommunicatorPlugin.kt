@@ -1381,6 +1381,12 @@ class SmsCommunicatorPlugin @Inject constructor(
             )
             addPreference(
                 AdaptiveStringPreference(
+                    ctx = context, stringKey = StringKey.SmsDeadPodNumbers, summary = R.string.smscommunicator_deadpodnumbers_summary, title = R.string.smscommunicator_deadpodnumbers,
+                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
+                )
+            )
+            addPreference(
+                AdaptiveStringPreference(
                     ctx = context, stringKey = StringKey.SmsConnectPodNumbers, summary = R.string.smscommunicator_connectpodnumbers_summary, title = R.string.smscommunicator_connectpodnumbers,
                     validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_MULTI_PHONE)
                 )

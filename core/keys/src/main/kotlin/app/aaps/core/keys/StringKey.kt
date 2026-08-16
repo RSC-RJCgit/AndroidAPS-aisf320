@@ -49,6 +49,7 @@ enum class StringKey(
     SmsAlarmHypo2Numbers("smscommunicator_alarmhypo2numbers", ""),
     SmsTest3Numbers("smscommunicator_test3numbers", ""),
     SmsPod2Numbers("smscommunicator_pod2numbers", ""),
+    SmsDeadPodNumbers("smscommunicator_deadpodnumbers", ""),
     SmsConnectPodNumbers("smscommunicator_connectpodnumbers", ""),
     SmsOtpPassword("smscommunicator_otp_password", "", dependency = BooleanKey.SmsAllowRemoteCommands, isPassword = true),
 
