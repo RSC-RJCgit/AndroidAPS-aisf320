@@ -144,6 +144,23 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         binding.bgGraph.gridLabelRenderer?.reloadStyles()
         binding.bgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
 
+        // Graph5 sized the same as bg_graph above (mainGraphHeight, not secondaryGraphHeight) -- see
+        // graph5_container's own comment in activity_historybrowse.xml. Visibility/content are set at
+        // render time in updateGUI(), gated by BooleanKey.ApsAutoIsfShowGraph5, same as Overview.
+        binding.graph5Container.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
+        binding.graph5.gridLabelRenderer?.gridColor = rh.gac(this, app.aaps.core.ui.R.attr.graphGrid)
+        binding.graph5.gridLabelRenderer?.reloadStyles()
+        binding.graph5.gridLabelRenderer?.labelVerticalWidth = axisWidth
+
+        // Long-press on bg_graph's own in-range-shaded background cycles the same display presets
+        // OverviewFragment's IOB/basal icon long-presses drive (PointsWithLabelGraphSeries.
+        // showSmbLabels / basalToggleIndex -- see historyGraphLongPressStates' doc comment). History
+        // Browse has no IOB/basal icons of its own to hang two separate gestures off of, so this is one
+        // combined cycle on the graph instead. Always returns false so bg_graph's own onTouchEvent
+        // (GraphView.java -- pinch/zoom/pan, its own tap detector) still receives every event normally;
+        // this listener only ever observes, never consumes.
+        binding.bgGraph.setOnTouchListener { _, event -> historyGraphGestureDetector.onTouchEvent(event); false }
+
         overviewMenus.setupChartMenu(binding.chartMenuButton, binding.scaleButton)
         prepareGraphsIfNeeded(overviewMenus.setting.size)
         savedInstanceState?.let { bundle ->
@@ -168,6 +185,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         binding.zoom.setOnClickListener(null)
         binding.zoom.setOnLongClickListener(null)
         binding.date.setOnClickListener(null)
+        binding.bgGraph.setOnTouchListener(null)
         secondaryGraphs.clear()
         secondaryGraphsLabel.clear()
         historyBrowserData.onDestroy()
@@ -305,6 +323,39 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         runningRefresh = false
     }
 
+    // Combined long-press cycle for bg_graph (wired up in onCreate() -- see that comment for why this
+    // rides the graph itself rather than a dedicated icon). Steps through all 6 combinations of
+    // PointsWithLabelGraphSeries.basalToggleIndex (0/1/2, normally OverviewFragment's basal-icon
+    // long-press) crossed with .showSmbLabels (normally its IOB-icon long-press), in this fixed order.
+    // carbLine1QuickShow is derived from basalToggleIndex alone at every step (index != 0 -> true) --
+    // Overview's two SEPARATE gestures apply that flag with an asymmetric rule (its IOB press forces
+    // it true even at index 0, as a distinct "reset" side effect); one shared gesture driving both
+    // dimensions here needs a single consistent rule instead, so that asymmetry isn't reproduced.
+    private val historyGraphLongPressStates = listOf(
+        0 to true, 1 to true, 2 to true,
+        0 to false, 1 to false, 2 to false
+    )
+
+    private fun advanceHistoryGraphLongPressState() {
+        val current = historyGraphLongPressStates.indexOfFirst {
+            it.first == PointsWithLabelGraphSeries.basalToggleIndex && it.second == PointsWithLabelGraphSeries.showSmbLabels
+        }.let { if (it < 0) 0 else it }
+        val (nextBasalIndex, nextShowSmbLabels) = historyGraphLongPressStates[(current + 1) % historyGraphLongPressStates.size]
+        PointsWithLabelGraphSeries.basalToggleIndex = nextBasalIndex
+        PointsWithLabelGraphSeries.showSmbLabels = nextShowSmbLabels
+        PointsWithLabelGraphSeries.carbLine1QuickShow = nextBasalIndex != 0
+        PointsWithLabelGraphSeries.refreshAnnotationPosition()
+        rxBus.send(EventRefreshOverview("historyGraphLongPress", now = true))
+    }
+
+    private val historyGraphGestureDetector by lazy {
+        android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onLongPress(e: android.view.MotionEvent) {
+                advanceHistoryGraphLongPressState()
+            }
+        })
+    }
+
     private fun updateDate() {
         binding.date.text = dateUtil.dateAndTimeString(historyBrowserData.overviewData.fromTime)
         binding.zoom.text = rangeToDisplay.toString()
@@ -333,8 +384,10 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
         // Line1: checkbox is a master gate; carbLine1QuickShow is set directly by the relevant long-press
-        // ACTIONS (basal icon push0/1/2, IOB icon press) -- see OverviewFragment.kt's matching comment
-        // for the full reasoning.
+        // ACTIONS -- OverviewFragment.kt's basal icon push0/1/2 and IOB icon press (see its matching
+        // comment for the full reasoning), or this screen's own bg_graph long-press cycle (see
+        // advanceHistoryGraphLongPressState() above), since this screen has no separate IOB/basal icons
+        // to hang two independent gestures off of.
         if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
             graphData.addCarbAbsorption(0.8)
         // Line2 (carb model curve) is intentionally independent of line1's own checkbox/toggle state --
@@ -364,6 +417,53 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         graphData.applyFontScale(skinProvider.activeSkin().graphFontScale)
 
         graphData.performUpdate()
+
+        // 5th graph: always-on BGL/carb/insulin-activity/basal picture, ported from
+        // OverviewFragment.updateGraph()'s own graph5 block (see its doc comment) -- deliberately NOT
+        // gated by this screen's menuChartSettings[0][...]/isActiveCharTypeData, same rationale as
+        // there: graph5 shows all of these regardless of what's switched off on the main graph. One
+        // on/off switch for the whole panel (BooleanKey.ApsAutoIsfShowGraph5) plus the independent
+        // BGL-only sub-toggle (BooleanKey.ApsAutoIsfGraph5BglOnly) -- both reachable from Overview's
+        // list2 "Graph: Graph5 panel" entry only (this screen has no equivalent menu of its own); the
+        // shared preference keys are what keep the two screens' panels in sync. Also brings
+        // addIsfWeightsRow()'s "pp= acc= du=" row back to this screen (when the panel is on) -- see the
+        // g==2 comment below, which flagged it as dropped rather than moved when graph3 took over its
+        // old secondary-graph slot here.
+        if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
+            binding.graph5Container.visibility = android.view.View.VISIBLE
+            val graph5Data = graphDataProvider.get().with(binding.graph5, historyBrowserData.overviewData)
+            graph5Data.addInRangeArea(
+                historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime,
+                preferences.get(UnitDoubleKey.OverviewLowMark),
+                preferences.get(UnitDoubleKey.OverviewHighMark)
+            )
+            val graph5BglOnly = preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)
+            graph5Data.addBgReadings(true, this, drawSeries = true)
+            graph5Data.addBucketedData()
+            if (!graph5BglOnly) {
+                graph5Data.addActivity(0.8)             // insulin activity
+                graph5Data.addCarbModelCurve(0.8)        // theoretical carb model curve
+                graph5Data.addUamCarbImpact(0.8)         // UAM assumed carbs
+                graph5Data.addCombinedCarbs(0.8)         // absorption + UAM combined
+            }
+            graph5Data.addBgParabola(true, 1.0)
+            graph5Data.addRawBg(false)
+            // Graph5-only version: shows UKF1/2/3 comparison lines regardless of List2's own
+            // ShowUkf1Graph/ShowUkf2Graph/ShowUkf3Graph toggles -- see GraphData.addRawBgSmoothedGraph5().
+            graph5Data.addRawBgSmoothedGraph5(false)
+            if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
+            graph5Data.addTargetOffsetDuTAnnotation()
+            graph5Data.addIsfWeightsRow()
+            graph5Data.addTargetLine()
+            graph5Data.addRunningModes()
+            graph5Data.addNowLine(dateUtil.now())
+            graph5Data.setNumVerticalLabels()
+            graph5Data.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
+            graph5Data.applyFontScale(skinProvider.activeSkin().graphFontScale)
+            graph5Data.performUpdate()
+        } else {
+            binding.graph5Container.visibility = android.view.View.GONE
+        }
 
         // ScaledDataPoints share this Scale instance across every graph. Preserve the main graph's
         // normalization because secondary graph setup below may overwrite it when ComboCarbs is also
@@ -504,8 +604,9 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // graph3 (g==2): was the "pp= acc= du=" row -- replaced with the SMB-stack-total labels (was
             // g==0/IOB-COB panel, moved here). Unlike OverviewFragment.kt, this screen has no established
             // main-graph annotation wiring (L1/A1/UKF/HP aren't ported here either), so the "pp= acc= du="
-            // row has no new home in History Browse for now -- it's simply gone from this screen, not
-            // moved. Flagging rather than silently dropping it without a note.
+            // row had no home on this screen's OWN secondary graphs -- since graph5 was ported in above,
+            // the row is back (via graph5's own addIsfWeightsRow()), just gated by
+            // BooleanKey.ApsAutoIsfShowGraph5 rather than always-on the way it is on graph3 here.
             if (g == 2) secondGraphData.addSmbStackTotalLabels()
 
             // set manual x bounds to have nice steps
