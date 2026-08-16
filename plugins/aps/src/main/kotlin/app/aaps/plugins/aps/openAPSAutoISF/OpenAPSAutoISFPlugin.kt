@@ -782,6 +782,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun ukf3AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
         accelerationCalculator.fitBestParabola(ukf3RecentHistory(47))
 
+    // Sign-disagreement detector for the per-type acceleration comparison work above: flags when a
+    // type's own bgAcceleration disagrees in SIGN with the loop's real value, rather than requiring
+    // eyeballing every Metrics log line by hand. Anchored on real UKF2 data from this branch's own
+    // testing (2026-08-16): a clean sign flip (+3.632 vs -0.103) and a borderline near-zero one
+    // (+0.025 vs -0.786) were both observed within 5 samples -- the 0.3 mg/dL/5min^2 floor on BOTH
+    // sides is specifically there to exclude that near-zero case (neither value is a real trend
+    // signal at that magnitude) while still catching genuine disagreements. WARN level (not debug, like
+    // the routine Metrics lines) so it's easy to filter for and stands out on its own.
+    private fun logAccelSignDisagreement(typeName: String, typeAccel: Double, loopAccel: Double?) {
+        if (loopAccel == null) return
+        val meaningfulThreshold = 0.3
+        if (kotlin.math.abs(typeAccel) < meaningfulThreshold || kotlin.math.abs(loopAccel) < meaningfulThreshold) return
+        if ((typeAccel > 0) != (loopAccel > 0)) {
+            aapsLogger.warn(
+                LTag.APS,
+                "AccelSignDisagreement[$typeName]: type=${round(typeAccel, 3)} loop=${round(loopAccel, 3)} " +
+                    "ratio=${round(kotlin.math.abs(typeAccel) / kotlin.math.abs(loopAccel), 1)}x"
+            )
+        }
+    }
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
     // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
     private fun hypoPrediction2Mmol(
@@ -5228,6 +5249,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
+            logAccelSignDisagreement("UKF2", ukf2Accel.bgAcceleration, loopStatus?.bgAcceleration)
             markRun("Ukf2DeltaMetricsLog")
         }
 
@@ -5246,6 +5268,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
+            logAccelSignDisagreement("UKFset1", ukfSet1Accel.bgAcceleration, loopStatus?.bgAcceleration)
             markRun("UkfSet1DeltaMetricsLog")
         }
 
@@ -5263,6 +5286,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
+            logAccelSignDisagreement("LibreSpecial", libreSpecialAccel.bgAcceleration, loopStatus?.bgAcceleration)
             markRun("LibreSpecialShadowMetricsLog")
         }
 
@@ -5281,6 +5305,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
+            logAccelSignDisagreement("UKF1", ukf1Accel.bgAcceleration, loopStatus?.bgAcceleration)
             markRun("Ukf1DeltaMetricsLog")
         }
 
@@ -5295,6 +5320,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
+            logAccelSignDisagreement("UKF3", ukf3Accel.bgAcceleration, loopStatus?.bgAcceleration)
             markRun("Ukf3DeltaMetricsLog")
         }
 
@@ -6466,5 +6492,5 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 }
 
 /*
-OpenAPSAutoISFPlugin.ktaisf321_607
+OpenAPSAutoISFPlugin.ktaisf321_608
 */
