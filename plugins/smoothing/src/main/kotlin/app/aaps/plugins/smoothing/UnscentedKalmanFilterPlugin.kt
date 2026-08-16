@@ -1708,4 +1708,46 @@ private fun savePersistedParameters() {
                 }
             }
             .sortedBy { it.first }
+
+    /**
+     * UKF3's own EMA-on-top-of-UKF1 formula -- live-accessible port of the same math used for the
+     * UKF3 graph line in PrepareBgDataWorker.kt (kept in sync by hand). Fully stateless (unlike
+     * smoothLibreSpecialShadow/smoothRawRealtime above): takes UKF1's own smoothForDisplay() output
+     * and runs a fresh EMA pass over it, same composition order as the graph line (smoothForDisplay()
+     * first, EMA second -- opposite of UKF2's EMA-first-then-refine order). No persisted state needed
+     * since the caller already has UKF1's full series to feed in, unlike the live-pair types above
+     * which only ever had a single current point to work from. Added 2026-08-16 for the per-type
+     * delta/acceleration comparison work on the UKF3426 branch.
+     *
+     * @param ukf1PointsOldestFirst UKF1's own smoothForDisplay() output, (timestamp, mgdl) pairs oldest-first
+     * @param applyCalibration Ukf3ApplyLibreCalibration preference value
+     * @param slope FslCalSlope preference value
+     * @param offset FslCalOffset preference value
+     * @param unitFactor MMOLL_TO_MGDL if display units are mmol, else 1.0 (matches the graph line's
+     *   own offset-unit-conversion)
+     * @param factor FslSmoothAlpha preference value
+     * @param maxGapMinutes FslMaxSmoothGap preference value
+     * @return (timestamp, value) pairs, same oldest-first order as the input
+     */
+    fun computeUkf3Series(
+        ukf1PointsOldestFirst: List<Pair<Long, Double>>,
+        applyCalibration: Boolean,
+        slope: Double,
+        offset: Double,
+        unitFactor: Double,
+        factor: Double,
+        maxGapMinutes: Double
+    ): List<Pair<Long, Double>> {
+        var lastSmooth = 0.0
+        var lastTimeRaw = 0L
+        return ukf1PointsOldestFirst.map { (timestamp, ukf1Mgdl) ->
+            val calibrated = if (applyCalibration) max(40.0, ukf1Mgdl * slope + offset * unitFactor) else ukf1Mgdl
+            val elapsedMinutes = (timestamp - lastTimeRaw) / 60000.0
+            val effectiveAlpha = min(1.0, factor + (1.0 - factor) * (max(0.0, elapsedMinutes - 1.0) / (maxGapMinutes - 1.0)).pow(2.0))
+            val smooth = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+            lastSmooth = smooth
+            lastTimeRaw = timestamp
+            timestamp to smooth
+        }
+    }
 }

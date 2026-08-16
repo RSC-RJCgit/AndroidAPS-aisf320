@@ -736,6 +736,52 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun libreSpecialShadowAccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
         accelerationCalculator.fitBestParabola(libreSpecialShadowRecentHistory(47))
 
+    // UKF1's own recent history: raw/noise readings run through smoothForDisplay() -- same math as the
+    // UKF1 graph line and ukfRawMetrics() above, but the FULL series rather than just glucose/delta1/
+    // delta5. Fully stateless -- smoothForDisplay() needs no persisted history of its own (unlike the
+    // live-pair types above), just a window of raw readings fed fresh each call, so unlike UKF2/
+    // UKFset1/LibreSpecial this needed no new persistence to build. Fourth type in the per-type
+    // delta/acceleration comparison work on the UKF3426 branch, first of the two batch/stateless types.
+    private fun ukf1RecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
+        val now = dateUtil.now()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(lookbackMinutes).msecs(), now, ascending = false)
+            .filter { it.noise != null && it.noise!! > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return emptyList()
+        val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        return readings.mapIndexed { i, reading -> reading.timestamp to smoothed[i] }
+    }
+
+    private fun ukf1DeltaMetrics(): DeltaCalculator.DeltaResult =
+        deltaCalculator.calculateDeltasGeneric(ukf1RecentHistory(45))
+
+    private fun ukf1AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
+        accelerationCalculator.fitBestParabola(ukf1RecentHistory(47))
+
+    // UKF3's own recent history: UKF1's own smoothed output (from ukf1RecentHistory() above) run
+    // through UnscentedKalmanFilterPlugin.computeUkf3Series()'s EMA pass -- see that function's own
+    // doc comment. Also fully stateless. Fifth and final type in the per-type comparison work.
+    private fun ukf3RecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
+        val ukf1OldestFirst = ukf1RecentHistory(lookbackMinutes).asReversed()
+        if (ukf1OldestFirst.isEmpty()) return emptyList()
+        val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        return ukfSmoothing.computeUkf3Series(
+            ukf1OldestFirst,
+            preferences.get(BooleanKey.Ukf3ApplyLibreCalibration),
+            preferences.get(DoubleKey.FslCalSlope),
+            preferences.get(DoubleKey.FslCalOffset),
+            unitFactor,
+            preferences.get(DoubleKey.FslSmoothAlpha),
+            preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+        ).sortedByDescending { it.first }
+    }
+
+    private fun ukf3DeltaMetrics(): DeltaCalculator.DeltaResult =
+        deltaCalculator.calculateDeltasGeneric(ukf3RecentHistory(45))
+
+    private fun ukf3AccelerationMetrics(): AccelerationCalculator.ParabolaFitResult =
+        accelerationCalculator.fitBestParabola(ukf3RecentHistory(47))
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
     // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
     private fun hypoPrediction2Mmol(
@@ -1582,12 +1628,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Reverse-direction remote command: Virtual Pump writes the exact Note "ADesk" to its NS;
-        // the real-pump phone's secondary-NS worker records that server revision, and this sends one
+        // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
+        // this device's secondary-NS worker records that server revision, and this sends one
         // implicit broadcast per revision. Tasker's Intent Received profile owns the existing AnyDesk
         // restart task. Do not target Tasker's package: its dynamically registered receiver requires
-        // an implicit broadcast.
-        if (activePlugin.activePump !is VirtualPump) {
+        // an implicit broadcast. This path also runs on Virtual Pump for testing.
+        run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
             if (commandRevision > handledRevision) {
@@ -2601,12 +2647,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // worker's next poll picks up the Note's revision. Sends its own independent Tasker broadcast
         // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
         // pair belongs to the Note channel only) using a TT-local revision so the two channels can
-        // never suppress each other; Tasker's restart task tolerates a double-trigger. Live-pump-only,
-        // same as the Note channel's broadcast (Virtual Pump has no Tasker to restart). The
+        // never suppress each other; Tasker's restart task tolerates a double-trigger.
+        // This path also runs on Virtual Pump for testing. The
         // "ADeskTTfired" note is local-only diagnostics on this device's own history -- deliberately
         // NOT "ADeskAck": that exact text is Client's secondary-NS worker's allowlisted match for the
         // Note channel's real ack, and this TT channel has no such round-trip to report.
-        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001) && activePlugin.activePump !is VirtualPump) {
+        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             context.sendBroadcast(
                 Intent("app.aaps.action.RESTART_ANYDESK")
@@ -5218,6 +5264,38 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
             )
             markRun("LibreSpecialShadowMetricsLog")
+        }
+
+        // TEMP diagnostic 2026-08-16 (UKF3426 branch): UKF1 and UKF3 -- both fully stateless/batch, no
+        // shadow-persistence problem like the live pair above, just a fresh recompute each call over a
+        // bounded raw-reading window. Same shape as the three logs above, own separate lines/throttle
+        // keys.
+        if (readyToRun("Ukf1DeltaMetricsLog", 5)) {
+            val ukf1Deltas = ukf1DeltaMetrics()
+            val ukf1Accel = ukf1AccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+            aapsLogger.debug(
+                LTag.APS,
+                "Ukf1DeltaMetrics: delta5=${round(ukf1Deltas.delta, 2)} delta15=${round(ukf1Deltas.shortAvgDelta, 2)} delta30=${round(ukf1Deltas.longAvgDelta, 2)} " +
+                    "accel=${round(ukf1Accel.bgAcceleration, 3)} deltaPl=${round(ukf1Accel.deltaPl, 2)} deltaPn=${round(ukf1Accel.deltaPn, 2)} window=${round(ukf1Accel.windowMinutes, 1)}min corrSqu=${round(ukf1Accel.corrSqu, 3)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
+                    "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+            )
+            markRun("Ukf1DeltaMetricsLog")
+        }
+
+        if (readyToRun("Ukf3DeltaMetricsLog", 5)) {
+            val ukf3Deltas = ukf3DeltaMetrics()
+            val ukf3Accel = ukf3AccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+            aapsLogger.debug(
+                LTag.APS,
+                "Ukf3DeltaMetrics: delta5=${round(ukf3Deltas.delta, 2)} delta15=${round(ukf3Deltas.shortAvgDelta, 2)} delta30=${round(ukf3Deltas.longAvgDelta, 2)} " +
+                    "accel=${round(ukf3Accel.bgAcceleration, 3)} deltaPl=${round(ukf3Accel.deltaPl, 2)} deltaPn=${round(ukf3Accel.deltaPn, 2)} window=${round(ukf3Accel.windowMinutes, 1)}min corrSqu=${round(ukf3Accel.corrSqu, 3)} " +
+                    "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
+                    "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+            )
+            markRun("Ukf3DeltaMetricsLog")
         }
 
         determineBasalAutoISF.determine_basal(
