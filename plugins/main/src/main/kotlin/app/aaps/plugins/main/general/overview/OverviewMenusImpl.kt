@@ -315,6 +315,7 @@ class OverviewMenusImpl @Inject constructor(
 
         scaleButton.setOnClickListener { v: View ->
             val popup = PopupMenu(v.context, v)
+            popup.menu.add(Menu.NONE, 1, Menu.NONE, rh.gs(R.string.graph_long_scale_1h))
             popup.menu.add(Menu.NONE, 3, Menu.NONE, rh.gs(R.string.graph_long_scale_3h))
             popup.menu.add(Menu.NONE, 6, Menu.NONE, rh.gs(R.string.graph_long_scale_6h))
             popup.menu.add(Menu.NONE, 12, Menu.NONE, rh.gs(R.string.graph_long_scale_12h))
