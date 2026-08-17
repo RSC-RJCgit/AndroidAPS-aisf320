@@ -63,9 +63,12 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val df1 = DecimalFormat("0.0")
     private val df2 = DecimalFormat("0.00")
 
-    /** Records the four final AIV export outcomes as short CarePortal notes. */
+    /** Records the final AIV/combined export outcomes as short CarePortal notes. AVLs/AVLf = AIV
+     *  local write, AVCs/AVCf = AIV cloud upload (both pre-existing). ACEs/ACEf = combined export
+     *  (buildCombinedExport(), added 2026-08-17 after a real 5-day silent EACCES failure on a device's
+     *  output/ folder went unnoticed -- that function previously only logged errors internally). */
     fun addExportCarePortalNote(note: String) {
-        require(note == "AVLs" || note == "AVLf" || note == "AVCs" || note == "AVCf")
+        require(note in setOf("AVLs", "AVLf", "AVCs", "AVCf", "ACEs", "ACEf"))
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
             duration = TimeUnit.MINUTES.toMillis(1),
@@ -256,8 +259,12 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  concatenation approach had a real bug: [exportTableAsText]/[formatTableText] pads each column to
      *  the widest value IN THAT CALL's own rows, so pasting several independently-padded chunks together
      *  could silently drift out of alignment between chunks. A single direct query has no such seam, and
-     *  it also means a missed automatic export no longer leaves a gap in the combined file. Silent on
-     *  failure/no-data, matching writeExport()'s own error handling (log only, no user-facing failure).
+     *  it also means a missed automatic export no longer leaves a gap in the combined file.
+     *  No-data (empty records) stays silent -- that's not a failure, just nothing to write yet. A real
+     *  failure now fires an ACEf CarePortal note (added 2026-08-17); a completed write fires ACEs. Before
+     *  this, both were log-only (matching writeExport()'s own pattern) -- a real EACCES on a device's
+     *  output/ folder went completely unnoticed for 5 days as a result; see addExportCarePortalNote()'s
+     *  own doc comment.
      *
      *  Dated copy: also written to aapsLogs/<PatientName>datedAIV/combined<PatientName><yyyyMMdd>.txt
      *  (fileListProvider.aapsLogsPath, NOT resolveExportDir()'s possibly-nested per-patient dir) --
@@ -287,8 +294,10 @@ class AutoIsfHistoryExporter @Inject constructor(
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
             val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
             File(datedDir, "combined$patientName$dateStamp.txt").writeText(text)
+            addExportCarePortalNote("ACEs")
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF combined export failed", e)
+            addExportCarePortalNote("ACEf")
         }
     }
 

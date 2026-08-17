@@ -1534,10 +1534,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 aapsLogger.info(LTag.APS, "ADesk secondary-NS command sent to Tasker")
                 // Ack note back to Client: written to THIS device's own primary NS, which Client reads as
                 // ITS secondary NS -- the reverse direction of the "ADesk" note above. Distinct text
-                // ("ADeskAck" vs "ADesk") so Client's own secondary-NS acceptance logic
+                // ("AckDesk" vs "ADesk") so Client's own secondary-NS acceptance logic
                 // (LoadSecondaryBolusCarbsWorker.kt) can tell its own sent note apart from this
-                // confirmation, and so the two show as visually distinguishable Notes on Client.
-                addCarePortalNote("ADeskAck")
+                // confirmation. Renamed from "ADeskAck" 2026-08-17: sharing "ADesk"'s first 5 characters
+                // made the two indistinguishable on the graph, which truncates note labels to 5 chars
+                // (PointsWithLabelGraphSeries.kt) -- "AckDesk" no longer shares that prefix.
+                addCarePortalNote("AckDesk")
             }
         }
 
@@ -2537,9 +2539,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // pair belongs to the Note channel only) using a TT-local revision so the two channels can
         // never suppress each other; Tasker's restart task tolerates a double-trigger.
         // This path also runs on Virtual Pump for testing. The
-        // "ADeskTTfired" note is local-only diagnostics on this device's own history -- deliberately
-        // NOT "ADeskAck": that exact text is Client's secondary-NS worker's allowlisted match for the
-        // Note channel's real ack, and this TT channel has no such round-trip to report.
+        // "TTdesk" note is local-only diagnostics on this device's own history -- deliberately NOT
+        // "AckDesk": that exact text is Client's secondary-NS worker's allowlisted match for the Note
+        // channel's real ack, and this TT channel has no such round-trip to report. Renamed from
+        // "ADeskTTfired" 2026-08-17 for the same reason as AckDesk above -- shared "ADesk" as its
+        // first 5 characters, indistinguishable from "ADesk" itself on the graph's 5-char-truncated
+        // note labels (PointsWithLabelGraphSeries.kt).
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             context.sendBroadcast(
@@ -2549,7 +2554,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     .putExtra("revision", dateUtil.now())
             )
             aapsLogger.info(LTag.APS, "ADesk relay-TT command sent to Tasker")
-            addCarePortalNote("ADeskTTfired")
+            addCarePortalNote("TTdesk")
             markRun("AnyDeskRestartActionTT")
         }
 
