@@ -872,6 +872,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // Direct-launch fallback for the AnyDesk restart pipeline, added 2026-08-18: Tasker (which owns
+    // the actual "kill AnyDesk, relaunch AnyDesk" work, see its own AnyDesk2 task) can itself be
+    // killed by background-execution restrictions on the live phone -- even with battery optimization
+    // off and "Run in Foreground" on, it's one more process the OS can reclaim, and the task's own
+    // Termux kill/relaunch step in the middle is a second such process. This fires straight from
+    // AAPS's own persistent loop context instead, no intermediate app required: an explicit launch
+    // Intent for AnyDesk's own package. FLAG_ACTIVITY_NEW_TASK is required to start an Activity from a
+    // non-Activity Context; starting an Activity from the background is otherwise restricted on
+    // Android 10+, but AAPS's own loop runs via a foreground service (the persistent loop
+    // notification), which is one of the recognized exemptions -- best-effort, not guaranteed on every
+    // OEM skin, but silently does nothing (no crash) if blocked, so it's safe to fire unconditionally
+    // alongside the Tasker broadcast rather than instead of it. Package name is AnyDesk's standard
+    // Google Play identifier -- confirm this matches what's actually installed on the live phone if
+    // this doesn't work (Settings -> Apps -> AnyDesk -> App info).
+    private fun launchAnyDeskDirect() {
+        val anyDeskPackage = "com.anydesk.anydeskandroid"
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(anyDeskPackage)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            context.startActivity(launchIntent)
+            aapsLogger.info(LTag.APS, "AnyDesk launched directly by AAPS (no Tasker/Termux hop)")
+        } else {
+            aapsLogger.warn(LTag.APS, "AnyDesk direct launch failed: package $anyDeskPackage not found/resolvable")
+        }
+    }
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
     // delta5 + COB/12. Changed 2026-08-17 to match HP1's own formula shape exactly (0.25 weights, COB
     // always protective/additive, no gated -COBt/12 risk penalty) -- real-world feedback that HP2/HP3's
@@ -1736,6 +1762,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         .putExtra("command", "ADesk")
                         .putExtra("revision", commandRevision)
                 )
+                launchAnyDeskDirect()
                 aapsLogger.info(LTag.APS, "ADesk NS/local trigger received; command sent to Tasker")
             }
         }
@@ -2747,6 +2774,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     .putExtra("command", "AnyDeskRestartTT")
                     .putExtra("revision", dateUtil.now())
             )
+            launchAnyDeskDirect()
             aapsLogger.info(LTag.APS, "ADesk relay-TT command sent to Tasker")
             markRun("AnyDeskRestartActionTT")
         }
