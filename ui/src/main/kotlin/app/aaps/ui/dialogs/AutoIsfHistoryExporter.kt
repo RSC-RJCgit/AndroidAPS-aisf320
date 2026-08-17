@@ -275,7 +275,7 @@ class AutoIsfHistoryExporter @Inject constructor(
 
             exportTableAsText(dir, stamp, rows)?.let { written.add(it) }
             exportSettingsText(dir, stamp)?.let { written.add(it) }
-            exportUkfCheckText(dir, stamp)
+            exportUkfCheckText(stamp)
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
@@ -407,28 +407,33 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** TEMP diagnostic (UKF3426 branch): pulls just the per-type delta/acceleration comparison lines
      *  (DropDetected[...]/AccelSignDisagreement[...]/the five *Metrics: lines -- see UKF_CHECK_PATTERNS)
      *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
-     *  archives in loggerUtils.logDirectory, and writes the matches into dir/UKFcheck_$stamp.txt.
+     *  archives in loggerUtils.logDirectory, and writes the matches into that SAME folder as
+     *  UKFcheck_$stamp.txt.
      *
-     *  loggerUtils.logDirectory (Documents/aapsLogs, the raw logback.xml rolling-log destination) is a
-     *  DIFFERENT physical folder from fileListProvider.aapsLogsPath/resolveExportDir() (Documents/
-     *  AAPS/aapsLogs/<Name>, where the AIV CSV/TXT/settings exports themselves live) -- both happen to
-     *  be named "aapsLogs" but one nests under Documents/AAPS and the other doesn't.
+     *  Write target changed 2026-08-18: previously wrote into resolveExportDir()'s folder
+     *  (fileListProvider.aapsLogsPath, Documents/AAPS/aapsLogs/<Name> -- where the AIV CSV/TXT/settings
+     *  exports themselves live), which is a DIFFERENT physical folder from loggerUtils.logDirectory
+     *  (Documents/aapsLogs, the raw logback.xml rolling-log destination this function already reads
+     *  FROM) -- both happen to be named "aapsLogs" but one nests under Documents/AAPS and the other
+     *  doesn't. That mismatch meant this function could successfully READ the live log (from the
+     *  working folder) but then fail to WRITE its extract (into the separate, EACCES-prone folder) --
+     *  real repeated UKCf failures on both aapsVirtual and Client traced directly to that folder, even
+     *  though Documents/aapsLogs itself was demonstrably writable the whole time (logback's own file
+     *  appender writes there successfully every run). Now writes to the folder already proven to work,
+     *  eliminating the mismatch instead of chasing the permission gap itself. `dir` param dropped
+     *  (was only ever used for the old write target); `stamp` already carries the patient-name prefix
+     *  (see writeExport()'s own stamp construction) so the flat, unscoped folder still produces a
+     *  uniquely identifiable filename per device.
      *
      *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is checked
      *  for `== 3` in two places (KeepAliveWorker.exportAutoIsfHistoryIfDue, MaintenancePlugin.sendLogs)
      *  to decide the AVLs/AVLf CarePortal note and EXPORT_STATUS log line, and to gate the explicit AIV
      *  cloud upload -- a 4th file would misreport every future automatic export as a false FAILURE.
-     *  combinedClient.txt-style files avoid the same trap by being written directly to disk outside
-     *  that list; this follows the same pattern, so it rides along with whatever already pulls the
-     *  whole aapsLogs/<Name> folder (e.g. aaps.bat's copy_aaps_incremental) rather than the fixed
-     *  3-file upload. No-data (sb.isEmpty(), e.g. genuinely nothing matched this window) stays silent
-     *  -- not a failure. A real failure now fires a UKCf CarePortal note (added 2026-08-17); a
-     *  completed write fires UKCs. Before this, both were log-only (matching exportSettingsText()'s own
-     *  pattern) -- a real EACCES reading the live log on Client went completely unnoticed as a result;
-     *  see addExportCarePortalNote()'s own doc comment. Remove this whole function (and its call in
-     *  writeExport()) once the UKF3426 comparison investigation is done and the diagnostic logging in
-     *  OpenAPSAutoISFPlugin is removed. */
-    private fun exportUkfCheckText(dir: File, stamp: String) {
+     *  No-data (sb.isEmpty(), e.g. genuinely nothing matched this window) stays silent -- not a
+     *  failure. A real failure now fires a UKCf CarePortal note (added 2026-08-17); a completed write
+     *  fires UKCs. Remove this whole function (and its call in writeExport()) once the UKF3426
+     *  comparison investigation is done and the diagnostic logging in OpenAPSAutoISFPlugin is removed. */
+    private fun exportUkfCheckText(stamp: String) {
         try {
             val logDir = File(loggerUtils.logDirectory)
             val sb = StringBuilder()
@@ -457,7 +462,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             }
 
             if (sb.isEmpty()) return
-            val file = File(dir, "UKFcheck_$stamp.txt")
+            val file = File(logDir, "UKFcheck_$stamp.txt")
             file.writeText(sb.toString())
             aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath}")
             addExportCarePortalNote("UKCs")

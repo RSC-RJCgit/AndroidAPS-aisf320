@@ -5394,9 +5394,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // device only -- see this branch's own standing policy. On a real pump it was still computing
         // all five types' shadow histories/deltas/accelerations every 1-5min for no benefit (nothing
         // reads the results outside this diagnostic logging), real CPU/battery cost on a device that
-        // actually needs it. Gated on the pump type rather than a build flavor (config.AAPSCLIENT) so
-        // it stays correct if this tooling is ever run on a real-pump-but-still-testing device.
-        if (activePlugin.activePump is VirtualPump) {
+        // actually needs it. `!config.AAPSCLIENT` added same day: VirtualPump alone isn't enough --
+        // VirtualPumpPlugin.kt has its own config.AAPSCLIENT-specific branches (reservoir/serial
+        // handling), confirming Client also runs with VirtualPump as its own (inert, mirror-only)
+        // pump selection. Without this second check, this block would ALSO run on Client -- exactly
+        // the device this gate exists to exclude, not just real-pump builds generally.
+        if (activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) {
 
             // TEMP diagnostic 2026-08-16 (UKF3426 branch): loop's own ground-truth drop-crossing timestamp,
             // logged EVERY cycle (not gated by the 5-min throttle the five per-type blocks below use) so its
