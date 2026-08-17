@@ -764,7 +764,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
         )
 
-        rT.reason.append(" ================================== Delta: ${convert_bg2(Delta)}")
+        rT.reason.append (" ================================== Delta: ${convert_bg2(Delta)}")
         val applyWeights = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
         rT.reason.append("applyWeights=$applyWeights ;; ")
         if (applyWeights) {
