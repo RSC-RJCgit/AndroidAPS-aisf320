@@ -159,6 +159,13 @@ class AutoIsfHistoryExporter @Inject constructor(
         // HP3: same formula/COB-gating as HP2, base-glucose + delta5 swapped for UKF3's own values --
         // see hp3Str()'s doc comment. Mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly.
         "HP3",
+        // targetBgOffset/offsetSoZeroSMB: DetermineBasalAutoISF.kt's own varOffset-derived effective
+        // target and the flag that zeroes SMB while under it -- never a persisted AIV field, only
+        // ever visible before this as free text in the reason string. See targetBgOffsetStr()'s and
+        // offsetSoZeroSmbStr()'s own doc comments for the reason-text parsing subtlety (the value is
+        // computed/logged more than once per cycle, and only the FINAL one after the post-cap
+        // recompute and the late "cleared" override reflects what dosing actually used).
+        "targetBgOffset", "offsetSoZeroSMB",
         "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
     )
 
@@ -554,6 +561,43 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
         val value = ppWeightRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return df2.format(value)
+    }
+
+    // "targetBgOffset: <value> ;" written into RT.reason once per determineBasal cycle
+    // (DetermineBasalAutoISF.kt) -- deliberately matches only that exact "targetBgOffset: " (colon
+    // right after the word) form. targetBgOffset is actually computed/logged TWICE per cycle: an
+    // early throwaway value (before the todOffset/MildOffsetZero/BasalUpOffsetZero varOffset
+    // adjustments and the 36.0 cap are applied, logged as "targetBgOffset = min(targetBgOrig +
+    // varOffset, 7.0): X" -- no colon directly after the word, so this regex doesn't match it) and
+    // the real final one after the recompute, logged in the "targetBgOffset: X" form this regex
+    // targets. Already unit-converted (convert_bg()) to the profile's display unit, so no further
+    // conversion here -- unlike deltaAcceStr's raw mg/dl-domain percentage.
+    private val targetBgOffsetRegex = Regex("""targetBgOffset:\s*([0-9.]+)""")
+
+    /** targetBgOffset (the varOffset-adjusted effective target used to gate SMB, see
+     *  targetBgOffsetRegex's own doc comment) from the nearest APSResult within 15 min. "--" if none
+     *  close enough or no match. */
+    fun targetBgOffsetStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        return targetBgOffsetRegex.find(nearest.reason)?.groupValues?.get(1) ?: "--"
+    }
+
+    /** offsetSoZeroSMB (true = SMB is currently zeroed because bg is under targetBgOffset with no/low
+     *  COB) from the nearest APSResult within 15 min. Genuinely subtle to parse correctly:
+     *  DetermineBasalAutoISF.kt logs "offsetSoZeroSMB: true/false ;" mid-cycle (after the real,
+     *  post-cap targetBgOffset recompute), but a LATER check in the same cycle can still force it
+     *  back to false and logs a separate "offsetSoZeroSMBcleared: ..." marker when that happens --
+     *  that override always wins and is what dosing actually used (see the offsetSoZeroSMB=false
+     *  branch feeding determine_basal()'s own Microbolusing:=0 check). So: "offsetSoZeroSMBcleared"
+     *  anywhere in the reason text means the real answer is false regardless of what the earlier
+     *  "offsetSoZeroSMB: true" text says; only fall back to that earlier log when no cleared-marker
+     *  is present. "--" if none close enough or no match at all. */
+    fun offsetSoZeroSmbStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        if (nearest.reason.contains("offsetSoZeroSMBcleared")) return "false"
+        return Regex("""offsetSoZeroSMB:\s*(true|false)""").find(nearest.reason)?.groupValues?.get(1) ?: "--"
     }
 
     // "delta_accl: <value> ;" written into RT.reason every determineBasal cycle (DetermineBasalAutoISF.kt):
