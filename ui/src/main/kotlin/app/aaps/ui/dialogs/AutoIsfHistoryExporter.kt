@@ -149,6 +149,12 @@ class AutoIsfHistoryExporter @Inject constructor(
         // UKF3 (LibreSpecial-from-UKF1) BGL/delta trio -- next to the UKF1 trio above, same
         // recomputed-from-rawReadings basis (see computeUkf3RawMgdl()'s doc comment), no persisted field.
         "ukf3RawBGL", "RawUKF3_5", "RawUKF3_15",
+        // UKF2 (LibreSpecial+UKF refined) BGL/delta trio -- reads directly from
+        // ukfSmoothing.libreSpecialPostUkfHistory() (already-persisted, no recompute needed here) --
+        // the exact same series the UKF3426 diagnostic comparison logging already reads for its own
+        // per-cycle Ukf2DeltaMetrics lines. Appended after UKF3's own trio, not interleaved with UKF1's,
+        // so existing column positions for anything reading this CSV by index stay unaffected.
+        "ukf2RawBGL", "RawUKF2_5", "RawUKF2_15",
         "Int5", "Req", "TBR", "IOB", "IOBd5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2",
         // HP3: same formula/COB-gating as HP2, base-glucose + delta5 swapped for UKF3's own values --
         // see hp3Str()'s doc comment. Mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly.
@@ -160,8 +166,10 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  and the plain-text table export so the two stay in sync automatically. `allRecords` is the
      *  full (unfiltered) set, used for the IOB-5-min-change look-back. `ukf3RawMgdl` is the
      *  once-per-export UKF3 series from [computeUkf3RawMgdl], shared by every row (feeds hp3Str/
-     *  ukf3BglStr/ukf3DeltaStr). */
-    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>, ukf3RawMgdl: List<Pair<Long, Double>>): List<String> {
+     *  ukf3BglStr/ukf3DeltaStr). `ukf2RawMgdl` is the once-per-export UKF2 series read directly from
+     *  ukfSmoothing.libreSpecialPostUkfHistory() (feeds ukf2BglStr/ukf2DeltaStr), same threading
+     *  convention as ukf3RawMgdl. */
+    private fun exportFields(r: AIV, apsResults: List<APSResult>, stepsCountList: List<SC>, allRecords: List<AIV>, smbBoluses: List<BS>, carePortalNotes: List<TE>, rawReadings: List<GV>, cobTByTimestamp: Map<Long, Double>, ukf3RawMgdl: List<Pair<Long, Double>>, ukf2RawMgdl: List<Pair<Long, Double>>): List<String> {
         val sc = stepsAt(r.timestamp, stepsCountList)
         return listOf(
             dateUtil.timeString(r.timestamp),
@@ -198,6 +206,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             ukf3BglStr(r, ukf3RawMgdl),
             ukf3DeltaStr(r, ukf3RawMgdl, 5),
             ukf3DeltaStr(r, ukf3RawMgdl, 15),
+            ukf2BglStr(r, ukf2RawMgdl),
+            ukf2DeltaStr(r, ukf2RawMgdl, 5),
+            ukf2DeltaStr(r, ukf2RawMgdl, 15),
             readingIntervalStr(r.timestamp, rawReadings),
             df2.format(r.insulinReq),
             df2.format(r.tbrRate),
@@ -235,7 +246,13 @@ class AutoIsfHistoryExporter @Inject constructor(
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val cobTByTimestamp = calculatedCobT(records)
             val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
-            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, carePortalNotes, rawReadings, cobTByTimestamp, ukf3RawMgdl) }
+            // Bounds derived from rawReadings' own span rather than a separate from/to param -- this
+            // function is also called directly by the history dialog with data it already loaded (see
+            // this function's own doc comment), so it has no guaranteed WINDOW_HOURS-based `from` of
+            // its own to reuse.
+            val ukf2FromTs = rawReadings.minOfOrNull { it.timestamp } ?: (now - TimeUnit.HOURS.toMillis(WINDOW_HOURS))
+            val ukf2RawMgdl = ukfSmoothing.libreSpecialPostUkfHistory(ukf2FromTs, now)
+            val rows = records.map { exportFields(it, apsResults, stepsCountList, records, smbBoluses, carePortalNotes, rawReadings, cobTByTimestamp, ukf3RawMgdl, ukf2RawMgdl) }
 
             val csvFile = File(dir, "AutoISF_$stamp.csv")
             csvFile.bufferedWriter().use { writer ->
@@ -299,7 +316,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
             val cobTByTimestamp = calculatedCobT(records)
             val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
-            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp, ukf3RawMgdl) }
+            val ukf2RawMgdl = ukfSmoothing.libreSpecialPostUkfHistory(from, now)
+            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp, ukf3RawMgdl, ukf2RawMgdl) }
             val text = formatTableText(rows)
 
             val outFile = File(outputDir, "combined$patientName.txt")
@@ -776,6 +794,37 @@ class AutoIsfHistoryExporter @Inject constructor(
 
     fun ukf3DeltaStr(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>, minutesBack: Int): String =
         ukf3DeltaMmol(r, ukf3RawMgdl, minutesBack)?.let { df2.format(it) } ?: "--"
+
+    /** Nearest ukf2RawMgdl entry within 3 min of `timestamp`, or null if none close enough -- same
+     *  tolerance/nearest-match convention as ukf3ValueNear. */
+    private fun ukf2ValueNear(ukf2RawMgdl: List<Pair<Long, Double>>, timestamp: Long): Double? {
+        val nearest = ukf2RawMgdl.minByOrNull { kotlin.math.abs(it.first - timestamp) } ?: return null
+        if (kotlin.math.abs(nearest.first - timestamp) > 3 * 60_000L) return null
+        return nearest.second
+    }
+
+    /** UKF2 (LibreSpecial+UKF refined) BGL (mmol) at this row's timestamp -- same "--"-on-no-nearby-
+     *  point fallback as ukf3BglStr's own column. Values already in mg/dl (libreSpecialPostUkfHistory
+     *  persists post-refinement mg/dl, same as ukfRawBgl/ukf3RawMgdl), so the mmol conversion here
+     *  matches theirs exactly. */
+    fun ukf2BglStr(r: AIV, ukf2RawMgdl: List<Pair<Long, Double>>): String =
+        ukf2ValueNear(ukf2RawMgdl, r.timestamp)?.let { df1.format(it / MGDL_TO_MMOL) } ?: "--"
+
+    /** Same windowed-delta shape as ukf3DeltaMmol, against ukf2RawMgdl instead. Null under the same
+     *  no-nearby-point conditions ukf3DeltaMmol returns null for. */
+    private fun ukf2DeltaMmol(r: AIV, ukf2RawMgdl: List<Pair<Long, Double>>, minutesBack: Int): Double? {
+        val nowEntry = ukf2RawMgdl.minByOrNull { kotlin.math.abs(it.first - r.timestamp) } ?: return null
+        if (kotlin.math.abs(nowEntry.first - r.timestamp) > 3 * 60_000L) return null
+        val target = r.timestamp - minutesBack * 60_000L
+        val prior = ukf2RawMgdl.minByOrNull { kotlin.math.abs(it.first - target) } ?: return null
+        if (kotlin.math.abs(prior.first - target) > 3 * 60_000L || prior.first == nowEntry.first) return null
+        val actualMin = (nowEntry.first - prior.first) / 60_000.0
+        if (actualMin <= 0.0) return null
+        return (nowEntry.second - prior.second) / actualMin * 5.0 / MGDL_TO_MMOL
+    }
+
+    fun ukf2DeltaStr(r: AIV, ukf2RawMgdl: List<Pair<Long, Double>>, minutesBack: Int): String =
+        ukf2DeltaMmol(r, ukf2RawMgdl, minutesBack)?.let { df2.format(it) } ?: "--"
 
     /** Average gap in SECONDS between BG/Libre readings in the 5 min BEFORE this record's timestamp —
      *  same units/style as smbInterval5SecStr's Sint, so a Libre reporting every ~60s shows ~60, not a
