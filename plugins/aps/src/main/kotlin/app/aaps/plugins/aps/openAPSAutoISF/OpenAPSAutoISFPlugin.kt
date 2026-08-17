@@ -831,8 +831,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
-    // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.5*SDelta
-    // + 0.5*UKF raw delta5 - gated COBt/12. Null when UKF delta is unavailable.
+    // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
+    // delta5 + COB/12. Changed 2026-08-17 to match HP1's own formula shape exactly (0.25 weights, COB
+    // always protective/additive, no gated -COBt/12 risk penalty) -- real-world feedback that HP2/HP3's
+    // old 0.5-weight + gated-COBt formula was estimating meaningfully lower nadir values than HP1, too
+    // aggressive. Keeps its one remaining point of difference from HP1: UKF-domain delta5 instead of
+    // raw-Libre delta5, so AlarmHypo1/AlarmHypo2's "hp<=X && hp1<=Y" AND requirement still checks two
+    // genuinely different underlying signals, not the same number twice. longAvgDeltaMgdl/
+    // bgAcceleration params kept (now unused internally) so every call site above is untouched -- they
+    // only fed the removed COBt-gating logic. Null when UKF delta is unavailable.
     private fun hypoPrediction2Mmol(
         glucoseMgdl: Double,
         shortAvgDeltaMgdl: Double,
@@ -844,16 +851,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     ): Double? {
         val ukfDelta5Mgdl = (ukfRaw ?: ukfRawMetrics()).delta5 ?: return null
         val sdeltaMmol = shortAvgDeltaMgdl / 18.0182
-        val ldeltaMmol = longAvgDeltaMgdl / 18.0182
-        val cobPenaltyApplies =
-            (((bgAcceleration < 0.0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
-                (sdeltaMmol < 0.0 && ldeltaMmol < 0.0)) &&
-                autoIsfValues.insulinReq <= 0.0)
-        val cobtTerm = if (cobPenaltyApplies) liveCobT(cob) / 12.0 else 0.0
         return (glucoseMgdl / 18.0182 - iob) +
-            0.5 * sdeltaMmol +
-            0.5 * (ukfDelta5Mgdl / 18.0182) -
-            cobtTerm
+            0.25 * sdeltaMmol +
+            0.25 * (ukfDelta5Mgdl / 18.0182) +
+            cob / 12.0
     }
 
     // Live HP1, matching AutoIsfHistoryExporter.hpStr(): (BGL - IOB) + 0.25*SDelta + 0.25*raw-Libre-delta5
@@ -904,14 +905,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return activeMinutes
     }
 
-    /** Live counterpart of the export-only retrospective COBt value. */
-    private fun liveCobT(currentCob: Double): Double {
-        val latest = persistenceLayer.getAutoIsfValuesFromTime(dateUtil.now() - T.mins(10).msecs()).maxByOrNull { it.timestamp }
-            ?: return currentCob
-        val absorbed = iobCobCalculator.ads.getAutosensDataAtTime(latest.timestamp)?.this5MinAbsorption ?: 0.0
-        val unexplainedRate = (latest.uamCarbImpact - absorbed).coerceAtLeast(0.0)
-        return currentCob + unexplainedRate / 5.0
-    }
+    // liveCobT() (live counterpart of the export-only retrospective COBt value) removed 2026-08-17 --
+    // its only caller was hypoPrediction2Mmol's now-removed gated -COBt/12 penalty term (see that
+    // function's own doc comment). Still in git history if a future re-tune wants it back.
 
     // Raw 15-min delta (.noise), normalised down to a per-5-min rate (÷3) so it stays on the same
     // mmol/5min scale as rawDelta5MinMgdl/rawDelta1MinMgdl — matches AutoIsfHistoryExporter's rΔ15
