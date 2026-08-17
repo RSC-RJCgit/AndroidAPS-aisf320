@@ -855,6 +855,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     else "${if (now >= otherAt) "+" else ""}${round((now - otherAt) / 1000.0, 1)}s vs $otherName"
                 libreVsSet1CrossedAt[typeName] = now
                 aapsLogger.warn(LTag.APS, "LibreVsSet1Race[$typeName]: delta5=${round(delta5, 2)} ($leadLagText)")
+                // Careportal note, added 2026-08-17 so this race is visible on the graph/Treatments tab
+                // too, not log-only -- only fired for the LEADER (otherAt == null, i.e. this type is
+                // genuinely first to cross in the current episode), not for the type that follows, so
+                // the note history reads as "which type detected the drop earlier" once per episode
+                // rather than firing twice. Distinct first-5-char prefixes ("Libre" vs "Set1L") so the
+                // graph's 5-char note-label truncation doesn't make the two indistinguishable -- see
+                // AckDesk/TTdesk's own 2026-08-17 rename for why that matters
+                // (PointsWithLabelGraphSeries.kt).
+                if (otherAt == null) {
+                    addCarePortalNote(if (typeName == "LibreSpecial") "LibreLd" else "Set1Ld")
+                }
             }
         } else {
             libreVsSet1CrossedAt.remove(typeName)
