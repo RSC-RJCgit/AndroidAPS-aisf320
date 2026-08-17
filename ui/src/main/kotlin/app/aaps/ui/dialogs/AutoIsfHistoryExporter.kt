@@ -99,12 +99,14 @@ class AutoIsfHistoryExporter @Inject constructor(
         private const val COMBINED_WINDOW_HOURS = 30L
 
         // TEMP diagnostic (UKF3426 branch): literal substrings of the message text logged by
-        // OpenAPSAutoISFPlugin's logDropDetection()/logAccelSignDisagreement()/the five XxxMetricsLog
-        // blocks -- see exportUkfCheckText(). "Metrics:" alone catches all five *Metrics: lines
-        // (Ukf2DeltaMetrics:, UkfSet1DeltaMetrics:, LibreSpecialShadowMetrics:, Ukf1DeltaMetrics:,
-        // Ukf3DeltaMetrics:) without needing one entry per type. Update this list if those message
-        // formats change; remove the whole feature once the UKF3426 investigation is done.
-        private val UKF_CHECK_PATTERNS = listOf("DropDetected[", "AccelSignDisagreement[", "Metrics:")
+        // OpenAPSAutoISFPlugin's logDropDetection()/logAccelSignDisagreement()/
+        // logLibreSpecialVsUkfSet1Race()/the five XxxMetricsLog blocks -- see exportUkfCheckText().
+        // "Metrics:" alone catches all five *Metrics: lines (Ukf2DeltaMetrics:, UkfSet1DeltaMetrics:,
+        // LibreSpecialShadowMetrics:, Ukf1DeltaMetrics:, Ukf3DeltaMetrics:) without needing one entry
+        // per type. "LibreVsSet1Race[" added 2026-08-17 for the dedicated LibreSpecial-vs-UKFset1
+        // head-to-head (narrower than the 5-way DropDetected[] comparison above). Update this list if
+        // those message formats change; remove the whole feature once the UKF3426 investigation is done.
+        private val UKF_CHECK_PATTERNS = listOf("DropDetected[", "AccelSignDisagreement[", "LibreVsSet1Race[", "Metrics:")
         private const val UKF_CHECK_ZIP_COUNT = 6
     }
 

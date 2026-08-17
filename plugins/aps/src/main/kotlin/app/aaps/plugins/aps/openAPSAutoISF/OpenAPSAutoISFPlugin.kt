@@ -831,6 +831,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // Dedicated LibreSpecial-vs-UKFset1 head-to-head, added 2026-08-17 -- narrower than
+    // DropDetected[]'s 5-way "earliest of all types" comparison above, whose "first"/"vs first" text
+    // depends on which OTHER types are also mid-decline in a given episode, not specifically on these
+    // two. These two are the only pair that's actually operationally relevant: FslUseUkfLibreSpecialSmoothing
+    // is the real live-engine toggle between them, so "does the currently-inactive one give any earlier
+    // warning than whichever's live right now" is a real early-detection question, not just comparison
+    // curiosity. Own crossing-state map (separate from dropCrossedAt above, so this pairwise race
+    // doesn't interfere with or get diluted by UKF1/UKF2/UKF3's entries there) -- same -3.6
+    // (-0.2mmol/5min) threshold and per-type reset-on-recovery behavior as logDropDetection. Called
+    // once each from the UkfSet1DeltaMetricsLog and LibreSpecialShadowMetricsLog blocks below, each
+    // passing its own already-computed delta5 -- no extra computation here.
+    private val libreVsSet1CrossedAt = mutableMapOf<String, Long>()
+
+    private fun logLibreSpecialVsUkfSet1Race(typeName: String, delta5: Double) {
+        val threshold = -3.6 /* -0.2 mmol/5min */
+        val now = dateUtil.now()
+        if (delta5 <= threshold) {
+            if (!libreVsSet1CrossedAt.containsKey(typeName)) {
+                val otherName = if (typeName == "LibreSpecial") "UKFset1" else "LibreSpecial"
+                val otherAt = libreVsSet1CrossedAt[otherName]
+                val leadLagText = if (otherAt == null) "first"
+                    else "${if (now >= otherAt) "+" else ""}${round((now - otherAt) / 1000.0, 1)}s vs $otherName"
+                libreVsSet1CrossedAt[typeName] = now
+                aapsLogger.warn(LTag.APS, "LibreVsSet1Race[$typeName]: delta5=${round(delta5, 2)} ($leadLagText)")
+            }
+        } else {
+            libreVsSet1CrossedAt.remove(typeName)
+        }
+    }
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
     // delta5 + COB/12. Changed 2026-08-17 to match HP1's own formula shape exactly (0.25 weights, COB
     // always protective/additive, no gated -COBt/12 risk penalty) -- real-world feedback that HP2/HP3's
@@ -5377,6 +5407,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             )
             logAccelSignDisagreement("UKFset1", ukfSet1Accel.bgAcceleration, loopStatus?.bgAcceleration)
             logDropDetection("UKFset1", ukfSet1Deltas.delta)
+            logLibreSpecialVsUkfSet1Race("UKFset1", ukfSet1Deltas.delta)
             markRun("UkfSet1DeltaMetricsLog")
         }
 
@@ -5396,6 +5427,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             )
             logAccelSignDisagreement("LibreSpecial", libreSpecialAccel.bgAcceleration, loopStatus?.bgAcceleration)
             logDropDetection("LibreSpecial", libreSpecialDeltas.delta)
+            logLibreSpecialVsUkfSet1Race("LibreSpecial", libreSpecialDeltas.delta)
             markRun("LibreSpecialShadowMetricsLog")
         }
 
