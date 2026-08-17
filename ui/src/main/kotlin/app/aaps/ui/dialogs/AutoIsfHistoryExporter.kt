@@ -228,6 +228,8 @@ class AutoIsfHistoryExporter @Inject constructor(
             hpStr(r, rawReadings),
             hp2Str(r, allRecords, cobTByTimestamp),
             hp3Str(r, ukf3RawMgdl, cobTByTimestamp),
+            targetBgOffsetStr(r.timestamp, apsResults),
+            offsetSoZeroSmbStr(r.timestamp, apsResults),
             lowBgRecentStr(r.timestamp, apsResults),
             stepsValue(sc, r.timestamp, apsResults, 5)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 15)?.toString() ?: "",
