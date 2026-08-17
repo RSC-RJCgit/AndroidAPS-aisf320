@@ -1715,22 +1715,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
             if (commandRevision > handledRevision) {
+                preferences.put(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt, commandRevision)
+                // Receipt Note: the NS or local revision has reached this handler. It deliberately
+                // does not claim that Tasker or AnyDesk completed.
+                addCarePortalNote("AckDesk")
                 context.sendBroadcast(
                     Intent("app.aaps.action.RESTART_ANYDESK")
                         .putExtra("source", "AAPS secondary NS Note")
                         .putExtra("command", "ADesk")
                         .putExtra("revision", commandRevision)
                 )
-                preferences.put(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt, commandRevision)
-                aapsLogger.info(LTag.APS, "ADesk secondary-NS command sent to Tasker")
-                // Ack note back to Client: written to THIS device's own primary NS, which Client reads as
-                // ITS secondary NS -- the reverse direction of the "ADesk" note above. Distinct text
-                // ("AckDesk" vs "ADesk") so Client's own secondary-NS acceptance logic
-                // (LoadSecondaryBolusCarbsWorker.kt) can tell its own sent note apart from this
-                // confirmation. Renamed from "ADeskAck" 2026-08-17: sharing "ADesk"'s first 5 characters
-                // made the two indistinguishable on the graph, which truncates note labels to 5 chars
-                // (PointsWithLabelGraphSeries.kt) -- "AckDesk" no longer shares that prefix.
-                addCarePortalNote("AckDesk")
+                aapsLogger.info(LTag.APS, "ADesk NS/local trigger received; command sent to Tasker")
             }
         }
 
@@ -2730,15 +2725,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
         // pair belongs to the Note channel only) using a TT-local revision so the two channels can
         // never suppress each other; Tasker's restart task tolerates a double-trigger.
-        // This path also runs on Virtual Pump for testing. The
-        // "TTdesk" note is local-only diagnostics on this device's own history -- deliberately NOT
-        // "AckDesk": that exact text is Client's secondary-NS worker's allowlisted match for the Note
-        // channel's real ack, and this TT channel has no such round-trip to report. Renamed from
-        // "ADeskTTfired" 2026-08-17 for the same reason as AckDesk above -- shared "ADesk" as its
-        // first 5 characters, indistinguishable from "ADesk" itself on the graph's 5-char-truncated
-        // note labels (PointsWithLabelGraphSeries.kt).
+        // Reaching this block is receipt of the TT trigger, so it records the same AckDesk receipt
+        // Note as the NS/local handler. It does not claim that Tasker or AnyDesk completed.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
+            addCarePortalNote("AckDesk")
             context.sendBroadcast(
                 Intent("app.aaps.action.RESTART_ANYDESK")
                     .putExtra("source", "AAPS relay TT")
@@ -2746,7 +2737,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     .putExtra("revision", dateUtil.now())
             )
             aapsLogger.info(LTag.APS, "ADesk relay-TT command sent to Tasker")
-            addCarePortalNote("TTdesk")
             markRun("AnyDeskRestartActionTT")
         }
 
