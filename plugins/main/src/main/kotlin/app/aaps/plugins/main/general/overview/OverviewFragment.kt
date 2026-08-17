@@ -106,6 +106,7 @@ import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -1247,17 +1248,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
         STEROID_TURN_OFF("Steroids OFF", 5.176),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
-        // Local-test-only companion to ANYDESK_RESTART, added 2026-08-16 (UKF3426 branch), narrowed
-        // 2026-08-17: fires ONLY a direct local broadcast (fireAnyDeskRestartBroadcastDirect()) -- no
-        // careportal Note, no NS round-trip, no TT. Originally wrote an "ADesk" Note
-        // (sendAnyDeskRestartNoteLocalTest()) to exercise the NS-relay path too, but that Note still
-        // syncs to NS like any real one -- not actually "local". Narrowed to just the broadcast: this
-        // answers exactly one question -- "does Tasker receive app.aaps.action.RESTART_ANYDESK when
-        // AAPS sends it on this device" -- verified by checking Tasker's own log/task run, not
-        // anything in AAPS's careportal/NS history. Works on ANY build, not just
-        // aapsclient/aapsclient2. Deliberately a separate action/function rather than relaxing
-        // ANYDESK_RESTART's own config.AAPSCLIENT guard -- production behavior of the real feature is
-        // untouched.
+        // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
+        // command revision without depending on an NS round-trip or TT. The normal local handler
+        // writes "AckDesk" when it accepts that queued trigger.
         ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180)
     }
 
@@ -1296,13 +1289,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         GraphToggleEntry("Graph: Graph5 panel", BooleanKey.ApsAutoIsfShowGraph5, BooleanKey.ApsAutoIsfGraph5BglOnly, "BGL only (hide IA/carbs x3)")
     )
 
-    // Client is the command sender. This exact Note is uploaded to Client's NS; the real-pump
-    // phone reads it through its configured secondary NS and broadcasts the Tasker intent.
+    // Every List2 AnyDesk click records the same "ADesk" command Note on the device where it was
+    // pressed. Client clicks can upload it to NS; local-test execution does not depend on that sync.
     // Has no repeat-interval guard of its own. This is now one of TWO independent channels for the
     // same command -- see runBasalDirectAction()'s ANYDESK_RESTART branch, which also fires a relay
     // TT (5.178) alongside this Note.
-    private fun sendAnyDeskRestartNoteFromClient() {
-        if (!config.AAPSCLIENT) return
+    private fun saveAnyDeskRestartCommandNote(
+        allowLocalTest: Boolean = false,
+        onSaved: () -> Unit
+    ) {
+        if (!allowLocalTest && !config.AAPSCLIENT) return
         val note = "ADesk"
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
@@ -1316,35 +1312,34 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             therapyEvent = therapyEvent,
             action = Action.CAREPORTAL,
             source = Sources.Automation,
-            note = "AnyDesk restart command",
+            note = if (allowLocalTest) "AnyDesk restart command (local test)" else "AnyDesk restart command",
             listValues = listOf(ValueWithUnit.SimpleString(note))
         ).subscribe(
-            { rxBus.send(EventRefreshOverview("AnyDesk restart Note", true)) },
+            {
+                rxBus.send(EventRefreshOverview("AnyDesk restart Note", true))
+                onSaved()
+            },
             { error -> aapsLogger.error(LTag.CORE, "Failed to save ADesk command Note", error) }
         )
     }
 
-    // Fires the exact same broadcast the real receiving-side Note-channel handler in
-    // OpenAPSAutoISFPlugin.kt sends (see its "ADesk secondary-NS command sent to Tasker" block) --
-    // immediately, locally, on this same tap, with NO NS round-trip, no careportal Note, and no TT --
-    // see BasalDirectAction.ANYDESK_LOCAL_TEST's own doc comment for why this is deliberately the
-    // ONLY thing the local-test action does. Not a state to reconcile against future commands (no
-    // revision bookkeeping), just a one-off test firing. Distinct "source" extra so Tasker-side logs
-    // (if any) can tell a genuine local test apart from a real relayed command. Tasker's restart task
-    // tolerates repeat/redundant triggers, same as the two real channels already do to each other.
-    private fun fireAnyDeskRestartBroadcastDirect() {
-        requireContext().sendBroadcast(
-            Intent("app.aaps.action.RESTART_ANYDESK")
-                .putExtra("source", "AAPS local test (direct, no NS)")
-                .putExtra("command", "ADesk")
-                .putExtra("revision", dateUtil.now())
-        )
-        aapsLogger.info(LTag.CORE, "ADesk local-test broadcast sent to Tasker directly (no NS round-trip)")
+    // Queue the local test through the real receiving-side handler instead of bypassing it with a
+    // direct broadcast. AckDesk therefore means this queued trigger was accepted, not that Tasker or
+    // AnyDesk completed. Making the revision newer than both stored cursors also survives restarts.
+    private fun queueAnyDeskRestartLocalTest() {
+        val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
+        val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
+        val nextRevision = maxOf(dateUtil.now(), commandRevision + 1L, handledRevision + 1L)
+        preferences.put(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt, nextRevision)
+        aapsLogger.info(LTag.CORE, "ADesk local-test command queued for local Tasker dispatch")
+        rxBus.send(EventRefreshOverview("AnyDesk local trigger queued", true))
     }
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
         if (action == BasalDirectAction.ANYDESK_LOCAL_TEST) {
-            fireAnyDeskRestartBroadcastDirect()
+            saveAnyDeskRestartCommandNote(allowLocalTest = true) {
+                queueAnyDeskRestartLocalTest()
+            }
             return
         }
         if (action == BasalDirectAction.ANYDESK_RESTART) {
@@ -1356,8 +1351,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // "AnyDeskRestartActionTT" TT block -- each sends its own Tasker broadcast, and Tasker's
             // restart task tolerates being re-triggered, so both landing is deliberate redundancy,
             // not a bug to dedupe.
-            sendAnyDeskRestartNoteFromClient()
-            if (config.AAPSCLIENT) setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
+            saveAnyDeskRestartCommandNote {
+                setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
+            }
             return
         }
         if (config.AAPSCLIENT) {
