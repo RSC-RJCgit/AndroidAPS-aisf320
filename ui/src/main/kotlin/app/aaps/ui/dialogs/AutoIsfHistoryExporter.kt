@@ -854,16 +854,33 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  when no MJ note is found in the 24h lookback — the midnight MJoff check resets the state to
      *  NOMJremains, so a long note-less stretch means NOM, not unknown (matches the graph line).
      *  `mjNotes` must be pre-filtered (see mjNotesFrom) and newest-first. */
-    /** CarePortal notes created during this AIV row's one-minute interval. */
-    fun carePortalNotesStr(timestamp: Long, notes: List<TE>): String =
-        notes.asSequence()
-            .filter { it.timestamp >= timestamp && it.timestamp < timestamp + TimeUnit.MINUTES.toMillis(1) }
+    /** CarePortal notes created during this AIV row's displayed calendar minute (not a 60s window
+     *  starting from the row's own precise timestamp -- see below for why that distinction is real).
+     *  Window is floored to the minute boundary containing `timestamp`, so it matches whatever the
+     *  displayed "HH:mm" label actually covers regardless of the row's own save-time offset into
+     *  that minute.
+     *
+     *  Found 2026-08-17 by a real miss: three automations (PP50Off/ActivityOff/BasalUp) fired within
+     *  ~90s of each other, all inside the same displayed minute, but NONE showed up in the AIV
+     *  table's Notes column even though they were all visible in the app's own Treatments tab. Root
+     *  cause: the old filter was `it.timestamp >= timestamp && it.timestamp < timestamp + 1min`
+     *  using the AIV row's own exact persisted timestamp as the window START -- if the row was saved
+     *  partway into its minute (e.g. :49:47), any note that fired earlier in that same displayed
+     *  minute (:49:05, :49:30) sat *before* the row's own timestamp and was silently excluded by the
+     *  `>=` lower bound, even though both are "12:49 PM" to anyone reading the table. */
+    fun carePortalNotesStr(timestamp: Long, notes: List<TE>): String {
+        val minuteMs = TimeUnit.MINUTES.toMillis(1)
+        val minuteStart = timestamp - (timestamp % minuteMs)
+        val minuteEnd = minuteStart + minuteMs
+        return notes.asSequence()
+            .filter { it.timestamp >= minuteStart && it.timestamp < minuteEnd }
             .mapNotNull { it.note?.trim()?.takeIf(String::isNotEmpty) }
             .map { it.replace(Regex("[\\r\\n]+"), " ") }
             .distinct()
             .toList()
             .asReversed()
             .joinToString("|")
+    }
 
     /** RFC-4180-compatible CSV cell escaping for arbitrary CarePortal note text. */
     private fun csvCell(value: String): String =
