@@ -862,65 +862,38 @@ class AutoIsfHistoryExporter @Inject constructor(
         return df1.format(hp)
     }
 
-    /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta,
-     *  and heavier weights on both delta terms (0.5 vs hpStr's 0.25) -- an experiment to compare
-     *  against hpStr's column side by side, NOT a replacement (hpStr is untouched above). Formula:
-     *  (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - COBt/12 (COBt term only applied
-     *  when [cobtPenaltyGated] says the trend actually supports it -- see that function's own doc
-     *  comment for why: an ungated -COBt/12 term made HP2 read as a false hypo alarm during ordinary
-     *  post-meal rises, since COBt is LARGEST exactly when BG is still climbing). COBt is the
-     *  comparison-only interpreted total from calculatedCobT(); HP1 and dosing remain unchanged.
-     *  "--" if ukfRawBgl wasn't computed for this row or the row
-     *  5min back (same conditions ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
+    /** Second hypo-prediction variant, trying UKF's smoothed raw delta instead of the raw Libre delta --
+     *  an experiment to compare against hpStr's column side by side, NOT a replacement (hpStr is
+     *  untouched above). Formula: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*UKFRawDelta5[mmol] +
+     *  COB/12. Changed 2026-08-17 to match hpStr's own formula shape exactly (0.25 weights, COB always
+     *  protective/additive) -- the previous 0.5-weight + gated -COBt/12 version was estimating
+     *  meaningfully lower nadir values than HP1, too aggressive. Keeps its one remaining point of
+     *  difference from HP1: UKF-domain delta5 instead of raw-Libre delta5. cobTByTimestamp param kept
+     *  (now unused here) so callers/exportFields don't need updating -- historicalCob(r.timestamp) is
+     *  used directly, same COB source hpStr already uses, instead of the removed COBt reconstruction.
+     *  "--" if ukfRawBgl wasn't computed for this row or the row 5min back (same conditions
+     *  ukfDeltaStr/ukfDeltaMmol return null/"--" for). */
     fun hp2Str(r: AIV, allRecords: List<AIV>, cobTByTimestamp: Map<Long, Double>): String {
         val ukfDelta5Mmol = ukfDeltaMmol(r, allRecords, 5) ?: return "--"
         val bglMmol = r.glucose / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
-        val ldeltaMmol = r.longAvgDelta / MGDL_TO_MMOL
-        val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
-        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol, r.insulinReq)) cobT / 12.0 else 0.0
-        val hp2 = (bglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobtTerm
+        val cob = historicalCob(r.timestamp)
+        val hp2 = (bglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cob / 12.0
         return df1.format(hp2)
     }
 
-    /** Gates hp2Str's -COBt/12 penalty to only apply when the BG trend actually supports treating
-     *  outstanding carbs as a hypo-risk-reducing factor: decelerating (bgAcceleration < 0) AND both the
-     *  short (~5-17.5min) and long (~17.5-42.5min) average deltas are flat-or-falling (< 0.1 mmol/5min).
-     *  Verified against real device data (2026-08-08 meal episode, aiv_Regan exports): ungated, HP2 read
-     *  as low as 2.9 while BG was actually still climbing toward a peak 2h later -- a false hypo alarm
-     *  driven entirely by COBt being largest exactly when a meal is still absorbing (i.e. BG still
-     *  rising). Gated, those same rows correctly fall back to no COBt penalty (HP2 tracks HP closely);
-     *  at the one genuine low in that dataset, the gate ALSO stayed closed (acceleration had already
-     *  flipped positive coming out of the trough) but HP2 still landed within 0.1 of HP anyway, since
-     *  dropping the penalty (not flipping its sign) never made HP2 read LOWER than the ungated version --
-     *  the gate was only ever needed to suppress false rises, not to enhance real lows.
-     *  Extended after a second real-data pass (aiv_Regan, 2026-08-10): the original clause alone missed
-     *  272 rows where BG was genuinely falling (SDelta<0 and LDelta<0) but acceleration hadn't yet gone
-     *  negative (a "falling, decelerating-positively" case) -- COBt stayed applied there when it shouldn't.
-     *  Added an OR-branch admitting sdeltaMmol<0 && ldeltaMmol<0 outright, regardless of acceleration.
-     *  That broadened OR would also have caught rows where the loop was still actively dosing (insulinReq
-     *  > 0), so both branches are now additionally gated on insulinReq<=0.0 -- of the 349 rows the old
-     *  single clause included, 131 still had Req>0 (discounting COBt while still actively requesting
-     *  insulin), which this closes. */
-    private fun cobtPenaltyGated(bgAcceleration: Double, sdeltaMmol: Double, ldeltaMmol: Double, insulinReq: Double): Boolean =
-        ((bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) || (sdeltaMmol < 0 && ldeltaMmol < 0)) && insulinReq <= 0.0
-
-    /** Third hypo-prediction variant: same formula/COB-gating as hp2Str, but BOTH the base-glucose term
-     *  and the delta5 term are swapped to UKF3's own values ([computeUkf3RawMgdl]) instead of the live
-     *  dosing BGL / UKF1-raw-delta5 -- mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly
-     *  (same weights, same cobtPenaltyGated() gate), just historically accurate here (COB from
-     *  historicalCob/cobTByTimestamp at the record's own timestamp, not today's live COB) the same way
-     *  hp2Str already is relative to its own live graph counterpart. "--" if UKF3's series doesn't have
-     *  a point within 3 min of this row, or one ~5min back. */
+    /** Third hypo-prediction variant: same formula as hp2Str, but BOTH the base-glucose term and the
+     *  delta5 term are swapped to UKF3's own values ([computeUkf3RawMgdl]) instead of the live dosing
+     *  BGL / UKF1-raw-delta5 -- mirrors PrepareBgDataWorker.kt's graph-annotation HP3 exactly (same
+     *  weights). "--" if UKF3's series doesn't have a point within 3 min of this row, or one ~5min
+     *  back. cobTByTimestamp param kept (now unused here) for the same reason as hp2Str's own. */
     fun hp3Str(r: AIV, ukf3RawMgdl: List<Pair<Long, Double>>, cobTByTimestamp: Map<Long, Double>): String {
         val ukf3NowMgdl = ukf3ValueNear(ukf3RawMgdl, r.timestamp) ?: return "--"
         val ukf3Delta5Mmol = ukf3DeltaMmol(r, ukf3RawMgdl, 5) ?: return "--"
         val ukf3BglMmol = ukf3NowMgdl / MGDL_TO_MMOL
         val sdeltaMmol = r.shortAvgDelta / MGDL_TO_MMOL
-        val ldeltaMmol = r.longAvgDelta / MGDL_TO_MMOL
-        val cobT = cobTByTimestamp[r.timestamp] ?: historicalCob(r.timestamp)
-        val cobtTerm = if (cobtPenaltyGated(r.bgAcceleration, sdeltaMmol, ldeltaMmol, r.insulinReq)) cobT / 12.0 else 0.0
-        val hp3 = (ukf3BglMmol - r.iob) + 0.5 * sdeltaMmol + 0.5 * ukf3Delta5Mmol - cobtTerm
+        val cob = historicalCob(r.timestamp)
+        val hp3 = (ukf3BglMmol - r.iob) + 0.25 * sdeltaMmol + 0.25 * ukf3Delta5Mmol + cob / 12.0
         return df1.format(hp3)
     }
 }

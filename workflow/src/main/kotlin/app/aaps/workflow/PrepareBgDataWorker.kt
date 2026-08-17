@@ -350,18 +350,15 @@ class PrepareBgDataWorker(
         // "pp= acc= du= IOBth= HP2=" row, fixed near the bottom of graph3 — current (live)
         // ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row
         // above on graph1. IOBth is latestAiv's own persisted iobThEffective field (no computation).
-        // HP2 mirrors AutoIsfHistoryExporter.hp2Str()'s formula -- (BGL[mmol] - IOB) + 0.5*SDelta[mmol]
-        // + 0.5*UKFRawDelta5[mmol] - COBt/12, gated by the same cobtPenaltyGated() condition ((bgAcceleration
-        // < 0 AND SDelta/LDelta both < 0.1 mmol/5min) OR (SDelta AND LDelta both < 0), AND insulinReq <= 0)
-        // so this live label doesn't repeat the false-hypo-alarm bug that formula had before gating, nor
-        // discount COBt while the loop is still actively requesting insulin -- see hp2Str's own doc comment
-        // for the real-data verification (272-row gap + 131-row Req>0 inconsistency, aiv_Regan 2026-08-10).
-        // Like hpSeries's own HP= above, uses the LIVE mealCOB in place of the export's
-        // historically-reconstructed COBt (calculatedCobT()'s excess-carb-episode accumulation lives in the
-        // ui module and isn't available to this workflow module); close enough for a live glance, the
-        // export table remains the precise source for actual COBt-vs-COB analysis. "--" when latestAiv or
-        // the UKF delta isn't available yet, same fallback pattern as hpSeries/stepsStackedSeries's own
-        // hpTxt above.
+        // HP2 mirrors AutoIsfHistoryExporter.hp2Str()'s formula -- (BGL[mmol] - IOB) + 0.25*SDelta[mmol]
+        // + 0.25*UKFRawDelta5[mmol] + COB/12. Changed 2026-08-17 to match HP1's own formula shape
+        // exactly (0.25 weights, COB always protective/additive, no gated -COBt/12 penalty) -- see
+        // hypoPrediction2Mmol's own doc comment (OpenAPSAutoISFPlugin.kt) for why: the old 0.5-weight +
+        // gated formula was estimating meaningfully lower nadir values than HP1, too aggressive.
+        // Like hpSeries's own HP= above, uses the LIVE mealCOB (not a COBt reconstruction, which lives
+        // in the ui module and isn't available to this workflow module) -- same COB source hp2Str now
+        // uses too. "--" when latestAiv or the UKF delta isn't available yet, same fallback pattern as
+        // hpSeries/stepsStackedSeries's own hpTxt above.
         data.overviewData.isfWeightsRowSeries =
             if (latest != null) {
                 val ppW = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
@@ -371,13 +368,9 @@ class PrepareBgDataWorker(
                 val hp2Txt = if (latestAiv != null && ukfDeltaResult != null) {
                     val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                     val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
-                    val ldeltaMmol = latestAiv.longAvgDelta * Constants.MGDL_TO_MMOLL
                     val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                    val gated = ((latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
-                        (sdeltaMmol < 0 && ldeltaMmol < 0)) && latestAiv.insulinReq <= 0.0
-                    val cobTerm = if (gated) cob / 12.0 else 0.0
-                    val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobTerm
+                    val hp2 = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cob / 12.0
                     String.format(Locale.getDefault(), "%.1f", hp2)
                 } else "--"
                 val label = "pp=${String.format(Locale.getDefault(), "%.2f", ppW)} " +
@@ -415,20 +408,18 @@ class PrepareBgDataWorker(
             } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
-        // area — see Shape.HP_ROW_BOTTOM). Uses the same HP2 formula and COB gating as graph3:
-        // (BGL[mmol] - IOB) + 0.5*SDelta[mmol] + 0.5*UKFRawDelta5[mmol] - gated COB/12.
+        // area — see Shape.HP_ROW_BOTTOM). Uses the same HP2 formula as graph3:
+        // (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*UKFRawDelta5[mmol] + COB/12 -- see that block's
+        // own comment above for why the weights/COB-gating changed 2026-08-17.
         // Live COB substitutes for the exporter's historically reconstructed COBt. Requires UKF delta.
         data.overviewData.hpSeries =
             if (latest != null && latestAiv != null && ukfDeltaResult != null) {
                 val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
-                val ldeltaMmol = latestAiv.longAvgDelta * Constants.MGDL_TO_MMOLL
                 val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
-                val gated = ((latestAiv.bgAcceleration < 0 && sdeltaMmol < 0.1 && ldeltaMmol < 0.1) ||
-                    (sdeltaMmol < 0 && ldeltaMmol < 0)) && latestAiv.insulinReq <= 0.0
-                val cobTerm = if (gated) cob / 12.0 else 0.0
-                val hp2 = (bglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukfDelta5Mmol - cobTerm
+                val cobTerm = cob / 12.0
+                val hp2 = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cobTerm
                 // targetBgOffset is the final live offset threshold actually used by DetermineBasal,
                 // not a reconstruction from the current preferences. Reading it from the latest APS
                 // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
@@ -441,8 +432,8 @@ class PrepareBgDataWorker(
                     preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
                     else                                                       -> "UKFoff"
                 }
-                // HP3: same formula/COB-gating as HP2 above, but BOTH the base-glucose term and the delta5
-                // term are swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
+                // HP3: same formula as HP2 above, but BOTH the base-glucose term and the delta5 term are
+                // swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
                 // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction
                 // say if UKF3's own retrospective smoothing were the BGL source instead of whatever's
                 // actually dosing right now". "--" if UKF3's window doesn't have a point ~5min back yet
@@ -456,7 +447,7 @@ class PrepareBgDataWorker(
                 val hp3Text = if (ukf3Latest != null && ukf3Delta5Mgdl != null) {
                     val ukf3BglMmol = ukf3Latest.second * Constants.MGDL_TO_MMOLL
                     val ukf3Delta5Mmol = ukf3Delta5Mgdl * Constants.MGDL_TO_MMOLL
-                    val hp3 = (ukf3BglMmol - latestAiv.iob) + 0.5 * sdeltaMmol + 0.5 * ukf3Delta5Mmol - cobTerm
+                    val hp3 = (ukf3BglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukf3Delta5Mmol + cobTerm
                     String.format(Locale.getDefault(), "%.1f", hp3)
                 } else "--"
                 val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  UKF= $ukfMode"
