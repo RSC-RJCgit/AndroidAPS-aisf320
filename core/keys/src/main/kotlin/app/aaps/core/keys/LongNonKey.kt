@@ -16,5 +16,9 @@ enum class LongNonKey(
     LastCloudLogSuccessNote("last_cloud_log_success_note", 0L, exportable = false),
     LastAutoIsfHistoryExport("last_autoisf_history_export", 0L),
     MirroredAutoIsfSettingsTimestamp("mirrored_autoisf_settings_timestamp", 0L, exportable = false),
+    // Internal bookkeeping for PersistentRiseTT57Release (OpenAPSAutoISFPlugin.kt) -- when the
+    // "delta >= +0.10mmol && no SMB this cycle" condition first becomes continuously true, not a
+    // user-facing setting. 0L means "not currently tracking a persistent rise".
+    ApsAutoIsfPersistentRiseStartedAt("autoisf_persistent_rise_started_at", 0L, exportable = false),
 }
 

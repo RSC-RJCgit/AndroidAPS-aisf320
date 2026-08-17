@@ -81,6 +81,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -3835,6 +3836,74 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addCarePortalNote("TToff-${if (new2) "N2" else if (new3) "N3" else "Mld"}")   // careportal note (SMS-only before, so no careportal trail): logs the 5.7 TT reversal
                     markRun("TT57Reversal")
                 }
+            }
+        }
+
+        // --- PersistentRiseRelease: new tier (2026-08-17), addresses a real gap found investigating a
+        // live episode -- off1-off5/new2/new3/mildConfirmed above all fire on a SINGLE CYCLE's own
+        // snapshot condition (delta/G/IOB crossing a threshold that cycle). A genuinely sustained but
+        // individually-mild rise (delta staying just above +0.10mmol for many consecutive minutes,
+        // never spiking hard enough to trip any single-cycle bar) can sit in the gap between all of
+        // them. Confirmed from real data: 4 separate 10-20 minute zero-SMB-during-sustained-rise
+        // episodes in one 6-hour window (2026-08-17).
+        //
+        // Deliberately standalone, NOT nested inside TT57Reversal's own TT-required guard above: one
+        // of those 4 episodes had NO TT active at all (acce weight already back at neutral 0.50) and
+        // still saw zero SMB for 12 minutes -- offsetSoZeroSMB/targetBgOffset alone was blocking,
+        // independent of any TT. Cancelling a TT that isn't even active wouldn't help that case; only
+        // forcing ApsAutoIsfMildOffsetZeroActive does (see below).
+        //
+        // Tracks how long "delta >= +0.10mmol && zero SMB delivered" has held CONTINUOUSLY via
+        // ApsAutoIsfPersistentRiseStartedAt (reset to 0 the moment either condition breaks -- a single
+        // delivered SMB or a delta drop ends the tracked run), separately from whether the eventual
+        // release action itself is allowed to fire. Fires once that's held >=10 min, the shortest of
+        // the 4 observed episodes -- long enough to be confident this isn't ordinary noise, since a
+        // false-noise dip/flatten breaks `holding` and resets the timer before 10 min accumulates.
+        //
+        // Action is deliberately minimal, same shape as mildConfirmed above (this isn't a "hypo
+        // recovered" event, just clearing the way for normal dosing to resume): cancels the TT only if
+        // one is actually active (may not be, per the episode above), and unconditionally sets
+        // ApsAutoIsfMildOffsetZeroActive -- the same flag BolusGivenMild/BasalUp already use to force
+        // varOffset=0 in DetermineBasalAutoISF.kt. That's necessary even after a TT cancel:
+        // targetBgOffset has other contributors (time-of-day offset, the smb_delivery_ratio_max
+        // derivation) that can keep it elevated with no TT active at all, so cancelling the TT alone
+        // doesn't guarantee offsetSoZeroSMB actually clears.
+        //
+        // Same daytime window and movement/MJ/Low-profile guards as mildConfirmed (08:30-24:00,
+        // reusing its exact gate shapes rather than inventing new ones) -- deliberately not touching
+        // overnight hours, where the existing guard architecture is meant to stay conservative
+        // regardless of how long a mild rise has persisted. No live-pump gate, matching this file's
+        // other automations' Note-field-empty convention.
+        //
+        // Ported from UKF3426 (915af5f578) 2026-08-17, untested on a real device at the time of
+        // porting -- being watched on aapsVirtual before this branch reaches a live pump.
+        run {
+            val d = glucoseStatus.delta
+            val holding = d >= 1.8 /* 0.10 mmol */ && smbCount5Min() <= 0
+            val startedAt = preferences.get(LongNonKey.ApsAutoIsfPersistentRiseStartedAt)
+            if (holding) {
+                if (startedAt == 0L) preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, dateUtil.now())
+            } else if (startedAt != 0L) {
+                preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, 0L)
+            }
+            val persistentMinutes = if (startedAt > 0L) (dateUtil.now() - startedAt) / 60_000.0 else 0.0
+            if (readyToRun("PersistentRiseRelease", 5) &&
+                preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
+                isTimeBetween(8, 30, 0, 0) &&
+                holding && persistentMinutes >= 10.0 &&
+                profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
+                !mjActive() &&
+                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+            ) {
+                if (activeTtMgdl() != null) cancelCurrentTempTarget()
+                preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
+                preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, 0L)
+                sendSms(
+                    "PersistentRiseRelease: g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}" +
+                        " d=${String.format("%.2f", d / 18.016)} (${persistentMinutes.toInt()}min sustained, no SMB)"
+                )
+                addCarePortalNote("PstRs")
+                markRun("PersistentRiseRelease")
             }
         }
 
