@@ -1250,6 +1250,59 @@ class DetermineBasalAutoISF @Inject constructor(
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
                 consoleError.add("naive_eventualBG ${convert_bg(naive_eventualBG)},${durationReq}m ${basalForDisplay(smbLowTempReq)}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: ${round(maxBolus, 2)}")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
+                val boostActive = false // uamBoost1  boostActive iob_data.iob boostMaxIOB  boost_scale
+                if (boostActive ) {// and"VirtualPump tru  uamBoost1  uamBoost2 iob_data.iob boostMaxIOB  boost_scale
+                    /*
+                var uamBoost1
+                var uamBoost2
+                    val boost_max  = 3
+                //var iob_data.iob = profile.iob_data.iob
+                val boostMaxIOB   = 3
+                val boost_scale = false
+                    var insulinReqPCT
+                        var insulinDivisor
+                    var insulinReqPCT
+                    var insulinDivisor
+                    // !mlTierDowngrade && !inPostRescueWindow &&
+
+// ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
+                                // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
+                // Layer B: !mlTierDowngrade gate prevents aggressive UAM Boost firing
+                // when hypo risk exceeds 0.6.
+                // v4.4.4 Fix A v2: !inPostRescueWindow guard prevents dosing into rebound climbs.
+                if (glucose_status.delta >= 5
+                && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
+                iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0) {
+
+                    consoleError.add(">>> TIER 3: UAM Boost <<<")
+                    //rT.boostTier = "UAM_BOOST"
+                    consoleError.add("Insulin required pre-boost is $insulinReq")
+                    var boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
+                    if (boostInsulinReq > boostMaxIOB - iob_data.iob) {
+                        boostInsulinReq = boostMaxIOB - iob_data.iob
+                    }
+                    if (delta_accl > 1) {
+                        insulinReqPCT = insulinDivisor
+                    }
+                    if (boostInsulinReq < (insulinReq / insulinReqPCT)) {
+                        microBolus = Math.floor(min(insulinReq / insulinReqPCT, boost_max) * roundSMBTo) / roundSMBTo
+                        rT.reason.append("UAM Boost enacted; SMB equals $microBolus; ")
+                    } else {
+                        microBolus = Math.floor(min(boostInsulinReq, boost_max) * roundSMBTo) / roundSMBTo
+                    }
+                    // Apply graduated fast-carb scaling
+                    /*if (fastCarbRebound) {
+                        val preFcSmb = microBolus
+                        microBolus = Math.floor(microBolus * fastCarbScale * roundSMBTo) / roundSMBTo
+                        consoleError.add("Fast-carb scale applied: $preFcSmb → $microBolus (${round(fastCarbScale * 100, 0)}%)")
+                    }
+                    iTimeActive = true*/
+                    consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq")
+                    rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; ")
+                }\end
+                */
+                }
+
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
                 val LibreTrue = if (libreActive) 1.0 else 1.0
 
