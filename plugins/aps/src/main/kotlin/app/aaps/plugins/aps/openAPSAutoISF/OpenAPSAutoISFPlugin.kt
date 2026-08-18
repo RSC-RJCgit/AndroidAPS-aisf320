@@ -1038,6 +1038,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val ts = preferences.get(LongKey.ApsAutoIsfLibreOver12Ts)
         return ts != 0L && (dateUtil.now() - ts) <= T.hours(hours.toLong()).msecs()
     }
+    // A strict rolling-window check over Libre's native raw signal (.noise). Missing raw values or a
+    // gap over ten minutes make the condition false: "below for 24 hours" must mean actual continuous
+    // coverage, not merely that every reading which happened to be present was below the threshold.
+    private fun rawLibreBelowForHours(thresholdMmol: Double, hours: Int): Boolean {
+        val now = dateUtil.now()
+        val from = now - T.hours(hours.toLong()).msecs()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
+        val tolerance = T.mins(10).msecs()
+        if (readings.isEmpty()) return false
+        if (readings.first().timestamp > from + tolerance) return false
+        if (readings.last().timestamp < now - tolerance) return false
+        if (readings.zipWithNext().any { (a, b) -> b.timestamp - a.timestamp > tolerance }) return false
+        if (readings.any { it.noise == null }) return false
+        val thresholdMgdl = thresholdMmol * Constants.MMOLL_TO_MGDL
+        return readings.all { it.noise!! < thresholdMgdl }
+    }
+
 
     // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
     // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
@@ -1892,6 +1909,46 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- LowRaw24Cal: after 24 continuous hours with every raw Libre BGL below 10.0mmol,
+        // temporarily use slope=0.75 and offset=1.3. The rolling 24-hour condition remains a live
+        // requirement throughout the override: loss of coverage or any raw reading >=10.0 reverts it
+        // immediately. It also expires after six hours even if the condition remains true. The armed
+        // latch prevents repeated back-to-back six-hour windows from one uninterrupted low-raw episode.
+        run {
+            val now = dateUtil.now()
+            val below10For24Hours = rawLibreBelowForHours(10.0, 24)
+            val overrideActive = preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)
+            if (overrideActive) {
+                val expired = now >= preferences.get(LongKey.ApsAutoIsfLowRaw24OverrideUntil)
+                if (!below10For24Hours || expired) {
+                    preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideActive, false)
+                    preferences.put(LongKey.ApsAutoIsfLowRaw24OverrideUntil, 0L)
+                    preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig))
+                    preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))
+                    if (!below10For24Hours) {
+                        preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, true)
+                        addCarePortalNote("L10Off")
+                    } else {
+                        addCarePortalNote("L10End")
+                    }
+                } else {
+                    // Reassert the temporary pair if another settings path changed either live value.
+                    if (!fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), 0.75)) preferences.put(DoubleKey.FslCalSlope, 0.75)
+                    if (!fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), 1.3)) preferences.put(DoubleKey.FslCalOffset, 1.3)
+                }
+            } else {
+                if (!below10For24Hours) preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, true)
+                if (below10For24Hours && preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed)) {
+                    preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideActive, true)
+                    preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, false)
+                    preferences.put(LongKey.ApsAutoIsfLowRaw24OverrideUntil, now + T.hours(6).msecs())
+                    preferences.put(DoubleKey.FslCalSlope, 0.75)
+                    preferences.put(DoubleKey.FslCalOffset, 1.3)
+                    addCarePortalNote("L10On")
+                }
+            }
+        }
+
         // --- OldSensorAdj: Libre special settings for an aging sensor (12-15 days) — swings high/low
         // too easily and isn't compensated by the usual slope/offset calibration. Mirrored at the other
         // end of the sensor's life too (0-3 days): a brand-new sensor has its own settling/compression-
@@ -1906,6 +1963,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
+            // LowRaw24Cal has priority while its temporary six-hour override is active.
+            if (preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)) return@run
             val sensorAgeCodeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             if (!sensorAgeCodeEnabled) {

@@ -133,6 +133,13 @@ enum class BooleanKey(
     // it knows whether to snapshot (first activation) or restore (once the 11-15 day window or MJ
     // condition ends, or the toggle above is turned off). Not shown in any preference screen.
     ApsAutoIsfOldSensorAdjActive("autoisf_old_sensor_adj_active", false, defaultedBySM = true, exportable = false),
+    // Internal state for the temporary low-raw calibration override. Once 24 continuous hours of
+    // raw Libre BGL below 10.0mmol have activated it, the override lasts at most six hours and yields
+    // immediately if that rolling 24-hour condition stops being true.
+    ApsAutoIsfLowRaw24OverrideActive("autoisf_low_raw_24_override_active", false, defaultedBySM = true, exportable = false),
+    // Prevents an expired six-hour override immediately starting another six-hour window while the
+    // same uninterrupted below-10 episode continues. Re-armed only after the 24-hour condition fails.
+    ApsAutoIsfLowRaw24OverrideArmed("autoisf_low_raw_24_override_armed", true, defaultedBySM = true, exportable = false),
 
     // Internal-only: "OldPod" notify-once latch — true once the pod>60h + BGL>10.0mmol-for-2h+ notice
     // (CarePortal note + SMS) has fired for the CURRENT pod, so it isn't repeated every cycle. Resets to

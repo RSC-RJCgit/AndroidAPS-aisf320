@@ -295,7 +295,7 @@ jobs:
             "aaps-${{ env.VERSION }}.apk"
 
       - name: Build aapsclientRelease APK
-        if: ${{ inputs.build_aapsclient }}
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient }}
         run: |
           ./gradlew :app:assembleAapsclientRelease \
           -Dorg.gradle.jvmargs="-Xmx8g" \
@@ -309,6 +309,15 @@ jobs:
           -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Rename aapsclient APK with version
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient }}
+        run: mv app/build/outputs/apk/aapsclient/release/*.apk "aaps-${{ env.VERSION }}-aapsclient.apk"
+
+      - name: Upload aapsclient APK to Google Drive
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient }}
+        run: |
+          "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
 
       - name: Build aapsclient2Release APK
         if: ${{ github.event_name == 'push' || inputs.build_aapsclient2 }}
@@ -326,22 +335,14 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Rename Client APKs with version
-        run: |
-          [ -f app/build/outputs/apk/aapsclient/release/*.apk ] && mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
-          [ -f app/build/outputs/apk/aapsclient2/release/*.apk ] && mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
+      - name: Rename aapsclient2 APK with version
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient2 }}
+        run: mv app/build/outputs/apk/aapsclient2/release/*.apk "aaps-${{ env.VERSION }}-aapsclient2.apk"
 
-      - name: Upload Client APKs to Google Drive
-        if: ${{ github.event_name == 'push' || inputs.build_aapsclient || inputs.build_aapsclient2 }}
+      - name: Upload aapsclient2 APK to Google Drive
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient2 }}
         run: |
-          set -e
-          if [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]; then
-            "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
-          fi
-          if [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ]; then
-            "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
-          fi
-          echo "🎉 Selected Client APKs successfully uploaded to Google Drive!"
+          "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
 
       - name: Upload APKs as GitHub artifacts
         uses: actions/upload-artifact@v4
