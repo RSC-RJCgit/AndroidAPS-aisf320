@@ -39,6 +39,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
+import javax.inject.Provider
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -62,7 +63,11 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val iobCobCalculator: IobCobCalculator,
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
     private val loggerUtils: LoggerUtils,
-    private val importExportPrefs: ImportExportPrefs
+    // Provider deliberately breaks the Dagger cycle
+    // ImportExportPrefsImpl -> MaintenancePlugin -> AutoIsfHistoryExporter -> ImportExportPrefs.
+    // The preference exporter is only needed when an export is actually run, not while this
+    // object graph is being constructed.
+    private val importExportPrefs: Provider<ImportExportPrefs>
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -289,7 +294,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             // synchronously here to add), and that list's size is checked for `== 3` elsewhere (see
             // exportUkfCheckText's own doc comment on why a 4th entry there would misreport as a
             // failure) -- same reasoning applies here.
-            importExportPrefs.exportUserEntriesCsvAuto()
+            importExportPrefs.get().exportUserEntriesCsvAuto()
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
