@@ -65,6 +65,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BolusProgressData
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -1292,9 +1293,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     // Every List2 AnyDesk click records the same "ADesk" command Note on the device where it was
     // pressed. Client clicks can upload it to NS; local-test execution does not depend on that sync.
-    // Has no repeat-interval guard of its own. This is now one of TWO independent channels for the
-    // same command -- see runBasalDirectAction()'s ANYDESK_RESTART branch, which also fires a relay
-    // TT (5.178) alongside this Note.
+    // Has no repeat-interval guard of its own. Client also uses relay TT 5.178 only when no temporary
+    // target is active; otherwise this Note is deliberately the sole transport so the real TT is
+    // preserved.
     private fun saveAnyDeskRestartCommandNote(
         allowLocalTest: Boolean = false,
         onSaved: () -> Unit
@@ -1345,16 +1346,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return
         }
         if (action == BasalDirectAction.ANYDESK_RESTART) {
-            // Two independent channels to the real-pump phone, both fired from this one tap: the
-            // "ADesk" secondary-NS Note above (arrives whenever the real-pump phone's secondary-NS
-            // worker next polls/syncs its revision counter) and a relay TT of 5.178 (arrives with
-            // Client's own primary NS sync, typically sooner). OpenAPSAutoISFPlugin.kt has an
-            // independent handler for each -- see its "ADesk secondary-NS command" broadcast and the
-            // "AnyDeskRestartActionTT" TT block -- each sends its own Tasker broadcast, and Tasker's
-            // restart task tolerates being re-triggered, so both landing is deliberate redundancy,
-            // not a bug to dedupe.
+            // Never cancel/replace a real temporary target merely to carry this command. If a TT is
+            // active after the ADesk Note has been saved, secondary NS is the only transport. Re-check
+            // here (not only in the confirmation text) because the active TT can change while the
+            // confirmation dialog or asynchronous Note insert is in progress.
+            val relayAllowed = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) == null
             saveAnyDeskRestartCommandNote {
-                setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
+                if (relayAllowed && persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) == null) {
+                    setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
+                } else {
+                    aapsLogger.info(LTag.CORE, "ADesk sent by NS Note only; existing temporary target preserved")
+                    rxBus.send(EventRefreshOverview("AnyDesk NS-only; active TT preserved", true))
+                }
             }
             return
         }
@@ -1432,6 +1435,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // screen behind it -- same pattern/rationale as showTtCodesListDialog() on list1 (IOB icon area).
     // OKDialog.showConfirmation's 5-arg (title, message, ok, cancel) overload is used instead of the
     // simpler 3-arg one specifically so a cancel callback can be supplied.
+    private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
+        if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
+            return rh.gs(R.string.run_question, action.label)
+        }
+        return if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
+            "An active temporary target exists and will be preserved.\n\n" +
+                "Send the AnyDesk restart by ADesk NS Note only? No relay TT will be created."
+        } else {
+            "No active temporary target exists.\n\n" +
+                "Send the AnyDesk restart by ADesk NS Note and a 5-minute relay TT?\n\n" +
+                "Warning: the relay TT will temporarily become the active target."
+        }
+    }
+
     private fun showBasalDirectActionListDialog() {
         activity?.let { act ->
             val actionEntries = BasalDirectAction.values().filter {
@@ -1456,7 +1473,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         OKDialog.showConfirmation(
                             act,
                             act.getString(app.aaps.core.ui.R.string.confirmation),
-                            rh.gs(R.string.run_question, action.label),
+                            basalDirectActionConfirmation(action),
                             Runnable { runBasalDirectAction(action) },
                             Runnable { showBasalDirectActionListDialog() }
                         )
@@ -1733,7 +1750,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // (basal rate icon area).
     private fun showTtCodesListDialog() {
         activity?.let { act ->
-            val entries = ttCodesList()
+            val ukf1LiveComparisonAllowed = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+            val entries = ttCodesList().filter { entry ->
+                entry !is TtCode.Single || entry.value != 5.152 || ukf1LiveComparisonAllowed
+            }
             // Compact adapter (small text, minimal padding) instead of the default select_dialog_item
             // row — that one reserves ~48dp min height per row plus its own vertical padding, which
             // wastes a lot of space on a narrow phone with this many entries. No functional difference,
@@ -2041,7 +2061,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // not reused. If it ever needs to be toggled again, either restore a TT code at 5.154 or a
         // plain (non-syncing) preference toggle.
         TtCode.Single(
-            "Tog UKFset1 (live dosing) on/off", 5.152,
+            "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
             currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
         ),
         TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" })

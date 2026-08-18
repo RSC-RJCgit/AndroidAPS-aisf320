@@ -100,9 +100,10 @@ enum class BooleanKey(
     // disables both boost automations together, not just one.
     ApsAutoIsfBoostAutomationsEnabled("autoisf_boost_automations_enabled", true, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
-    // Mutually-exclusive UKF modes. The first replaces LibreSpecial EMA with smoothRawRealtime().
-    // The second retains the original LibreSpecial EMA and passes that result through the full-history
-    // smoothForDisplayNEW() UKF. Both change the live BG used for dosing.
+    // Mutually-exclusive UKF requests. UKF1 replaces LibreSpecial EMA with smoothRawRealtime() only
+    // on a non-Client Virtual Pump; real-pump and Client ingestion remain on LibreSpecial EMA. UKF2
+    // retains the original EMA and calculates smoothForDisplayNEW() over it for comparison history;
+    // its returned value is currently not assigned to the live BG.
     FslUseUkfSmoothing("fsl_use_ukf_smoothing", false, defaultedBySM = true),
     FslUseUkfLibreSpecialSmoothing("fsl_use_ukf_libre_special_smoothing", false, defaultedBySM = true),
     // Per-line show/hide + calibration toggles for the three raw/noise-derived graph comparison lines

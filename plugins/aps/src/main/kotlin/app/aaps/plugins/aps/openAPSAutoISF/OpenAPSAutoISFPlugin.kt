@@ -2685,11 +2685,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // every time UKFset1 got toggled on was the actual cause of UKF2's graph never accumulating
         // points: the two settings are independent now, so toggling one must not touch the other.
         if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
-            preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
+            val virtualComparisonAllowed = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+            if (virtualComparisonAllowed) {
+                val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
+                preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
+                sendSms("LibreUKFset1 Virtual: ${if (newState) "ON" else "OFF"}")
+                addCarePortalNote("UKF1V${if (newState) "On" else "Off"}")
+            } else {
+                preferences.put(BooleanKey.FslUseUkfSmoothing, false)
+                sendSms("LibreUKFset1 blocked: Virtual Pump only")
+                addCarePortalNote("UKF1Block")
+            }
             cancelCurrentTempTarget()
-            sendSms("LibreUKFset1: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("UKFset1${if (newState) "On" else "Off"}")
             markRun("LibreUkf1ToggleTT")
         }
 
@@ -5371,7 +5378,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // boost reversion gate below and DetermineBasal's early-morning fresh-reversal guard deliberately
         // continue to use immediate raw values because their purpose is to see a turn before smoothing.
         val useUkfLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
-        val useUkfRawForSmb = preferences.get(BooleanKey.FslUseUkfSmoothing) || useUkfLibreSpecial
+        val useUkf1LiveComparison = preferences.get(BooleanKey.FslUseUkfSmoothing) && activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+        val useUkfRawForSmb = useUkf1LiveComparison || useUkfLibreSpecial
         val smbUkfRaw = if (useUkfRawForSmb) ukfRawMetrics() else null
         val smbDelta1Raw = if (useUkfRawForSmb) smbUkfRaw?.delta1 else rawDelta1Raw
         val smbDelta5Raw = if (useUkfRawForSmb) smbUkfRaw?.delta5 else rawDelta5Raw

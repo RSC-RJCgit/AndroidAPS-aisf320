@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileSource
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
@@ -141,7 +142,10 @@ class NsIncomingDataProcessor @Inject constructor(
                 val offset = preferences.get(DoubleKey.FslCalOffset)
                 val factor = preferences.get(DoubleKey.FslSmoothAlpha)
                 val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
-                val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) && !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
+                val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) &&
+                    !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) &&
+                    activePlugin.activePump is VirtualPump &&
+                    !config.AAPSCLIENT
                 val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
                 glucoseValues.sortBy { it.timestamp }
                 for (gv in glucoseValues) {

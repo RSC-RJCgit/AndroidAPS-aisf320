@@ -23,8 +23,10 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.receivers.Intents
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.source.BgSource
@@ -138,6 +140,8 @@ class XdripSourcePlugin @Inject constructor(
         @Inject lateinit var preferences: Preferences
         @Inject lateinit var profileUtil: ProfileUtil
         @Inject lateinit var automationStateService: AutomationStateInterface
+        @Inject lateinit var activePlugin: ActivePlugin
+        @Inject lateinit var config: Config
         @Inject lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
 
         fun getSensorStartTime(bundle: Bundle): Long? {
@@ -193,7 +197,11 @@ class XdripSourcePlugin @Inject constructor(
                 // If extraRaw is non-zero (Juggluco etc.), use the sensor raw directly for calibration.
                 if (extraRaw == 0.0) extraRaw = extraBgEstimate
                 extraBgEstimate = max(40.0, extraRaw * slope + offset * (if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0))
-                if (preferences.get(BooleanKey.FslUseUkfSmoothing) && !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)) {
+                val useRawUkfLive = preferences.get(BooleanKey.FslUseUkfSmoothing) &&
+                    !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) &&
+                    activePlugin.activePump is VirtualPump &&
+                    !config.AAPSCLIENT
+                if (useRawUkfLive) {
                     // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- incremental, own persisted
                     // state (see that function's doc comment), replaces the fsl_exp1 EMA below
                     // entirely when this toggle is on. Same calibrated extraBgEstimate input either
