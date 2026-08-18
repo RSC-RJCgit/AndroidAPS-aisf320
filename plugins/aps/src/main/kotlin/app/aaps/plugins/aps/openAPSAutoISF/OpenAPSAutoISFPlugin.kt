@@ -861,7 +861,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // the note history reads as "which type detected the drop earlier" once per episode
                 // rather than firing twice. Distinct first-5-char prefixes ("Libre" vs "Set1L") so the
                 // graph's 5-char note-label truncation doesn't make the two indistinguishable -- see
-                // AckDesk/TTdesk's own 2026-08-17 rename for why that matters
+                // the route-specific AnyDesk receipt Notes for why that matters
                 // (PointsWithLabelGraphSeries.kt).
                 if (otherAt == null) {
                     addCarePortalNote(if (typeName == "LibreSpecial") "LibreLd" else "Set1Ld")
@@ -1753,17 +1753,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
             if (commandRevision > handledRevision) {
                 preferences.put(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt, commandRevision)
-                // Receipt Note: the NS or local revision has reached this handler. It deliberately
-                // does not claim that Tasker or AnyDesk completed.
-                addCarePortalNote("AckDesk")
+                val localCommandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskLocalCommandAt)
+                val localTest = localCommandRevision == commandRevision
+                if (localCommandRevision != 0L && localCommandRevision <= commandRevision)
+                    preferences.put(LongKey.ApsAutoIsfAnyDeskLocalCommandAt, 0L)
+                val deviceRole = when {
+                    config.AAPSCLIENT -> "C"
+                    activePlugin.activePump is VirtualPump -> "V"
+                    else -> "R"
+                }
+                // Receipt/dispatch Note only: this handler accepted the command and is about to send
+                // Tasker's broadcast. It does not claim that Tasker received it or AnyDesk opened.
+                // The first five graph characters preserve both route and receiving device role.
+                val receiptNote = if (localTest)
+                    "AcLT$deviceRole local-test receipt"
+                else
+                    "AcNS$deviceRole secondary-NS receipt"
+                addCarePortalNote(receiptNote)
                 context.sendBroadcast(
                     Intent("app.aaps.action.RESTART_ANYDESK")
-                        .putExtra("source", "AAPS secondary NS Note")
+                        .putExtra("source", if (localTest) "AAPS local test" else "AAPS secondary NS Note")
                         .putExtra("command", "ADesk")
                         .putExtra("revision", commandRevision)
                 )
                 launchAnyDeskDirect()
-                aapsLogger.info(LTag.APS, "ADesk NS/local trigger received; command sent to Tasker")
+                aapsLogger.info(LTag.APS, "$receiptNote; command sent to Tasker")
             }
         }
 
@@ -2763,11 +2777,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
         // pair belongs to the Note channel only) using a TT-local revision so the two channels can
         // never suppress each other; Tasker's restart task tolerates a double-trigger.
-        // Reaching this block is receipt of the TT trigger, so it records the same AckDesk receipt
-        // Note as the NS/local handler. It does not claim that Tasker or AnyDesk completed.
+        // Reaching this block is receipt of the TT trigger. The route/device-specific Note does not
+        // claim that Tasker received the broadcast or that AnyDesk completed.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
-            addCarePortalNote("AckDesk")
+            val deviceRole = when {
+                config.AAPSCLIENT -> "C"
+                activePlugin.activePump is VirtualPump -> "V"
+                else -> "R"
+            }
+            val receiptNote = "AcTT$deviceRole relay-TT receipt"
+            addCarePortalNote(receiptNote)
             context.sendBroadcast(
                 Intent("app.aaps.action.RESTART_ANYDESK")
                     .putExtra("source", "AAPS relay TT")
@@ -2775,7 +2795,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     .putExtra("revision", dateUtil.now())
             )
             launchAnyDeskDirect()
-            aapsLogger.info(LTag.APS, "ADesk relay-TT command sent to Tasker")
+            aapsLogger.info(LTag.APS, "$receiptNote; command sent to Tasker")
             markRun("AnyDeskRestartActionTT")
         }
 

@@ -57,10 +57,8 @@ class LoadSecondaryBolusCarbsWorker(
         // cannula/sensor-age automations read (TE.Type.CANNULA_CHANGE / SENSOR_CHANGE via
         // getLastTherapyRecordUpToNow), plus their close siblings so pod/sensor sessions stay complete.
         // StLow/legacy StorageLow Notes carry storage alerts to Virtual Pump; the exact ADesk Note
-        // carries the reverse-direction Tasker command to the real-pump phone; AckDesk (renamed from
-        // ADeskAck 2026-08-17 -- see OpenAPSAutoISFPlugin.kt's own note on why) carries the real-pump
-        // phone's confirmation back the other way, this worker running symmetrically on Client (with
-        // the real-pump phone's own NS configured as Client's secondary).
+        // carries the reverse-direction Tasker command to the real-pump phone. Route-specific AcNSx,
+        // AcTTx and AcLTx Notes report AAPS receipt/dispatch; legacy AckDesk remains accepted.
         private val secondaryTherapyEventTypes = setOf(
             TE.Type.SENSOR_CHANGE,
             TE.Type.SENSOR_STARTED,
@@ -152,13 +150,15 @@ class LoadSecondaryBolusCarbsWorker(
                                 val te = treatment.toTherapyEvent()
                                 val note = te.note.orEmpty()
                                 val anyDeskCommand = te.type == TE.Type.NOTE && note.trim() == "ADesk"
-                                // The real-pump phone's reverse-direction confirmation (see
-                                // OpenAPSAutoISFPlugin.kt's addCarePortalNote("AckDesk") call, renamed
-                                // from "ADeskAck" 2026-08-17) -- just needs to be STORED so it shows as
-                                // its own distinguishable Note on Client; unlike anyDeskCommand it
-                                // doesn't drive any command-revision/Tasker logic here, that direction
-                                // is Client -> real-pump phone only.
-                                val anyDeskAck = te.type == TE.Type.NOTE && note.trim() == "AckDesk"
+                                // Receipt Notes are stored for display only and never drive another command.
+                                // Fifth character: R=real pump, V=Virtual Pump, C=Client.
+                                val trimmedNote = note.trim()
+                                val anyDeskAck = te.type == TE.Type.NOTE && (
+                                    trimmedNote == "AckDesk" ||
+                                        trimmedNote.startsWith("AcNS") ||
+                                        trimmedNote.startsWith("AcTT") ||
+                                        trimmedNote.startsWith("AcLT")
+                                    )
                                 val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes && (te.type != TE.Type.NOTE ||
                                     note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck)
                                 if (acceptedSecondaryEvent) {

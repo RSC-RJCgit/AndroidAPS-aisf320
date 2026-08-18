@@ -40,6 +40,10 @@ enum class LongKey(
     // to Tasker on the real-pump phone. Separate values make the hand-off persistent across restarts.
     ApsAutoIsfAnyDeskSecondaryCommandAt("autoisf_anydesk_secondary_command_at", 0, defaultedBySM = true),
     ApsAutoIsfAnyDeskTaskerHandledAt("autoisf_anydesk_tasker_handled_at", 0, defaultedBySM = true),
+    // Equal to SecondaryCommandAt only while an explicit on-device List2 local test is pending.
+    // This lets the common receiving handler distinguish that test from a real secondary-NS command
+    // after a restart, and therefore write an unambiguous route-specific receipt Note.
+    ApsAutoIsfAnyDeskLocalCommandAt("autoisf_anydesk_local_command_at", 0, defaultedBySM = true),
 
     // Internal-only: timestamp (ms) when the current SMB anti-stacking window started (see the
     // smbInt5Sec <=70s trim in DetermineBasalAutoISF.kt) — 0 means no active stack. Reset to 0 the

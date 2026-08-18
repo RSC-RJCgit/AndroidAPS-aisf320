@@ -1251,8 +1251,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_TURN_OFF("Steroids OFF", 5.176),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
-        // command revision without depending on an NS round-trip or TT. The normal local handler
-        // writes "AckDesk" when it accepts that queued trigger.
+        // command revision without depending on an NS round-trip or TT. The receiving handler writes
+        // a route/device-specific AcLTx Note when it accepts that queued trigger.
         ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180)
     }
 
@@ -1325,13 +1325,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     }
 
     // Queue the local test through the real receiving-side handler instead of bypassing it with a
-    // direct broadcast. AckDesk therefore means this queued trigger was accepted, not that Tasker or
-    // AnyDesk completed. Making the revision newer than both stored cursors also survives restarts.
+    // direct broadcast. AcLTx means the trigger was accepted/dispatched, not that Tasker or AnyDesk
+    // completed. Making the revision newer than both stored cursors also survives restarts.
     private fun queueAnyDeskRestartLocalTest() {
         val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
         val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
         val nextRevision = maxOf(dateUtil.now(), commandRevision + 1L, handledRevision + 1L)
         preferences.put(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt, nextRevision)
+        preferences.put(LongKey.ApsAutoIsfAnyDeskLocalCommandAt, nextRevision)
         aapsLogger.info(LTag.CORE, "ADesk local-test command queued for local Tasker dispatch")
         rxBus.send(EventRefreshOverview("AnyDesk local trigger queued", true))
     }
