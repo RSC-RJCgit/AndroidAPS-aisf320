@@ -294,8 +294,6 @@
     <string name="autoisf_uam_boost_max_iob_summary">Default 1.0U. UAM Boost stops firing once IOB reaches this level, regardless of the other trigger conditions.</string>
     <string name="autoisf_uam_boost_scale_title">UAM Boost scale (boost_scale)</string>
     <string name="autoisf_uam_boost_scale_summary">Default 1.0. Multiplier applied to the pre-boost insulin requirement before capping at the max bolus above. This is the raw, unscaled value -- the live SMB is also scaled by the current profile percentage on top of this.</string>
-    <string name="autoisf_uam_boost_insulin_req_pct_title">UAM Boost insulin req % (Boost_InsulinReq)</string>
-    <string name="autoisf_uam_boost_insulin_req_pct_summary">Default 50%. Divisor applied to the normal insulin requirement (as 100/this) when accelerating fast enough to bypass the scaled-boost path -- lower values mean a larger bypass SMB.</string>
 
     <!--    Activity Monitor -->
     <string name="activity_monitor_title">Activity modifies sensitivity</string>

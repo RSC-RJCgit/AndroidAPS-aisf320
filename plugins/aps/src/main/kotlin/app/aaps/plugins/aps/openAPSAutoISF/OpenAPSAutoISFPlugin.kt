@@ -229,7 +229,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val uamBoostMaxBolus; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
     private val uamBoostMaxIob; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIob)
     private val uamBoostScale; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)
-    private val uamBoostInsulinReqPct; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostInsulinReqPct)
+    // Calculated, not a separate setting, 2026-08-18 per explicit request: the reference project's
+    // Boost_InsulinReq is a 0-100% GUI value, while this codebase's own smb_delivery_ratio is the
+    // equivalent concept on a 0-1.0 scale (e.g. 0.6 == 60%) -- deriving one from the other keeps them
+    // always in lockstep instead of needing separate tuning. smb_delivery_ratio is the BASE ratio
+    // (ApsAutoIsfSmbDeliveryRatio, default 0.2), not smb_delivery_ratio_min/_max.
+    private val uamBoostInsulinReqPct; get() = smb_delivery_ratio * 100
     private val enableSMB_EvenOn_OddOff_always; get() = preferences.get(BooleanKey.ApsAutoIsfSmbOnEvenTarget) // for profile target
     val iobThresholdPercent; get() = preferences.get(IntKey.ApsAutoIsfIobThPercent)
     private val exerciseMode; get() = SMBDefaults.exercise_mode
@@ -5693,6 +5698,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             rxBus.send(EventAPSCalculationFinished())
         }
 
+        // Tier 3 "UAM Boost" fired this cycle -- notify. DetermineBasalAutoISF.kt has no
+        // addCarePortalNote()/sendSms() capability of its own (pure calculation class, no I/O), so it
+        // just sets this flag; this is the one place that reads it back and fires the actual
+        // notification, matching this file's own established pattern of owning all side effects.
+        if (determineBasalAutoISF.uamBoostFiredThisCycle) {
+            sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U")
+            addCarePortalNote("UamBst")
+        }
+
         autoIsfValues.timestamp = now
         autoIsfValues.smbDeliveryRatio = smb_delivery_ratio
         autoIsfValues.iob = iobData.iob
@@ -6781,7 +6795,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxBolus, dialogMessage = R.string.autoisf_uam_boost_max_bolus_summary, title = R.string.autoisf_uam_boost_max_bolus_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIob, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostScale, dialogMessage = R.string.autoisf_uam_boost_scale_summary, title = R.string.autoisf_uam_boost_scale_title))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostInsulinReqPct, dialogMessage = R.string.autoisf_uam_boost_insulin_req_pct_summary, title = R.string.autoisf_uam_boost_insulin_req_pct_title))
+                    // No GUI entry for InsulinReqPct -- see uamBoostInsulinReqPct's own doc comment
+                    // below: calculated from ApsAutoIsfSmbDeliveryRatio * 100 instead of a separate
+                    // setting, per explicit request 2026-08-18.
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSplitBolusEnabled, summary = R.string.split_bolus_enabled_summary, title = R.string.split_bolus_enabled_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowCarbModelCurve, summary = R.string.show_carb_model_curve_summary, title = R.string.show_carb_model_curve_title))
