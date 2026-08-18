@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.maintenance.FileListProvider
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.NoteTimestampAllocator
@@ -60,7 +61,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val aapsLogger: AAPSLogger,
     private val iobCobCalculator: IobCobCalculator,
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
-    private val loggerUtils: LoggerUtils
+    private val loggerUtils: LoggerUtils,
+    private val importExportPrefs: ImportExportPrefs
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -276,6 +278,18 @@ class AutoIsfHistoryExporter @Inject constructor(
             exportTableAsText(dir, stamp, rows)?.let { written.add(it) }
             exportSettingsText(dir, stamp)?.let { written.add(it) }
             exportUkfCheckText(stamp)
+            // Added 2026-08-18: UserEntries_30h_<Name>.txt was previously only refreshed by manually
+            // pressing "Export CSV" on the Maintenance screen -- it isn't part of any DB entity this
+            // function already reads, so it doesn't ride along "for free" the way exportUkfCheckText()
+            // does; this is a genuine separate trigger. Rides both paths this function already serves
+            // (automatic 6-hourly KeepAliveWorker export and the manual dialog-open export) via the
+            // same non-interactive WorkManager enqueue the button uses -- see
+            // ImportExportPrefs.exportUserEntriesCsvAuto's own doc comment. Deliberately NOT added to
+            // the returned `written` list: it's an async WorkManager job (no File available
+            // synchronously here to add), and that list's size is checked for `== 3` elsewhere (see
+            // exportUkfCheckText's own doc comment on why a 4th entry there would misreport as a
+            // failure) -- same reasoning applies here.
+            importExportPrefs.exportUserEntriesCsvAuto()
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
@@ -407,8 +421,9 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** TEMP diagnostic (UKF3426 branch): pulls just the per-type delta/acceleration comparison lines
      *  (DropDetected[...]/AccelSignDisagreement[...]/the five *Metrics: lines -- see UKF_CHECK_PATTERNS)
      *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
-     *  archives in loggerUtils.logDirectory, and writes the matches into that SAME folder as
-     *  UKFcheck_$stamp.txt.
+     *  archives in loggerUtils.logDirectory, and writes the matches as UKFcheck_$stamp.txt (dated
+     *  archive) plus UKFcheck_<PatientName>.txt (stable "current" copy, output/ subfolder) into that
+     *  SAME folder.
      *
      *  Write target changed 2026-08-18: previously wrote into resolveExportDir()'s folder
      *  (fileListProvider.aapsLogsPath, Documents/AAPS/aapsLogs/<Name> -- where the AIV CSV/TXT/settings
@@ -424,6 +439,20 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  (was only ever used for the old write target); `stamp` already carries the patient-name prefix
      *  (see writeExport()'s own stamp construction) so the flat, unscoped folder still produces a
      *  uniquely identifiable filename per device.
+     *
+     *  Stable "current" copy (output/ subfolder) added same day: matches the existing
+     *  combined<Name>.txt/AutoISF_settings_<Name>.txt convention (dated archive + undated "always
+     *  latest" copy in an output/ folder) that buildCombinedExport()/writeStableSettings() already use
+     *  -- this function previously had no equivalent, only ever-accumulating dated files. Placed under
+     *  Documents/aapsLogs/output/ (NOT resolveExportDir()'s own output/, which is the folder this whole
+     *  write target moved away from) to keep the proven-working parent folder.
+     *
+     *  Best-effort legacy-location copy added same day: after both writes above succeed, also
+     *  ATTEMPTS a copy of the stable file into resolveExportDir()'s own output/ folder (where you'd
+     *  naturally expect to find it alongside combined<Name>.txt/AutoISF_settings_<Name>.txt) so it's
+     *  there when that folder happens to be writable -- wrapped in its own try/catch, deliberately NOT
+     *  allowed to turn a real UKCs success into a UKCf failure if this specific copy fails; that folder
+     *  is exactly the one with the EACCES history, so failure here is expected sometimes, not a bug.
      *
      *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is checked
      *  for `== 3` in two places (KeepAliveWorker.exportAutoIsfHistoryIfDue, MaintenancePlugin.sendLogs)
@@ -462,10 +491,28 @@ class AutoIsfHistoryExporter @Inject constructor(
             }
 
             if (sb.isEmpty()) return
+            val text = sb.toString()
+            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val stableName = if (patientName.isNotEmpty()) "UKFcheck_$patientName.txt" else "UKFcheck.txt"
+
             val file = File(logDir, "UKFcheck_$stamp.txt")
-            file.writeText(sb.toString())
-            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath}")
+            file.writeText(text)
+
+            val stableFile = File(logDir, "output").also { it.mkdirs() }.let { File(it, stableName) }
+            stableFile.writeText(text)
+
+            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath}")
             addExportCarePortalNote("UKCs")
+
+            // Best-effort only -- see this function's own doc comment for why a failure here must not
+            // downgrade the UKCs success already recorded above.
+            try {
+                val legacyOutputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
+                File(legacyOutputDir, stableName).writeText(text)
+                aapsLogger.debug(LTag.UI, "UKFcheck also copied to legacy location ${legacyOutputDir.absolutePath}")
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "UKFcheck legacy-location copy skipped (expected sometimes, not a failure): ${e.message}")
+            }
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "UKFcheck diagnostic export failed", e)
             addExportCarePortalNote("UKCf")

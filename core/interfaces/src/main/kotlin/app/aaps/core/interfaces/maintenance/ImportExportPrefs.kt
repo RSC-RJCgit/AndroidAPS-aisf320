@@ -19,6 +19,18 @@ interface ImportExportPrefs {
     fun exportSharedPreferences(f: Fragment)
     fun exportSharedPreferencesNonInteractive(context: Context, password: String): Boolean
     fun exportUserEntriesCsv(activity: FragmentActivity)
+
+    /**
+     * Non-interactive variant of [exportUserEntriesCsv] for callers with no Activity/Fragment
+     * available -- e.g. the automatic AIV/log export cycle (KeepAliveWorker) and its manual
+     * dialog-open counterpart, which both go through AutoIsfHistoryExporter.writeExport() with no UI
+     * context of their own. Same underlying CsvExportWorker as the interactive version, just enqueued
+     * against the implementation's own injected Context instead of requiring a FragmentActivity --
+     * WorkManager.getInstance() only ever needed a Context, never anything Activity-specific. Added
+     * 2026-08-18 so UserEntries_30h_<Name>.txt stops going stale between manual "Export CSV" button
+     * presses on the Maintenance screen.
+     */
+    fun exportUserEntriesCsvAuto()
     fun exportApsResult(algorithm: String?, input: JSONObject, output: JSONObject?)
 
     /**

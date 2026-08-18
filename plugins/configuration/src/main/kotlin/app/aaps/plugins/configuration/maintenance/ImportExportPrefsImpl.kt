@@ -1100,6 +1100,19 @@ class ImportExportPrefsImpl @Inject constructor(
         aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT WorkManager enqueued")
     }
 
+    // See ImportExportPrefs.exportUserEntriesCsvAuto's own doc comment. Same unique work name
+    // ("export") and policy as the interactive version above -- deliberately shared, so an automatic
+    // firing and a manual button press close together dedupe via WorkManager rather than double-running.
+    override fun exportUserEntriesCsvAuto() {
+        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT exportUserEntriesCsvAuto called, enqueuing WorkManager")
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "export",
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequest.Builder(CsvExportWorker::class.java).build()
+        )
+        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT WorkManager enqueued (auto)")
+    }
+
     class CsvExportWorker(
         private val context: Context,
         params: WorkerParameters
