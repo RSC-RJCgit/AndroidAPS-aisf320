@@ -1127,6 +1127,14 @@ class ImportExportPrefsImpl @Inject constructor(
         @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
         @Inject lateinit var preferences: Preferences
 
+        private data class UserEntriesExportFiles(
+            val datedText: File,
+            val currentText: File,
+            val datedCsv: File,
+            val currentCsv: File,
+            val patientName: String
+        )
+
         override suspend fun doWorkAndLog(): Result {
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT doWorkAndLog started")
 
@@ -1139,33 +1147,33 @@ class ImportExportPrefsImpl @Inject constructor(
             }
 
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT entries count=${entries.size}")
-
-            try {
-                exportThirtyHourText()
+            val files = try {
+                exportUserEntriesFiles(entries)
             } catch (e: Exception) {
-                aapsLogger.error(LTag.CORE, "CSV_EXPORT failed to create 30-hour TXT copies", e)
-                ToastUtils.longErrorToast(context, "User entries 30-hour TXT export failed")
+                aapsLogger.error(LTag.CORE, "CSV_EXPORT failed to create patient-scoped TXT/CSV copies", e)
+                ToastUtils.longErrorToast(context, "User entries TXT/CSV export failed")
+                return Result.failure(workDataOf("Error" to "Local User Entries export failed: ${e.message}"))
             }
 
             val isCsvCloudEnabled = exportOptionsDialog.isCsvCloudEnabled()
             val isCloudActive = cloudStorageManager.isCloudStorageActive()
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT isCsvCloudEnabled=$isCsvCloudEnabled, isCloudActive=$isCloudActive")
 
-            if (isCsvCloudEnabled && isCloudActive) {
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT calling exportToCloud")
-                return exportToCloud(entries)
+            return if (isCsvCloudEnabled && isCloudActive) {
+                exportToCloud(files)
             } else {
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT calling exportToLocal")
-                return exportToLocal(entries)
+                Result.success()
             }
         }
 
-        /** Saves a dated 30-hour snapshot beside AIV and an undated output copy. */
-        private fun exportThirtyHourText() {
-            val entries = persistenceLayer
+        /**
+         * Keeps User Entries beside the AIV export for this patient:
+         * dated 30-hour TXT + 90-day CSV in aapsLogs/<PatientName>, and stable undated copies in output/.
+         */
+        private fun exportUserEntriesFiles(userEntries: List<UE>): UserEntriesExportFiles {
+            val thirtyHourEntries = persistenceLayer
                 .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
                 .blockingGet()
-            val contents = userEntryPresentationHelper.userEntriesToCsv(entries)
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
             val patientDir = (if (patientName.isNotEmpty()) File(prefFileList.aapsLogsPath, patientName) else prefFileList.aapsLogsPath).apply {
                 if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
@@ -1176,35 +1184,29 @@ class ImportExportPrefsImpl @Inject constructor(
             val timestamp = org.joda.time.LocalDateTime.now()
                 .toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))
             val nameSuffix = patientName.takeIf { it.isNotEmpty() }?.let { "_$it" } ?: ""
-            val datedFile = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt")
-            val currentFile = File(outputDir, "UserEntries_30h${nameSuffix}.txt")
-
-            datedFile.writeText(contents, Charsets.UTF_8)
-            currentFile.writeText(contents, Charsets.UTF_8)
-            aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT 30-hour TXT saved: ${datedFile.absolutePath}; current=${currentFile.absolutePath}; entries=${entries.size}")
+            val files = UserEntriesExportFiles(
+                datedText = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt"),
+                currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt"),
+                datedCsv = File(patientDir, "UserEntries${nameSuffix}_$timestamp.csv"),
+                currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv"),
+                patientName = patientName
+            )
+            val textContents = userEntryPresentationHelper.userEntriesToCsv(thirtyHourEntries)
+            val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
+            files.datedText.writeText(textContents, Charsets.UTF_8)
+            files.currentText.writeText(textContents, Charsets.UTF_8)
+            files.datedCsv.writeText(csvContents, Charsets.UTF_8)
+            files.currentCsv.writeText(csvContents, Charsets.UTF_8)
+            aapsLogger.info(
+                LTag.CORE,
+                "${CloudConstants.LOG_PREFIX} CSV_EXPORT local AIV-folder copies saved: " +
+                    "txt=${files.datedText.absolutePath}; csv=${files.datedCsv.absolutePath}; output=${outputDir.absolutePath}"
+            )
+            return files
         }
 
-        private suspend fun exportToLocal(userEntries: List<UE>): Result {
-            prefFileList.ensureExportDirExists()
-            val newFile = prefFileList.newExportCsvFile() ?: return Result.failure()
-            var ret = Result.success()
-            try {
-                saveCsv(newFile, userEntries)
-                ToastUtils.okToast(context, rh.gs(R.string.ue_exported))
-            } catch (e: FileNotFoundException) {
-                ToastUtils.errorToast(context, rh.gs(R.string.filenotfound) + " " + newFile)
-                aapsLogger.error(LTag.CORE, "Unhandled exception", e)
-                ret = Result.failure(workDataOf("Error" to "Error FileNotFoundException"))
-            } catch (e: IOException) {
-                ToastUtils.errorToast(context, e.message)
-                aapsLogger.error(LTag.CORE, "Unhandled exception", e)
-                ret = Result.failure(workDataOf("Error" to "Error IOException"))
-            }
-            return ret
-        }
-
-        private suspend fun exportToCloud(userEntries: List<UE>): Result {
-            aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD started with ${userEntries.size} entries")
+        /** Uploads the dated TXT and CSV to the same patient-scoped cloud folder as AIV. */
+        private suspend fun exportToCloud(files: UserEntriesExportFiles): Result {
             try {
                 val provider = cloudStorageManager.getActiveProvider()
                 if (provider == null) {
@@ -1213,58 +1215,36 @@ class ImportExportPrefsImpl @Inject constructor(
                     return Result.failure(workDataOf("Error" to "No active cloud provider"))
                 }
 
-                val contents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
-                val fileName = "UserEntries_${org.joda.time.LocalDateTime.now().toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))}.csv"
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD fileName=$fileName, contents length=${contents.length}")
-
-                val folderId = provider.getOrCreateFolderPath(CloudConstants.CLOUD_PATH_USER_ENTRIES)
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD folderId=$folderId")
+                val aivPath =
+                    if (files.patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_AIV}_${files.patientName}"
+                    else CloudConstants.CLOUD_PATH_AIV
+                val folderId = provider.getOrCreateFolderPath(aivPath)
+                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD AIV folder=$aivPath id=$folderId")
                 folderId?.let { provider.setSelectedFolderId(it) }
 
-                // No "uploading..." toast by user request — routine cloud export progress isn't user-actionable.
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD uploading...")
-
-                var uploadedFileId = provider.uploadFileToPath(
-                    fileName,
-                    contents.toByteArray(Charsets.UTF_8),
-                    "text/csv",
-                    CloudConstants.CLOUD_PATH_USER_ENTRIES
-                )
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD uploadFileToPath result=$uploadedFileId")
-
-                if (uploadedFileId == null) {
-                    aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD trying fallback uploadFile")
-                    uploadedFileId = provider.uploadFile(fileName, contents.toByteArray(Charsets.UTF_8), "text/csv")
-                    aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD fallback uploadFile result=$uploadedFileId")
+                val cloudFiles = listOf(files.datedText, files.datedCsv)
+                var uploaded = 0
+                cloudFiles.forEach { file ->
+                    val mimeType = if (file.extension.equals("csv", ignoreCase = true)) "text/csv" else "text/plain"
+                    val bytes = file.readBytes()
+                    var uploadedFileId = provider.uploadFileToPath(file.name, bytes, mimeType, aivPath)
+                    if (uploadedFileId == null) uploadedFileId = provider.uploadFile(file.name, bytes, mimeType)
+                    if (uploadedFileId != null) uploaded++
+                    else aapsLogger.error(LTag.CORE, "CSV_EXPORT_CLOUD failed for ${file.name}")
                 }
 
-                if (uploadedFileId != null) {
-                    aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD SUCCESS")
-                    // Success toast removed by user request.
-                    return Result.success()
+                return if (uploaded == cloudFiles.size) {
+                    aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD SUCCESS files=$uploaded path=$aivPath")
+                    Result.success()
                 } else {
-                    aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD FAILED - uploadedFileId is null")
+                    aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD FAILURE files=$uploaded/${cloudFiles.size} path=$aivPath")
                     ToastUtils.longErrorToast(context, rh.gs(R.string.csv_upload_failed))
-                    return Result.failure(workDataOf("Error" to "Cloud upload failed"))
+                    Result.failure(workDataOf("Error" to "Cloud upload incomplete"))
                 }
             } catch (e: Exception) {
                 aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD EXCEPTION", e)
                 ToastUtils.longErrorToast(context, rh.gs(R.string.csv_upload_error))
                 return Result.failure(workDataOf("Error" to "Exception: ${e.message}"))
-            }
-        }
-
-        private fun saveCsv(file: DocumentFile, userEntries: List<UE>) {
-            try {
-                val contents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
-                storage.putFileContents(context.contentResolver, file, contents)
-            } catch (_: FileNotFoundException) {
-                throw PrefFileNotFoundError(file.name ?: "UNKNOWN")
-            } catch (_: IOException) {
-                throw PrefIOError(file.name ?: "UNKNOWN")
-            } catch (_: SecurityException) {
-                ToastUtils.errorToast(context, rh.gs(R.string.error_accessing_filesystem_select_aaps_directory_properly))
-                throw PrefFileNotFoundError(file.name ?: "UNKNOWN")
             }
         }
     }

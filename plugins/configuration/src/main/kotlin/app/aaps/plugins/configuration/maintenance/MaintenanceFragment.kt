@@ -230,9 +230,8 @@ class MaintenanceFragment : DaggerFragment() {
             aapsLogger.info(LTag.CORE, "CSV_EXPORT exportCsv button clicked")
             activity?.let { activity ->
                 OKDialog.showConfirmation(activity, rh.gs(app.aaps.core.ui.R.string.ue_export_to_csv) + "?") {
-                    aapsLogger.info(LTag.CORE, "CSV_EXPORT user confirmed, calling exportUserEntriesCsv")
+                    aapsLogger.info(LTag.CORE, "CSV_EXPORT user confirmed, calling combined AIV/UserEntries/log export")
                     uel.log(Action.EXPORT_CSV, Sources.Maintenance)
-                    importExportPrefs.exportUserEntriesCsv(activity)
                     maintenancePlugin.sendLogs(trigger = "MANUAL")
                 }
             }
