@@ -167,6 +167,90 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Prepare Google Drive destination and upload helper
+        run: |
+          set -e
+          echo "📁 Checking or creating AAPS folder"
+          AAPS_FOLDER_ID=$(curl -s -X GET \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://www.googleapis.com/drive/v3/files?q=name='AAPS'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false" \
+            | jq -r '.files[0].id')
+
+          if [ "$AAPS_FOLDER_ID" == "null" ] || [ -z "$AAPS_FOLDER_ID" ]; then
+            AAPS_FOLDER_ID=$(curl -s -X POST \
+              -H "Authorization: Bearer $ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"name": "AAPS", "mimeType": "application/vnd.google-apps.folder"}' \
+              "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
+            echo "📂 Created AAPS folder: $AAPS_FOLDER_ID"
+          else
+            echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
+          fi
+
+          echo "📁 Checking or creating version folder: $VERSION"
+          VERSION_FOLDER_ID=$(curl -s -X GET \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'${AAPS_FOLDER_ID}'+in+parents+and+trashed=false" \
+            | jq -r '.files[0].id')
+
+          if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
+            VERSION_FOLDER_ID=$(curl -s -X POST \
+              -H "Authorization: Bearer $ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\": \"${VERSION}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
+              "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
+            echo "📂 Created version folder: $VERSION_FOLDER_ID"
+          else
+            echo "📂 Found version folder: $VERSION_FOLDER_ID"
+          fi
+          echo "VERSION_FOLDER_ID=$VERSION_FOLDER_ID" >> "$GITHUB_ENV"
+
+          GDRIVE_UPLOAD_SCRIPT="$RUNNER_TEMP/upload-apk-to-gdrive.sh"
+          cat > "$GDRIVE_UPLOAD_SCRIPT" <<'UPLOAD_SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          FILE="$1"
+          NAME="$2"
+
+          if [ ! -f "$FILE" ]; then
+            echo "❌ File not found: $FILE"
+            exit 26
+          fi
+
+          echo "📄 Checking if $NAME already exists in Google Drive..."
+          QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
+          ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
+          FILE_ID=$(curl -s \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://www.googleapis.com/drive/v3/files?q=${ENCODED_QUERY}&fields=files(id)" \
+            | jq -r '.files[0].id')
+
+          if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
+            echo "🗑️ Deleting existing file with ID: $FILE_ID"
+            curl -s -X DELETE \
+              -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
+          fi
+
+          echo "⬆️ Uploading $FILE as $NAME to Google Drive..."
+          RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
+            -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -F "metadata={\"name\":\"$NAME\", \"parents\":[\"$VERSION_FOLDER_ID\"]};type=application/json;charset=UTF-8" \
+            -F "file=@$FILE;type=application/vnd.android.package-archive" \
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+
+          HTTP_CODE="${RESPONSE: -3}"
+          if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
+            echo "❌ Upload failed with HTTP status: $HTTP_CODE"
+            cat /tmp/gdrive_response.json
+            exit 1
+          fi
+          echo "✅ Uploaded: $NAME"
+          UPLOAD_SCRIPT
+          chmod +x "$GDRIVE_UPLOAD_SCRIPT"
+          echo "GDRIVE_UPLOAD_SCRIPT=$GDRIVE_UPLOAD_SCRIPT" >> "$GITHUB_ENV"
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -198,6 +282,17 @@ jobs:
           -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Rename main AAPS APK with version
+        if: ${{ github.event_name == 'push' || inputs.build_full }}
+        run: mv app/build/outputs/apk/full/release/*.apk "aaps-${{ env.VERSION }}.apk"
+
+      - name: Upload main AAPS APK to Google Drive
+        if: ${{ github.event_name == 'push' || inputs.build_full }}
+        run: |
+          "$GDRIVE_UPLOAD_SCRIPT" \
+            "aaps-${{ env.VERSION }}.apk" \
+            "aaps-${{ env.VERSION }}.apk"
 
       - name: Build aapsclientRelease APK
         if: ${{ inputs.build_aapsclient }}
@@ -231,96 +326,22 @@ jobs:
           -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Rename APKs with version
+      - name: Rename Client APKs with version
         run: |
-          [ -f app/build/outputs/apk/full/release/*.apk ] && mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk || true
           [ -f app/build/outputs/apk/aapsclient/release/*.apk ] && mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
           [ -f app/build/outputs/apk/aapsclient2/release/*.apk ] && mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
 
-      - name: Upload APK to Google Drive
+      - name: Upload Client APKs to Google Drive
+        if: ${{ github.event_name == 'push' || inputs.build_aapsclient || inputs.build_aapsclient2 }}
         run: |
           set -e
-          echo "🔐 Start uploading APK to Google Drive..."
-
-          echo "📁 Checking or creating AAPS folder"
-          AAPS_FOLDER_ID=$(curl -s -X GET \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='AAPS'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false" \
-            | jq -r '.files[0].id')
-
-          if [ "$AAPS_FOLDER_ID" == "null" ] || [ -z "$AAPS_FOLDER_ID" ]; then
-            AAPS_FOLDER_ID=$(curl -s -X POST \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"name": "AAPS", "mimeType": "application/vnd.google-apps.folder"}' \
-              "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
-            echo "📂 Created AAPS folder: $AAPS_FOLDER_ID"
-          else
-            echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
+          if [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]; then
+            "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient.apk" "aaps-${{ env.VERSION }}-aapsclient.apk"
           fi
-
-          echo "📁 Checking or creating version folder: $VERSION"
-          VERSION_FOLDER_ID=$(curl -s -X GET \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
-            | jq -r '.files[0].id')
-
-          if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
-            VERSION_FOLDER_ID=$(curl -s -X POST \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"name\": \"${VERSION}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
-              "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
-            echo "📂 Created version folder: $VERSION_FOLDER_ID"
-          else
-            echo "📂 Found version folder: $VERSION_FOLDER_ID"
+          if [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ]; then
+            "$GDRIVE_UPLOAD_SCRIPT" "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk"
           fi
-
-          upload_to_gdrive() {
-            FILE=$1
-            NAME=$2
-            if [ ! -f "$FILE" ]; then
-              echo "❌ File not found: $FILE"
-              exit 26
-            fi
-
-            echo "📄 Checking if file $NAME already exists in Google Drive..."
-            QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
-            ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
-            FILE_ID=$(curl -s \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              "https://www.googleapis.com/drive/v3/files?q=${ENCODED_QUERY}&fields=files(id)" \
-              | jq -r '.files[0].id')
-
-            if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
-              echo "🗑️ Deleting existing file with ID: $FILE_ID"
-              curl -s -X DELETE \
-                -H "Authorization: Bearer $ACCESS_TOKEN" \
-                "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
-            fi
-
-            echo "⬆️ Uploading $FILE as $NAME to Google Drive..."
-            RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
-              -X POST \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -F "metadata={\"name\":\"$NAME\", \"parents\":[\"$VERSION_FOLDER_ID\"]};type=application/json;charset=UTF-8" \
-              -F "file=@$FILE;type=application/vnd.android.package-archive" \
-              "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
-
-            HTTP_CODE="${RESPONSE: -3}"
-            if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
-              echo "❌ Upload failed with HTTP status: $HTTP_CODE"
-              cat /tmp/gdrive_response.json
-              exit 1
-            fi
-
-            echo "✅ Uploaded: $NAME"
-          }
-
-          [ -f "aaps-${{ env.VERSION }}.apk" ]           && upload_to_gdrive "aaps-${{ env.VERSION }}.apk"           "aaps-${{ env.VERSION }}.apk"           || true
-          [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]  && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk"  "aaps-${{ env.VERSION }}-aapsclient.apk"  || true
-          [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ] && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk" || true
-          echo "🎉 All APKs successfully uploaded to Google Drive!"
+          echo "🎉 Selected Client APKs successfully uploaded to Google Drive!"
 
       - name: Upload APKs as GitHub artifacts
         uses: actions/upload-artifact@v4
