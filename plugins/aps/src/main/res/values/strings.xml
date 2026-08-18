@@ -286,6 +286,16 @@
     <string name="autoisf_boost_automations_enabled_summary">Master switch for both BolusGiven (bg1/bg2/bg3) and BolusGivenMild together. Turning this off disables both boost automations, not just one.</string>
     <string name="autoisf_mild_boost_ratio_title">Mild boost delivery ratio</string>
     <string name="autoisf_mild_boost_ratio_summary">Default 0.20. Base ratio for BolusGivenMild\'s boost — its BGL tiers apply as +0.05/+0.02/+0 bumps on top of this value. BolusGiven bg3\'s (\"strong\") boost ratio is this value + 0.03, not set separately.</string>
+    <string name="autoisf_uam_boost_enabled_title">Enable Tier 3 UAM Boost</string>
+    <string name="autoisf_uam_boost_enabled_summary">Default off. Master switch for the Tier 3 UAM Boost condition in DetermineBasalAutoISF.kt (strong acceleration with positive delta) -- distinct from \"Enable boost automations\" above, which is BolusGiven/BolusGivenMild\'s own separate feature.</string>
+    <string name="autoisf_uam_boost_max_bolus_title">UAM Boost max bolus (boost_max)</string>
+    <string name="autoisf_uam_boost_max_bolus_summary">Default 2.5U. Hard cap on a single UAM Boost SMB.</string>
+    <string name="autoisf_uam_boost_max_iob_title">UAM Boost max IOB (boostMaxIOB)</string>
+    <string name="autoisf_uam_boost_max_iob_summary">Default 1.0U. UAM Boost stops firing once IOB reaches this level, regardless of the other trigger conditions.</string>
+    <string name="autoisf_uam_boost_scale_title">UAM Boost scale (boost_scale)</string>
+    <string name="autoisf_uam_boost_scale_summary">Default 1.0. Multiplier applied to the pre-boost insulin requirement before capping at the max bolus above. This is the raw, unscaled value -- the live SMB is also scaled by the current profile percentage on top of this.</string>
+    <string name="autoisf_uam_boost_insulin_req_pct_title">UAM Boost insulin req % (Boost_InsulinReq)</string>
+    <string name="autoisf_uam_boost_insulin_req_pct_summary">Default 50%. Divisor applied to the normal insulin requirement (as 100/this) when accelerating fast enough to bypass the scaled-boost path -- lower values mean a larger bypass SMB.</string>
 
     <!--    Activity Monitor -->
     <string name="activity_monitor_title">Activity modifies sensitivity</string>

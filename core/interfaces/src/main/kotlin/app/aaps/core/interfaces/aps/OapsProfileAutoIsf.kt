@@ -77,5 +77,16 @@ data class OapsProfileAutoIsf(
     var enableSMB_EvenOn_OddOff_always: Boolean,
     var iob_threshold_percent: Int,
     var profile_percentage: Int,
-    var hypo_prediction_2: Double? = null
+    var hypo_prediction_2: Double? = null,
+    // Tier 3 "UAM Boost" (DetermineBasalAutoISF.kt), ported from Boost-in-AAPS_3.4's OapsProfileBoost
+    // field names as closely as sensible (boostActive/boost_max/boostMaxIOB/boost_scale/
+    // Boost_InsulinReq) -- boost_max here corresponds to that project's boost_bolus (renamed to avoid
+    // implying "bolus" when this codebase's own SMB terminology is used everywhere else). All
+    // default-valued so this stays backward compatible with the single existing constructor call site
+    // if it's ever not updated in some future edit.
+    var boostActive: Boolean = false,
+    var boost_max: Double = 2.5,
+    var boostMaxIOB: Double = 1.0,
+    var boost_scale: Double = 1.0,
+    var Boost_InsulinReq: Double = 50.0
 )

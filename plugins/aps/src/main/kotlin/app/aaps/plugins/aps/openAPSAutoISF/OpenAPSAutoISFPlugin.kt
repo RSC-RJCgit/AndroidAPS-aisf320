@@ -216,6 +216,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val smb_delivery_ratio_bg_range
         get() = if (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange) < 10.0) preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange) * GlucoseUnit.MMOLL_TO_MGDL else preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioBgRange)
     val smbMaxRangeExtension; get() = preferences.get(DoubleKey.ApsAutoIsfSmbMaxRangeExtension)
+    // Tier 3 "UAM Boost" -- see DoubleKey/BooleanKey's own doc comments for the Boost-in-AAPS_3.4
+    // porting notes. boost_scale is intentionally the raw, unscaled preference value here;
+    // DetermineBasalAutoISF.kt applies the live profile-percentage scaling itself.
+    // VirtualPump-only per explicit request (matches the original reference code's own commented-out
+    // intent -- "and VirtualPump tru[e]" -- before this preference existed): untested Tier 3 dosing
+    // logic must not be able to fire on a real pump. Deliberately does NOT also exclude Client (unlike
+    // the UKF3426 comparison tooling's own VirtualPump && !config.AAPSCLIENT gate) -- flag if you want
+    // that added too; Client also runs on VirtualPump internally, so as written this can still compute
+    // (though not actually deliver, since Client doesn't drive a real pump) on Client too.
+    private val uamBoostActive; get() = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && activePlugin.activePump is VirtualPump
+    private val uamBoostMaxBolus; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
+    private val uamBoostMaxIob; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIob)
+    private val uamBoostScale; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)
+    private val uamBoostInsulinReqPct; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostInsulinReqPct)
     private val enableSMB_EvenOn_OddOff_always; get() = preferences.get(BooleanKey.ApsAutoIsfSmbOnEvenTarget) // for profile target
     val iobThresholdPercent; get() = preferences.get(IntKey.ApsAutoIsfIobThPercent)
     private val exerciseMode; get() = SMBDefaults.exercise_mode
@@ -1675,7 +1689,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
             iob_threshold_percent = iobThresholdPercent,
             profile_percentage = profile_percentage,
-            hypo_prediction_2 = liveHp2
+            hypo_prediction_2 = liveHp2,
+            boostActive = uamBoostActive,
+            boost_max = uamBoostMaxBolus,
+            boostMaxIOB = uamBoostMaxIob,
+            boost_scale = uamBoostScale,
+            Boost_InsulinReq = uamBoostInsulinReqPct
         )
         var sensitivityRatio = 1.0
         // TODO eliminate
@@ -6755,6 +6774,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfSmbDeliveryBaseline, dialogMessage = R.string.autoisf_smb_delivery_baseline_summary, title = R.string.autoisf_smb_delivery_baseline_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfBoostAutomationsEnabled, summary = R.string.autoisf_boost_automations_enabled_summary, title = R.string.autoisf_boost_automations_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMildBoostRatio, dialogMessage = R.string.autoisf_mild_boost_ratio_summary, title = R.string.autoisf_mild_boost_ratio_title))
+                    // Tier 3 "UAM Boost" (DetermineBasalAutoISF.kt) -- distinct from the
+                    // ApsAutoIsfBoostAutomationsEnabled/ApsAutoIsfMildBoostRatio pair just above, which
+                    // is BolusGiven/BolusGivenMild's own unrelated "boost".
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostEnabled, summary = R.string.autoisf_uam_boost_enabled_summary, title = R.string.autoisf_uam_boost_enabled_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxBolus, dialogMessage = R.string.autoisf_uam_boost_max_bolus_summary, title = R.string.autoisf_uam_boost_max_bolus_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIob, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostScale, dialogMessage = R.string.autoisf_uam_boost_scale_summary, title = R.string.autoisf_uam_boost_scale_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostInsulinReqPct, dialogMessage = R.string.autoisf_uam_boost_insulin_req_pct_summary, title = R.string.autoisf_uam_boost_insulin_req_pct_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSmbOnEvenTarget, summary = R.string.enableSMB_EvenOn_OddOff_always_summary, title = R.string.enableSMB_EvenOn_OddOff_always))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSplitBolusEnabled, summary = R.string.split_bolus_enabled_summary, title = R.string.split_bolus_enabled_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowCarbModelCurve, summary = R.string.show_carb_model_curve_summary, title = R.string.show_carb_model_curve_title))

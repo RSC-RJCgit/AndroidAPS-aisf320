@@ -99,6 +99,14 @@ enum class BooleanKey(
     // Single master switch for BOTH BolusGiven (bg1/bg2/bg3) and BolusGivenMild — turning this off
     // disables both boost automations together, not just one.
     ApsAutoIsfBoostAutomationsEnabled("autoisf_boost_automations_enabled", true, defaultedBySM = true),
+    // Master on/off for Tier 3 "UAM Boost" in DetermineBasalAutoISF.kt, ported from
+    // Boost-in-AAPS_3.4's OapsProfileBoost.boostActive (there, a whole time-window +
+    // sleep-in/step-detection subsystem; here, deliberately just a plain toggle -- the simpler
+    // version explicitly chosen over porting that full subsystem). "Uam" prefix (not just
+    // ApsAutoIsfBoostEnabled) to stay clearly distinct from ApsAutoIsfBoostAutomationsEnabled above,
+    // which is a different, unrelated feature (BolusGiven/BolusGivenMild). Default false: opt-in,
+    // Tier 3 UAM Boost was hardcoded off (`val boostActive = false`) before this preference existed.
+    ApsAutoIsfUamBoostEnabled("autoisf_uam_boost_enabled", false, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     // Mutually-exclusive UKF requests. UKF1 replaces LibreSpecial EMA with smoothRawRealtime() only
     // on a non-Client Virtual Pump; real-pump and Client ingestion remain on LibreSpecial EMA. UKF2

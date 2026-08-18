@@ -110,6 +110,20 @@ enum class DoubleKey(
     // three tiers together. BolusGiven bg3's own ("strong") boost ratio is derived from this value
     // + 0.03, not set independently — see ApsAutoIsfBoostAutomationsEnabled for the on/off toggle.
     ApsAutoIsfMildBoostRatio("autoisf_mild_boost_ratio", 0.20, 0.1, 0.5, defaultedBySM = true),
+    // Tier 3 "UAM Boost" numeric knobs (DetermineBasalAutoISF.kt), ported from Boost-in-AAPS_3.4's
+    // OapsProfileBoost.boost_bolus/boost_maxIOB/boost_scale/Boost_InsulinReq -- same defaults/ranges
+    // as that project's own DoubleKey entries (boost_bolus_cap/boost_max_iob/boost_scale_value/
+    // boost_insulin_req_pct). "Uam" prefix to stay distinct from ApsAutoIsfBoostAutomationsEnabled/
+    // ApsAutoIsfMildBoostRatio above (a different, unrelated boost feature). Gated as a group by
+    // BooleanKey.ApsAutoIsfUamBoostEnabled.
+    ApsAutoIsfUamBoostMaxBolus("boost_bolus_cap", 2.5, 0.1, 10.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
+    ApsAutoIsfUamBoostMaxIob("boost_max_iob", 1.0, 0.1, 12.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
+    // Raw, unscaled value -- DetermineBasalAutoISF.kt applies the live profile-percentage scaling
+    // itself (* profile_percentage / 100.0), matching Boost-in-AAPS_3.4's own
+    // "profile.boost_scale * (profileSwitch / 100.0)" -- so this setting is the pre-scaling baseline,
+    // not the effective in-use value.
+    ApsAutoIsfUamBoostScale("boost_scale_value", 1.0, 0.1, 3.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
+    ApsAutoIsfUamBoostInsulinReqPct("boost_insulin_req_pct", 50.0, 30.0, 100.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
     FslCalOffset("fslCal_Offset", 0.0, -50.0, 50.0, defaultedBySM = true),      //dependency = BooleanKey.ApsCalibrationTrigger),
     FslCalSlope("fslCal_Slope", 1.0, 0.5, 1.5, defaultedBySM = true),           //dependency = BooleanKey.ApsCalibrationTrigger),
     FslSmoothAlpha("fsl_exp1_factor", 0.3, 0.1, 1.0, defaultedBySM = true),
