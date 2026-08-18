@@ -107,7 +107,9 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -1754,7 +1756,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         is TtCode.Single  ->
                             androidx.appcompat.app.AlertDialog.Builder(act)
                                 .setTitle(entry.label)
-                                .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(reader()) } }
+                                .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(displayedTtCurrentValue(entry, reader)) } }
                                 .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                                 // setNegativeButton alone only catches an explicit tap on the Cancel
@@ -1784,7 +1786,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 setPadding(48, 24, 48, 0)
                                 entry.currentValue?.let { reader ->
                                     addView(TextView(act).apply {
-                                        text = reader()
+                                        text = displayedTtCurrentValue(entry, reader)
                                         setPadding(0, 0, 0, 16)
                                     })
                                 }
@@ -1836,6 +1838,107 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // automation/profile state like MJ state or Profile override), so those popups look exactly as
         // before rather than show something misleading or half-right.
         class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String, val currentValue: (() -> String)? = null) : TtCode(label)
+    }
+
+    private fun mirroredAutoIsfSettings(): Map<String, String> =
+        preferences.get(StringNonKey.MirroredAutoIsfSettings)
+            .lineSequence()
+            .mapNotNull { line ->
+                val separator = line.indexOf(" = ")
+                if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 3)
+            }
+            .toMap()
+
+    private fun mirroredSettingsAge(): String {
+        val timestamp = preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
+        return if (timestamp > 0L) " (${dateUtil.minOrSecAgo(rh, timestamp)})" else ""
+    }
+
+    /**
+     * Client reads only the latest pump snapshot received with NS device status. Pump/Virtual still
+     * uses each row's existing local reader and never comes through these mirror helpers.
+     */
+    private fun mirroredListSetting(
+        key: String,
+        remoteValue: (String) -> String = { it }
+    ): String {
+        val value = mirroredAutoIsfSettings()[key] ?: return "Pump current: unavailable"
+        return "Pump current: ${remoteValue(value)}${mirroredSettingsAge()}"
+    }
+
+    private fun mirroredListSettingPair(
+        firstLabel: String,
+        firstKey: String,
+        secondLabel: String,
+        secondKey: String
+    ): String {
+        val mirrored = mirroredAutoIsfSettings()
+        val first = mirrored[firstKey]
+        val second = mirrored[secondKey]
+        if (first == null && second == null) return "Pump current: unavailable"
+        return "Pump current: $firstLabel=${first ?: "?"}, $secondLabel=${second ?: "?"}${mirroredSettingsAge()}"
+    }
+
+    private fun mirroredBoolean(value: String): String = when (value.lowercase(Locale.ROOT)) {
+        "true"  -> "ON"
+        "false" -> "OFF"
+        else    -> value
+    }
+
+    private fun mirroredProfileSetting(): String {
+        val mirrored = mirroredAutoIsfSettings()
+        val name = mirrored["configuration_profile"] ?: return "Pump current: unavailable"
+        val roleLabel = when (name) {
+            mirrored[StringKey.ApsAutoIsfStandardProfileName.key] -> "Standard"
+            mirrored[StringKey.ApsAutoIsfLowProfileName.key]      -> "Low"
+            else                                                   -> "neither"
+        }
+        return "Pump current: $roleLabel ($name)${mirroredSettingsAge()}"
+    }
+
+    private fun displayedTtCurrentValue(entry: TtCode, localValue: () -> String): String {
+        if (!config.AAPSCLIENT) return localValue()
+        val code = when (entry) {
+            is TtCode.Single  -> entry.value
+            is TtCode.Stepped -> entry.down
+        }
+        return when (code) {
+            5.002 -> mirroredListSettingPair(
+                "base", DoubleKey.ApsAutoIsfSmbDeliveryBaseline.key,
+                "mildBst", DoubleKey.ApsAutoIsfMildBoostRatio.key
+            )
+            5.006 -> mirroredListSetting(BooleanKey.ApsAutoIsfOldSensorAdjEnabled.key) { mirroredBoolean(it) }
+            5.008 -> mirroredListSetting(BooleanKey.ApsAutoIsfBoostAutomationsEnabled.key) { mirroredBoolean(it) }
+            5.012 -> mirroredListSetting(DoubleKey.ApsAutoIsfPpWeightNormal.key)
+            5.016 -> mirroredListSetting(DoubleKey.ApsAutoIsfBgAccelWeightNormal.key)
+            5.022 -> mirroredListSetting(DoubleKey.ApsAutoIsfDuraWeightNormal.key)
+            5.026 -> mirroredListSetting(DoubleKey.ApsAutoIsfLibreSlopeOrig.key)
+            5.032 -> mirroredListSetting(DoubleKey.ApsAutoIsfLibreOffsetOrig.key)
+            5.036 -> mirroredListSetting(DoubleKey.ApsAutoIsfSmbOffsetOverride.key)
+            5.046 -> mirroredListSetting(IntKey.OverviewBolusPercentage.key) { "$it%" }
+            5.052 -> mirroredListSetting(DoubleKey.ApsAutoIsfMildBoostRatio.key)
+            5.056 -> mirroredListSetting(DoubleKey.ApsAutoIsfPpWeightHigh.key)
+            5.062 -> mirroredListSetting(DoubleKey.ApsAutoIsfBgAccelWeightHigh.key)
+            5.068 -> mirroredListSetting(DoubleKey.ApsAutoIsfHighBgWeight.key)
+            5.074 -> mirroredListSetting(IntKey.InsulinOrefPeak.key) { "$it min" }
+            5.080 -> mirroredListSetting(DoubleKey.ApsAutoIsfMaxLow.key)
+            5.086 -> mirroredListSetting(DoubleKey.ApsAutoIsfMax.key)
+            5.092 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset0002.key)
+            5.098 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset0204.key)
+            5.104 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset0406.key)
+            5.110 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset0609.key)
+            5.116 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset0912.key)
+            5.122 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset1218.key)
+            5.128 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset1822.key)
+            5.134 -> mirroredListSetting(DoubleKey.ApsAutoIsfTodOffset2200.key)
+            5.138 -> mirroredListSetting(BooleanKey.ApsAutoIsfShowCarbModelCurve.key) { mirroredBoolean(it) }
+            5.142 -> mirroredListSetting(BooleanKey.ApsAutoIsfShowGraph5.key) { mirroredBoolean(it) }
+            5.144 -> mirroredListSetting("automation_state_MJ")
+            5.148 -> mirroredProfileSetting()
+            5.152 -> mirroredListSetting(BooleanKey.FslUseUkfSmoothing.key) { mirroredBoolean(it) }
+            5.156 -> mirroredListSetting(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled.key) { mirroredBoolean(it) }
+            else  -> localValue()
+        }
     }
 
     // Matches the *TT blocks in OpenAPSAutoISFPlugin.kt exactly. On a pump or Virtual build the chosen

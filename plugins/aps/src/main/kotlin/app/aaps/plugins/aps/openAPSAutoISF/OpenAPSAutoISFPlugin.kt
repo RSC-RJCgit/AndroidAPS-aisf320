@@ -5659,6 +5659,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // generic filters above would otherwise omit the day-0/day-1 sensor-age override actually in use.
         lines.add("${DoubleKey.FslCalSlope.key} = ${String.format(Locale.US, "%.2f", preferences.get(DoubleKey.FslCalSlope))}")
         lines.add("${DoubleKey.FslCalOffset.key} = ${String.format(Locale.US, "%.2f", preferences.get(DoubleKey.FslCalOffset))}")
+        // List1 also exposes these settings, whose enum names do not contain "AutoIsf".
+        lines.add("${BooleanKey.FslUseUkfSmoothing.key} = ${preferences.get(BooleanKey.FslUseUkfSmoothing)}")
+        lines.add("${IntKey.OverviewBolusPercentage.key} = ${preferences.get(IntKey.OverviewBolusPercentage)}")
+        lines.add("${IntKey.InsulinOrefPeak.key} = ${preferences.get(IntKey.InsulinOrefPeak)}")
+        lines.add("automation_state_MJ = ${automationStateService.getState("MJ")}")
         return lines.sorted().joinToString("\n")
     }
 
