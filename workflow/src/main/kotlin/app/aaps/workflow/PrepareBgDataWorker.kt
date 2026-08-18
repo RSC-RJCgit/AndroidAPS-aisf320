@@ -425,13 +425,13 @@ class PrepareBgDataWorker(
                 // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
                 val targetOffset = latestApsReason?.let { targetOffsetFromReason(it) }
                 val targetOffsetText = targetOffset?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "--"
-                // Labeled UKFset1/UKFset2 (not UKF1/UKF2) to stay distinct from the graph-comparison-line
-                // names of the same number -- those are unrelated functions that happen to share a digit.
-                val ukfMode = when {
-                    preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) -> "UKFset2"
-                    preferences.get(BooleanKey.FslUseUkfSmoothing)             -> "UKFset1"
-                    else                                                       -> "UKFoff"
-                }
+                // Tier 3 "UAM Boost" toggle, added 2026-08-18 (replaces the old UKFset1/UKFset2/UKFoff
+                // mode text this label used to show) -- raw preference only (this file has no
+                // ActivePlugin/VirtualPump injected, unlike OpenAPSAutoISFPlugin.kt's own
+                // uamBoostActive, which additionally requires VirtualPump). So this can read "On" on a
+                // real pump even though Tier 3 itself will never fire there -- shows configuration
+                // intent, not the fully-gated live dosing state.
+                val boostModeText = if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
                 // HP3: same formula as HP2 above, but BOTH the base-glucose term and the delta5 term are
                 // swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
                 // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction
@@ -450,7 +450,7 @@ class PrepareBgDataWorker(
                     val hp3 = (ukf3BglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukf3Delta5Mmol + cobTerm
                     String.format(Locale.getDefault(), "%.1f", hp3)
                 } else "--"
-                val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  UKF= $ukfMode"
+                val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  Boost= $boostModeText"
                 val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
                 // 75.6 (4.2mmol) -> 50.0 (2.8mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
                 // anchor above -- the renderer draws this row at endY + a small pixel offset BELOW the

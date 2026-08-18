@@ -78,9 +78,11 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  (buildCombinedExport(), added 2026-08-17 after a real 5-day silent EACCES failure on aapsVirtual
      *  went unnoticed -- that function previously only logged errors internally). UKCs/UKCf = UKFcheck
      *  diagnostic export (exportUkfCheckText(), same motivation, added the same day after a matching
-     *  silent EACCES on Client). */
+     *  silent EACCES on Client). UKCn (added 2026-08-18) = UKFcheck ran successfully but found no
+     *  matching log lines this window -- distinct from UKCf (a genuine read/write exception, the only
+     *  path that fires it) so "nothing to report" is never confused with "the export broke". */
     fun addExportCarePortalNote(note: String) {
-        require(note in setOf("AVLs", "AVLf", "AVCs", "AVCf", "ACEs", "ACEf", "UKCs", "UKCf"))
+        require(note in setOf("AVLs", "AVLf", "AVCs", "AVCf", "ACEs", "ACEf", "UKCs", "UKCf", "UKCn"))
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
             duration = TimeUnit.MINUTES.toMillis(1),
@@ -426,47 +428,42 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** TEMP diagnostic (UKF3426 branch): pulls just the per-type delta/acceleration comparison lines
      *  (DropDetected[...]/AccelSignDisagreement[...]/the five *Metrics: lines -- see UKF_CHECK_PATTERNS)
      *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
-     *  archives in loggerUtils.logDirectory, and writes the matches as UKFcheck_$stamp.txt (dated
-     *  archive) plus UKFcheck_<PatientName>.txt (stable "current" copy, output/ subfolder) into that
-     *  SAME folder.
+     *  archives in loggerUtils.logDirectory (Documents/aapsLogs, unrelated to the write target below),
+     *  and writes the matches as UKFcheck_$stamp.txt (dated archive, in resolveExportDir()) plus
+     *  UKFcheck_<PatientName>.txt (stable "current" copy, resolveExportDir()/output/).
      *
-     *  Write target changed 2026-08-18: previously wrote into resolveExportDir()'s folder
-     *  (fileListProvider.aapsLogsPath, Documents/AAPS/aapsLogs/<Name> -- where the AIV CSV/TXT/settings
-     *  exports themselves live), which is a DIFFERENT physical folder from loggerUtils.logDirectory
-     *  (Documents/aapsLogs, the raw logback.xml rolling-log destination this function already reads
-     *  FROM) -- both happen to be named "aapsLogs" but one nests under Documents/AAPS and the other
-     *  doesn't. That mismatch meant this function could successfully READ the live log (from the
-     *  working folder) but then fail to WRITE its extract (into the separate, EACCES-prone folder) --
-     *  real repeated UKCf failures on both aapsVirtual and Client traced directly to that folder, even
-     *  though Documents/aapsLogs itself was demonstrably writable the whole time (logback's own file
-     *  appender writes there successfully every run). Now writes to the folder already proven to work,
-     *  eliminating the mismatch instead of chasing the permission gap itself. `dir` param dropped
-     *  (was only ever used for the old write target); `stamp` already carries the patient-name prefix
-     *  (see writeExport()'s own stamp construction) so the flat, unscoped folder still produces a
-     *  uniquely identifiable filename per device.
+     *  Write target history, 2026-08-18 (two changes same day, second one supersedes the first):
+     *  1. Originally wrote dated-only into resolveExportDir() directly -- real repeated UKCf EACCES
+     *     failures traced to that folder, so the write target was moved to loggerUtils.logDirectory
+     *     (Documents/aapsLogs, proven reliable since it's logback's own rolling-log destination) with a
+     *     resolveExportDir()/output/ copy demoted to a best-effort secondary.
+     *  2. On closer look, ACEs/AutoISF_settings_<Name>.txt -- which live specifically in
+     *     resolveExportDir()/output/, not resolveExportDir() directly -- have a solid success track
+     *     record (far more ACEs than ACEf in real AIV data). The original EACCES failures were only
+     *     ever observed for a write into the BARE resolveExportDir() folder, never confirmed for its
+     *     output/ subfolder specifically -- so resolveExportDir()/output/ is restored as primary here
+     *     (matching combined<Name>.txt/AutoISF_settings_<Name>.txt exactly, so UKCs/UKCf now measure
+     *     the same folder ACEs/AVLs do), and loggerUtils.logDirectory becomes the best-effort secondary
+     *     instead -- kept, not dropped, since it's a real independently-proven-reliable location and
+     *     costs nothing extra to also try.
      *
-     *  Stable "current" copy (output/ subfolder) added same day: matches the existing
-     *  combined<Name>.txt/AutoISF_settings_<Name>.txt convention (dated archive + undated "always
-     *  latest" copy in an output/ folder) that buildCombinedExport()/writeStableSettings() already use
-     *  -- this function previously had no equivalent, only ever-accumulating dated files. Placed under
-     *  Documents/aapsLogs/output/ (NOT resolveExportDir()'s own output/, which is the folder this whole
-     *  write target moved away from) to keep the proven-working parent folder.
+     *  `dir` param dropped (resolveExportDir() is called directly here instead, same as
+     *  buildCombinedExport()/writeStableSettings() already do); `stamp` already carries the
+     *  patient-name prefix (see writeExport()'s own stamp construction).
      *
-     *  Best-effort legacy-location copy added same day: after both writes above succeed, also
-     *  ATTEMPTS a copy of the stable file into resolveExportDir()'s own output/ folder (where you'd
-     *  naturally expect to find it alongside combined<Name>.txt/AutoISF_settings_<Name>.txt) so it's
-     *  there when that folder happens to be writable -- wrapped in its own try/catch, deliberately NOT
-     *  allowed to turn a real UKCs success into a UKCf failure if this specific copy fails; that folder
-     *  is exactly the one with the EACCES history, so failure here is expected sometimes, not a bug.
+     *  No-matches handling changed 2026-08-18: previously returned silently on no matches (sb.isEmpty()),
+     *  so that outcome was indistinguishable from the function never having run -- no file, no note
+     *  either way. Now always writes a file (a clear placeholder when nothing matched) and fires a
+     *  distinct UKCn note, so "ran fine, nothing to report" reads apart from both UKCs (found
+     *  something) and UKCf (a real failure -- UKCf can ONLY come from the catch block below, so it
+     *  always means a genuine read/write exception, never "no findings").
      *
      *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is checked
      *  for `== 3` in two places (KeepAliveWorker.exportAutoIsfHistoryIfDue, MaintenancePlugin.sendLogs)
      *  to decide the AVLs/AVLf CarePortal note and EXPORT_STATUS log line, and to gate the explicit AIV
      *  cloud upload -- a 4th file would misreport every future automatic export as a false FAILURE.
-     *  No-data (sb.isEmpty(), e.g. genuinely nothing matched this window) stays silent -- not a
-     *  failure. A real failure now fires a UKCf CarePortal note (added 2026-08-17); a completed write
-     *  fires UKCs. Remove this whole function (and its call in writeExport()) once the UKF3426
-     *  comparison investigation is done and the diagnostic logging in OpenAPSAutoISFPlugin is removed. */
+     *  Remove this whole function (and its call in writeExport()) once the UKF3426 comparison
+     *  investigation is done and the diagnostic logging in OpenAPSAutoISFPlugin is removed. */
     private fun exportUkfCheckText(stamp: String) {
         try {
             val logDir = File(loggerUtils.logDirectory)
@@ -495,28 +492,36 @@ class AutoIsfHistoryExporter @Inject constructor(
                 }
             }
 
-            if (sb.isEmpty()) return
-            val text = sb.toString()
+            val foundMatches = sb.isNotEmpty()
+            val text = if (foundMatches) sb.toString()
+                else "No DropDetected[/AccelSignDisagreement[/LibreVsSet1Race[/Metrics: lines found in this window.\n"
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
             val stableName = if (patientName.isNotEmpty()) "UKFcheck_$patientName.txt" else "UKFcheck.txt"
 
-            val file = File(logDir, "UKFcheck_$stamp.txt")
+            // Primary: resolveExportDir() -- same folder ACEs/AVLs/combined<Name>.txt/
+            // AutoISF_settings_<Name>.txt already use successfully.
+            val primaryDir = resolveExportDir(patientName)
+            val file = File(primaryDir, "UKFcheck_$stamp.txt")
             file.writeText(text)
 
-            val stableFile = File(logDir, "output").also { it.mkdirs() }.let { File(it, stableName) }
+            val stableFile = File(primaryDir, "output").also { it.mkdirs() }.let { File(it, stableName) }
             stableFile.writeText(text)
 
-            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath}")
-            addExportCarePortalNote("UKCs")
+            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath} (foundMatches=$foundMatches)")
+            addExportCarePortalNote(if (foundMatches) "UKCs" else "UKCn")
 
-            // Best-effort only -- see this function's own doc comment for why a failure here must not
-            // downgrade the UKCs success already recorded above.
+            // Best-effort secondary: loggerUtils.logDirectory (Documents/aapsLogs) -- independently
+            // proven reliable (logback's own rolling-log destination), kept as a second copy since it
+            // costs nothing extra. Wrapped in its own try/catch, deliberately NOT allowed to downgrade
+            // the UKCs/UKCn success already recorded above if this specific copy fails.
             try {
-                val legacyOutputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
-                File(legacyOutputDir, stableName).writeText(text)
-                aapsLogger.debug(LTag.UI, "UKFcheck also copied to legacy location ${legacyOutputDir.absolutePath}")
+                val secondaryDir = File(loggerUtils.logDirectory)
+                File(secondaryDir, "UKFcheck_$stamp.txt").writeText(text)
+                val secondaryOutputDir = File(secondaryDir, "output").also { it.mkdirs() }
+                File(secondaryOutputDir, stableName).writeText(text)
+                aapsLogger.debug(LTag.UI, "UKFcheck also copied to secondary location ${secondaryDir.absolutePath}")
             } catch (e: Exception) {
-                aapsLogger.debug(LTag.UI, "UKFcheck legacy-location copy skipped (expected sometimes, not a failure): ${e.message}")
+                aapsLogger.debug(LTag.UI, "UKFcheck secondary-location copy skipped: ${e.message}")
             }
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "UKFcheck diagnostic export failed", e)
