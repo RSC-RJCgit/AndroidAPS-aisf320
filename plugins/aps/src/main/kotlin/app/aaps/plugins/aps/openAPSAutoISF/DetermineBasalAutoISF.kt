@@ -186,10 +186,13 @@ class DetermineBasalAutoISF @Inject constructor(
     }
 
     fun isEven(value: Double): Boolean =
+
         if (value % 1 == 0.0) value.toInt() % 2 == 0          // whole number: check integer
+
         else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
 
-    fun determine_basal(
+    fun
+        determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
         smb_max_range_extension: Double, iob_threshold_percent: Int, activity_consoleLog: String, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>,
@@ -1945,6 +1948,8 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             val insulinScheduled = currenttemp.duration * (currenttemp.rate - basal) / 60
+
+
             if (insulinScheduled >= TDDfactor * insulinReq * 2) {
                 rT.reason.append("${currenttemp.duration}m@${basalForDisplay(currenttemp.rate)} ov 2 * insulinReq. Setting temp basal of ${basalForDisplay(rate)}U/hr. ")
                 return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
