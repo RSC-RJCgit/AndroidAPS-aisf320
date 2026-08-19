@@ -1420,27 +1420,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     //   grep -oE '(check|set)AutomationState\("[^"]+", *"[^"]+"\)' OpenAPSAutoISFPlugin.kt
     // Must be kept in sync by hand the same way that registry is, whenever a new state/value pair is
     // introduced.
-    private val REQUIRED_AUTOMATION_STATES: Map<String, List<String>> = mapOf(
-        "MJ" to listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"),
-        "MJstate" to listOf("MJon", "MJoff"),
-        "Steroids" to listOf("Steroids Off", "SteroidsON"),
-        "LowBG" to listOf("50recent", "NO50rec"),
-        "Steps" to listOf("StepsLow", "StepsHigh"),
-        "BGLstate" to listOf("BGLlastLOW"),
-        "Profile" to listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"),
-        "Sleeping" to listOf("True"),
-        "query_got_up" to listOf("query_it")
+    //
+    // defaultValue (added 2026-08-19, closing a real gap found the same day): declaring a state's
+    // VALUE LIST is not enough on its own for checkAutomationState()/inState() gates to ever read true
+    // for it -- AutomationStateService only assigns a CURRENT value the first time something calls
+    // setState() for that name, whether via the in-app dialog's OK button (which sets the first list
+    // entry as current for a brand-new state) or a coded action. Left null wherever this file never
+    // observed a coded writer/an unambiguous "neutral" reading for that state -- guessing wrong here
+    // would assert a specific real-world condition (e.g. "a low just happened") that may not be true,
+    // which is worse than just leaving it undeclared until something legitimately sets it:
+    //   - "Steps"/"Sleeping" have no coded setState() call anywhere in this file -- something else
+    //     (native automation, external integration) owns writing them; not this bootstrap's place to guess.
+    //   - "BGLstate" has only one enumerated value ("BGLlastLOW") with no observed "not low" counterpart --
+    //     defaulting to it would wrongly assert "a low just happened" on every fresh/blank state.
+    //   - "query_got_up" is a one-shot query signal, not a persistent on/off toggle -- no "default" applies.
+    private data class RequiredAutomationState(val values: List<String>, val defaultValue: String? = null)
+
+    private val REQUIRED_AUTOMATION_STATES: Map<String, RequiredAutomationState> = mapOf(
+        "MJ" to RequiredAutomationState(listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"), defaultValue = "NOMJremains"),
+        "MJstate" to RequiredAutomationState(listOf("MJon", "MJoff"), defaultValue = "MJoff"),
+        "Steroids" to RequiredAutomationState(listOf("Steroids Off", "SteroidsON"), defaultValue = "Steroids Off"),
+        "LowBG" to RequiredAutomationState(listOf("50recent", "NO50rec"), defaultValue = "NO50rec"),
+        "Steps" to RequiredAutomationState(listOf("StepsLow", "StepsHigh")),
+        "BGLstate" to RequiredAutomationState(listOf("BGLlastLOW")),
+        "Profile" to RequiredAutomationState(listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"), defaultValue = "AllOK"),
+        "Sleeping" to RequiredAutomationState(listOf("True")),
+        "query_got_up" to RequiredAutomationState(listOf("query_it"))
     )
 
-    private fun ensureStateDeclared(stateName: String, values: List<String>) {
+    private fun ensureStateDeclared(stateName: String, required: RequiredAutomationState) {
         if (!automationStateService.hasStateValues(stateName)) {
-            automationStateService.setStateValues(stateName, values)
-            aapsLogger.info(LTag.APS, "Automation state \"$stateName\" was undeclared -- auto-registered with values $values")
+            automationStateService.setStateValues(stateName, required.values)
+            aapsLogger.info(LTag.APS, "Automation state \"$stateName\" was undeclared -- auto-registered with values ${required.values}")
+        }
+        val default = required.defaultValue
+        // getStateValues() re-check (not just required.values) on purpose: if this state already existed
+        // with a user-customized list that doesn't happen to contain our hardcoded default, setState()
+        // would throw -- skip rather than guess at a substitute.
+        if (default != null &&
+            automationStateService.getState(stateName).isEmpty() &&
+            automationStateService.getStateValues(stateName).contains(default)
+        ) {
+            automationStateService.setState(stateName, default)
+            aapsLogger.info(LTag.APS, "Automation state \"$stateName\" had no current value -- defaulted to \"$default\"")
         }
     }
 
     private fun ensureRequiredAutomationStatesDeclared() {
-        REQUIRED_AUTOMATION_STATES.forEach { (stateName, values) -> ensureStateDeclared(stateName, values) }
+        REQUIRED_AUTOMATION_STATES.forEach { (stateName, required) -> ensureStateDeclared(stateName, required) }
     }
 
     // Ready for later conditions that could otherwise re-fire every loop cycle (down to 1-minute cycles)
