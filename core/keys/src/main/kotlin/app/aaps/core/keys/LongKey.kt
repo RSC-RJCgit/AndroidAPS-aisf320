@@ -56,8 +56,6 @@ enum class LongKey(
     // revert to baseline, on the reasoning that the compensation is calibrated against genuine high-BGL
     // Libre-vs-reference divergence, which this checks is actually still occurring recently.
     ApsAutoIsfLibreOver12Ts("autoisf_libre_over_12_ts", 0, defaultedBySM = true),
-    // Internal-only: hard expiry for the temporary slope=0.75/offset=1.3 low-raw override.
-    ApsAutoIsfLowRaw24OverrideUntil("autoisf_low_raw_24_override_until", 0, defaultedBySM = true, exportable = false),
     // Internal-only: timestamp (ms) until which OvernightDuraRescue's temporary Standard-profile switch
     // should be respected -- OffHighProf/MJrecentCurrProfAcce/NightAcce's switch-to-Low actions check this
     // and yield while it's in the future. 0/past means no rescue active; no explicit clear needed, it just

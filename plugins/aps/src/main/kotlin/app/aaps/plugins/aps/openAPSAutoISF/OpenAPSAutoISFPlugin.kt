@@ -1936,36 +1936,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- LowRaw24Cal: after 24 continuous hours with every raw Libre BGL below 10.0mmol,
         // temporarily use slope=0.75 and offset=1.3. The rolling 24-hour condition remains a live
         // requirement throughout the override: loss of coverage or any raw reading >=10.0 reverts it
-        // immediately. It also expires after six hours even if the condition remains true. The armed
-        // latch prevents repeated back-to-back six-hour windows from one uninterrupted low-raw episode.
+        // immediately. No hard expiry -- changed 2026-08-19: previously force-reverted after six hours
+        // even if the 24h-below-10 condition was still true (an "L10End" note, distinct from "L10Off"
+        // for a genuine condition change); that turned out not to be the intended design. Now the
+        // override simply stays active/reasserted for as long as the condition keeps holding, extending
+        // indefinitely through one continuous low-raw episode, and only ever reverts ("L10Off") when the
+        // condition genuinely breaks. The old six-hour-cap/re-arm-latch machinery
+        // (ApsAutoIsfLowRaw24OverrideUntil/ApsAutoIsfLowRaw24OverrideArmed) is removed as dead weight --
+        // it existed only to stop one continuous episode re-triggering itself every six hours, a concern
+        // that no longer applies once there's no expiry to re-trigger from.
         run {
-            val now = dateUtil.now()
             val below10For24Hours = rawLibreBelowForHours(10.0, 24)
             val overrideActive = preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)
             if (overrideActive) {
-                val expired = now >= preferences.get(LongKey.ApsAutoIsfLowRaw24OverrideUntil)
-                if (!below10For24Hours || expired) {
+                if (!below10For24Hours) {
                     preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideActive, false)
-                    preferences.put(LongKey.ApsAutoIsfLowRaw24OverrideUntil, 0L)
                     preferences.put(DoubleKey.FslCalSlope, preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig))
                     preferences.put(DoubleKey.FslCalOffset, preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))
-                    if (!below10For24Hours) {
-                        preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, true)
-                        addCarePortalNote("L10Off")
-                    } else {
-                        addCarePortalNote("L10End")
-                    }
+                    addCarePortalNote("L10Off")
                 } else {
                     // Reassert the temporary pair if another settings path changed either live value.
                     if (!fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), 0.75)) preferences.put(DoubleKey.FslCalSlope, 0.75)
                     if (!fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), 1.3)) preferences.put(DoubleKey.FslCalOffset, 1.3)
                 }
             } else {
-                if (!below10For24Hours) preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, true)
-                if (below10For24Hours && preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed)) {
+                if (below10For24Hours) {
                     preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideActive, true)
-                    preferences.put(BooleanKey.ApsAutoIsfLowRaw24OverrideArmed, false)
-                    preferences.put(LongKey.ApsAutoIsfLowRaw24OverrideUntil, now + T.hours(6).msecs())
                     preferences.put(DoubleKey.FslCalSlope, 0.75)
                     preferences.put(DoubleKey.FslCalOffset, 1.3)
                     addCarePortalNote("L10On")
