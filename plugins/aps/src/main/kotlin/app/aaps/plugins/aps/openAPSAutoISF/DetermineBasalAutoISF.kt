@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.BooleanKey
@@ -37,6 +38,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var profileFunction: ProfileFunction
+    @Inject lateinit var config: Config
 
     // TDD-based ratio passed from OpenAPSAutoISFPlugin via class-level properties (Option 3)
     var tddRatio: Double = 1.0
@@ -397,7 +399,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         if (autoIsfMode) {
             consoleError.add("----------------------------------")
-            consoleError.add("start AutoISF ${profile.autoISF_version} __ aisf321UK_654")
+            consoleError.add("start AutoISF ${profile.autoISF_version} __ ${config.VERSION_NAME.takeLast(13)}")
             consoleError.add("----------------------------------")
             consoleError.add("Sensitivity: ${autosens_data.sensResult}")
             consoleError.addAll(auto_isf_consoleLog)
@@ -773,7 +775,7 @@ class DetermineBasalAutoISF @Inject constructor(
         val TwilightTimeMins = 0
         val TwilightTimeDec = TwilightTimeAM + TwilightTimeMins / 100
         rT.reason.append(
-            " aisf321UK_654 COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
+            " ${config.VERSION_NAME.takeLast(13)} COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: ${convert_bg2(deviation.toDouble())}, BGI: ${convert_bg2(bgi)}, ISF: ${convert_isf(sens)}, CR: ${
                 round(profile.carb_ratio, 2)
                     .withoutZeros()
             }, Target: ${convert_bg(target_bg)}, minPredBG ${convert_bg(minPredBG)}, minGuardBG ${convert_bg(minGuardBG)}, IOBpredBG ${convert_bg(lastIOBpredBG)}"
@@ -1964,6 +1966,3 @@ class DetermineBasalAutoISF @Inject constructor(
     }
 }
 
-/*
-DetermineBasalAutoISF.ktaisf321UK_654
-*/

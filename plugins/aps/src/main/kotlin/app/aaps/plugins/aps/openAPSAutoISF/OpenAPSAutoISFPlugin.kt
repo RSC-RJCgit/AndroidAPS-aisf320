@@ -200,7 +200,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var todOffsetNegClearSince: Long = 0L
     private var todOffsetPosClearSince: Long = 0L
     private var virtualPseudoWizardLastStatus: String = "never fired"
-    val autoIsfVersion = "3.2.0"
+    val autoIsfVersion = "3.2.1"
     val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
     private val autoISF_max; get() = preferences.get(DoubleKey.ApsAutoIsfMax)
     private val autoISF_min; get() = preferences.get(DoubleKey.ApsAutoIsfMin)
