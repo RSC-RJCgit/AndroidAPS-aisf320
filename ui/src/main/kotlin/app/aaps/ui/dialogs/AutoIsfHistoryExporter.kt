@@ -428,9 +428,19 @@ class AutoIsfHistoryExporter @Inject constructor(
     /** TEMP diagnostic (UKF3426 branch): pulls just the per-type delta/acceleration comparison lines
      *  (DropDetected[...]/AccelSignDisagreement[...]/the five *Metrics: lines -- see UKF_CHECK_PATTERNS)
      *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
-     *  archives in loggerUtils.logDirectory (Documents/aapsLogs, unrelated to the write target below),
-     *  and writes the matches as UKFcheck_$stamp.txt (dated archive, in resolveExportDir()) plus
-     *  UKFcheck_<PatientName>.txt (stable "current" copy, resolveExportDir()/output/).
+     *  archives, resolved via [LoggerUtils.findSourceLogFiles] rather than loggerUtils.logDirectory
+     *  alone (unrelated to the write target below), and writes the matches as UKFcheck_$stamp.txt
+     *  (dated archive, in resolveExportDir()) plus UKFcheck_<PatientName>.txt (stable "current" copy,
+     *  resolveExportDir()/output/).
+     *
+     *  Read-source fix (2026-08-19): a real device (aapsVirtual) showed 100% UKCf failures -- traced to
+     *  hardcoding loggerUtils.logDirectory (public Documents/aapsLogs) as the only place searched for
+     *  AndroidAPS.log/.log.zip. On that device the rolling appender pointed at the public path had
+     *  silently gone stale (~7 days) while the always-attached app-specific fallback appender
+     *  (configureAppSpecificFallback()) kept receiving writes fine -- MaintenancePlugin.getLogFiles()
+     *  already had a multi-directory search + scoped-storage direct-name-probe fallback to handle
+     *  exactly this, so that logic was promoted to LoggerUtils.findSourceLogFiles() and both call sites
+     *  now share it instead of exportUkfCheckText() trusting a single fixed path.
      *
      *  Write target history, 2026-08-18 (two changes same day, second one supersedes the first):
      *  1. Originally wrote dated-only into resolveExportDir() directly -- real repeated UKCf EACCES
@@ -466,18 +476,17 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  investigation is done and the diagnostic logging in OpenAPSAutoISFPlugin is removed. */
     private fun exportUkfCheckText(stamp: String) {
         try {
-            val logDir = File(loggerUtils.logDirectory)
+            val sourceLogFiles = loggerUtils.findSourceLogFiles()
             val sb = StringBuilder()
 
-            val liveLog = File(logDir, "AndroidAPS.log")
-            if (liveLog.exists()) {
-                appendUkfCheckMatches(sb, "AndroidAPS.log (live)", liveLog.readText().lineSequence())
+            val liveLog = sourceLogFiles.filter { it.name == "AndroidAPS.log" }.maxByOrNull { it.lastModified() }
+            if (liveLog != null) {
+                appendUkfCheckMatches(sb, "AndroidAPS.log (live, ${liveLog.parentFile?.name})", liveLog.readText().lineSequence())
             }
 
-            val rotatedZips = logDir.listFiles { f -> f.isFile && f.name.endsWith(".log.zip") }
-                ?.sortedByDescending { it.lastModified() }
-                ?.take(UKF_CHECK_ZIP_COUNT)
-                .orEmpty()
+            val rotatedZips = sourceLogFiles.filter { it.name.endsWith(".log.zip") }
+                .sortedByDescending { it.lastModified() }
+                .take(UKF_CHECK_ZIP_COUNT)
             for (zip in rotatedZips) {
                 ZipInputStream(zip.inputStream()).use { zis ->
                     var entry = zis.nextEntry
@@ -510,10 +519,12 @@ class AutoIsfHistoryExporter @Inject constructor(
             aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath} (foundMatches=$foundMatches)")
             addExportCarePortalNote(if (foundMatches) "UKCs" else "UKCn")
 
-            // Best-effort secondary: loggerUtils.logDirectory (Documents/aapsLogs) -- independently
-            // proven reliable (logback's own rolling-log destination), kept as a second copy since it
-            // costs nothing extra. Wrapped in its own try/catch, deliberately NOT allowed to downgrade
-            // the UKCs/UKCn success already recorded above if this specific copy fails.
+            // Best-effort secondary: loggerUtils.logDirectory (Documents/aapsLogs) -- logback's own
+            // rolling-log destination, and reliable on most devices, but NOT universally (see the
+            // 2026-08-19 read-source fix above -- that same public path went silently stale on
+            // aapsVirtual for over a week). Kept as a second copy since it costs nothing extra when it
+            // works. Wrapped in its own try/catch, deliberately NOT allowed to downgrade the UKCs/UKCn
+            // success already recorded above if this specific copy fails.
             try {
                 val secondaryDir = File(loggerUtils.logDirectory)
                 File(secondaryDir, "UKFcheck_$stamp.txt").writeText(text)

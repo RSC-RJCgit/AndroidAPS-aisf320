@@ -13,6 +13,9 @@ import ch.qos.logback.core.rolling.TimeBasedRollingPolicy
 import dagger.Reusable
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 /**
@@ -41,6 +44,45 @@ class LoggerUtilsImpl @Inject constructor(
 
     override val appSpecificLogDirectory: String
         get() = File(context.getExternalFilesDir(null) ?: context.filesDir, "aapsLogs").absolutePath
+
+    override fun findSourceLogFiles(): List<File> {
+        val fallbackPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            .resolve("aapsLogs").absolutePath
+        val searchDirs = listOf(logDirectory, fallbackPath, appSpecificLogDirectory)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .map(::File)
+
+        // Include the live log and hourly rolled logs. Exclude AndroidAPS_LOG_* because those are
+        // previously generated export bundles, not source logs.
+        return searchDirs
+            .flatMap { dir ->
+                val listed = dir.listFiles { _: File?, name: String ->
+                    name == "AndroidAPS.log" ||
+                        (name.startsWith("AndroidAPS") && !name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip"))
+                }
+                if (!listed.isNullOrEmpty()) {
+                    listed.toList()
+                } else {
+                    // Scoped-storage can allow opening a known public-Documents file while refusing
+                    // directory enumeration. Probe the live filename and logback's deterministic
+                    // hourly rollover names directly so callers still find current logs in that state.
+                    val directlyReadable = mutableListOf<File>()
+                    File(dir, "AndroidAPS.log").takeIf { it.isFile && it.canRead() }?.let(directlyReadable::add)
+                    val hourFormat = SimpleDateFormat("yyyy-MM-dd_HH", Locale.US)
+                    val now = System.currentTimeMillis()
+                    repeat(30 * 24) { hoursAgo ->
+                        val stamp = hourFormat.format(Date(now - hoursAgo * 60L * 60L * 1000L))
+                        File(dir, "AndroidAPS._$stamp.log.zip")
+                            .takeIf { it.isFile && it.canRead() }
+                            ?.let(directlyReadable::add)
+                    }
+                    directlyReadable
+                }
+            }
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.name }
+    }
 
     @Synchronized
     override fun configureAppSpecificFallback() {

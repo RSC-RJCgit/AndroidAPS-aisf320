@@ -3,7 +3,6 @@ package app.aaps.plugins.configuration.maintenance
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -54,10 +53,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.text.SimpleDateFormat
 import java.util.Arrays
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -266,52 +262,11 @@ class MaintenancePlugin @Inject constructor(
      * @return
      */
     fun getLogFiles(amount: Int): List<File> {
-        val configuredPath = loggerUtils.logDirectory
-        val fallbackPath = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "aapsLogs").absolutePath
-        val searchDirs = listOf(configuredPath, fallbackPath, loggerUtils.appSpecificLogDirectory)
-            .filter { it.isNotBlank() }
-            .distinct()
-            .map(::File)
-        aapsLogger.debug("getting $amount logs from ${searchDirs.joinToString { it.absolutePath }}")
-
-        // Include the live log and hourly rolled logs. Exclude AndroidAPS_LOG_* because those are
-        // previously generated export bundles, not source logs; including them would recursively nest
-        // old exports inside every new export and make archives grow without bound.
-        val result = searchDirs
-            .flatMap { dir ->
-                val listed = dir.listFiles { _: File?, name: String ->
-                    name == "AndroidAPS.log" ||
-                        (name.startsWith("AndroidAPS") && !name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip"))
-                }
-                if (!listed.isNullOrEmpty()) {
-                    listed.toList()
-                } else {
-                    // Scoped-storage can allow opening a known public-Documents file while refusing
-                    // directory enumeration. Probe the live filename and logback's deterministic
-                    // hourly rollover names directly so cloud export still works in that state.
-                    val directlyReadable = mutableListOf<File>()
-                    File(dir, "AndroidAPS.log").takeIf { it.isFile && it.canRead() }?.let(directlyReadable::add)
-                    val hourFormat = SimpleDateFormat("yyyy-MM-dd_HH", Locale.US)
-                    val now = System.currentTimeMillis()
-                    repeat(30 * 24) { hoursAgo ->
-                        val stamp = hourFormat.format(Date(now - hoursAgo * 60L * 60L * 1000L))
-                        File(dir, "AndroidAPS._$stamp.log.zip")
-                            .takeIf { it.isFile && it.canRead() }
-                            ?.let(directlyReadable::add)
-                    }
-                    aapsLogger.warn(
-                        LTag.CORE,
-                        "Log directory listing unavailable/empty for ${dir.absolutePath}; direct-name fallback found ${directlyReadable.size} source log file(s)"
-                    )
-                    directlyReadable
-                }
-            }
-            .distinctBy { it.absolutePath }
-            .sortedByDescending { it.name }
-        var toIndex = amount
-        if (toIndex > result.size) {
-            toIndex = result.size
-        }
+        // Directory resolution + scoped-storage listing fallback live in LoggerUtils.findSourceLogFiles()
+        // (shared with AutoIsfHistoryExporter.exportUkfCheckText(), which needs the same multi-directory
+        // search rather than trusting loggerUtils.logDirectory alone).
+        val result = loggerUtils.findSourceLogFiles()
+        val toIndex = minOf(amount, result.size)
         aapsLogger.debug("found ${result.size} source log file(s): ${result.joinToString { "${it.name}(${it.length()}B)" }}; returning 0 to $toIndex")
         return result.subList(0, toIndex)
     }
