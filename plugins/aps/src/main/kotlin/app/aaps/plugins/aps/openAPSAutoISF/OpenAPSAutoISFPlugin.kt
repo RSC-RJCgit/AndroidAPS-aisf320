@@ -270,6 +270,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+        ensureRequiredAutomationStatesDeclared()
         var count = 0
         val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
         apsResults.forEach {
@@ -1392,6 +1393,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
         automationStateService.setState(stateName, stateValue)
         return true
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Self-healing Automation State registration (added 2026-08-19). AutomationStateService.setState()
+    // throws IllegalStateException for a stateName/stateValue that hasn't been pre-declared on the
+    // in-app "States" tab (AutomationStateValuesDialog -> setStateValues()) -- previously the ONLY way
+    // to declare one. On a fresh install/device, or after a settings import (which force-disables
+    // AutomationStatesEnabled and leaves state VALUE declarations exactly as imported -- see
+    // AutoISF-Idiosyncrasies-Manual.docx §3), any coded automation that calls setAutomationState()
+    // for a state/value nobody has manually typed into that tab yet will throw. "query_got_up"/"query_it"
+    // (below) already does this unconditionally with no hasStateValues() guard, so this was a real,
+    // live crash risk, not a hypothetical.
+    //
+    // ensureStateDeclared() is purely additive and idempotent: it only calls setStateValues() when
+    // hasStateValues() is false, so it can never clobber a value list a user has customized on the
+    // States tab (setStateValues() itself would silently clear the current active value if it isn't in
+    // the new list -- see AutomationStateService.kt -- which is exactly the clobber this guard avoids).
+    // Deliberately NOT gated on BooleanKey.AutomationStatesEnabled: declaring values is harmless (and
+    // arguably desirable) even while the feature is toggled off, so everything a user needs is already
+    // in place the moment they re-enable it after an import.
+    //
+    // REQUIRED_AUTOMATION_STATES is every {stateName -> value} pair this file's own coded automations
+    // are seen reading (checkAutomationState/inState) or writing (setAutomationState/setState) as of
+    // this commit -- extracted the same way CodedAutomationNames.KEYS documents its own extraction:
+    //   grep -oE '(check|set)AutomationState\("[^"]+", *"[^"]+"\)' OpenAPSAutoISFPlugin.kt
+    // Must be kept in sync by hand the same way that registry is, whenever a new state/value pair is
+    // introduced.
+    private val REQUIRED_AUTOMATION_STATES: Map<String, List<String>> = mapOf(
+        "MJ" to listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"),
+        "MJstate" to listOf("MJon", "MJoff"),
+        "Steroids" to listOf("Steroids Off", "SteroidsON"),
+        "LowBG" to listOf("50recent", "NO50rec"),
+        "Steps" to listOf("StepsLow", "StepsHigh"),
+        "BGLstate" to listOf("BGLlastLOW"),
+        "Profile" to listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"),
+        "Sleeping" to listOf("True"),
+        "query_got_up" to listOf("query_it")
+    )
+
+    private fun ensureStateDeclared(stateName: String, values: List<String>) {
+        if (!automationStateService.hasStateValues(stateName)) {
+            automationStateService.setStateValues(stateName, values)
+            aapsLogger.info(LTag.APS, "Automation state \"$stateName\" was undeclared -- auto-registered with values $values")
+        }
+    }
+
+    private fun ensureRequiredAutomationStatesDeclared() {
+        REQUIRED_AUTOMATION_STATES.forEach { (stateName, values) -> ensureStateDeclared(stateName, values) }
     }
 
     // Ready for later conditions that could otherwise re-fire every loop cycle (down to 1-minute cycles)
