@@ -5463,15 +5463,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                                 markRun(actionKey)
                                 virtualPseudoWizardLastStatus = "SUCCESS ${String.format(Locale.US, "%.2f", insulin)}U at ${dateUtil.timeString(dateUtil.now())}"
                                 aapsLogger.info(LTag.APS, "VirtualPseudoWizard SUCCESS ${String.format(Locale.US, "%.2f", insulin)}U")
+                                addCarePortalNote("VirtualPseudoWizard SUCCESS ${String.format(Locale.US, "%.2f", insulin)}U (calcCarbs=${calculationCarbs}g)")
                             } else {
                                 virtualPseudoWizardLastStatus = "FAILED at ${dateUtil.timeString(dateUtil.now())}: ${result.comment}"
                                 aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: ${result.comment}")
+                                addCarePortalNote("VirtualPseudoWizard FAILED: ${result.comment}")
                             }
                         }
                     })
                     if (!accepted) {
                         virtualPseudoWizardLastStatus = "FAILED at ${dateUtil.timeString(dateUtil.now())}: bolus queue rejected request"
                         aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: bolus queue rejected request")
+                        addCarePortalNote("VirtualPseudoWizard FAILED: bolus queue rejected request")
                     }
                     else consoleError.add("VirtualPseudoWizard queued ${String.format(Locale.US, "%.2f", insulin)}U with calculationCarbs=${calculationCarbs}g and recordedCarbs=0 ;; ")
                 } else {
