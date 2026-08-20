@@ -1270,7 +1270,17 @@ class DetermineBasalAutoISF @Inject constructor(
                 // live-scaled by the current profile percentage, matching Boost-in-AAPS_3.4's own
                 // "profile.boost_scale * (profileSwitch / 100.0)".
                 val boostActive = profile.boostActive
-                if (boostActive) {
+                // Tier 3 is intentionally daytime/evening only. Use the calculation's systemTime so
+                // replayed/historical calculations are evaluated in their own local-time window too,
+                // rather than against the wall clock at the moment the code happens to run.
+                // 09:00 is inclusive; 21:00 is exclusive (last eligible minute is 20:59).
+                val tier3LocalHour = Instant.ofEpochMilli(systemTime).atZone(ZoneId.systemDefault()).hour
+                val tier3TimeAllowed = tier3LocalHour in 9 until 21
+                if (boostActive && !tier3TimeAllowed) {
+                    consoleError.add("Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour $tier3LocalHour)")
+                    rT.reason.append("Tier 3 blocked outside 09:00-21:00; ")
+                }
+                if (boostActive && tier3TimeAllowed) {
                     val uamBoost1 = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
                     val uamBoost2 = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
                     val boost_max = profile.boost_max
