@@ -44,19 +44,9 @@ class DetermineBasalAutoISF @Inject constructor(
     var tddRatio: Double = 1.0
     var tdd7D: Double = 0.0
 
-    // Tier 3 "UAM Boost" anti-stacking + careportal/SMS signal, added 2026-08-18. This class has no
-    // readyToRun()/markRun() of its own (that idiom lives in OpenAPSAutoISFPlugin.kt, which this class
-    // has no access to) and no addCarePortalNote()/sendSms() capability at all (pure calculation class,
-    // no I/O) -- so the throttle is a plain class-level timestamp here (this class is @Singleton, so
-    // the same instance persists across determine_basal() calls, same as tddRatio/tdd7D above), and the
-    // notification signal is a plain boolean OpenAPSAutoISFPlugin reads back after calling
-    // determine_basal() rather than this class firing the note/SMS itself. Real concern this addresses:
-    // iob_data.iob doesn't reflect a just-delivered SMB until its bolus record lands (~10-15s lag per
-    // LoopPlugin.kt's own SMB-interval comments), so "iob_data.iob < boostMaxIOB" alone could stay true
-    // across 2+ consecutive 1-minute cycles -- the downstream smbSum10Min/30Min cumulative caps still
-    // bound the actual DELIVERED amount regardless (they measure real bolus records, not IOB), but
-    // without its own throttle Tier 3's own gate/logging could still re-fire and re-log every cycle.
-    private var uamBoostLastFireTime: Long = 0L
+    // Tier 3 notification signal. It is set only at the final delivery gate when a positive SMB whose
+    // candidate was genuinely increased by Tier 3 is written to rT.units. OpenAPSAutoISFPlugin owns the
+    // resulting CarePortal/SMS side effects; this calculation class performs no I/O.
     var uamBoostFiredThisCycle: Boolean = false
 
     private val consoleError = mutableListOf<String>()
@@ -255,6 +245,9 @@ class DetermineBasalAutoISF @Inject constructor(
         // other optional params above.
         basalUpOffsetZeroActive: Boolean = false
     ): RT {
+        // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
+        uamBoostFiredThisCycle = false
+        var uamBoostEnhancedCandidateThisCycle = false
         consoleError.clear()
         consoleError.add(activity_consoleLog)
         consoleLog.clear()
@@ -1276,52 +1269,35 @@ class DetermineBasalAutoISF @Inject constructor(
                 // live-scaled by the current profile percentage, matching Boost-in-AAPS_3.4's own
                 // "profile.boost_scale * (profileSwitch / 100.0)".
                 val boostActive = profile.boostActive
-                // Reset unconditionally every cycle (not just inside the active branch below) so a
-                // "true" from an earlier cycle can never leak into a later one where boost didn't even
-                // evaluate -- see this field's own doc comment.
-                uamBoostFiredThisCycle = false
                 if (boostActive) {
                     val uamBoost1 = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
                     val uamBoost2 = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
                     val boost_max = profile.boost_max
-                    val boostMaxIOB = profile.boostMaxIOB
+                    val boostMaxIOBPercent = profile.boostMaxIOBPercent
+                    val boostMaxIOB = profile.max_iob * boostMaxIOBPercent / 100.0
+                    val boostIobAllowance = (boostMaxIOB - iob_data.iob).coerceAtLeast(0.0)
                     val boost_scale = profile.boost_scale * (profile_percentage / 100.0)
                     var boostInsulinReq = basal
                     val Boost_InsulinReq = profile.Boost_InsulinReq
                     var insulinReqPCT = 100.0 / Boost_InsulinReq
                     val insulinDivisor: Double = insulinReqPCT
-                    // Anti-stacking throttle: iob_data.iob doesn't reflect a just-delivered SMB until
-                    // its bolus record lands (~10-15s lag), so the iob_data.iob < boostMaxIOB gate
-                    // alone could stay true across 2+ consecutive 1-minute cycles -- see
-                    // uamBoostLastFireTime's own doc comment above. 2 minutes chosen as a starting
-                    // point (adjust if real data shows it's too short/long once this is live-tested).
-                    val uamBoostThrottleMs = 2 * 60_000L
-                    val uamBoostReady = (currentTime - uamBoostLastFireTime) >= uamBoostThrottleMs
-
                     // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                    // Layer B: !mlTierDowngrade gate prevents aggressive UAM Boost firing
-                    // when hypo risk exceeds 0.6.
-                    // v4.4.4 Fix A v2: !inPostRescueWindow guard prevents dosing into rebound climbs.
                     if (glucose_status.delta >= 5
                         && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
-                        && uamBoostReady) {
+                        && boostIobAllowance > 0.0) {
 
-                        consoleError.add(">>> TIER 3: UAM Boost <<<")
-                        //rT.boostTier = "UAM_BOOST"
-                        consoleError.add("Insulin required pre-boost is $insulinReq")
+                        val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
-                        if (boostInsulinReq > boostMaxIOB - iob_data.iob) {
-                            boostInsulinReq = boostMaxIOB - iob_data.iob
-                        }
-                        if (delta_accl > 1) {
-                            insulinReqPCT = insulinDivisor
-                        }
-                        if (boostInsulinReq < (insulinReq / insulinReqPCT)) {
-                            microBolus = Math.floor(min(insulinReq / insulinReqPCT, boost_max) * roundSMBTo) / roundSMBTo
-                            rT.reason.append("UAM Boost enacted; SMB equals $microBolus; ")
-                        } else {
-                            microBolus = Math.floor(min(boostInsulinReq, boost_max) * roundSMBTo) / roundSMBTo
+                        val ordinaryCandidate = min(insulinReq / insulinDivisor, boost_max)
+                        val tier3Candidate = min(max(boostInsulinReq, ordinaryCandidate), boostIobAllowance)
+                        val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
+                        if (roundedTier3Candidate > preBoostMicroBolus) {
+                            microBolus = roundedTier3Candidate
+                            uamBoostEnhancedCandidateThisCycle = true
+                            consoleError.add(">>> TIER 3: UAM Boost candidate <<<")
+                            consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
+                            rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
                         }
                         // Apply graduated fast-carb scaling
                         /*if (fastCarbRebound) {
@@ -1330,10 +1306,6 @@ class DetermineBasalAutoISF @Inject constructor(
                             consoleError.add("Fast-carb scale applied: $preFcSmb → $microBolus (${round(fastCarbScale * 100, 0)}%)")
                         }
                         iTimeActive = true*/
-                        uamBoostLastFireTime = currentTime
-                        uamBoostFiredThisCycle = true
-                        consoleError.add("UAM Boost enacted; SMB equals $boostInsulinReq; Original insulin requirement was $insulinReq; IOB ${round(iob_data.iob, 2)}U of ${round(boostMaxIOB, 2)}U cap; next eligible in ${uamBoostThrottleMs / 60_000}min")
-                        rT.reason.append("UAM Boost enacted; SMB equals $boostInsulinReq; IOB ${round(iob_data.iob, 2)}/${round(boostMaxIOB, 2)}U; ")
                     }
                 }
 
@@ -1926,6 +1898,10 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (microBolus > 0) {
                         rT.units = microBolus
                         rT.reason.append("Microbolusing ${round(microBolus, 2)}U. ")
+                        if (uamBoostEnhancedCandidateThisCycle) {
+                            uamBoostFiredThisCycle = true
+                            rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
+                        }
                     }
                 } else {
                     val nextBolusMins = (SMBInterval - lastBolusAge) / 60.0

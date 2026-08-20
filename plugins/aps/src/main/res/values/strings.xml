@@ -290,8 +290,8 @@
     <string name="autoisf_uam_boost_enabled_summary">Default off. Master switch for the Tier 3 UAM Boost condition in DetermineBasalAutoISF.kt (strong acceleration with positive delta) -- distinct from \"Enable boost automations\" above, which is BolusGiven/BolusGivenMild\'s own separate feature.</string>
     <string name="autoisf_uam_boost_max_bolus_title">UAM Boost max bolus (boost_max)</string>
     <string name="autoisf_uam_boost_max_bolus_summary">Default 2.5U. Hard cap on a single UAM Boost SMB.</string>
-    <string name="autoisf_uam_boost_max_iob_title">UAM Boost max IOB (boostMaxIOB)</string>
-    <string name="autoisf_uam_boost_max_iob_summary">Default 1.0U. UAM Boost stops firing once IOB reaches this level, regardless of the other trigger conditions.</string>
+    <string name="autoisf_uam_boost_max_iob_title">UAM Boost max IOB (% of max_iob)</string>
+    <string name="autoisf_uam_boost_max_iob_summary">Default 10%. Tier 3 cannot raise the final SMB above the remaining allowance under this percentage of profile max_iob.</string>
     <string name="autoisf_uam_boost_scale_title">UAM Boost scale (boost_scale)</string>
     <string name="autoisf_uam_boost_scale_summary">Default 1.0. Multiplier applied to the pre-boost insulin requirement before capping at the max bolus above. This is the raw, unscaled value -- the live SMB is also scaled by the current profile percentage on top of this.</string>
 

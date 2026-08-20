@@ -227,7 +227,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // (though not actually deliver, since Client doesn't drive a real pump) on Client too.
     private val uamBoostActive; get() = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && activePlugin.activePump is VirtualPump
     private val uamBoostMaxBolus; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
-    private val uamBoostMaxIob; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIob)
+    private val uamBoostMaxIobPercent; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent)
     private val uamBoostScale; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)
     // Calculated, not a separate setting, 2026-08-18 per explicit request: the reference project's
     // Boost_InsulinReq is a 0-100% GUI value, while this codebase's own smb_delivery_ratio is the
@@ -1780,7 +1780,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             hypo_prediction_2 = liveHp2,
             boostActive = uamBoostActive,
             boost_max = uamBoostMaxBolus,
-            boostMaxIOB = uamBoostMaxIob,
+            boostMaxIOBPercent = uamBoostMaxIobPercent,
             boost_scale = uamBoostScale,
             Boost_InsulinReq = uamBoostInsulinReqPct
         )
@@ -6841,7 +6841,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // is BolusGiven/BolusGivenMild's own unrelated "boost".
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostEnabled, summary = R.string.autoisf_uam_boost_enabled_summary, title = R.string.autoisf_uam_boost_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxBolus, dialogMessage = R.string.autoisf_uam_boost_max_bolus_summary, title = R.string.autoisf_uam_boost_max_bolus_title))
-                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIob, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostScale, dialogMessage = R.string.autoisf_uam_boost_scale_summary, title = R.string.autoisf_uam_boost_scale_title))
                     // No GUI entry for InsulinReqPct -- see uamBoostInsulinReqPct's own doc comment
                     // below: calculated from ApsAutoIsfSmbDeliveryRatio * 100 instead of a separate
