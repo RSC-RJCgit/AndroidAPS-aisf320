@@ -1225,7 +1225,19 @@ class DetermineBasalAutoISF @Inject constructor(
                 val roundSMBTo = 1 / profile.bolus_increment
                 var microBolus = Math.floor(Math.min(insulinReq / 2, maxBolus) * roundSMBTo) / roundSMBTo
                 if (autoIsfMode) {
-                    microBolus = Math.min(insulinReq * smb_ratio, maxBolus)
+                    // Overnight delivery brake: from 00:00 inclusive until 08:00 exclusive, reduce
+                    // the effective SMB delivery ratio by 0.03. This is a ratio adjustment, not a
+                    // flat 0.03 U subtraction, so it scales with the calculated insulin requirement.
+                    // Clamp at zero in case a deliberately tiny configured ratio is used.
+                    val overnightSmbRatioWindow = nowHour in 0 until 8
+                    val effectiveSmbRatio = if (overnightSmbRatioWindow)
+                        (smb_ratio - 0.03).coerceAtLeast(0.0)
+                    else smb_ratio
+                    if (overnightSmbRatioWindow) {
+                        consoleError.add("Overnight SMB delivery ratio: ${round(smb_ratio, 2)} -> ${round(effectiveSmbRatio, 2)} (00:00-08:00)")
+                        rT.reason.append("overnight SMB ratio ${round(smb_ratio, 2)} -> ${round(effectiveSmbRatio, 2)}; ")
+                    }
+                    microBolus = Math.min(insulinReq * effectiveSmbRatio, maxBolus)
                     if (microBolus > iobTHvirtual - iob_data.iob && (loop_wanted_smb == "fullLoop" || loop_wanted_smb == "enforced")) {
                         microBolus = iobTHvirtual - iob_data.iob
                         consoleError.add("Full loop capped SMB at ${round(microBolus, 2)} to not exceed $iobTHtolerance% of effective iobTH ${round(iobTHvirtual / iobTHtolerance * 100, 2)}U")
