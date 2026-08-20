@@ -1043,6 +1043,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return (dateUtil.now() - last.timestamp) / 3_600_000.0
     }
 
+    // Patch pumps represent a cannula change as a pod change. Keep pod-specific calculations separate
+    // from ordinary infusion-site age so a tubed pump (or MDI) can never look like a fresh/old pod.
+    private fun hoursSinceCurrentPodChange(): Double? {
+        if (!activePlugin.activePump.pumpDescription.isPatchPump) return null
+        return hoursSinceLastCannulaChange()
+    }
+
     // Hours since the last recorded sensor change, or null if none found. Matches TriggerSensorAge's
     // use of TE.Type.SENSOR_CHANGE.
     private fun hoursSinceLastSensorChange(): Double? {
@@ -1985,9 +1992,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val p50b2 = g <= 99.1 /* 5.5 */ && recentSteps30Minutes >= 300 &&
                 cob == 0.0 && iob >= 1.2 && d <= -1.80 /* -0.10 */
 
-            // Block 3 — fallback: a clear fall below 5.0 (delta ≤ -0.10, was -0.05,
-            // widened to open a deadband against the TToff off3 plateau reversal)
-            val p50b3 = g < 90.1 /* 5.0 */ && d <= -1.80 /* -0.10 */
+            // Block 3 — native fallback: below 5.0 with delta ≤ -0.05 mmol/5 min.
+            val p50b3 = g < 90.1 /* 5.0 */ && d <= -0.90 /* -0.05 */
 
             // Block 4 — pre-sleep: falling into sleep window at higher glucose
             val p50b4 = g <= 126.1 /* 7.0 */ && isTimeBetween(21, 0, 0, 0) &&
@@ -2108,7 +2114,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // fresh sensor on an aging pod reads the same as an aging sensor for this purpose. Sensor-age
             // wins where it applies (NewDay1/NewDay3/the 11-15 day tiers are untouched by pod age); this
             // OR only widens the NewDay2 window, it never narrows the sensor-age-only tiers.
-            val cannulaHoursForTier = hoursSinceLastCannulaChange()
+            val cannulaHoursForTier = hoursSinceCurrentPodChange()
             val newDay2ByPodAge = cannulaHoursForTier != null && cannulaHoursForTier > 60.0
             val oldSensorTier = when {
                 sensorAgeDays != null && sensorAgeDays < 1.0                           -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
@@ -2169,8 +2175,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // No readyToRun throttle — checked every cycle like DelOff/OldSensorAdj above, so the "since"
         // timestamp and the latch both react/reset promptly.
         run {
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val podOld = cannulaH > 60.0
+            val cannulaH = hoursSinceCurrentPodChange()
+            val podOld = cannulaH != null && cannulaH > 60.0
             val g = glucoseStatus.glucose
             val rawG = rawGlucoseMgdl()
             val highNow = (rawG != null && rawG > 198.2 /* 11.0 mmol raw */) || g > 180.2 /* 10.0 mmol */
@@ -3582,8 +3588,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val ld = glucoseStatus.longAvgDelta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val oldOrNew = cannulaH >= 60.0 || cannulaH <= 6.0
+            val cannulaH = hoursSinceCurrentPodChange()
+            val oldOrNew = cannulaH != null && (cannulaH >= 60.0 || cannulaH <= 6.0)
             if (g >= 180.2 /* 10.0 mmol */ && d in 1.8..5.4 /* 0.1–0.3 mmol */
                 && sd >= 1.8 /* 0.1 mmol */ && ld >= 0.0
                 && lastBolusMin >= 90 && oldOrNew) {
@@ -3643,11 +3649,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd      = glucoseStatus.shortAvgDelta
             val ld      = glucoseStatus.longAvgDelta
             val iobTH   = iobThresholdPercent
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val cannulaH = hoursSinceCurrentPodChange()
             val baseOk  = isTimeBetween(1, 0, 5, 45) && g >= 126.1 /* 7.0 mmol */
                 && d >= 0.0 && d <= 14.4 /* 0.8 mmol */ && sd >= 0.0 && ld >= 0.0 && ld <= 6.3 /* 0.35 mmol */
             val branch1 = baseOk && iobTH <= 50
-            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH >= 60.0
+            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH != null && cannulaH >= 60.0
             if (branch1 || branch2) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)
@@ -4540,9 +4546,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (skip if the pod is also near end of life). Live-pump-only, matching the original's note.
         if (readyToRun("PreSoakSensor24hrs", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val soakB1 = sensorH >= 336.0 && sensorH <= 336.1 && cannulaH <= 80.0
-            val soakB2 = sensorH >= 348.0 && sensorH <= 348.1 && cannulaH <= 80.0
+            val podH = hoursSinceCurrentPodChange()
+            val podNotNearEndOfLife = podH == null || podH <= 80.0
+            val soakB1 = sensorH >= 336.0 && sensorH <= 336.1 && podNotNearEndOfLife
+            val soakB2 = sensorH >= 348.0 && sensorH <= 348.1 && podNotNearEndOfLife
             if (soakB1 || soakB2) {
                 sendSms("_____SOAK")
                 uiInteraction.addNotification(id = 9003, text = "PreSoak24hrs", level = Notification.URGENT)
@@ -4555,8 +4562,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Live-pump-only, matching the original's note.
         if (readyToRun("SensorS1hr", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if (sensorH >= 359.0 && sensorH <= 359.1 && cannulaH <= 80.0) {
+            val podH = hoursSinceCurrentPodChange()
+            if (sensorH >= 359.0 && sensorH <= 359.1 && (podH == null || podH <= 80.0)) {
                 uiInteraction.addNotification(id = 9004, text = "_____S1hr", level = Notification.URGENT)
                 addGraphAnnouncement("_____S1hr")
                 sendSms("SENSOR at 14.9 days ? overlap")
@@ -4568,8 +4575,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // age <=80h. Live-pump-only, matching the original's note.
         if (readyToRun("SensorS2hr", 15) && activePlugin.activePump !is VirtualPump) {
             val sensorH = hoursSinceLastSensorChange() ?: 0.0
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if (sensorH >= 357.9 && sensorH <= 358.0 && cannulaH <= 80.0) {
+            val podH = hoursSinceCurrentPodChange()
+            if (sensorH >= 357.9 && sensorH <= 358.0 && (podH == null || podH <= 80.0)) {
                 uiInteraction.addNotification(id = 9005, text = "_____S2hr", level = Notification.URGENT)
                 addGraphAnnouncement("_____S2hr")
                 sendSms("SENSOR at 14 days 22 hours due")
@@ -4581,8 +4588,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // switches to Current ProfileReal and flags Profile state PP130. Live-pump-only, matching the
         // original's note.
         if (readyToRun("Pod2", 10) && activePlugin.activePump !is VirtualPump) {
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if (cannulaH >= 78.0 && cannulaH <= 78.1 && isTimeBetween(8, 0, 23, 59)) {
+            val podH = hoursSinceCurrentPodChange()
+            if (podH != null && podH >= 78.0 && podH <= 78.1 && isTimeBetween(8, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
                 addGraphAnnouncement("_____POD2")
                 setAutomationState("Profile", "PP130")
@@ -4598,8 +4605,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // which is a zero-width/dead window under isTimeBetween's semantics — dropped per instruction,
         // this now matches Pod2's single-AND-group structure.)
         if (readyToRun("Pod1", 10) && activePlugin.activePump !is VirtualPump) {
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if (cannulaH >= 79.0 && cannulaH <= 79.1 && isTimeBetween(7, 0, 23, 59)) {
+            val podH = hoursSinceCurrentPodChange()
+            if (podH != null && podH >= 79.0 && podH <= 79.05 && isTimeBetween(7, 0, 23, 59)) {
                 uiInteraction.addNotification(id = 9007, text = "POD 79 h", level = Notification.URGENT)
                 addGraphAnnouncement("POD 79 h")
                 sendSms("_____POD1hr")
@@ -4624,10 +4631,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MJrecentCurrProfAcce", 480)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podH = hoursSinceCurrentPodChange()
             if ((g <= 144.1 /* 8.0 mmol */ || d <= 1.8 /* 0.1 mmol */)
                 && checkAutomationState("Steroids", "Steroids Off")
-                && cannulaH < 72.0
+                && podH != null && podH < 72.0
                 && !checkAutomationState("MJ", "NOMJremains")
                 && activeTtMgdl() == null
                 && profile_percentage == 100
@@ -4654,39 +4661,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("BasalUp", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podH = hoursSinceCurrentPodChange()
             val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
-            val cannulaOrStateOk = cannulaH >= 72.0 || cannulaH <= 6.0 ||
+            val cannulaOrStateOk = (podH != null && (podH >= 72.0 || podH <= 6.0)) ||
                 checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
-            // Time gate REMOVED (was isTimeBetween(7, 0, 0, 0) = 07:00-23:59). This was the ONLY automated
-            // route off the low/MJ-night profile, so anything that switched to it overnight kept you there
-            // until morning with no recovery path -- the core of the "overnight corrections blocked"
-            // problem. Left undamped deliberately: this block already self-limits hard, since it requires
-            // onCurrentProfile (it can only ever undo a switch something else made), so with the HP2 < 5.0
-            // gates now on EveningTH/MJrec/NightAcce/OffHighProf it should rarely have anything to undo.
-            // The one pairing to watch is OffHighProf (01:00-06:00), which is this block's mirror image --
-            // it switches TO low on a fall, this switches back on a rise -- so a wobbling BGL could
-            // alternate them at the 5-min throttle. That is observable directly as alternating BsUp /
-            // OffP-1 careportal notes; damping (longer overnight throttle, or a stronger rise than
-            // d >= 0.2) is deliberately NOT pre-applied, to avoid adding another unvalidated constant
-            // against an oscillation that may never materialise now the HP2 gates are in place.
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && recentSteps60Minutes <= 1000
                 && recentSteps30Minutes <= 600
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
-                // BLOCKED 22:00-06:00. Earlier today this block's original isTimeBetween(7, 0, 0, 0) gate
-                // was removed so it could recover from an overnight low-profile switch -- but that was
-                // before the four profile-switch blocks were made unconditional across the same hours,
-                // and the two now directly contradict: they switch TO the weak profile, this switches
-                // straight back on any rise. The Logs1 export caught it happening on 6 Aug -- Current
-                // Profile at 23:01/23:02 with delta +0.12/+0.09, then ProfileReal at 23:08 as soon as
-                // delta reached +0.22, two minutes before the SMB burst. So it was actively putting the
-                // STRONGER profile in place exactly when BG was rising and SMBs were about to be sized,
-                // which is the worst possible moment. Recovery from the weak profile is left to the
-                // morning; overnight it must not undo the protection.
-                && !isTimeBetween(22, 0, 6, 0)
+                && isTimeBetween(7, 0, 0, 0)
                 && onCurrentProfile) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setBgAccelIsfWeight(0.50)
@@ -4805,12 +4790,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && profile_percentage == 100 && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podH = hoursSinceCurrentPodChange()
             if (checkAutomationState("Profile", "PP130")
-                && (cannulaH >= 78.0 || cannulaH <= 2.0)
+                && podH != null && (podH >= 78.0 || podH <= 2.0)
                 && g >= 144.1 /* 8.0 mmol */
                 && d >= 3.6 /* 0.2 mmol */
-                && cannulaH <= 80.0
+                && podH <= 80.0
                 && isTimeBetween(10, 0, 18, 0)) {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
                 setAutomationState("Profile", "C100")
@@ -4824,25 +4809,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "HighPP130Off": exits the 130%/110% boost across 3 exit conditions
         // (stabilised no-TT, falling with TT, or simply no-TT at all while boosted). Note: "or 110%".
-        if (autoIsfValues.bgAcceleration < 2.0 && readyToRun("HighPP130Off", 2)) {
-            // WAS if (autoIsfValues.bgAcceleration < 0.10 && readyToRun("HighPP130Off", 2)) {
+        if (readyToRun("HighPP130Off", 2)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podH = hoursSinceCurrentPodChange()
             val boosted = profile_percentage == 130 || profile_percentage == 110
-            val off1 = cannulaH <= 78.0 && cannulaH >= 2.0 && g <= 180.2 /* 10.0 mmol */
+            val off1 = podH != null && podH <= 78.0 && podH >= 2.0 && g <= 180.2 /* 10.0 mmol */
                 && boosted && activeTtMgdl() == null
-            // off2: with a TT active, exit the boost once BGL is no longer clearly rising — on any of
-            // AAPS delta < +0.1, acce weight < 0.1, or raw Libre 5-min delta < 0.2. (Glucose<=10 dropped.)
-            val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            // acceW < 0.099, not < 0.1: AlarmHypo sets acce to exactly 0.10 and 0.1 has no exact float
-            // representation, so "< 0.1" is float-dependent at that value. 0.099 is deterministic and
-            // mirrors how the native Comparator evaluates "IS_LESSER 0.1" (obj < 0.1 - 0.001 tolerance) —
-            // it excludes the 0.10 AlarmHypo level and still catches the deep-protective 0.02 / 0.07 levels.
-            val off2 = (d < 12.6 /* 0.7 mmol */ || acceW < 0.099 /* i.e. < 0.1, float-safe */ || (rawDelta5MinMgdl() ?: 9999.0) < 14.4 /* 0.8 mmol */)
+            // off2: native TT-active branch requires both glucose <=10 and delta <=-0.3 mmol/5 min.
+            val off2 = g <= 180.2 /* 10.0 mmol */ && d <= -5.4 /* -0.3 mmol */
                 && boosted && activeTtMgdl() != null
-            //WAS val off2 = (d < 1.8 /* 0.1 mmol */ || acceW < 0.1 || (rawDelta5MinMgdl() ?: 9999.0) < 3.6 /* 0.2 mmol */)
-            //                 && boosted && activeTtMgdl() != null
             val off3 = activeTtMgdl() == null && boosted
             if (off1 || off2 || off3) {
                 sendSms("HighPP130Off")
@@ -4935,8 +4911,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && profile_percentage == 100 && activeTtMgdl() == null && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            if ((cannulaH <= 6.0 || cannulaH >= 48.0)
+            val podH = hoursSinceCurrentPodChange()
+            if (podH != null && (podH <= 6.0 || podH >= 48.0)
                 && d >= 3.6 /* 0.2 mmol */
                 && mealData.mealCOB >= 16.0
                 && iobData.iob <= 4.0
@@ -5203,10 +5179,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Virtual Pump.
         if (readyToRun("ConnectPod", 20) && activePlugin.activePump !is VirtualPump) {
             val lastConnectionMinAgo = (dateUtil.now() - activePlugin.activePump.lastDataTime) / 60_000
-            val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
+            val podH = hoursSinceCurrentPodChange()
             if (lastConnectionMinAgo >= 20
                 && isTimeBetween(8, 0, 23, 0)
-                && cannulaH <= 80.0) {
+                && podH != null && podH <= 80.0) {
                 sendSms("ConnectPod")
                 sendSmsToNumbers("ConnectPod", StringKey.SmsConnectPodNumbers)
                 markRun("ConnectPod")

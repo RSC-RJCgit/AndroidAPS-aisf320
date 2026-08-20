@@ -8,6 +8,7 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
@@ -154,6 +155,11 @@ class BolusWizard @Inject constructor(
     var insulinAfterConstraints: Double = 0.0
         private set
     var calculatedPercentage: Int = 100
+    var hpSafetyApplied: Boolean = false
+    var hpSafetyOriginalDose: Double = 0.0
+    var hpSafetyAdjustedDose: Double = 0.0
+    var hpSafetyProjectedMmol: Double? = null
+    var hpSafetyCobDoseRemoved: Double = 0.0
         private set
     var calculatedCorrection: Double = 0.0
         private set
@@ -345,8 +351,45 @@ class BolusWizard @Inject constructor(
             calculatedCorrection = 0.0
         }
 
+        // Retrospective fast-rise bolus protection. Five days of AIV history (15-20 Aug 2026) contained
+        // 14 substantial IOB jumps; the only one matching all five gates below was the 20 Aug 08:49
+        // episode (BG 9.4, rise ~0.7 mmol/5m, IOB 2.30U, dose ~1.21U, projected HP ~5.9),
+        // followed by 3.6 mmol/L. The <10 mmol BG ceiling prevents this narrow rebound guard from
+        // reducing genuinely high-BG corrections; in the replay it excludes a non-hypo 11.0 mmol event.
+        // A 5.5 HP cutoff would have missed it. Keep the rule deliberately narrow: it is not a general
+        // meal-bolus reduction and never removes insulin for newly entered carbs. Existing COB-derived
+        // insulin is removed first, then the already percentage-adjusted proposal receives a further
+        // 25% reduction. The normal pump-step rounding and bolus constraints still run below.
+        val currentPositiveIob = (bolusIob.iob + basalIob.basaliob).coerceAtLeast(0.0)
+        val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
+        val deltaMmol = (glucoseStatus?.delta ?: 0.0) * Constants.MGDL_TO_MMOLL
+        val shortDeltaMmol = (glucoseStatus?.shortAvgDelta ?: 0.0) * Constants.MGDL_TO_MMOLL
+        val projectedHp = if (bgMgdl > 0.0) {
+            bgMgdl * Constants.MGDL_TO_MMOLL - currentPositiveIob - calculatedTotalInsulin +
+                0.25 * min(deltaMmol, 0.0) + 0.25 * min(shortDeltaMmol, 0.0)
+        } else null
+        hpSafetyProjectedMmol = projectedHp
+        val strongRise = deltaMmol >= 0.6 && shortDeltaMmol >= 0.6
+        if (projectedHp != null && projectedHp <= 6.5 &&
+            bgMgdl * Constants.MGDL_TO_MMOLL < 10.0 && strongRise &&
+            currentPositiveIob >= 2.0 && calculatedTotalInsulin >= 0.75
+        ) {
+            hpSafetyOriginalDose = calculatedTotalInsulin
+            hpSafetyCobDoseRemoved = (insulinFromCOB * percentage / 100.0).coerceAtLeast(0.0)
+            calculatedTotalInsulin = ((calculatedTotalInsulin - hpSafetyCobDoseRemoved).coerceAtLeast(0.0) * 0.75)
+            hpSafetyAdjustedDose = calculatedTotalInsulin
+            hpSafetyApplied = true
+            aapsLogger.info(
+                LTag.CORE,
+                "Wizard HP safety: ${hpSafetyOriginalDose}U -> ${hpSafetyAdjustedDose}U, " +
+                    "projectedHP=$projectedHp, IOB=$currentPositiveIob, delta=$deltaMmol, " +
+                    "shortDelta=$shortDeltaMmol, removedCOB=${hpSafetyCobDoseRemoved}U"
+            )
+        }
+
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
         calculatedTotalInsulin = Round.roundTo(calculatedTotalInsulin, bolusStep)
+        if (hpSafetyApplied) hpSafetyAdjustedDose = calculatedTotalInsulin
 
         insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(calculatedTotalInsulin, aapsLogger)).value()
 
@@ -393,7 +436,13 @@ class BolusWizard @Inject constructor(
     fun createBolusCalculatorResult(): BCR {
         val unit = profileFunction.getUnits()
         val splitNote = splitProjectionNote()
-        val combinedNote = if (splitNote.isEmpty()) notes else if (notes.isEmpty()) splitNote else "$notes\n$splitNote"
+        val hpSafetyNote = if (hpSafetyApplied) {
+            "HP safety ${decimalFormatter.to2Decimal(hpSafetyOriginalDose)}U -> " +
+                "${decimalFormatter.to2Decimal(hpSafetyAdjustedDose)}U " +
+                "(projected HP ${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
+                "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U)"
+        } else ""
+        val combinedNote = listOf(notes, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
@@ -469,6 +518,15 @@ class BolusWizard @Inject constructor(
                 rh.gs(app.aaps.core.ui.R.string.bolus_constraint_applied_warn, calculatedTotalInsulin, insulinAfterConstraints)
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
             )
+        if (hpSafetyApplied) {
+            actions.add(
+                ("HP safety: ${decimalFormatter.to2Decimal(hpSafetyOriginalDose)}U reduced to " +
+                    "${decimalFormatter.to2Decimal(hpSafetyAdjustedDose)}U; projected HP " +
+                    "${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}; " +
+                    "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U")
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
+            )
+        }
         if (config.AAPSCLIENT && insulinAfterConstraints > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
         if (useAlarm && !advisor && carbs > 0 && carbTime > 0)
@@ -588,6 +646,12 @@ class BolusWizard @Inject constructor(
         if (useSuperBolus) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_superbolus, insulinFromSuperBolus)
         if (percentageCorrection != 100) {
             message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_percent, totalBeforePercentageAdjustment, percentageCorrection, calculatedTotalInsulin)
+        }
+        if (hpSafetyApplied) {
+            message += "\nHP safety: ${decimalFormatter.to2Decimal(hpSafetyOriginalDose)}U -> " +
+                "${decimalFormatter.to2Decimal(hpSafetyAdjustedDose)}U, projected HP " +
+                "${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
+                "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U"
         }
         return message
     }
