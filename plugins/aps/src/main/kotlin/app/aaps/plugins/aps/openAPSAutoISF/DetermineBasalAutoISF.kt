@@ -1310,14 +1310,24 @@ class DetermineBasalAutoISF @Inject constructor(
 
                         val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
-                        val ordinaryCandidate = min(insulinReq / insulinDivisor, boost_max)
-                        val tier3Candidate = min(max(boostInsulinReq, ordinaryCandidate), boostIobAllowance)
+                        val baselineRatioCandidate = min(insulinReq / insulinDivisor, boost_max)
+                        // Tier 3 is Virtual-Pump-only assessment. Increase the ordinary SMB that was
+                        // already calculated above, so any live variable-ratio or BolusGiven/Mild ratio
+                        // increase is retained and then scaled by Tier 3 rather than being replaced by
+                        // the baseline Boost_InsulinReq percentage. The existing Tier 3 per-SMB and IOB
+                        // ceilings, followed by every shared downstream SMB protection, remain binding.
+                        val boostedUsualSmbCandidate = min(preBoostMicroBolus * boost_scale, boost_max)
+                        val tier3Candidate = min(
+                            max(boostInsulinReq, max(baselineRatioCandidate, boostedUsualSmbCandidate)),
+                            boostIobAllowance
+                        )
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
                         if (roundedTier3Candidate > preBoostMicroBolus) {
                             microBolus = roundedTier3Candidate
                             uamBoostEnhancedCandidateThisCycle = true
                             uamBoostFinalIobAllowanceThisCycle = boostIobAllowance
                             consoleError.add(">>> TIER 3: UAM Boost candidate <<<")
+                            consoleError.add("Tier 3 usual SMB ${round(preBoostMicroBolus, 2)}U x scale ${round(boost_scale, 2)} = ${round(boostedUsualSmbCandidate, 2)}U before Tier 3 ceilings")
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
                         }
