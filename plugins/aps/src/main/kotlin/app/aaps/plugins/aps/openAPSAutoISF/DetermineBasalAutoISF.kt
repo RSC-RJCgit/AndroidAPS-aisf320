@@ -248,6 +248,7 @@ class DetermineBasalAutoISF @Inject constructor(
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
         var uamBoostEnhancedCandidateThisCycle = false
+        var uamBoostFinalIobAllowanceThisCycle: Double? = null
         consoleError.clear()
         consoleError.add(activity_consoleLog)
         consoleLog.clear()
@@ -1278,9 +1279,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     val boostIobAllowance = (boostMaxIOB - iob_data.iob).coerceAtLeast(0.0)
                     val boost_scale = profile.boost_scale * (profile_percentage / 100.0)
                     var boostInsulinReq = basal
-                    val Boost_InsulinReq = profile.Boost_InsulinReq
-                    var insulinReqPCT = 100.0 / Boost_InsulinReq
-                    val insulinDivisor: Double = insulinReqPCT
+                    val insulinDivisor = 100.0 / profile.Boost_InsulinReq
                     // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
                     if (glucose_status.delta >= 5
                         && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
@@ -1295,6 +1294,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         if (roundedTier3Candidate > preBoostMicroBolus) {
                             microBolus = roundedTier3Candidate
                             uamBoostEnhancedCandidateThisCycle = true
+                            uamBoostFinalIobAllowanceThisCycle = boostIobAllowance
                             consoleError.add(">>> TIER 3: UAM Boost candidate <<<")
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
@@ -1879,6 +1879,16 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // ROUND / ZERO / APPLY SMB
 // =====================================================
+                // Reapply Tier 3's remaining IOB allowance at the final output boundary. Most intervening
+                // modifiers only reduce the candidate, but this makes the percentage ceiling invariant
+                // even if a later modifier is changed to restore/increase an SMB in the future.
+                uamBoostFinalIobAllowanceThisCycle?.let { allowance ->
+                    if (microBolus > allowance) {
+                        val beforeTier3FinalCap = microBolus
+                        microBolus = allowance
+                        rT.reason.append(" Tier 3 final IOB allowance: ${round(beforeTier3FinalCap, 2)} -> ${round(microBolus, 2)}U ")
+                    }
+                }
                 microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
 
                 if (offsetSoZeroSMB) {
