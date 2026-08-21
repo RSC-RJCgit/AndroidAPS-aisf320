@@ -5756,6 +5756,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (determineBasalAutoISF.uamBoostFiredThisCycle) {
             sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U")
             addCarePortalNote("UamBst")
+            addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
         }
 
         autoIsfValues.timestamp = now
