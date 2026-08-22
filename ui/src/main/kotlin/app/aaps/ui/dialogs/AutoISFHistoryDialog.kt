@@ -229,7 +229,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 60)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.mjStateStr(r.timestamp, allCarePortalNotes), colorTime),
-                    Cell(autoIsfHistoryExporter.carePortalNotesStr(r.timestamp, allCarePortalNotes), colorTime)
+                    Cell(autoIsfHistoryExporter.carePortalNotesStr(r.timestamp, allCarePortalNotes, allRecords), colorTime)
                 )
             )
         }

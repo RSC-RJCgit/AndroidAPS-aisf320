@@ -248,7 +248,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             stepsValue(sc, r.timestamp, apsResults, 60)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "",
             mjStateStr(r.timestamp, carePortalNotes),
-            carePortalNotesStr(r.timestamp, carePortalNotes)
+            carePortalNotesStr(r.timestamp, carePortalNotes, allRecords)
         )
     }
 
@@ -989,12 +989,33 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  partway into its minute (e.g. :49:47), any note that fired earlier in that same displayed
      *  minute (:49:05, :49:30) sat *before* the row's own timestamp and was silently excluded by the
      *  `>=` lower bound, even though both are "12:49 PM" to anyone reading the table. */
-    fun carePortalNotesStr(timestamp: Long, notes: List<TE>): String {
+    /** `allRecords` (the same full unfiltered set every other row-vs-row lookup here already takes)
+     *  is used only for the fallback pass below -- a note that misses the exact-minute bucket entirely
+     *  is attributed to this row ONLY if this row is the temporally nearest one to it among allRecords,
+     *  so a boundary-straddling note is rescued exactly once rather than either being dropped or shown
+     *  on two adjacent rows.
+     *
+     *  Fallback added 2026-08-22 after a real miss: a genuine UamBst CarePortal note (18:47:15,
+     *  confirmed present in UserEntries.csv/the app's own CarePortal history the whole time) never
+     *  appeared on ANY AIV row -- not 06:47 PM's, not 06:48 PM's. The 2026-08-17 fix above (flooring to
+     *  the row's own displayed minute) already handles a note landing earlier in the SAME minute as a
+     *  row saved partway through it, but a single 1-minute loop cycle runs a great many sequential
+     *  automation checks -- long enough that the row's own save-time and a note fired later in that same
+     *  logical cycle can genuinely land in different calendar minutes, which the exact-bucket check alone
+     *  can never catch from either side. 90s tolerance: wide enough to cover a slow cycle spilling across
+     *  one minute boundary, narrow enough to stay well under the gap to the row two cycles away. */
+    fun carePortalNotesStr(timestamp: Long, notes: List<TE>, allRecords: List<AIV> = emptyList()): String {
         val minuteMs = TimeUnit.MINUTES.toMillis(1)
         val minuteStart = timestamp - (timestamp % minuteMs)
         val minuteEnd = minuteStart + minuteMs
-        return notes.asSequence()
-            .filter { it.timestamp >= minuteStart && it.timestamp < minuteEnd }
+        val exact = notes.filter { it.timestamp >= minuteStart && it.timestamp < minuteEnd }
+        val toleranceMs = TimeUnit.SECONDS.toMillis(90)
+        val fallback = if (allRecords.isEmpty()) emptyList() else notes.filter { n ->
+            (n.timestamp < minuteStart || n.timestamp >= minuteEnd) &&
+                kotlin.math.abs(n.timestamp - timestamp) <= toleranceMs &&
+                allRecords.minByOrNull { kotlin.math.abs(it.timestamp - n.timestamp) }?.timestamp == timestamp
+        }
+        return (exact + fallback).asSequence()
             .mapNotNull { it.note?.trim()?.takeIf(String::isNotEmpty) }
             .map { it.replace(Regex("[\\r\\n]+"), " ") }
             .distinct()
