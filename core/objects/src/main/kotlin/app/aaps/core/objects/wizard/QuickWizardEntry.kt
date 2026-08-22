@@ -147,7 +147,7 @@ class QuickWizardEntry @Inject constructor(
             trend = true
         }
         val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
-        return bolusWizardProvider.get().doCalc(
+        val wizard = bolusWizardProvider.get().doCalc(
             profile,
             profileName,
             tempTarget,
@@ -167,8 +167,17 @@ class QuickWizardEntry @Inject constructor(
             buttonText(),
             carbTime(),
             quickWizard = true,
-            positiveIOBOnly = uPositiveIOBOnly
+            positiveIOBOnly = uPositiveIOBOnly,
+            walkingSoon = useWalkingSoon() == YES
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
+        // Split-bolus (carb-split-over-max-bolus) isn't a doCalc() parameter -- it only affects later
+        // scheduling (splitProjectionNote()/scheduleSplitProteinFatDoses(), both called from
+        // commonProcessing(), never from doCalc() itself), same as WizardDialog sets it on its own wizard
+        // instance post-calc (see WizardDialog.kt). Set here so a QuickWizard button configured for it
+        // gets the same carb-split-into-repeated-doses behavior as a dialog bolus with the checkbox ticked.
+        wizard.manualSplitBolusEnabled = useSplitBolus() == YES
+        wizard.manualSplitBolusIntervalMins = splitBolusIntervalMins()
+        return wizard
     }
 
     fun guid(): String = safeGetString(storage, "guid", "")
@@ -218,4 +227,13 @@ class QuickWizardEntry @Inject constructor(
     fun carbTime(): Int = safeGetInt(storage, "carbTime")
 
     fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)
+
+    // "Walking soon" / manual split-bolus, added 2026-08-22 -- same two mechanisms WizardDialog exposes
+    // via its own checkboxes, now also settable per QuickWizard button. See doCalc() above for how each
+    // is threaded into the shared BolusWizard instance.
+    fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", NO)
+
+    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)
+
+    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
 }

@@ -124,6 +124,9 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("time", binding.time.value.toInt())
                     entry.storage.put("duration", SafeParse.stringToInt(binding.duration.text))
                     entry.storage.put("carbs2", carbs2)
+                    entry.storage.put("useWalkingSoon", checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
+                    entry.storage.put("useSplitBolus", checkBoxToRadioNumbers(binding.splitBolusCheckbox.isChecked))
+                    entry.storage.put("splitBolusIntervalMins", binding.splitBolusIntervalInput.value.toInt())
                 } catch (e: JSONException) {
                     aapsLogger.error("Unhandled exception", e)
                 }
@@ -230,6 +233,11 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                 ?: 0.0, -60.0, 60.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, timeTextWatcher
         )
 
+        binding.splitBolusIntervalInput.setParams(
+            savedInstanceState?.getDouble("split_bolus_interval_input")
+                ?: 7.0, 1.0, 60.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+
         binding.correctionInput.value = entry.percentage().toDouble()
 
         toSeconds = entry.validTo()
@@ -270,12 +278,24 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.duration.value = SafeParse.stringToDouble(entry.duration().toString())
         useECarbs(radioNumbersToCheckBox(entry.useEcarbs()))
 
+        binding.walkingSoonCheckbox.isChecked = radioNumbersToCheckBox(entry.useWalkingSoon())
+        binding.splitBolusCheckbox.isChecked = radioNumbersToCheckBox(entry.useSplitBolus())
+        binding.splitBolusIntervalInput.value = SafeParse.stringToDouble(entry.splitBolusIntervalMins().toString())
+        processSplitBolus()
+        binding.splitBolusCheckbox.setOnCheckedChangeListener { _, _ -> processSplitBolus() }
+
         binding.useCob.setOnCheckedChangeListener { _, _ -> processCob() }
 
         binding.useTrendCheckbox.setOnCheckedChangeListener { _, _ -> processTrend() }
 
         processCob()
         processIOB()
+    }
+
+    private fun processSplitBolus() {
+        val visibility = if (binding.splitBolusCheckbox.isChecked) View.VISIBLE else View.GONE
+        binding.splitBolusIntervalInput.visibility = visibility
+        binding.splitBolusIntervalUnit.visibility = visibility
     }
 
     override fun onClick(v: View?) {

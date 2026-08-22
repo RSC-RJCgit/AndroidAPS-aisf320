@@ -435,6 +435,52 @@
                 android:text="@string/additional_ecarbs"
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
 
+            <CheckBox
+                android:id="@+id/walking_soon_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="start|center_vertical"
+                android:lines="1"
+                android:text="Walking soon (50% now, rest later if needed)"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <LinearLayout
+                android:id="@+id/split_bolus_row"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="start|center_vertical"
+                android:orientation="horizontal">
+
+                <CheckBox
+                    android:id="@+id/split_bolus_checkbox"
+                    style="@style/Widget.App.CheckBox"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="start|center_vertical"
+                    android:lines="1"
+                    android:text="Split bolus every"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                    tools:ignore="HardcodedText" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/split_bolus_interval_input"
+                    android:layout_width="100dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/split_bolus_interval_unit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/unit_minute_short"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </LinearLayout>
+
         </LinearLayout>
 
         <TableLayout

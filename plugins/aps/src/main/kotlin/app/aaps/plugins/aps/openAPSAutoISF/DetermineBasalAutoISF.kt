@@ -243,7 +243,26 @@ class DetermineBasalAutoISF @Inject constructor(
         // for several cycles right after BasalUp just switched back to the Standard profile -- defeating
         // the point of the switch. Default false preserves existing callers/tests, same convention as the
         // other optional params above.
-        basalUpOffsetZeroActive: Boolean = false
+        basalUpOffsetZeroActive: Boolean = false,
+        // Compensates the FAST RISE HANDLING cascade's calibrated-delta gates (Delta/SDelta, mmol) for
+        // live Libre-calibration slope drift away from 0.75 -- the real fslCal_Slope value confirmed on
+        // the actual device on 12 Jul 2026, the era the cascade's mmol thresholds were tuned against.
+        // Since BG_calibrated = raw * FslCalSlope + FslCalOffset, a constant offset cancels in any delta,
+        // so Delta_calibrated == FslCalSlope * Delta_raw: the SAME real rate of rise reads smaller once
+        // FslCalSlope drops (confirmed 0.75 -> 0.72 baseline by 22 Aug 2026, and as low as orig-0.07 during
+        // OldSensorAdj's Day-0/Day-1 tiers -- 0.65 at a 0.72 baseline), silently under-powering these gates
+        // versus how they were tuned. Pass (0.75 / currentFslCalSlope) here; dividing Delta/SDelta by it
+        // below restores the reading to what it would have been at the tuned slope, before comparing
+        // against the tuned thresholds. Deliberately scoped to ONLY this cascade via a local shadowed
+        // Delta/SDelta/LDelta (see just below, right before the cascade begins) -- the real, unshadowed
+        // Delta/SDelta/LDelta are left untouched everywhere else in this file (ISF weights, TT handling,
+        // etc.), which were never part of what was actually re-assessed here and would ripple unrelated
+        // behaviour changes if compensated too. Default 1.0 (no
+        // compensation) preserves existing callers/tests; the real call site should pass 1.0 outright on
+        // a true Virtual pump (no real Libre calibration in play at all, so 0.75 isn't a meaningful
+        // reference there), and the live ratio otherwise -- including on Client, which mirrors a real
+        // device's already-calibrated data.
+        fastRiseSlopeCompensationRatio: Double = 1.0
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
@@ -1443,6 +1462,17 @@ class DetermineBasalAutoISF @Inject constructor(
                 // size-reduction/cap blocks below are undone at the end so a boost delivers full SMBs.
                 val microBolusFullUncapped = microBolus
 
+                // Slope-compensated shadows of Delta/SDelta/LDelta, scoped by Kotlin variable shadowing to
+                // ONLY this if/else-if cascade (SHOWER/TWILIGHT through the "DEFAULT: NO SMB SIZE CHANGE"
+                // branch below, ending where the cascade's own enclosing brace closes, just before "HIGH
+                // STEPS: SMB SIZE CHANGE" resumes using the real, uncompensated Delta/SDelta) -- see
+                // fastRiseSlopeCompensationRatio's doc comment on the function signature for the full
+                // rationale. Every bare Delta/SDelta/LDelta reference inside this cascade already
+                // transparently picks these up; nothing else in the cascade's own gates needed to change.
+                @Suppress("NAME_SHADOWING") val Delta = Delta / fastRiseSlopeCompensationRatio
+                @Suppress("NAME_SHADOWING") val SDelta = SDelta / fastRiseSlopeCompensationRatio
+                @Suppress("NAME_SHADOWING") val LDelta = LDelta / fastRiseSlopeCompensationRatio
+
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
 // =====================================================
@@ -1454,7 +1484,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta >= 0.25 * 18 &&
                     SDelta >= 0.1 * 18 &&
                     iobThUser < 71 &&
-                    rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
+                    rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
@@ -1475,7 +1505,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     Delta >= 0.35 * 18 &&
                     SDelta >= 0.15 * 18 &&
                     iobThUser < 71 &&
-                    rawDelta5Mgdl >= 0.35 * 18 && rawDelta1Mgdl >= 0.35 * 18 && aapsDelta1Mgdl >= 0.35 * 18
+                    rawDelta5Mgdl >= 0.35 * 18 && aapsDelta1Mgdl >= 0.35 * 18
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
@@ -1543,7 +1573,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     bg < 10.0 * 18 &&
                     profile.temptargetSet &&
                     target_bg <= 4.1 * 18 &&
-                    rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
+                    rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
                     microBolus = microBolus * 0.5
                     rT.reason.append("Delta ov0.25 && SDelta ov0.20 && profile.temptargetSet && target_bg <= 4.1 microBolus = ${round(microBolus, 2)} ")
@@ -1574,6 +1604,16 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // FAST RISE HANDLING
 // =====================================================
+                    // rawDelta1Mgdl (single-minute raw delta, no smoothing) dropped from every gate in this
+                    // cascade 2026-08-22: real AIV data from two separate same-day rises (01:50-01:58 and
+                    // 02:50-02:55) showed rawD1 reading negative or flat (as low as -0.56mmol) at literally
+                    // every sampled minute throughout both events, while Delta/SDelta and rawD5 all clearly
+                    // showed a genuine, sustained rise the whole time. A single unsmoothed 1-minute raw
+                    // reading is too noise-prone to reliably confirm what the smoothed signals already
+                    // establish -- requiring it was silently blocking this entire cascade during exactly
+                    // the kind of gradual sustained rise it exists to catch. rawDelta5Mgdl (5-minute raw
+                    // delta) is kept -- it passed at both real events and still gives a raw-signal check
+                    // independent of the smoothed AAPS delta.
                     if (
                         bg > 6.0 * 18 &&
                         bg < 12.0 * 18 &&
@@ -1584,7 +1624,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             // caps at all) zone to slightly more accumulated daytime IOB before this whole
                             // capping cascade starts applying
                             || (nowHour >= 22 || nowHour <= 5)) &&
-                        rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
+                        rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                     ) {
                         if (Delta >= 1.0 * 18 &&
                             SDelta >= 1.0 * 18 &&
@@ -1600,11 +1640,11 @@ class DetermineBasalAutoISF @Inject constructor(
                         ) {
                             if (bg > 8.8 * 18) {
                                 microBolus = microBolus * 0.6
-                                rT.reason.append("microBolus = microBolus * 0.8 ; microBolus = ${round(microBolus, 2)} ")
+                                rT.reason.append("microBolus = microBolus * 0.6 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.602 for moderate fast rise 0.602 ")
                             } else if (bg > 8.0 * 18) {
                                 microBolus = microBolus * 0.65
-                                rT.reason.append("microBolus = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
+                                rT.reason.append("microBolus = microBolus * 0.65 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.653 for moderate fast rise 0.653 ")
                             } else if (bg <= 8.0 * 18 &&
                                 (microBolus > ThresholForFastRise ||
@@ -1624,18 +1664,18 @@ class DetermineBasalAutoISF @Inject constructor(
                             if (bg > 8.8 * 18) {
                                 microBolus = microBolus * 0.9 // was 0.85 — slight loosening, mild-tier daytime rise
                                 rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${round(microBolus, 2)} ")
-                                rT.reason.append(" CHANGED SIZE 0.855 for mild fast rise 0.855 ")
+                                rT.reason.append(" CHANGED SIZE 0.900 for mild fast rise 0.900 ")
                             } else if (bg > 8.0 * 18) {
                                 microBolus = microBolus * 0.85 // was 0.8 — slight loosening
                                 rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${round(microBolus, 2)} ")
-                                rT.reason.append(" CHANGED SIZE 0.806 for mild fast rise 0.806 ")
+                                rT.reason.append(" CHANGED SIZE 0.850 for mild fast rise 0.850 ")
                             } else if (bg <= 8.0 * 18 &&
                                 (microBolus > ThresholForFastRise ||
                                     (nowHour <= 8 && nowHour >= 3))
                             ) {
                                 microBolus = microBolus * 0.75 // was 0.7 — slight loosening
                                 rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.75 ; microBolus = ${round(microBolus, 2)} ")
-                                rT.reason.append(" CHANGED SIZE 0.707 for mild fast rise 0.707 ")
+                                rT.reason.append(" CHANGED SIZE 0.750 for mild fast rise 0.750 ")
                             } else {
                                 rT.reason.append("smbUn 0.707 for 0.025 * profile.max_iob microBolus = ${round(microBolus, 2)} ")
                             }
@@ -1643,14 +1683,14 @@ class DetermineBasalAutoISF @Inject constructor(
                     } else if (Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         Delta < 0.35 * 18 &&
-                        rawDelta5Mgdl >= 0.25 * 18 && rawDelta1Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
+                        rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                     ) {
                         if (microBolus > ThresholForFastRise ||
                             nowHour <= 8
                         ) {
                             microBolus = microBolus * 0.7 // was 0.6 — slight loosening, narrowest/earliest-stage rise tier
                             rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.7 ; microBolus = ${round(microBolus, 2)} ")
-                            rT.reason.append(" CHANGED SIZE 0.608 for early fast rise 0.608 ")
+                            rT.reason.append(" CHANGED SIZE 0.700 for early fast rise 0.700 ")
                         } else {
                             rT.reason.append("smbUn 0.608 for 0.030 * profile.max_iob microBolus = ${round(microBolus, 2)} ")
                         }
@@ -1661,9 +1701,18 @@ class DetermineBasalAutoISF @Inject constructor(
                         SDelta >= 0.7 * 18 &&
                         bg > 11.5 * 18 &&
                         bg < 13.5 * 18 &&
-                        IOB > ThresholForFastRise * profile.max_iob &&
+                        // Fixed 2026-08-22: was "ThresholForFastRise * profile.max_iob". Git history
+                        // (commit 320.010) shows this line used to read "lower_SMB * 0.30 * max_iob" --
+                        // a plain fraction times max_iob -- and ThresholForFastRise was substituted in
+                        // for "lower_SMB * 0.30" without dropping the trailing "* max_iob". But
+                        // ThresholForFastRise (= TDDfactor * 0.030 * profile.max_iob) already has one
+                        // factor of max_iob baked in, so the old line squared max_iob into the gate --
+                        // ~2.7U at typical settings instead of the ~0.29U ThresholForFastRise represents
+                        // everywhere else it's used directly (e.g. "microBolus > ThresholForFastRise").
+                        // Removing the accidental extra factor restores that consistent meaning.
+                        IOB > ThresholForFastRise &&
                         COB <= 25 &&
-                        rawDelta5Mgdl >= 0.9 * 18 && rawDelta1Mgdl >= 0.9 * 18 && aapsDelta1Mgdl >= 0.9 * 18
+                        rawDelta5Mgdl >= 0.9 * 18 && aapsDelta1Mgdl >= 0.9 * 18
                     ) {
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 ; microBolus = ${round(microBolus, 2)} ")
@@ -1832,7 +1881,6 @@ class DetermineBasalAutoISF @Inject constructor(
                         Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         rawDelta5Mgdl >= 0.25 * 18 &&
-                        rawDelta1Mgdl >= 0.25 * 18 &&
                         aapsDelta1Mgdl >= 0.25 * 18
 
                 if (fastRiseNow && microBolus > 0.0) {

@@ -499,6 +499,16 @@ class BolusWizard @Inject constructor(
                 rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, insulinAfterConstraints).formatColor
                     (context, rh, app.aaps.core.ui.R.attr.bolusColor) + pct
             )
+        } else {
+            // Added 2026-08-22: the "Bolus:" line used to be omitted entirely when the calculated dose
+            // is exactly 0 -- silence, not an explicit statement, was the only signal. Other zero-dose
+            // paths in this file (insertZeroDoseTreatment, used by the delayed-bolus/split/protein-fat
+            // mechanisms) always leave an explanatory record; this makes the confirmation popup match
+            // that same "say it plainly" convention rather than just omitting the line.
+            actions.add(
+                rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, 0.0)
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
+            )
         }
         if (carbs > 0 && !advisor) {
             var timeShift = ""
@@ -718,7 +728,12 @@ class BolusWizard @Inject constructor(
                     glucoseType = TE.MeterType.MANUAL
                     carbsTimestamp = now + T.mins(this@BolusWizard.carbTime.toLong()).msecs()
                     bolusCalculatorResult = createBolusCalculatorResult()
-                    notes = this@BolusWizard.notes
+                    // Added 2026-08-22: auto-append an explanatory note when the calculated dose is
+                    // exactly 0 (carbs-only outcome), matching insertZeroDoseTreatment's convention
+                    // elsewhere in this file (e.g. "Db30: 0U (IOB rose 0.45U)") -- previously this path's
+                    // notes field was left as whatever the user typed (usually nothing), so a carbs-only
+                    // record left no trail explaining that a Wizard calculation ran and concluded zero.
+                    notes = this@BolusWizard.notes + if (insulinAfterConstraints == 0.0) " Wizard: 0U calculated" else ""
                     // Real delivery path (insulin and/or carbs to actually record/deliver). Protein/fat-only
                     // entries (insulin==0 && carbs==0) deliberately do NOT take this branch — see the
                     // else-if below for why.

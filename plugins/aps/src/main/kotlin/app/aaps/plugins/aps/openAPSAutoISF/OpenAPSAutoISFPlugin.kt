@@ -1146,6 +1146,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .sumOf { it.amount }
     }
 
+    // Reference FslCalSlope the FAST RISE HANDLING cascade's mmol thresholds were actually tuned against
+    // -- confirmed via a real full-preferences pull off the live phone on 12 Jul 2026 (fslCal_Slope=0.75).
+    // Feeds determine_basal()'s fastRiseSlopeCompensationRatio param -- see its own doc comment there for
+    // the full algebra (why a slope drop shrinks calibrated Delta/SDelta for the same real raw rise, and
+    // why dividing by liveSlope/tunedSlope restores the original reading before comparing against the
+    // tuned thresholds).
+    private val fastRiseTunedLibreSlope = 0.75
+
+    private fun fastRiseSlopeCompensationRatio(): Double {
+        // True Virtual (not Client, which mirrors a real device's already-calibrated data) never ran a
+        // real Libre calibration at all -- FslCalSlope sits at its neutral 1.0 passthrough there, which
+        // isn't comparable to fastRiseTunedLibreSlope (a real-device calibration figure), so compensating
+        // it would just introduce an artificial Virtual-vs-real behaviour difference. No-op there.
+        if (activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) return 1.0
+        val liveSlope = preferences.get(DoubleKey.FslCalSlope).coerceAtLeast(0.30)
+        return fastRiseTunedLibreSlope / liveSlope
+    }
+
     // Count of SMBs delivered in the last 20 minutes. Deliberately a much longer window than
     // smbCount5Min() -- used by BolusGivenMildFailsafe to detect genuine delivery silence (sensor
     // dropout, pod disconnect, etc.), not just the normal gap between doses that a 5-min window
@@ -5754,7 +5772,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smbSum10Min = smbSum10Min(),
             smbSum30Min = smbSum30Min(),
             sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10),
-            basalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5)
+            basalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5),
+            fastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
