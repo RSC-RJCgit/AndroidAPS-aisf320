@@ -2012,8 +2012,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Single("Tog Graph2 (carb model curve) on/off", 5.138, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)) "ON" else "OFF"}" }),
         TtCode.Single(
             "Cloud logs upload", 5.140,
-            // Matches CloudLogsUploadTT's own doc comment in OpenAPSAutoISFPlugin.kt.
-            currentValue = { "Effect: zips logs and sends to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
+            // Matches CloudLogsUploadTT's own doc comment in OpenAPSAutoISFPlugin.kt, which calls
+            // sendLogs(trigger = "REMOTE_TT") -- alsoExportAiv defaults to true there, so this also
+            // exports+uploads AIV (CSV/TXT) and a settings-snapshot backup BEFORE the log zip/upload,
+            // same as the Maintenance screen's own "Send logs" button. Previously this description only
+            // mentioned the logs, silently omitting the AIV/settings export that always runs first --
+            // fixed 2026-08-22.
+            currentValue = { "Effect: exports+uploads AIV data and a settings-snapshot backup, then zips logs and sends to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
         ),
         TtCode.Single("Tog Graph5 (main clone) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
         // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
