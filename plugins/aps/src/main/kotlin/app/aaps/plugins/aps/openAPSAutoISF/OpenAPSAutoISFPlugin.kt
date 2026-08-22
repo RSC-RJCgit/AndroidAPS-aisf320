@@ -1436,23 +1436,38 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // observed a coded writer/an unambiguous "neutral" reading for that state -- guessing wrong here
     // would assert a specific real-world condition (e.g. "a low just happened") that may not be true,
     // which is worse than just leaving it undeclared until something legitimately sets it:
-    //   - "Steps"/"Sleeping" have no coded setState() call anywhere in this file -- something else
-    //     (native automation, external integration) owns writing them; not this bootstrap's place to guess.
-    //   - "BGLstate" has only one enumerated value ("BGLlastLOW") with no observed "not low" counterpart --
-    //     defaulting to it would wrongly assert "a low just happened" on every fresh/blank state.
-    //   - "query_got_up" is a one-shot query signal, not a persistent on/off toggle -- no "default" applies.
+    //   - "Sleeping" has no coded setState() call anywhere in this file -- something else (native
+    //     automation, external integration) owns writing it; not this bootstrap's place to guess.
+    //
+    // 2026-08-22 cleanup: four entries removed from this map entirely, not just left declare-only,
+    // after an audit found they had no live readers (or, for MJstate, no live writers either) anywhere
+    // in this file or the rest of the codebase:
+    //   - "MJstate" (values MJon/MJoff) -- every setState call for it was already commented out; "MJ"
+    //     (NOMJremains/MJ active/MJ2/MJ3/...) is the real, actually-used state. Looks like an earlier,
+    //     abandoned naming attempt that was never fully removed.
+    //   - "BGLstate" (value BGLlastLOW) -- write-only one-way latch (set in GentleHypoRisk/AlarmHypo1/
+    //     AlarmHypo2, cleared nowhere), and its one remaining reader was already swapped to the properly
+    //     maintained LowBG=50recent flag (see that call site's own comment). Removing the writes too
+    //     makes this now genuinely inert rather than just functionally dead.
+    //   - "query_got_up" (value query_it) -- a one-shot signal written when Sleeping=True and no recent
+    //     steps, but never read back by anything, here or elsewhere. Sleeping itself is still live (it
+    //     gates the Activity Monitor's inactivity detection) and remains declared below.
+    //   - "Steps" (values StepsLow/StepsHigh) -- unlike the other three, this one wasn't dead: it was the
+    //     TOD-offset auto-clear block's only external dependency. Removed because its supposed writer (a
+    //     native Automation-tab action) turned out to always be suppressed by the coded-automation
+    //     title-matching mechanism in AutomationPlugin.kt (every native automation on the device in
+    //     question duplicated a coded one), so nothing was ever actually keeping it live -- reading it
+    //     could only ever see a frozen, stale value. The read site now computes StepsLow/StepsHigh
+    //     directly from step counts instead of depending on any external state; see that call site's own
+    //     comment for the exact thresholds and reasoning.
     private data class RequiredAutomationState(val values: List<String>, val defaultValue: String? = null)
 
     private val REQUIRED_AUTOMATION_STATES: Map<String, RequiredAutomationState> = mapOf(
         "MJ" to RequiredAutomationState(listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"), defaultValue = "NOMJremains"),
-        "MJstate" to RequiredAutomationState(listOf("MJon", "MJoff"), defaultValue = "MJoff"),
         "Steroids" to RequiredAutomationState(listOf("Steroids Off", "SteroidsON"), defaultValue = "Steroids Off"),
         "LowBG" to RequiredAutomationState(listOf("50recent", "NO50rec"), defaultValue = "NO50rec"),
-        "Steps" to RequiredAutomationState(listOf("StepsLow", "StepsHigh")),
-        "BGLstate" to RequiredAutomationState(listOf("BGLlastLOW")),
         "Profile" to RequiredAutomationState(listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"), defaultValue = "AllOK"),
-        "Sleeping" to RequiredAutomationState(listOf("True")),
-        "query_got_up" to RequiredAutomationState(listOf("query_it"))
+        "Sleeping" to RequiredAutomationState(listOf("True"))
     )
 
     private fun ensureStateDeclared(stateName: String, required: RequiredAutomationState) {
@@ -1944,7 +1959,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MJ2")
             setAutomationState("MJ", "MJ2")
             addCarePortalNote("MJ2")
-            //setAutomationState("MJstate", "MJon")
             markRun("MJ2old")
         }
 
@@ -1953,7 +1967,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MJ3")
             setAutomationState("MJ", "MJ3")
             addCarePortalNote("MJ3")
-            //setAutomationState("MJstate", "MJon")
             markRun("MJ3old")
         }
 
@@ -1968,7 +1981,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("MJoff [b$mjBlock]: g=${String.format("%.1f", g / 18.016)}")
                 setAutomationState("MJ", "NOMJremains")
                 addCarePortalNote("MJoff-$mjBlock")
-                //setAutomationState("MJstate", "MJoff")
                 markRun("MJoff")
             }
         }
@@ -2682,6 +2694,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // todResetSdeltaMmol < 0.1 -- an HP2 crossing while BG is still actively rising is a self-
         // correcting blip, not a genuine sustained low/high; requiring delta to have flattened first
         // keeps the sustained-duration timer from starting on those blips.
+        //
+        // StepsLow/StepsHigh used to read an external "Steps" automation state (declared by this
+        // file's own bootstrap, but never written by anything here -- confirmed genuinely owned by a
+        // native Automation-tab action). 2026-08-22: found that action was itself always suppressed by
+        // the coded-automation title-matching mechanism in AutomationPlugin.kt (every native title on
+        // this device duplicates a coded one), so "Steps" was never actually being kept live by
+        // anything -- reading it here would only ever see a frozen, stale value. Replaced with a direct
+        // step-count threshold instead, removing the external dependency entirely. Thresholds chosen to
+        // match this file's own established low/high-activity conventions used elsewhere (not a new
+        // guess): <=200 steps/60min is the repeated "quiet/inactive" cutoff throughout activityMonitor()
+        // and MoreMJ; >=1000 steps/60min is the repeated "sustained activity/exercise" cutoff used by
+        // AlarmHypo2, StepsSteroidsOff, and the high-BG-rising block above. Not verified against
+        // whatever the original native automation's own exact numbers were (no longer recoverable, since
+        // that automation no longer runs) -- revisit if real data suggests these don't match intent.
         val nomjRemains = checkAutomationState("MJ", "NOMJremains")
         val todResetHp = hypoPrediction2Mmol(
             glucoseStatus.glucose,
@@ -2706,8 +2732,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             DoubleKey.ApsAutoIsfTodOffset1822,
             DoubleKey.ApsAutoIsfTodOffset2200
         )
-        val stepsLow = checkAutomationState("Steps", "StepsLow")
-        val stepsHigh = checkAutomationState("Steps", "StepsHigh")
+        val stepsLow = recentSteps60Minutes <= 200
+        val stepsHigh = recentSteps60Minutes >= 1000
         val clearNegativeTodOffsetsNow = !nomjRemains || (todResetHp != null && todResetHp < 4.0 && todResetSdeltaMmol < 0.1) || stepsHigh
         // A positive TOD offset delays/limits SMB, so remove that protection only when every
         // permissive signal agrees. Missing HP2 deliberately fails closed and preserves the offset.
@@ -3184,10 +3210,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("GentleHypoRisk", 30)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             // 07:30-22:00 gate REMOVED so this also runs overnight -- same reasoning as AlarmHypo1 below:
-            // the value of running it at 03:00 is the BGLstate write, not the alert, and the alert is
-            // silenced in quiet hours instead (see gentleHypoQuiet). The acceW 0.03-0.08 band is
-            // deliberately left alone: it is what makes this a staged alarm, firing only once something
-            // else has already dropped acce, and is intended behaviour rather than an oversight.
+            // the value of running it at 03:00 is the acce/iobTH protective drop below, not the alert,
+            // and the alert is silenced in quiet hours instead (see gentleHypoQuiet). The acceW 0.03-0.08
+            // band is deliberately left alone: it is what makes this a staged alarm, firing only once
+            // something else has already dropped acce, and is intended behaviour rather than an oversight.
             val gentleHypoQuiet = isTimeBetween(22, 0, 7, 30)
             if (acceW > 0.03 && acceW <= 0.08) {
                 val g    = glucoseStatus.glucose
@@ -3237,7 +3263,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         " HP2=${hp?.let { String.format("%.1f", it) } ?: "--"}" +
                         " iob=${String.format("%.2f", iobData.iob)}"
                     // Silenced in quiet hours (see gentleHypoQuiet above) -- enacted either way, so the
-                    // acce/iobTH changes and the BGLstate write below still happen overnight.
+                    // acce/iobTH changes below still happen overnight.
                     if (!gentleHypoQuiet) {
                         if (g <= 6.0 * GlucoseUnit.MMOLL_TO_MGDL && mealData.mealCOB <= 9.0) {
                             sendSms(ghSmsText)
@@ -3247,8 +3273,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     }
                     addGraphAnnouncement("________________Gentle5")
                     addCarePortalNote("Gntl5")
-                    //setAutomationState("MJstate", "MJon")
-                    setAutomationState("BGLstate", "BGLlastLOW")
                     markRun("GentleHypoRisk")
                     aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW UKFrawG=${ukfG?.let { String.format("%.1f", it / 18.016) }} UKFrawD1=${ukfD1?.let { String.format("%.2f", it / 18.016) }} UKFrawD5=${ukfD5?.let { String.format("%.2f", it / 18.016) }} HP2=${hp?.let { String.format("%.1f", it) }}")
                 }
@@ -4710,19 +4734,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 50
                 && mealData.mealCOB <= 0.0
                 && lastBolusMin > 210
-                // Was checkAutomationState("BGLstate", "BGLlastLOW"). BGLstate is set to BGLlastLOW in
-                // three places (GentleHypoRisk, AlarmHypo1, and one more) and cleared in NONE -- it is a
-                // one-way latch, so after the first hypo alert the device ever fires it reads BGLlastLOW
-                // permanently. As a "recent low" signal it is therefore a constant: always true once any
-                // alert has fired, always false if none ever has. Either way it carried no information
-                // here. Swapped to LowBG=50recent, which is genuinely maintained (set on lows, cleared by
-                // Not50Recently on recovery, with its own anti-flap throttle) and is the same flag
-                // BolusWizard and the new recent-low rebound guard in DetermineBasalAutoISF.kt both read,
-                // so all three now agree on what "recent low" means. BGLstate itself is left in place
-                // rather than repaired: adding a cleared-value would mean calling setState with a value
-                // that may not be declared for it (values are configured at runtime in the
-                // automation-state plugin, not in code) and setAutomationState does not catch the
-                // IllegalStateException that an undeclared value raises.
+                // Was checkAutomationState("BGLstate", "BGLlastLOW"). BGLstate used to be set to
+                // BGLlastLOW in three places (GentleHypoRisk, AlarmHypo1, AlarmHypo2) and cleared in
+                // NONE -- it was a one-way latch, so after the first hypo alert the device ever fired it
+                // read BGLlastLOW permanently. As a "recent low" signal it was therefore a constant:
+                // always true once any alert had fired, always false if none ever had. Either way it
+                // carried no information here. Swapped to LowBG=50recent, which is genuinely maintained
+                // (set on lows, cleared by Not50Recently on recovery, with its own anti-flap throttle)
+                // and is the same flag BolusWizard and the recent-low rebound guard in
+                // DetermineBasalAutoISF.kt both read, so all three agree on what "recent low" means.
+                // BGLstate's own writes were removed entirely 2026-08-22 (it had no remaining readers
+                // anywhere), along with its bootstrap declaration.
                 && checkAutomationState("LowBG", "50recent")
                 && iobData.iob >= 0.2
             // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
@@ -5235,9 +5257,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "AlarmHypo1 0.700.35": hypo alarm — 3 OR-branches (time-gated slow decline,
         // an unconditional emergency floor at 3.0mmol with no time gate, and a steps-driven
-        // variant), drops acce weight to 0.10. Per user correction, sets BOTH BGLstate=BGLlastLOW
-        // and LowBG=50recent (screenshot only showed the former, but both AlarmHypo automations
-        // should set both).
+        // variant), drops acce weight to 0.10 and sets LowBG=50recent. (Used to also set
+        // BGLstate=BGLlastLOW; removed 2026-08-22 as a dead write -- BGLstate was a one-way latch
+        // never cleared anywhere, so it carried no information, and nothing read it any more.)
         if (readyToRun("AlarmHypo1", 15)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -5251,9 +5273,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // catch a slow decline into hypo, and that is no less real at 04:00 -- on 6->7 Aug 2026 BGL sat
             // at 3.5 from 04:00-05:30 and this block could not fire at all, because ah1b1 was outside its
             // window and ah1b2's emergency floor is 3.0. The point of running it overnight is less the
-            // alert than the two state writes below: LowBG=50recent is what arms the recent-low rebound
-            // guard in DetermineBasalAutoISF.kt, and without it that guard is unreachable after any
-            // overnight low. acce is also dropped to 0.10, which is protective in its own right.
+            // alert than the LowBG=50recent write below, which arms the recent-low rebound guard in
+            // DetermineBasalAutoISF.kt -- without it that guard is unreachable after any overnight low.
+            // acce is also dropped to 0.10, which is protective in its own right.
             //
             // Alerting is suppressed during quiet hours instead (see alarmHypoQuiet below) -- the block is
             // enacted, but silently, so it cannot wake you. The graph annotation still lands so the event
@@ -5292,7 +5314,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
                 }
                 addGraphAnnouncement("_____H4")
-                setAutomationState("BGLstate", "BGLlastLOW")
                 setAutomationState("LowBG", "50recent")
                 markRun("AlarmHypo1")
             }
@@ -5300,8 +5321,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code port of "AlarmHypo2 0.700.35": hypo alarm — single AND group, catches either
         // G<=4.3mmol outright or G<=5.5mmol with recent exercise (Steps30>=1000) likely
-        // accelerating the drop. Sets both BGLstate=BGLlastLOW and LowBG=50recent, feeding the
-        // existing 50%-profile state machine (50SetRecent/Not50%Recently/Extra50%/PP50.Off).
+        // accelerating the drop. Sets LowBG=50recent, feeding the existing 50%-profile state
+        // machine (50SetRecent/Not50%Recently/Extra50%/PP50.Off). (Used to also set
+        // BGLstate=BGLlastLOW; removed 2026-08-22, see AlarmHypo1's comment above.)
         if (readyToRun("AlarmHypo2", 15)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -5340,7 +5362,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("LowBG", "50recent")
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("H4")
-                setAutomationState("BGLstate", "BGLlastLOW")
                 markRun("AlarmHypo2")
             }
         }
@@ -5984,11 +6005,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val existSleepState = automationStateService.hasStateValues("Sleeping")
         val useSleepState = automationStateService.inState("Sleeping", "True")
         aapsLogger.debug(LTag.APS, "State json for Sleep mode: {\"Sleeping\":\"${automationStateService.getState("Sleeping")}\"}")
-        // really still sleeping?
-        if (useSleepState && (recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes == recentSteps30Minutes)) {   // no steps between 15m and 30m; was: && now>=inactivity_idle_end) -- dropped deliberately, see AndroidAPS-3426 merge (2026-08-12)
-            automationStateService.setState("query_got_up", "query_it")
-        }
-        aapsLogger.debug(LTag.APS, "State json for got up query: {\"query_got_up\":\"${automationStateService.getState("query_got_up")}\"}")
+        // query_got_up removed 2026-08-22: it was written here (Sleeping=True + no steps between 15m
+        // and 30m) but never read anywhere in this file or elsewhere in the codebase -- a one-shot
+        // signal with no consumer. Sleeping itself stays live (existSleepState/useSleepState above are
+        // still load-bearing for the inactivity-detection gates below).
 
         if (!activityDetection) {
             consoleLog.add("Activity monitor disabled in settings")

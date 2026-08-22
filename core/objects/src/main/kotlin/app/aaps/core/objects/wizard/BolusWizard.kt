@@ -194,6 +194,13 @@ class BolusWizard @Inject constructor(
     private var quickWizard: Boolean = true
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
+    // "Walking soon" checkbox: forces the immediate dose to 50%, independent of and without touching
+    // usePercentage/totalPercentage/percentageCorrection, so the delayed-bolus fullRequired calculation
+    // (see the walkingSoon branch in commonProcessing()'s success callback) can keep reading those
+    // fields untouched and top up toward the user's own normal percentage rather than toward this
+    // override. See WizardDialog.kt for the pre-tick default (quiet OR already-active steps, BG not
+    // already rising fast).
+    var walkingSoon: Boolean = false
 
     fun doCalc(
         profile: Profile,
@@ -219,7 +226,8 @@ class BolusWizard @Inject constructor(
         quickWizard: Boolean = false,
         positiveIOBOnly: Boolean = false,
         protein: Int = 0,
-        fat: Int = 0
+        fat: Int = 0,
+        walkingSoon: Boolean = false
     ): BolusWizard {
 
         this.profile = profile
@@ -246,6 +254,7 @@ class BolusWizard @Inject constructor(
         this.usePercentage = usePercentage
         this.totalPercentage = totalPercentage
         this.positiveIOBOnly = positiveIOBOnly
+        this.walkingSoon = walkingSoon
 
         // QuickWizard/wizard correction: when the ACTIVE profile percentage is above 100%, calculate
         // the bolus on the 100% (base) profile instead of the boosted rates. The profile scales IC and
@@ -332,7 +341,11 @@ class BolusWizard @Inject constructor(
         // Total
         calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
 
-        val percentage = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+        // "Walking soon" override: force 50% for the immediate dose only. Deliberately does not touch
+        // usePercentage/totalPercentage/percentageCorrection themselves -- the delayed-bolus
+        // fullRequired calculation downstream reads those fields directly and needs them to still
+        // reflect the user's normal (non-overridden) percentage, not this one-off reduction.
+        val percentage = if (walkingSoon) 50.0 else (if (usePercentage) totalPercentage else percentageCorrection.toDouble())
 
         // Percentage adjustment
         totalBeforePercentageAdjustment = calculatedTotalInsulin
@@ -754,9 +767,14 @@ class BolusWizard @Inject constructor(
                                     val recent50Triggered = delayedProfilePct != 50 &&
                                         (automationStateService.inState("LowBG", "50recent") ||
                                             (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0))
+                                    // walkingSoon (see doCalc's own comment): a third, independent way to qualify
+                                    // for this same delayed-check path. Its own 50% reduction happened via the
+                                    // `percentage` override in doCalc, not via profile or carbs-only halving, so
+                                    // it needs no special-casing in fullRequired below -- percentageCorrection and
+                                    // ic are both already untouched/normal on this path.
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-                                        (delayedProfilePct == 50 || recent50Triggered)
+                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoon)
                                     ) {
                                         // FullRequired uses normal IC. On the profile-50% path, ic itself is
                                         // already halved by the profile switch, so normal IC = 2x ic. On the
@@ -770,7 +788,7 @@ class BolusWizard @Inject constructor(
                                         // if this were shorter, SMBs would resume mid-window while the delayed
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
-                                        val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else "recent50Triggered"
+                                        val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else if (recent50Triggered) "recent50Triggered" else "walkingSoon"
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1)
                                         // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)

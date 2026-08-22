@@ -21,6 +21,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -78,6 +79,7 @@ class WizardDialog : DaggerDialogFragment() {
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var iobCobCalculator: IobCobCalculator
     @Inject lateinit var persistenceLayer: PersistenceLayer
+    @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var protectionCheck: ProtectionCheck
     @Inject lateinit var decimalFormatter: DecimalFormatter
@@ -254,6 +256,17 @@ class WizardDialog : DaggerDialogFragment() {
         calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
         binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
+
+        // "Walking soon" pre-tick default: either currently quiet (steps60<100, anticipating an
+        // imminent walk) or already active (steps60>=1000, exercising right now) -- same thresholds
+        // this fork's other automations use for "low"/"sustained activity" -- AND BG isn't already
+        // rising fast, since a genuine ongoing rise means more insulin is needed regardless of
+        // activity, not less. User can still untick/tick manually regardless of this default.
+        val recentSteps60 = persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - T.mins(60).msecs(), dateUtil.now())
+            .maxByOrNull { it.timestamp }?.steps60min ?: 0
+        val currentDelta = glucoseStatusProvider.getGlucoseStatusData()?.delta ?: 0.0
+        val notRisingFast = currentDelta <= 0.9 /* +0.05 mmol/5min */
+        binding.walkingSoonCheckbox.isChecked = (recentSteps60 < 100 || recentSteps60 >= 1000) && notRisingFast
         // ok button
         binding.okcancel.ok.setOnClickListener {
             if (okClicked) {
@@ -263,6 +276,9 @@ class WizardDialog : DaggerDialogFragment() {
                 calculateInsulin()
                 wizard?.manualSplitBolusEnabled = binding.splitBolusCheckbox.isChecked
                 wizard?.manualSplitBolusIntervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
+                // walkingSoon itself is NOT set here (unlike manualSplitBolusEnabled above): it has to be
+                // known at calculateInsulin()'s doCalc() call (below/live via onCheckedChanged) since it
+                // changes the CALCULATED total, not just how an already-calculated dose gets delivered.
                 context?.let { context ->
                     wizard?.confirmAndExecute(context)
                 }
@@ -287,6 +303,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.iobCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
         binding.bgTrendCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
         binding.sbCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
+        binding.walkingSoonCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
 
         val showCalc = preferences.get(BooleanKey.WizardCalculationVisible)
         binding.delimiter.visibility = showCalc.toVisibility()
@@ -538,7 +555,8 @@ class WizardDialog : DaggerDialogFragment() {
             usePercentage = usePercentage,
             totalPercentage = percentageCorrection.toDouble(),
             protein = protein,
-            fat = fat
+            fat = fat,
+            walkingSoon = binding.walkingSoonCheckbox.isChecked
         )
 
         wizard?.let { wizard ->

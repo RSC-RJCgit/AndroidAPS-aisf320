@@ -157,6 +157,27 @@
             android:textColor="?attr/warningColor"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/walking_soon_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp">
+
+            <CheckBox
+                android:id="@+id/walking_soon_checkbox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Walking soon (50% now, rest later if needed)"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                tools:ignore="HardcodedText" />
+
+        </LinearLayout>
+
         <TextView
             android:id="@+id/protein_fat_delay_info"
             android:layout_width="match_parent"
