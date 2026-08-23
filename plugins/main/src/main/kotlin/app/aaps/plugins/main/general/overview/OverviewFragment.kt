@@ -1250,6 +1250,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         STEROID_INCREASE_190("Steroid increase 150 to 190", 5.172),
         STEROID_INCREASE_250("Steroid increase 190 to 250", 5.174),
         STEROID_TURN_OFF("Steroids OFF", 5.176),
+        // Added 2026-08-23: on/off for Tier 3 "UAM Boost" (ApsAutoIsfUamBoostEnabled) -- same toggle the
+        // Settings-screen AdaptiveSwitchPreference already exposes, just reachable from List 2 too
+        // without navigating there. Dispatches the same local-toggle way as MJ_BUTTONS_TOGGLE/
+        // STEROID_BUTTON_TOGGLE below (EventAutoIsfDirectTtCode, no real TT created).
+        TIER3_BOOST_TOGGLE("Tier 3 UAM Boost on/off", 5.194),
+        // Added 2026-08-23: on/off for ApsAutoIsfUseUkf1ForDosing -- see
+        // OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc comment. Same
+        // EventAutoIsfDirectTtCode dispatch as the two toggles above.
+        UKF1_DOSING_TOGGLE("AutoISF calcs: UKF1 vs LibreSpecial EMA", 5.196),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
@@ -1435,7 +1444,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     )
 
                 BasalDirectAction.MJ_BUTTONS_TOGGLE,
-                BasalDirectAction.STEROID_BUTTON_TOGGLE ->
+                BasalDirectAction.STEROID_BUTTON_TOGGLE,
+                BasalDirectAction.TIER3_BOOST_TOGGLE,
+                BasalDirectAction.UKF1_DOSING_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
                 // Unreachable here -- the early-return guards above (action == ANYDESK_RESTART /

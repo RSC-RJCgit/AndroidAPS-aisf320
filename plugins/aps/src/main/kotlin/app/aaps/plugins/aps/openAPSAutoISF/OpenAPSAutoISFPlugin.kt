@@ -1597,6 +1597,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "BoostMaxUpTT" -> 5.188
         "BoostIobMaxDownTT" -> 5.190
         "BoostIobMaxUpTT" -> 5.192
+        "Tier3BoostToggleTT" -> 5.194
+        "Ukf1DosingToggleTT" -> 5.196
         else -> null
     }
 
@@ -3034,6 +3036,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("StB${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("Steroid Kotlin button toggled", true))
             markRun("SteroidKotlinButtonToggleTT")
+        }
+
+        // Added 2026-08-23: List 2 on/off for Tier 3 "UAM Boost" (ApsAutoIsfUamBoostEnabled), same flag
+        // uamBoostActive already reads (see its own getter's doc comment) and the same one the
+        // Settings-screen AdaptiveSwitchPreference exposes -- this is just a quicker toggle path, not a
+        // second independent flag. Same activeTtNear()/cancel/notify shape as the two toggles above.
+        if (readyToRun("Tier3BoostToggleTT", 2) && activeTtNear(5.194, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfUamBoostEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Tier 3 UAM Boost: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("T3B${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Tier 3 UAM Boost toggled", true))
+            markRun("Tier3BoostToggleTT")
+        }
+
+        // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
+        // applyUkf1DosingOverride()'s own doc comment for scope. Same activeTtNear()/cancel/notify shape
+        // as the two toggles above.
+        if (readyToRun("Ukf1DosingToggleTT", 2) && activeTtNear(5.196, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+            preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
+            cancelCurrentTempTarget()
+            sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("U1D${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
+            markRun("Ukf1DosingToggleTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
@@ -5996,7 +6025,65 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ukfSmoothing.smoothForDisplay(rawReadings.map { it.timestamp to it.noise!! }).firstOrNull() ?: 0.0
     }
 
-    override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)
+    // This IS the single choke point behind glucoseStatusProvider.glucoseStatusData app-wide whenever
+    // this plugin is the active APS (GlucoseStatusProviderImpl.getGlucoseStatusData() just calls
+    // activePlugin.activeAPS.getGlucoseStatusData()) -- so overriding here, rather than patching
+    // invoke()'s/autoISF()'s own local reads separately, is what makes the ApsAutoIsfUseUkf1ForDosing
+    // toggle below apply consistently everywhere within this plugin's own dosing math (invoke(),
+    // autoISF()'s ISF-weight calc) without a second, easy-to-miss patch site. It also means the Wizard/
+    // QuickWizard calculator, TriggerBg/TriggerDelta automation triggers, the Overview widget, wear/
+    // Tizen, and SMS "bg" replies would all agree with the same UKF1-based number while the toggle is
+    // on -- a deliberate consequence, not scope creep: those all read the SAME "what's AutoISF's current
+    // glucose status" answer this plugin is the authority for while active, so silently disagreeing with
+    // AutoISF's own dosing math would be worse than being consistent with it.
+    override fun getGlucoseStatusData(allowOldData: Boolean): GlucoseStatus? {
+        val base = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData) as? GlucoseStatusAutoIsf
+            ?: return glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData)
+        return applyUkf1DosingOverride(base)
+    }
+
+    // Added 2026-08-23. Substitutes the literal "UKF1" comparison series (smoothForDisplay() over raw/
+    // noise readings, via the already-existing ukf1RecentHistory()/ukf1DeltaMetrics()/
+    // ukf1AccelerationMetrics() helpers built for the UKFcheck comparison work) for whichever smoothing
+    // algorithm is actually live -- LibreSpecial EMA by default, or UKFset1/LibreSpecial-EMA-of-UKF1 if
+    // those toggles are set elsewhere. UKF1 was the one UKFcheck's real-data comparison found
+    // consistently fastest to react (always +0.0s, i.e. first, across every sample) -- see the AIV
+    // review checklist's card 07/07b.
+    //
+    // Scope, deliberately partial: only glucose/date/delta/shortAvgDelta/longAvgDelta/bgAcceleration/
+    // deltaPl/deltaPn/corrSqu are replaced. duraISFminutes/duraISFaverage (the separate 5%-band average-
+    // duration calculation) and a0/a1/a2 (the parabola's own raw coefficients, only read by autoISF()'s
+    // peak-BG prediction) are left as the base calculator computed them -- still LibreSpecial-EMA-based
+    // even with this toggle on. Rebuilding those from the UKF1 series too was judged out of scope for a
+    // first pass; if a future check finds autoISF()'s peak-BG prediction disagreeing with the now-UKF1
+    // delta/acceleration it sits alongside, that's the gap to close.
+    //
+    // No EMA smoothing step exists in UKF1's own pipeline at all (a Kalman filter, not an exponential
+    // moving average) -- see the toggle's own settings description for what that changes about how to
+    // read the resulting Delta numbers.
+    //
+    // Virtual-only and off by default, matching every other UKF/boost-type toggle in this file. Falls
+    // back to the unmodified base (never a null/zero-filled result) if there's no raw/noise history to
+    // build UKF1's series from, so a transient data gap degrades to "toggle had no effect this cycle",
+    // not a bad dosing input.
+    private fun applyUkf1DosingOverride(base: GlucoseStatusAutoIsf): GlucoseStatusAutoIsf {
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)) return base
+        if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) return base
+        val latest = ukf1RecentHistory(45).firstOrNull() ?: return base
+        val deltaResult = ukf1DeltaMetrics()
+        val accelResult = ukf1AccelerationMetrics()
+        return base.copy(
+            glucose = latest.second,
+            date = latest.first,
+            delta = deltaResult.delta,
+            shortAvgDelta = deltaResult.shortAvgDelta,
+            longAvgDelta = deltaResult.longAvgDelta,
+            bgAcceleration = accelResult.bgAcceleration,
+            deltaPl = accelResult.deltaPl,
+            deltaPn = accelResult.deltaPn,
+            corrSqu = accelResult.corrSqu
+        )
+    }
 
     override fun isSuperBolusEnabled(value: Constraint<Boolean>): Constraint<Boolean> {
         value.set(false)
@@ -6922,12 +7009,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalOffset, dialogMessage = R.string.fslCal_Offset_summary, title = R.string.fslCal_Offset_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslCalSlope, dialogMessage = R.string.fslCal_Slope_summary, title = R.string.fslCal_Slope_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.FslSmoothAlpha, dialogMessage = R.string.fsl_exp1_factor_summary, title = R.string.fsl_exp1_factor_title))
+                    // Added 2026-08-23: was List 1-only before this (toggle via "SensorAgeCodeToggleTT",
+                    // TT 5.156) with no Settings-screen equivalent. This is the master switch for the
+                    // whole SensorAge block (new-sensor days 0-3 AND aging-sensor days 11-15 below);
+                    // ApsAutoIsfOldSensorAdjEnabled just underneath is a second, narrower gate checked
+                    // only once inside that same block -- both must be on for any tier to apply.
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, summary = R.string.autoisf_sensor_age_code_enabled_summary, title = R.string.autoisf_sensor_age_code_enabled_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfOldSensorAdjEnabled, summary = R.string.old_sensor_adj_enabled_summary, title = R.string.old_sensor_adj_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLibreSlopeOrig, dialogMessage = R.string.autoisf_libre_slope_orig_summary, title = R.string.autoisf_libre_slope_orig_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfLibreOffsetOrig, dialogMessage = R.string.autoisf_libre_offset_orig_summary, title = R.string.autoisf_libre_offset_orig_title))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MaintenanceCleanupDays, dialogMessage = R.string.MaintenanceCleanupDays_summary, title = R.string.MaintenanceCleanupDays_title))
                 })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutoIsfWeights, summary = R.string.openapsama_enable_autoISF, title = R.string.openapsama_enable_autoISF))
+                // Added 2026-08-23 -- see applyUkf1DosingOverride()'s own doc comment (this file) for
+                // exactly which glucose_status fields this replaces and which it deliberately leaves
+                // alone.
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseUkf1ForDosing, summary = R.string.autoisf_use_ukf1_for_dosing_summary, title = R.string.autoisf_use_ukf1_for_dosing_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMaxLow, dialogMessage = R.string.openapsama_autoISF_max_low_summary, title = R.string.openapsama_autoISF_max_low))

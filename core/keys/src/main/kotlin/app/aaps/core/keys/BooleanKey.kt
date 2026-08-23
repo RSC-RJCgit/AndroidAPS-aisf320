@@ -107,6 +107,14 @@ enum class BooleanKey(
     // which is a different, unrelated feature (BolusGiven/BolusGivenMild). Default false: opt-in,
     // Tier 3 UAM Boost was hardcoded off (`val boostActive = false`) before this preference existed.
     ApsAutoIsfUamBoostEnabled("autoisf_uam_boost_enabled", false, defaultedBySM = true),
+    // Added 2026-08-23: routes the AutoISF plugin's own getGlucoseStatusData() -- the single choke
+    // point behind glucoseStatusProvider.glucoseStatusData app-wide when this plugin is the active APS
+    // -- through the literal "UKF1" comparison series (UnscentedKalmanFilterPlugin.smoothForDisplay()
+    // over raw/noise readings, the same source UKFcheck found consistently fastest to react) instead of
+    // whichever smoothing algorithm is actually live (LibreSpecial EMA by default). Default false:
+    // opt-in, unproven for real dosing use. See OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc
+    // comment for exactly which GlucoseStatusAutoIsf fields this does/doesn't replace.
+    ApsAutoIsfUseUkf1ForDosing("autoisf_use_ukf1_for_dosing", false, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     // Mutually-exclusive UKF requests. UKF1 replaces LibreSpecial EMA with smoothRawRealtime() only
     // on a non-Client Virtual Pump; real-pump and Client ingestion remain on LibreSpecial EMA. UKF2
