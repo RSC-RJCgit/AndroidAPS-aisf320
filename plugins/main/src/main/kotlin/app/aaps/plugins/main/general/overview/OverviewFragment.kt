@@ -1932,9 +1932,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun displayedTtCurrentValue(entry: TtCode, localValue: () -> String): String {
         if (!config.AAPSCLIENT) return localValue()
+        // Action has no TT number to mirror at all (it's never remote-relayable -- see its own doc
+        // comment on the sealed class above) and none of its call sites ever route through here (the
+        // dispatch `when` in showTtCodesListDialog() calls entry.onSelect() directly instead), but the
+        // compiler still needs every TtCode subtype covered here since entry's static type is the sealed
+        // base. Local value is the only sensible fallback if this ever were reached.
         val code = when (entry) {
             is TtCode.Single  -> entry.value
             is TtCode.Stepped -> entry.down
+            is TtCode.Action  -> return localValue()
         }
         return when (code) {
             5.002 -> mirroredListSettingPair(
