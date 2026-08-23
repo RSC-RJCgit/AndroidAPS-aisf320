@@ -2172,6 +2172,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else -> null
             }
             val oldSensorActiveNow = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
+            // Diagnostic logging added 2026-08-23 -- this whole block previously had NO visibility into
+            // its own decision (unlike almost everything else in this file), which made a real "why is
+            // it still 0.72" case on 23 Aug undiagnosable from exported logs alone: every individually
+            // checkable precondition (toggle, sensor-age record, recentHighBglSeen) looked satisfied from
+            // outside, with nothing to show what the block itself actually computed. Logged every cycle
+            // this far in (sensorAgeCodeEnabled true, LowRaw24 not overriding), not just on a tier match,
+            // so a "should have engaged but didn't" cycle is visible too, not just successful ones.
+            consoleError.add(
+                "SensorAge check: sensorAgeDays=${sensorAgeDays?.let { round(it, 3) } ?: "null"} " +
+                    "oldSensorTier=${oldSensorTier?.first ?: "none"} oldSensorEnabled=$oldSensorEnabled " +
+                    "recentHighBglSeen=$recentHighBglSeen (rawGForOver12=${rawGForOver12?.let { round(it / 18.0182, 2) } ?: "null"}mmol) " +
+                    "oldSensorActiveNow=$oldSensorActiveNow currentFslCalSlope=${round(preferences.get(DoubleKey.FslCalSlope), 2)}"
+            )
             // Sensor-age calibration is otherwise independent of cannula/pod age (see NewDay2's pod-age
             // OR above for the one exception). It still requires recentHighBglSeen (see above); cannula
             // protections remain in their own pod automations.
@@ -3478,8 +3491,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- Not50%Recently: clears 50recent flag once profile is back at 100% and BGL rising ---
+        // BG floor added 2026-08-23. Real 4-day pattern (Client, 20-23 Aug): this clears on the very
+        // first uptick off a low (delta >=0.1mmol was the only bar), often while BG is still clearly in
+        // low/low-normal range (4.2-5.0mmol seen repeatedly) -- not once the low has actually resolved.
+        // 5-7 times a day the guard then sits off through an autonomous, often carbless rebound that
+        // keeps climbing for another 30-90+ min, so by the time real correction lands (recentLowActive's
+        // own 50% SMB halving in DetermineBasalAutoISF.kt), it lands at full strength. Worst confirmed
+        // case: 23 Aug, cleared at 4.9mmol/11:07am, rebound climbed unprotected to 7.6mmol by 12:41pm
+        // (COB=0.0 throughout -- no carbs, a genuine autonomous rebound), ~1.2U delivered, that IOB then
+        // decayed BG back down to 5.6mmol and still falling by 2:18pm -- uncomfortably close to a second
+        // low a few hours after the first. 5.5mmol chosen as the floor: checked against all 20+ LowBG
+        // clear events across 20-23 Aug, and every clear that later showed a large (>=0.8U) correction
+        // into a continuing rise had cleared below 5.5mmol; the ones that cleared at or above 6.0mmol
+        // generally didn't show the same pattern. Not independently re-verified beyond that 4-day sample.
         if (readyToRun("Not50Recently", 5) && profile_percentage == 100 && checkAutomationState("LowBG", "50recent")
-            && glucoseStatus.delta >= 1.8 /* 0.1 mmol */) {
+            && glucoseStatus.delta >= 1.8 /* 0.1 mmol */
+            && glucoseStatus.glucose >= 99.1 /* 5.5 mmol -- don't clear while still in low-normal range */) {
             setAutomationState("LowBG", "NO50rec")
             addCarePortalNote("No50")
             markRun("Not50Recently")
