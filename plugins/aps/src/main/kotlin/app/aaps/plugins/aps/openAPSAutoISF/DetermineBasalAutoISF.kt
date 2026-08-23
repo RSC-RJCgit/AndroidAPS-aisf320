@@ -216,8 +216,20 @@ class DetermineBasalAutoISF @Inject constructor(
     // insulinReqPCT: the reference's own mutable working variable, distinct from insulinDivisor (see
     // determine_basal()'s own insulinDivisor for our adapted Tier 3's equivalent) -- defaults to the same
     // 100/Boost_InsulinReq formula, then Tier 3's own body may reassign it to insulinDivisor when
-    // delta_accl > 1. Passed in already-initialized rather than recomputed here, since the reference
-    // computes it once at function-top, upstream of where Tier 3 itself lives.
+    // bg_acce clears its bar. Passed in already-initialized rather than recomputed here, since the
+    // reference computes it once at function-top, upstream of where Tier 3 itself lives.
+    //
+    // bg_acce substituted for delta_accl throughout this function (both the fast-carb-rebound gate and
+    // Tier 3's own insulinReqPCT switch), per explicit instruction -- same substitution already made in
+    // our own adapted Tier 3's entry gate, same reasoning (delta_accl is a ratio, unstable near a small
+    // SDelta denominator; bg_acce is a regression-fitted second derivative, not a ratio -- see that
+    // gate's own doc comment). Two thresholds needed re-deriving in bg_acce's own units, since
+    // delta_accl's percentage scale doesn't translate directly: reuses the SAME 0.30mmol/5.4-raw bar
+    // already established for bg_acce elsewhere in this file for the weaker "> 1" bar, and 3x that
+    // (0.90mmol/16.2-raw) for the stronger "> 25" fast-carb-rebound bar -- proportional to delta_accl's
+    // own 25:1 ratio between its two thresholds, but NOT independently calibrated against real bg_acce
+    // data the way the base 0.30mmol figure was. Judgment call, flagged as such; revisit once this
+    // branch has logged a few real fast-carb-rebound episodes to check against.
     private fun tier3BoostReferenceComparison(
         rT: RT,
         glucose_status: GlucoseStatus,
@@ -235,22 +247,21 @@ class DetermineBasalAutoISF @Inject constructor(
         insulinDivisor: Double,
         insulinReqPCTInitial: Double,
         recentLowBG: Double,
+        bg_acce: Double,
         systemTime: Long,
         roundSMBTo: Double
     ): String {
         val uamBoost1 = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
         val uamBoost2 = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
-        val delta_accl: Double = if (abs(glucose_status.shortAvgDelta) == 0.0) 0.0
-            else 100 * round((glucose_status.delta - glucose_status.shortAvgDelta) / abs(glucose_status.shortAvgDelta), 2)
         val lastCarbAge = round((systemTime - meal_data.lastCarbTime) / 60000.0)
         val COB = meal_data.mealCOB
 
-        // ----- Fast-carb rebound detection (verbatim from the reference) -----
+        // ----- Fast-carb rebound detection (verbatim from the reference, bg_acce substituted for delta_accl) -----
         val lowTriggered = recentLowBG < 100.0
         val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
             glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
         val reversalTriggered = reversalScore > 30.0
-        val fastCarbConditions = (lowTriggered || reversalTriggered) && COB == 0.0 && delta_accl > 25.0
+        val fastCarbConditions = (lowTriggered || reversalTriggered) && COB == 0.0 && bg_acce > 0.90 * 18
         var fastCarbScale = 1.0
         val fastCarbRebound: Boolean
         if (fastCarbConditions && bg < 170.0) {
@@ -271,7 +282,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 lowTriggered -> "low ${round(recentLowBG, 0)}"
                 else -> "rev ${round(reversalScore, 0)}"
             }
-            consoleError.add("[Tier3Ref] Fast-carb rebound ($trigger, accl ${round(delta_accl, 1)}): BG=$bg -- scale ${round(fastCarbScale * 100, 0)}%")
+            consoleError.add("[Tier3Ref] Fast-carb rebound ($trigger, bg_acce ${round(bg_acce, 1)}): BG=$bg -- scale ${round(fastCarbScale * 100, 0)}%")
         }
 
         var insulinReqPCT = insulinReqPCTInitial
@@ -287,7 +298,7 @@ class DetermineBasalAutoISF @Inject constructor(
             if (boostInsulinReq > boostMaxIOB - iob_data.iob) {
                 boostInsulinReq = boostMaxIOB - iob_data.iob
             }
-            if (delta_accl > 1) {
+            if (bg_acce > 0.30 * 18) {
                 insulinReqPCT = insulinDivisor
             }
             var microBolus: Double
@@ -1495,6 +1506,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         insulinDivisor = insulinDivisor,
                         insulinReqPCTInitial = insulinDivisor,
                         recentLowBG = recentLowBG,
+                        bg_acce = bg_acce,
                         systemTime = systemTime,
                         roundSMBTo = roundSMBTo
                     )
