@@ -153,6 +153,22 @@ enum class DoubleKey(
     // OldSensorAdj's tiered offsets are derived from (base + 0.05/0.10/0.15 for the D2/D1/D0 tiers),
     // same reasoning/pattern as ApsAutoIsfLibreSlopeOrig above.
     ApsAutoIsfLibreOffsetOrig("autoisf_libre_offset_orig", 1.4, -50.0, 50.0, defaultedBySM = true),
+    // Added 2026-08-23, alongside ApsAutoIsfUseUkf1ForDosing (BooleanKey.kt) -- same slope*x+offset
+    // shape as FslCalSlope/FslCalOffset above, but a completely separate pair: this one adjusts UKF1's
+    // own delta/shortAvgDelta/longAvgDelta AFTER the toggle has already substituted them for
+    // whichever-is-live's values, specifically so today's fixed thresholds (Tier 3's delta>=5/
+    // shortAvgDelta>=3/bg_acce>5.4, Mild/BG3 Boost's bands, the Fast-Rise cascade's own tiers) don't
+    // silently mean something different once the underlying signal changes. Applied inside
+    // OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() -- because that's the single choke point every
+    // consumer of glucose_status reads through, this compensation reaches ALL of them (Tier 3, Mild/BG3
+    // Boost, autoISF()'s own acce/bg ISF-weight calc, AND the Fast-Rise cascade, which then still applies
+    // its own separate fastRiseSlopeCompensationRatio for LibreSlope drift on top -- the two are
+    // orthogonal and stack, not redundant). Units: already mg/dL per 5min, the SAME internal scale as
+    // glucose_status.delta itself -- unlike FslCalOffset above, this is NOT auto-converted from mmol.
+    // Default 1.0/0.0 (no-op) until real UKF1-mode AIV data justifies a real value -- see this key's own
+    // Settings description for how to derive one.
+    ApsAutoIsfUkf1DeltaCompensationSlope("autoisf_ukf1_delta_compensation_slope", 1.0, 0.3, 3.0, defaultedBySM = true),
+    ApsAutoIsfUkf1DeltaCompensationOffset("autoisf_ukf1_delta_compensation_offset", 0.0, -5.0, 5.0, defaultedBySM = true),
 
     ActivityMonitorRatio("activity_ratio", 1.0, 0.0, 2.0, defaultedBySM = true),
     ActivityScaleFactor("activity_scale_factor", 1.0, 0.0, 1.5, defaultedBySM = true, dependency = BooleanKey.ActivityMonitorDetection),

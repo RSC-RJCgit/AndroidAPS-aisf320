@@ -6079,7 +6079,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     //
     // No EMA smoothing step exists in UKF1's own pipeline at all (a Kalman filter, not an exponential
     // moving average) -- see the toggle's own settings description for what that changes about how to
-    // read the resulting Delta numbers.
+    // read the resulting Delta numbers. Added 2026-08-23: ApsAutoIsfUkf1DeltaCompensationSlope/Offset
+    // (DoubleKey.kt) rescale delta/shortAvgDelta/longAvgDelta/bgAcceleration/deltaPl/deltaPn AFTER the
+    // substitution above but before every consumer reads them -- default 1.0/0.0 (no-op) until real
+    // UKF1-mode data justifies a value, meant to keep today's fixed thresholds meaning what they were
+    // calibrated to mean once the input signal changes, rather than re-tuning every individual gate.
+    //
+    // Reversion: turning ApsAutoIsfUseUkf1ForDosing back off is a full, immediate, stateless reversion --
+    // this function (and ukf1RecentHistory()/ukf1DeltaMetrics()/ukf1AccelerationMetrics()) never persist
+    // anything and never touch the live smoothing pipeline's own state, so the very next cycle's
+    // getGlucoseStatusData() call returns the ordinary LibreSpecial-EMA base object exactly as if this
+    // function had never run. Does not, and cannot, undo any SMB already delivered while it was on.
     //
     // Virtual-only and off by default, matching every other UKF/boost-type toggle in this file. Falls
     // back to the unmodified base (never a null/zero-filled result) if there's no raw/noise history to
@@ -6091,15 +6101,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val latest = ukf1RecentHistory(45).firstOrNull() ?: return base
         val deltaResult = ukf1DeltaMetrics()
         val accelResult = ukf1AccelerationMetrics()
+        // Compensation applied here, not left to each individual gate -- see
+        // ApsAutoIsfUkf1DeltaCompensationSlope/Offset's own doc comment (DoubleKey.kt) for why this is
+        // the one place it needs to happen for every consumer (Tier 3, Mild/BG3 Boost, autoISF()'s ISF
+        // weights, Fast-Rise) to see it consistently. Slope+offset on the three delta fields (all mg/dL
+        // per 5min, same scale as the offset); slope only on the acceleration/parabola fields (a
+        // different physical quantity -- mg/dL per 5min^2 -- an additive mg/dL-per-5min offset has no
+        // dimensionally sound meaning there).
+        val compSlope = preferences.get(DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope)
+        val compOffset = preferences.get(DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset)
         return base.copy(
             glucose = latest.second,
             date = latest.first,
-            delta = deltaResult.delta,
-            shortAvgDelta = deltaResult.shortAvgDelta,
-            longAvgDelta = deltaResult.longAvgDelta,
-            bgAcceleration = accelResult.bgAcceleration,
-            deltaPl = accelResult.deltaPl,
-            deltaPn = accelResult.deltaPn,
+            delta = deltaResult.delta * compSlope + compOffset,
+            shortAvgDelta = deltaResult.shortAvgDelta * compSlope + compOffset,
+            longAvgDelta = deltaResult.longAvgDelta * compSlope + compOffset,
+            bgAcceleration = accelResult.bgAcceleration * compSlope,
+            deltaPl = accelResult.deltaPl * compSlope,
+            deltaPn = accelResult.deltaPn * compSlope,
             corrSqu = accelResult.corrSqu
         )
     }
@@ -7044,6 +7063,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // exactly which glucose_status fields this replaces and which it deliberately leaves
                 // alone.
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseUkf1ForDosing, summary = R.string.autoisf_use_ukf1_for_dosing_summary, title = R.string.autoisf_use_ukf1_for_dosing_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope, dialogMessage = R.string.autoisf_ukf1_delta_compensation_slope_summary, title = R.string.autoisf_ukf1_delta_compensation_slope_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset, dialogMessage = R.string.autoisf_ukf1_delta_compensation_offset_summary, title = R.string.autoisf_ukf1_delta_compensation_offset_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMaxLow, dialogMessage = R.string.openapsama_autoISF_max_low_summary, title = R.string.openapsama_autoISF_max_low))
