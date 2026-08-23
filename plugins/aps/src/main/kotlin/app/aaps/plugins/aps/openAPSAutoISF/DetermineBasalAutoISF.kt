@@ -189,6 +189,126 @@ class DetermineBasalAutoISF @Inject constructor(
 
         else (value * 10).roundToInt() % 2 == 0                // decimal: check first decimal digit
 
+    // ============================================================================================
+    // TIER 3 REFERENCE COMPARISON -- UKFboost branch only, testing/comparison, NEVER wired into real
+    // dosing (its result is only ever appended to consoleError/rT.reason for side-by-side reading
+    // against our own adapted Tier 3, never assigned to microBolus/rT.units on the real delivery path).
+    // ============================================================================================
+    // Faithful, minimally-adapted port of Tier 3 "UAM Boost" -- including the fast-carb-rebound
+    // detection its own body depends on (fastCarbRebound/fastCarbScale) -- from the original
+    // Boost-in-AAPS_3.4 reference project. Identical in both openAPSBoost/DetermineBasalBoost.kt and
+    // openAPSBoostV3/DetermineBasalBoostV3.kt (line-for-line the same block, confirmed by direct
+    // comparison), so this is the one true reference version, not one variant among several.
+    //
+    // Deliberately self-contained: recomputes uamBoost1/uamBoost2/delta_accl/lastCarbAge locally from
+    // its own parameters rather than reading this class's own already-computed copies, so this function
+    // has zero dependency on anything our adapted Tier 3 does elsewhere in this file -- a genuine
+    // independent read of what the UNMODIFIED reference logic would decide this cycle.
+    //
+    // Two substitutions from the literal reference, both because they'd otherwise require touching
+    // shared, cross-algorithm code on a branch meant to stay isolated:
+    //  - rT.boostTier (a new RT field in the reference, not present on our shared core RT type) becomes
+    //    a returned string instead of a field write.
+    //  - iTimeActive (a var scoped to the reference's own broader function, used by a later,
+    //    boost-specific tier this port doesn't include) is dropped entirely -- nothing in Tier 3's own
+    //    body reads it back, it's pure write-only bookkeeping for tiers outside this port's scope.
+    //
+    // insulinReqPCT: the reference's own mutable working variable, distinct from insulinDivisor (see
+    // determine_basal()'s own insulinDivisor for our adapted Tier 3's equivalent) -- defaults to the same
+    // 100/Boost_InsulinReq formula, then Tier 3's own body may reassign it to insulinDivisor when
+    // delta_accl > 1. Passed in already-initialized rather than recomputed here, since the reference
+    // computes it once at function-top, upstream of where Tier 3 itself lives.
+    private fun tier3BoostReferenceComparison(
+        rT: RT,
+        glucose_status: GlucoseStatus,
+        iob_data: IobTotal,
+        meal_data: MealData,
+        boostActive: Boolean,
+        boost_scale: Double,
+        boostMaxIOB: Double,
+        boost_max: Double,
+        eventualBG: Double,
+        target_bg: Double,
+        bg: Double,
+        insulinReq: Double,
+        basal: Double,
+        insulinDivisor: Double,
+        insulinReqPCTInitial: Double,
+        recentLowBG: Double,
+        systemTime: Long,
+        roundSMBTo: Double
+    ): String {
+        val uamBoost1 = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
+        val uamBoost2 = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
+        val delta_accl: Double = if (abs(glucose_status.shortAvgDelta) == 0.0) 0.0
+            else 100 * round((glucose_status.delta - glucose_status.shortAvgDelta) / abs(glucose_status.shortAvgDelta), 2)
+        val lastCarbAge = round((systemTime - meal_data.lastCarbTime) / 60000.0)
+        val COB = meal_data.mealCOB
+
+        // ----- Fast-carb rebound detection (verbatim from the reference) -----
+        val lowTriggered = recentLowBG < 100.0
+        val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
+            glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
+        val reversalTriggered = reversalScore > 30.0
+        val fastCarbConditions = (lowTriggered || reversalTriggered) && COB == 0.0 && delta_accl > 25.0
+        var fastCarbScale = 1.0
+        val fastCarbRebound: Boolean
+        if (fastCarbConditions && bg < 170.0) {
+            if (glucose_status.delta > 15 && bg > target_bg + 20) {
+                fastCarbScale = 1.0
+                fastCarbRebound = false
+                consoleError.add("[Tier3Ref] Fast-carb conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 -- treating as genuine spike")
+            } else {
+                fastCarbScale = if (bg < 120.0) 0.3 else 0.3 + 0.7 * (bg - 120.0) / 50.0
+                fastCarbRebound = true
+            }
+        } else {
+            fastCarbRebound = false
+        }
+        if (fastCarbRebound) {
+            val trigger = when {
+                lowTriggered && reversalTriggered -> "low ${round(recentLowBG, 0)} rev ${round(reversalScore, 0)}"
+                lowTriggered -> "low ${round(recentLowBG, 0)}"
+                else -> "rev ${round(reversalScore, 0)}"
+            }
+            consoleError.add("[Tier3Ref] Fast-carb rebound ($trigger, accl ${round(delta_accl, 1)}): BG=$bg -- scale ${round(fastCarbScale * 100, 0)}%")
+        }
+
+        var insulinReqPCT = insulinReqPCTInitial
+        var boostInsulinReq = basal
+
+        // ----- Tier 3: UAM Boost (verbatim from the reference) -----
+        return if (glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive
+            && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
+        ) {
+            consoleError.add("[Tier3Ref] >>> TIER 3: UAM Boost <<<")
+            consoleError.add("[Tier3Ref] Insulin required pre-boost is $insulinReq")
+            boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
+            if (boostInsulinReq > boostMaxIOB - iob_data.iob) {
+                boostInsulinReq = boostMaxIOB - iob_data.iob
+            }
+            if (delta_accl > 1) {
+                insulinReqPCT = insulinDivisor
+            }
+            var microBolus: Double
+            if (boostInsulinReq < (insulinReq / insulinReqPCT)) {
+                microBolus = Math.floor(min(insulinReq / insulinReqPCT, boost_max) * roundSMBTo) / roundSMBTo
+            } else {
+                microBolus = Math.floor(min(boostInsulinReq, boost_max) * roundSMBTo) / roundSMBTo
+            }
+            if (fastCarbRebound) {
+                val preFcSmb = microBolus
+                microBolus = Math.floor(microBolus * fastCarbScale * roundSMBTo) / roundSMBTo
+                consoleError.add("[Tier3Ref] Fast-carb scale applied: $preFcSmb -> $microBolus (${round(fastCarbScale * 100, 0)}%)")
+            }
+            consoleError.add("[Tier3Ref] UAM Boost enacted; SMB equals $microBolus (unadjusted boostInsulinReq $boostInsulinReq); Original insulin requirement was $insulinReq")
+            rT.reason.append("[Tier3Ref] UAM Boost would enact; SMB equals $microBolus; ")
+            "UAM_BOOST(SMB=$microBolus)"
+        } else {
+            "NONE"
+        }
+    }
+
     fun
         determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
@@ -287,7 +407,14 @@ class DetermineBasalAutoISF @Inject constructor(
         // uses -- blocks Tier 3 from re-arming when recent delivery is already running hot relative to a
         // still-modest BG, the exact pattern behind the two real hypos that guard was originally added
         // for on BMild's side.
-        iobChange5Min: Double = 0.0
+        iobChange5Min: Double = 0.0,
+        // UKFboost branch only: the most recent BG (mg/dL) seen under 100mg/dL within roughly the last
+        // hour, used solely by tier3BoostReferenceComparison()'s ported fast-carb-rebound detection
+        // (Boost-in-AAPS_3.4's own profile.recentLowBG, which doesn't exist on our OapsProfileAutoIsf).
+        // Default 999.0 = "no recent low known" -> that detector's lowTriggered branch is trivially
+        // false for callers that don't pass it (tests, replay), same convention as the other optional
+        // params above. Never read by real production dosing -- see that function's own doc comment.
+        recentLowBG: Double = 999.0
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
@@ -1346,6 +1473,32 @@ class DetermineBasalAutoISF @Inject constructor(
                     val boost_scale = profile.boost_scale * (profile_percentage / 100.0)
                     var boostInsulinReq = basal
                     val insulinDivisor = 100.0 / profile.Boost_InsulinReq
+                    // UKFboost branch: run the literal, unmodified reference Tier 3 alongside our own
+                    // adapted version every cycle boost is active and in its time window -- independent
+                    // of whether OUR (narrower, bg_acce/stacking-gated) entry condition below also
+                    // passes, for a genuine side-by-side read. See tier3BoostReferenceComparison()'s own
+                    // doc comment for what it does and does not carry over from the reference.
+                    val tier3ReferenceResult = tier3BoostReferenceComparison(
+                        rT = rT,
+                        glucose_status = glucose_status,
+                        iob_data = iob_data,
+                        meal_data = meal_data,
+                        boostActive = boostActive,
+                        boost_scale = boost_scale,
+                        boostMaxIOB = boostMaxIOB,
+                        boost_max = boost_max,
+                        eventualBG = eventualBG,
+                        target_bg = target_bg,
+                        bg = bg,
+                        insulinReq = insulinReq,
+                        basal = basal,
+                        insulinDivisor = insulinDivisor,
+                        insulinReqPCTInitial = insulinDivisor,
+                        recentLowBG = recentLowBG,
+                        systemTime = systemTime,
+                        roundSMBTo = roundSMBTo
+                    )
+                    consoleError.add("[Tier3Ref] result this cycle: $tier3ReferenceResult")
                     // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
                     // bg_acce added 2026-08-23: the "strong acceleration" in this comment was never
                     // actually backed by an acceleration term -- uamBoost1/uamBoost2 are RATIOS of

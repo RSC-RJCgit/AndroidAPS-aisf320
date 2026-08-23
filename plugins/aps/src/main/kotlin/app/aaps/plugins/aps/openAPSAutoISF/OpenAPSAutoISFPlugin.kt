@@ -1096,6 +1096,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
     }
 
+    // UKFboost branch only: lowest calibrated BG (mg/dL) seen in the last 60 minutes -- feeds
+    // tier3BoostReferenceComparison()'s ported fast-carb-rebound detection (Boost-in-AAPS_3.4's own
+    // profile.recentLowBG, which our OapsProfileAutoIsf has no equivalent field for). 999.0 = "no recent
+    // low known", matching that function's own default and keeping its lowTriggered branch false.
+    private fun recentLowBgMgdl(): Double {
+        val now = dateUtil.now()
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
+            .minOfOrNull { it.value } ?: 999.0
+    }
+
     // Average gap in seconds between SMBs delivered in the last 5 minutes. Returns a large sentinel
     // (so any "<= 70s" stacking guard is false) when fewer than 2 SMBs fell in the window — nothing
     // to measure. Used to block the delivery-ratio boosts while SMBs stack, and (in DetermineBasal)
@@ -5826,7 +5836,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // use (see DetermineBasalAutoISF.kt's own param doc comments for why each matters there).
             lastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE,
             lastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE,
-            iobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+            iobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L),
+            // UKFboost branch only -- feeds tier3BoostReferenceComparison()'s fast-carb-rebound
+            // detection, see recentLowBgMgdl()'s own doc comment.
+            recentLowBG = recentLowBgMgdl()
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
