@@ -76,4 +76,18 @@ enum class StringKey(
     // until you actively repick via the on-update profile-selection popup (or here directly).
     ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", "Current ProfileReal"),
     ApsAutoIsfLowProfileName("autoisf_low_profile_name", "Current Profile"),
+    // Added 2026-08-23: same live-role indirection as the Standard/Low pair above, but for the six
+    // steroid escalation tiers -- every switchProfileIfNeeded("Steroid Profile130")-style hardcoded
+    // literal in the steroid escalation block (OpenAPSAutoISFPlugin.kt) now reads one of these instead.
+    // Defaults match the original hardcoded literals exactly (including "Current Profile190Real"/
+    // "Current ProfileReal250"'s inconsistent naming vs the "Steroid ProfileNNN" pattern the 110/130/150
+    // tiers used -- preserved as-is here, not renamed, since these are just the CURRENT profile names,
+    // not code identifiers), so nothing changes until actively re-picked via showProfileNamesPopup().
+    // "100" = steroids off/baseline, same role STEROID_TURN_OFF already targeted.
+    ApsAutoIsfSteroid100ProfileName("autoisf_steroid_100_profile_name", "Current ProfileReal"),
+    ApsAutoIsfSteroid110ProfileName("autoisf_steroid_110_profile_name", "Steroid Profile110"),
+    ApsAutoIsfSteroid130ProfileName("autoisf_steroid_130_profile_name", "Steroid Profile130"),
+    ApsAutoIsfSteroid150ProfileName("autoisf_steroid_150_profile_name", "Steroid Profile150"),
+    ApsAutoIsfSteroid190ProfileName("autoisf_steroid_190_profile_name", "Current Profile190Real"),
+    ApsAutoIsfSteroid250ProfileName("autoisf_steroid_250_profile_name", "Current ProfileReal250"),
 }

@@ -828,7 +828,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
                     (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                    profileName == "Steroid Profile110" &&
+                    profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName) &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
                             automationStateService.getState("Steroids") == "SteroidsON"
@@ -868,7 +868,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
                     (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                    profileName == "Steroid Profile130" &&
+                    profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName) &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
                             automationStateService.getState("Steroids") == "SteroidsON" &&
@@ -909,7 +909,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
                     (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                    profileName == "Steroid Profile150" &&
+                    profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName) &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
                             automationStateService.getState("Steroids") == "SteroidsON" &&
@@ -950,7 +950,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
                     (profile as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                    profileName == "Current Profile190Real" &&
+                    profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName) &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
                             automationStateService.getState("Steroids") == "SteroidsON" &&
@@ -2089,10 +2089,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Matches CloudLogsUploadTT's own doc comment in OpenAPSAutoISFPlugin.kt, which calls
             // sendLogs(trigger = "REMOTE_TT") -- alsoExportAiv defaults to true there, so this also
             // exports+uploads AIV (CSV/TXT) and a settings-snapshot backup BEFORE the log zip/upload,
-            // same as the Maintenance screen's own "Send logs" button. Previously this description only
-            // mentioned the logs, silently omitting the AIV/settings export that always runs first --
-            // fixed 2026-08-22.
-            currentValue = { "Effect: exports+uploads AIV data and a settings-snapshot backup, then zips logs and sends to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
+            // same as the Maintenance screen's own "Send logs" button. Fixed 2026-08-22 to mention that
+            // AIV/settings export at all (previously silently omitted).
+            //
+            // Fixed again 2026-08-23: still didn't mention UserEntries. Traced the real chain --
+            // sendLogs(alsoExportAiv=true) -> AutoIsfHistoryExporter.exportLast6Hours() -> (as well as
+            // the 3 AIV files) importExportPrefs.exportUserEntriesCsvAuto(), a separate async WorkManager
+            // job (CsvExportWorker) that writes its own dated+current UserEntries text/CSV files AND
+            // uploads them to cloud storage too (exportToCloud() inside that worker) -- a genuinely
+            // separate export+upload this action also triggers, not folded into the "AIV data" wording.
+            currentValue = { "Effect: exports+uploads AIV data, a UserEntries CSV/TXT export, and a settings-snapshot backup, then zips logs and sends everything to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
         ),
         TtCode.Single("Tog Graph5 (main clone) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
         // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
@@ -2160,7 +2166,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // was previously shown only once ever, gated on OverviewStringKey.ApsAutoIsfProfileNamesReviewed,
         // with no way back in short of an export/import edit to clear the flag. onDone re-opens this
         // same list, matching every other row here.
-        TtCode.Action("Re-pick coded profiles (Standard/Low)") {
+        // Label updated 2026-08-23 (was "...Standard/Low") when showProfileNamesPopup() grew from 2 to 8
+        // roles -- see that function's own doc comment.
+        TtCode.Action("Re-pick coded profiles (Standard/Low/Steroid)") {
             showProfileNamesPopup(act) { showTtCodesListDialog() }
         },
         // UKFset2 removed from here 2026-08-15: it no longer has any live dosing effect on the graph
@@ -2367,11 +2375,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (pending.isNotEmpty()) showCodedAutomationReviewPopup(act, pending)
     }
 
-    // Lets the user pick which of their actual configured profiles fills each of the two coded roles
-    // (StandardProfile/LowProfile) that OpenAPSAutoISFPlugin.kt's ~36 switchProfileIfNeeded() call sites
-    // read via StringKey.ApsAutoIsfStandardProfileName/LowProfileName, instead of the original hardcoded
-    // "Current ProfileReal"/"Current Profile" literals. Not cancelable (no tap-outside-to-dismiss) since
-    // Cancel/OK are both handled explicitly below and either one marks the flag reviewed.
+    // Lets the user pick which of their actual configured profiles fills each of the eight coded roles
+    // (Standard/Low, plus the six Steroid tiers added 2026-08-23) that OpenAPSAutoISFPlugin.kt's
+    // switchProfileIfNeeded() call sites read via StringKey.ApsAutoIsf*ProfileName, instead of hardcoded
+    // literals. Not cancelable (no tap-outside-to-dismiss) since Cancel/OK are both handled explicitly
+    // below and either one marks the flag reviewed.
+    //
+    // Grown from 2 spinners to 8 the same day the Steroid roles were added -- generalized into a
+    // data-driven loop (roleSpecs) rather than duplicating the label+spinner+apply block six more times.
+    private data class ProfileRoleSpec(val label: String, val key: StringKey)
+
     private fun showProfileNamesPopup(act: androidx.fragment.app.FragmentActivity, onDone: () -> Unit) {
         val profileNames = activePlugin.activeProfileSource.profile?.getProfileList()?.map { it.toString() } ?: emptyList()
         if (profileNames.isEmpty()) {
@@ -2380,8 +2393,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             onDone()
             return
         }
-        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val roleSpecs = listOf(
+            ProfileRoleSpec("Standard profile (stronger — used for corrections/highs):", StringKey.ApsAutoIsfStandardProfileName),
+            ProfileRoleSpec("Low profile (weaker — used to back off/reduce insulin):", StringKey.ApsAutoIsfLowProfileName),
+            ProfileRoleSpec("Steroid 100% (off/baseline):", StringKey.ApsAutoIsfSteroid100ProfileName),
+            ProfileRoleSpec("Steroid 110%:", StringKey.ApsAutoIsfSteroid110ProfileName),
+            ProfileRoleSpec("Steroid 130%:", StringKey.ApsAutoIsfSteroid130ProfileName),
+            ProfileRoleSpec("Steroid 150%:", StringKey.ApsAutoIsfSteroid150ProfileName),
+            ProfileRoleSpec("Steroid 190%:", StringKey.ApsAutoIsfSteroid190ProfileName),
+            ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName)
+        )
 
         fun spinnerFor(current: String): Spinner {
             val spinner = Spinner(act)
@@ -2392,8 +2413,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return spinner
         }
 
-        val standardSpinner = spinnerFor(currentStandard)
-        val lowSpinner = spinnerFor(currentLow)
+        val spinners = roleSpecs.map { spec -> spinnerFor(preferences.get(spec.key)) }
         val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
@@ -2402,15 +2422,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // layout note. This dialog previously had NO scroll container at all, so on a short screen
             // (or with large system font / display scaling, which inflates both labels and the two
             // spinners) its content could exceed the window and push the OK button out of reach, with
-            // setCancelable(false) below meaning there was then no way to dismiss it either.
+            // setCancelable(false) below meaning there was then no way to dismiss it either. Now even
+            // more essential with 8 spinners instead of 2.
             addView(TextView(act).apply {
-                text = "Pick which of your profiles fill the two roles the AutoISF ported automations switch between."
+                text = "Pick which of your profiles fill each role the AutoISF ported automations switch between."
                 setPadding(0, 0, 0, 24)
             })
-            addView(TextView(act).apply { text = "Standard profile (stronger — used for corrections/highs):" })
-            addView(standardSpinner)
-            addView(TextView(act).apply { text = "Low profile (weaker — used to back off/reduce insulin):"; setPadding(0, 32, 0, 0) })
-            addView(lowSpinner)
+            roleSpecs.forEachIndexed { i, spec ->
+                addView(TextView(act).apply { text = spec.label; if (i > 0) setPadding(0, 32, 0, 0) })
+                addView(spinners[i])
+            }
         }
         val scrollView = ScrollView(act).apply {
             addView(container)
@@ -2422,8 +2443,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             .setView(scrollView)
             .setCancelable(false)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileNames[standardSpinner.selectedItemPosition])
-                preferences.put(StringKey.ApsAutoIsfLowProfileName, profileNames[lowSpinner.selectedItemPosition])
+                roleSpecs.forEachIndexed { i, spec ->
+                    preferences.put(spec.key, profileNames[spinners[i].selectedItemPosition])
+                }
                 preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 onDone()
             }

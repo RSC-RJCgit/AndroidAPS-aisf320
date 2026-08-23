@@ -383,25 +383,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 EventSteroidUserAction.Action.INCREASE_130 ->
                     automationStateService.inState("Steroids", "SteroidsON") &&
                         (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile110")
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName))
 
                 EventSteroidUserAction.Action.INCREASE_150 ->
                     automationStateService.inState("Steroids", "SteroidsON") &&
                         automationStateService.inState("MJ", "NOMJremains") &&
                         (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile130")
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
 
                 EventSteroidUserAction.Action.INCREASE_190 ->
                     automationStateService.inState("Steroids", "SteroidsON") &&
                         automationStateService.inState("MJ", "NOMJremains") &&
                         (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Steroid Profile150")
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
 
                 EventSteroidUserAction.Action.INCREASE_250 ->
                     automationStateService.inState("Steroids", "SteroidsON") &&
                         automationStateService.inState("MJ", "NOMJremains") &&
                         (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == "Current Profile190Real")
+                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
 
                 EventSteroidUserAction.Action.TURN_OFF ->
                     automationStateService.inState("Steroids", "SteroidsON") &&
@@ -422,7 +422,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             EventSteroidUserAction.Action.START_110 -> {
                 sendSms("Turn SteroidsON")
                 setAutomationState("Steroids", "SteroidsON")
-                switchProfileIfNeeded("Steroid Profile110")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("SteroidsON")
@@ -430,7 +430,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             EventSteroidUserAction.Action.INCREASE_130 -> {
                 sendSms("Steroids 110% are ON.. press to increase? to 130")
-                switchProfileIfNeeded("Steroid Profile130")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 73)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids130")
@@ -438,7 +438,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             EventSteroidUserAction.Action.INCREASE_150 -> {
                 sendSms("Steroids 130% are ON.. press to increase? to 150")
-                switchProfileIfNeeded("Steroid Profile150")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 74)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids150")
@@ -446,7 +446,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             EventSteroidUserAction.Action.INCREASE_190 -> {
                 sendSms("Steroids 150% are ON.. press to increase? to 190")
-                switchProfileIfNeeded("Current Profile190Real")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 75)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids190")
@@ -454,14 +454,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             EventSteroidUserAction.Action.INCREASE_250 -> {
                 sendSms("Steroids 190% are ON.. press to increase? to 250")
-                switchProfileIfNeeded("Current ProfileReal250")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 76)
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids250")
             }
 
             EventSteroidUserAction.Action.TURN_OFF -> {
-                switchProfileIfNeeded("Current ProfileReal")
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName))
                 sendSms("Steroids are ON.. press to turn OFF? 71_0.71")
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
                 setBgAccelIsfWeight(0.71)
@@ -580,6 +580,39 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ValueWithUnit.Percent(100)
             )
         )
+    }
+
+    // Added 2026-08-23. Classifies the CURRENTLY RUNNING profile against all eight coded roles (Standard/
+    // Low plus the six Steroid tiers) in one place, with explicit defaults for a profile that matches
+    // none of them -- e.g. a profile picked manually that was never assigned to any role, or one of these
+    // roles re-pointed at a profile another role also still points to. Per-request defaults: strength
+    // defaults to "Low", steroidTier defaults to "100" (steroids off/baseline) when unrecognized.
+    //
+    // Deliberately NOT wired into any existing gate here -- BolusGivenMild/BolusGivenBg3's own
+    // profileName!=lowProfileName checks, onNormalProfile, onCurrentProfileEither, etc. all still do
+    // their own direct, narrower comparisons exactly as before. This is new, additive, read-only
+    // infrastructure: a single place future code (or a future retrofit of the existing scattered checks,
+    // if wanted) can ask "what role is the running profile in" and get a defined answer instead of
+    // silently falling through every individual equality check.
+    data class ProfileRoleClassification(val strength: String, val steroidTier: String)
+
+    fun classifyCurrentProfileRole(): ProfileRoleClassification {
+        val name = profileFunction.getProfileName()
+        val strength = when (name) {
+            preferences.get(StringKey.ApsAutoIsfStandardProfileName) -> "Standard"
+            preferences.get(StringKey.ApsAutoIsfLowProfileName)      -> "Low"
+            else                                                     -> "Low"
+        }
+        val steroidTier = when (name) {
+            preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName) -> "100"
+            preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName) -> "110"
+            preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName) -> "130"
+            preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName) -> "150"
+            preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName) -> "190"
+            preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName) -> "250"
+            else                                                       -> "100"
+        }
+        return ProfileRoleClassification(strength, steroidTier)
     }
 
     // Force a profile switch to the current profile at 100%, even when already on that named profile.
