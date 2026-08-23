@@ -2013,6 +2013,30 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Stepped("dura ISF Wt (Or)", 5.022, 5.024, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal))}" }),
         TtCode.Stepped("Libre slope (Or)", 5.026, 5.028, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig))}" }),
         TtCode.Stepped("Libre Offset (Or)", 5.032, 5.034, "-0.05", "+0.05", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))}" }),
+        // Added 2026-08-23: the two "(Or)" rows above show/nudge the configured BASELINE
+        // (ApsAutoIsfLibreSlopeOrig/LibreOffsetOrig) only -- by design, that's what "(Or)" = "orig"
+        // means. Neither ever showed what's actually LIVE right now, which can silently drift away from
+        // that baseline whenever a SensorAge tier (or a temporary LowRaw24 override) is active -- real
+        // gap surfaced 23 Aug when Virtual's live slope was found stuck at baseline (0.72) while
+        // Client/Live had already stepped down to 0.70, with no List 1 row able to show that difference
+        // at a glance. View-only (TtCode.Action, no TT/relay) -- reads FslCalSlope/FslCalOffset and
+        // ApsAutoIsfOldSensorAdjActive directly, which works identically on Virtual/pump AND Client since
+        // Client computes its own copy of this same SensorAge logic locally (not a mirrored/NS value).
+        TtCode.Action("Live Libre slope/offset (view only)") {
+            val liveSlope = preferences.get(DoubleKey.FslCalSlope)
+            val liveOffset = preferences.get(DoubleKey.FslCalOffset)
+            val baseSlope = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val baseOffset = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+            val tierActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
+            val drifted = kotlin.math.abs(liveSlope - baseSlope) > 0.001 || kotlin.math.abs(liveOffset - baseOffset) > 0.001
+            val msg = "Live (actually applied): slope=${"%.2f".format(liveSlope)}, offset=${"%.2f".format(liveOffset)}\n" +
+                "Baseline (configured, \"(Or)\" rows above): slope=${"%.2f".format(baseSlope)}, offset=${"%.2f".format(baseOffset)}\n" +
+                "SensorAge tier currently active: ${if (tierActive) "YES" else "no"}\n" +
+                if (drifted && !tierActive)
+                    "\nLive differs from baseline but no tier is marked active -- worth a look."
+                else ""
+            OKDialog.show(act, "Live Libre calibration", msg, runOnDismiss = true, runnable = Runnable { showTtCodesListDialog() })
+        },
         TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride))}" }),
         TtCode.Single(
             "clean grph view", 5.042,
@@ -2059,11 +2083,56 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // show something other than either checkbox label.
             currentValue = { "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}" }
         ),
-        // "Profile (manual override)" (switch active profile straight to Standard/Low, 5.148/5.150)
-        // removed 2026-08-23 -- redundant with switching profiles directly via AAPS's own profile-switch
-        // UI. Replaced by the row below, which addresses the actual need (changing which profile fills
-        // each role, not just switching to whichever already does) that row was originally meant for.
-        //
+        // "Profile (manual override)" -- removed 2026-08-23 as redundant with switching profiles
+        // directly, then reinstated the same day once that removal turned out to have thrown away a
+        // real, separate need (immediately switching the ACTIVE profile to whichever one fills a role
+        // right now) rather than just the "Re-pick" need below it (changing which profile fills a role).
+        // Rebuilt 2026-08-23 as a single current-state toggle rather than an always-both-options choice
+        // dialog -- one tap flips to whichever role ISN'T currently active, same "show current, offer
+        // the other" shape as every TtCode.Single row's own "Current: ON/OFF" pattern elsewhere in this
+        // list, just for a two-way role instead of a boolean. Still relays ProfileStandardTT/
+        // ProfileLowTT (5.148/5.150, see OpenAPSAutoISFPlugin.kt) -- neither side of this is hardcoded:
+        // "current" is read live via profileFunction.getProfileName() compared against
+        // StringKey.ApsAutoIsfStandardProfileName/LowProfileName (never a literal profile name), and the
+        // actual switch target is whichever of those two preferences currently holds that role, so a
+        // re-pick via the row below takes effect here automatically with no code change. TtCode.Action
+        // (not Single/Stepped) since which of the two TT codes to relay is only known at tap-time, from
+        // the live comparison below -- a Single's fixed relay value or a Stepped's fixed pair can't
+        // express "whichever one it currently isn't."
+        TtCode.Action("Switch to Standard/Low profile now") {
+            val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val currentName = profileFunction.getProfileName()
+            val onStandard = currentName == standardName
+            val onLow = currentName == lowName
+            when {
+                onStandard -> androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Switch active profile")
+                    .setMessage("Currently: Standard ($standardName).\nSwitch to Low ($lowName)?")
+                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(5.150, origin = "List 1 profile switch") }
+                    .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                    .setOnCancelListener { showTtCodesListDialog() }
+                    .show()
+                onLow -> androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Switch active profile")
+                    .setMessage("Currently: Low ($lowName).\nSwitch to Standard ($standardName)?")
+                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(5.148, origin = "List 1 profile switch") }
+                    .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                    .setOnCancelListener { showTtCodesListDialog() }
+                    .show()
+                // Neither role currently active (some other profile, e.g. a steroid/MJ profile) --
+                // "the other one" is ambiguous, so fall back to offering both explicitly rather than
+                // guessing which one the user means.
+                else -> androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Switch active profile")
+                    .setMessage("Currently on neither role ($currentName). Pick one:")
+                    .setPositiveButton("Standard ($standardName)") { _, _ -> applyTtControl(5.148, origin = "List 1 profile switch") }
+                    .setNegativeButton("Low ($lowName)") { _, _ -> applyTtControl(5.150, origin = "List 1 profile switch") }
+                    .setNeutralButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                    .setOnCancelListener { showTtCodesListDialog() }
+                    .show()
+            }
+        },
         // Reuses showProfileNamesPopup() unchanged (the one-time onboarding popup, this file) -- that
         // was previously shown only once ever, gated on OverviewStringKey.ApsAutoIsfProfileNamesReviewed,
         // with no way back in short of an export/import edit to clear the flag. onDone re-opens this

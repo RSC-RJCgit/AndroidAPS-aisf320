@@ -1587,6 +1587,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // was itself removed 2026-08-16 (UKF3426 branch, see OverviewFragment.kt's own updated doc
         // comment) -- FslUseUkfLibreSpecialSmoothing currently has no toggle path anywhere in this file
         // or OverviewFragment.kt; 5.154 remains free if a plain toggle needs restoring.
+        "ProfileStandardTT" -> 5.148
+        "ProfileLowTT" -> 5.150
         "SensorAgeCodeToggleTT" -> 5.156
         "AnyDeskRestartActionTT" -> 5.178
         "MjKotlinButtonsToggleTT" -> 5.164
@@ -2879,12 +2881,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MjStateMj3TT")
         }
 
-        // ProfileStandardTT/ProfileLowTT (5.148/5.150 manual profile-switch remote-TT triggers) and
-        // their List1 "Profile (manual override)" row removed 2026-08-23 -- redundant with switching
-        // profiles directly (the normal AAPS profile-switch UI), and superseded for the *actual* need
-        // (changing which profile fills the Standard/Low role, not just switching to whichever already
-        // does) by the new "Re-pick coded profiles" List1 row -> showProfileNamesPopup(). 5.148/5.150
-        // are now free if a future TT code needs them.
+        // ProfileStandardTT/ProfileLowTT (5.148/5.150) -- re-added 2026-08-23. Removed earlier the same
+        // day as redundant with switching profiles directly, then reinstated: switching profiles
+        // directly in AAPS's own picker requires knowing/finding the actual profile NAME currently
+        // filling each role, whereas these two read StringKey.ApsAutoIsfStandardProfileName/
+        // LowProfileName live -- same never-hardcode-the-name principle as every switchProfileIfNeeded()
+        // call in this file -- so a re-pick via "Re-pick coded profiles" (List 1) takes effect here too
+        // without editing anything. List 1's own row presents both as one Strong/Low choice dialog (see
+        // OverviewFragment.kt's ttCodesList()), each button relaying whichever of these two TT codes.
+        if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+            cancelCurrentTempTarget()
+            sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})")
+            addCarePortalNote("PrSt")
+            markRun("ProfileStandardTT")
+        }
+
+        if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+            cancelCurrentTempTarget()
+            sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
+            addCarePortalNote("PrLow")
+            markRun("ProfileLowTT")
+        }
 
         // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
         // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
