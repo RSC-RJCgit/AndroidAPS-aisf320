@@ -1322,13 +1322,39 @@ class DetermineBasalAutoISF @Inject constructor(
                     var boostInsulinReq = basal
                     val insulinDivisor = 100.0 / profile.Boost_InsulinReq
                     // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
+                    // bg_acce added 2026-08-23: the "strong acceleration" in this comment was never
+                    // actually backed by an acceleration term -- uamBoost1/uamBoost2 are RATIOS of
+                    // delta/SDelta and delta/LDelta, unstable near a small denominator (exactly the
+                    // failure mode of a 23 Aug real firing: 09:32-34am, IOB already 2.0-2.6U, delivered
+                    // 0.30+0.25+0.10U on a secondary 8.3->8.5mmol wobble after the real peak had already
+                    // passed). bg_acce is a genuinely different, more robust measure: a quadratic
+                    // least-squares fit's second derivative across a goodness-of-fit-selected window
+                    // (GlucoseStatusCalculatorAutoIsf.kt), not a ratio of two raw point estimates.
+                    // Threshold reuses the SAME 0.30mmol bar the Low IOB Acceleration Glitch branch
+                    // already established for bg_acce elsewhere in this file (not a new number). Checked
+                    // against the 23 Aug firing: acceBG read 8.69/7.67/4.72 across those three minutes --
+                    // this bar would NOT have blocked the first two doses (genuinely accelerating) but
+                    // WOULD have blocked the third (already decaying below it) -- a real, if partial,
+                    // tightening, not a complete fix for that specific episode.
                     if (glucose_status.delta >= 5
                         && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
+                        bg_acce > 0.30 * 18 &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
                         && boostIobAllowance > 0.0) {
 
                         val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
+                        // Investigated 2026-08-23 whether the reference Boost-in-AAPS_3.4 project's
+                        // "delta_accl > 1 -> insulinReqPCT = insulinDivisor" (Tier 3, DetermineBasalBoost.kt)
+                        // had anything worth porting here. It doesn't, on its own: in that project
+                        // insulinReqPCT defaults to 100/Boost_InsulinReq -- exactly what insulinDivisor
+                        // already is here -- and that line only ever does anything when paired with a
+                        // separate BG-distance-from-180 sliding-scale divisor feature
+                        // (enableBoostPercentScale/boost_percent_scale) that this fork doesn't have; with
+                        // that feature absent (as here), the reference's own insulinDivisor already equals
+                        // insulinReqPCT unconditionally, making the delta_accl check a no-op. Percent-scale
+                        // deemed not relevant to Tier 3 here, so left back at its original always-on form
+                        // rather than porting that whole separate feature just to make the check meaningful.
                         val baselineRatioCandidate = min(insulinReq / insulinDivisor, boost_max)
                         // Tier 3 is Virtual-Pump-only assessment. Increase the ordinary SMB that was
                         // already calculated above, so any live variable-ratio or BolusGiven/Mild ratio

@@ -1291,6 +1291,26 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         GraphToggleEntry("Graph: Graph5 panel", BooleanKey.ApsAutoIsfShowGraph5, BooleanKey.ApsAutoIsfGraph5BglOnly, "BGL only (hide IA/carbs x3)")
     )
 
+    // Added 2026-08-23: Tier 3 UAM Boost's three tuning parameters, on list2 rather than list1 per
+    // explicit request. Reuses TtCode.Stepped (list1's own numeric-nudge shape, see its doc comment) --
+    // the *DownTT/*UpTT pair each maps to matches BoostScaleDownTT/UpTT etc. in
+    // OpenAPSAutoISFPlugin.kt's directTtCodeForRunKey. Placed between the direct actions and the graph
+    // entries below (which must stay last, see graphToggleEntries' own comment).
+    private val list2SteppedEntries = listOf(
+        TtCode.Stepped(
+            "Boost scale (boost_scale)", 5.182, 5.184, "-0.1", "+0.1",
+            currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale))}" }
+        ),
+        TtCode.Stepped(
+            "Boost max (boost_max, U)", 5.186, 5.188, "-0.25", "+0.25",
+            currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus))}U" }
+        ),
+        TtCode.Stepped(
+            "Boost max IOB (% of max_iob)", 5.190, 5.192, "-5%", "+5%",
+            currentValue = { "Current: ${"%.1f".format(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent))}%" }
+        )
+    )
+
     // Every List2 AnyDesk click records the same "ADesk" command Note on the device where it was
     // pressed. Client clicks can upload it to NS; local-test execution does not depend on that sync.
     // Has no repeat-interval guard of its own. Client also uses relay TT 5.178 only when no temporary
@@ -1454,7 +1474,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             val actionEntries = BasalDirectAction.values().filter {
                 it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
             }
-            val labels = actionEntries.map { it.label } + graphToggleEntries.map { it.label }
+            val labels = actionEntries.map { it.label } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label }
             val adapter = object : ArrayAdapter<String>(act, 0, labels) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                     val tv = convertView as? TextView ?: TextView(act).apply {
@@ -1477,8 +1497,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             Runnable { runBasalDirectAction(action) },
                             Runnable { showBasalDirectActionListDialog() }
                         )
+                    } else if (which < actionEntries.size + list2SteppedEntries.size) {
+                        val entry = list2SteppedEntries[which - actionEntries.size]
+                        showSteppedDialog(
+                            act, entry,
+                            onApply = { applyTtControl(it, origin = "basal double-tap action") },
+                            onReturn = { showBasalDirectActionListDialog() }
+                        )
                     } else {
-                        val entry = graphToggleEntries[which - actionEntries.size]
+                        val entry = graphToggleEntries[which - actionEntries.size - list2SteppedEntries.size]
                         val calibBox = CheckBox(act).apply {
                             text = entry.calibLabel
                             isChecked = entry.calibKey?.let { preferences.get(it) } ?: true
@@ -1797,37 +1824,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         // (entry.downLabel/upLabel, e.g. "-0.1"/"+0.1"), pulled from the matching
                         // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt — see the comment on
                         // TtCode.Stepped below.
-                        is TtCode.Stepped -> {
-                            val downBox = CheckBox(act).apply { text = entry.downLabel }
-                            val upBox = CheckBox(act).apply { text = entry.upLabel }
-                            downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
-                            upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
-                            val container = LinearLayout(act).apply {
-                                orientation = LinearLayout.VERTICAL
-                                setPadding(48, 24, 48, 0)
-                                entry.currentValue?.let { reader ->
-                                    addView(TextView(act).apply {
-                                        text = displayedTtCurrentValue(entry, reader)
-                                        setPadding(0, 0, 0, 16)
-                                    })
-                                }
-                                addView(downBox)
-                                addView(upBox)
-                            }
-                            androidx.appcompat.app.AlertDialog.Builder(act)
-                                .setTitle(entry.label)
-                                .setView(container)
-                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                                    when {
-                                        downBox.isChecked -> applyTtControl(entry.down)
-                                        upBox.isChecked   -> applyTtControl(entry.up)
-                                        // Neither checked: OK with no selection is a no-op, not an error.
-                                    }
-                                }
-                                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
-                                .setOnCancelListener { showTtCodesListDialog() } // see TtCode.Single's comment on this above
-                                .show()
-                        }
+                        is TtCode.Stepped -> showSteppedDialog(act, entry, onApply = { applyTtControl(it) }, onReturn = { showTtCodesListDialog() })
 
                         // No confirm/cancel wrapper -- showProfileNamesPopup() (the only current use) is
                         // already its own confirm dialog with OK/Cancel, so wrapping it in another one
@@ -2089,12 +2086,51 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
     // create the relay TT; Client does not alter its own local setting.
-    private fun applyTtControl(mmol: Double) {
+    private fun applyTtControl(mmol: Double, origin: String = "IOB double-tap settings") {
         if (config.AAPSCLIENT) {
-            setRelayTt(mmol, "IOB double-tap settings")
+            setRelayTt(mmol, origin)
         } else {
             rxBus.send(EventAutoIsfDirectTtCode(mmol))
         }
+    }
+
+    // Shared by both list1 (showTtCodesListDialog) and list2 (showBasalDirectActionListDialog) --
+    // extracted 2026-08-23 when list2 first grew its own TtCode.Stepped rows (the boost-tuning trio),
+    // rather than duplicating this ~25-line block a second time. onApply receives whichever of
+    // entry.down/entry.up was checked; onReturn re-opens whichever OUTER list this dialog was opened
+    // from, matching every row's existing cancel/confirm-then-return behaviour (see TtCode.Single's own
+    // comment on this in showTtCodesListDialog() for why setOnCancelListener is also needed, not just
+    // setNegativeButton).
+    private fun showSteppedDialog(act: androidx.fragment.app.FragmentActivity, entry: TtCode.Stepped, onApply: (Double) -> Unit, onReturn: () -> Unit) {
+        val downBox = CheckBox(act).apply { text = entry.downLabel }
+        val upBox = CheckBox(act).apply { text = entry.upLabel }
+        downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
+        upBox.setOnCheckedChangeListener { _, checked -> if (checked) downBox.isChecked = false }
+        val container = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            entry.currentValue?.let { reader ->
+                addView(TextView(act).apply {
+                    text = displayedTtCurrentValue(entry, reader)
+                    setPadding(0, 0, 0, 16)
+                })
+            }
+            addView(downBox)
+            addView(upBox)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(act)
+            .setTitle(entry.label)
+            .setView(container)
+            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                when {
+                    downBox.isChecked -> onApply(entry.down)
+                    upBox.isChecked   -> onApply(entry.up)
+                    // Neither checked: OK with no selection is a no-op, not an error.
+                }
+            }
+            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> onReturn() }
+            .setOnCancelListener { onReturn() }
+            .show()
     }
 
     private fun setRelayTt(mmol: Double, origin: String) {

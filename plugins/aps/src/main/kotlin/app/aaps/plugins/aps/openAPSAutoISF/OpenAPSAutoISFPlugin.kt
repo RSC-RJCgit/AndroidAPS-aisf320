@@ -1581,6 +1581,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "AnyDeskRestartActionTT" -> 5.178
         "MjKotlinButtonsToggleTT" -> 5.164
         "SteroidKotlinButtonToggleTT" -> 5.166
+        "BoostScaleDownTT" -> 5.182
+        "BoostScaleUpTT" -> 5.184
+        "BoostMaxDownTT" -> 5.186
+        "BoostMaxUpTT" -> 5.188
+        "BoostIobMaxDownTT" -> 5.190
+        "BoostIobMaxUpTT" -> 5.192
         else -> null
     }
 
@@ -3196,6 +3202,72 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
             addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
             markRun("MildBoostUpTT")
+        }
+
+        // --- BoostScaleDownTT / BoostScaleUpTT: remote ±0.1 nudge on ApsAutoIsfUamBoostScale (Tier 3
+        // UAM Boost's boost_scale multiplier) -- not real targets. Same pattern as MildBoostDownTT/UpTT
+        // above. Up is clamped to 2.9, NOT the preference's own nominal max of 3.0: DetermineBasalAutoISF.kt's
+        // entry gate requires "boost_scale < 3" -- at exactly 3.0 Tier 3 stops firing entirely, a silent
+        // cliff rather than a graceful cap, so 2.9 keeps this control from ever landing on that trap.
+        if (readyToRun("BoostScaleDownTT", 2) && activeTtNear(5.182, 0.0001)) {
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.1).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
+            cancelCurrentTempTarget()
+            sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
+            addCarePortalNote(compactSettingNote("BSc", newScale, 2))
+            markRun("BoostScaleDownTT")
+        }
+
+        if (readyToRun("BoostScaleUpTT", 2) && activeTtNear(5.184, 0.0001)) {
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.1).coerceAtMost(2.9)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
+            cancelCurrentTempTarget()
+            sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
+            addCarePortalNote(compactSettingNote("BSc", newScale, 2))
+            markRun("BoostScaleUpTT")
+        }
+
+        // --- BoostMaxDownTT / BoostMaxUpTT: remote ±0.25U nudge on ApsAutoIsfUamBoostMaxBolus (Tier 3's
+        // per-SMB boost_max ceiling, live default 2.5U) -- not real targets. Same pattern as above.
+        if (readyToRun("BoostMaxDownTT", 2) && activeTtNear(5.186, 0.0001)) {
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
+            cancelCurrentTempTarget()
+            sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U")
+            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
+            markRun("BoostMaxDownTT")
+        }
+
+        if (readyToRun("BoostMaxUpTT", 2) && activeTtNear(5.188, 0.0001)) {
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) + 0.25).coerceAtMost(10.0)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
+            cancelCurrentTempTarget()
+            sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U")
+            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
+            markRun("BoostMaxUpTT")
+        }
+
+        // --- BoostIobMaxDownTT / BoostIobMaxUpTT: remote ±5% nudge on ApsAutoIsfUamBoostMaxIobPercent
+        // (Tier 3's IOB ceiling, live default 10.0% of max_iob -- e.g. 0.95U at max_iob 9.5) -- not real
+        // targets. Same pattern as above. This is the ceiling that was actually binding the 22 Aug 2026
+        // real UamBst firing (see the AIV review checklist's item 06), not boost_max, so this is the more
+        // relevant of the two boost-strength controls to reach for first.
+        if (readyToRun("BoostIobMaxDownTT", 2) && activeTtNear(5.190, 0.0001)) {
+            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) - 5.0).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
+            cancelCurrentTempTarget()
+            sendSms("BoostIobMaxDown: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
+            markRun("BoostIobMaxDownTT")
+        }
+
+        if (readyToRun("BoostIobMaxUpTT", 2) && activeTtNear(5.192, 0.0001)) {
+            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) + 5.0).coerceAtMost(100.0)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
+            cancelCurrentTempTarget()
+            sendSms("BoostIobMaxUp: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
+            markRun("BoostIobMaxUpTT")
         }
 
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
