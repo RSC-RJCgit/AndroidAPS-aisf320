@@ -2261,7 +2261,7 @@ class DetermineBasalAutoISF @Inject constructor(
             }
 
             rT.reason.append("temp ${basalForDisplay(currenttemp.rate)} un ${basalForDisplay(rate)}U/hr. ")
-            return setTempBasal(rate, standardTempDuration, profile, rT, currenttemp)
+            return setTempBasal (rate, standardTempDuration, profile, rT, currenttemp)
         }
     }
 }
