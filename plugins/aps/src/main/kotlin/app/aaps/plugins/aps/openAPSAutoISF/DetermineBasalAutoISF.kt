@@ -226,10 +226,13 @@ class DetermineBasalAutoISF @Inject constructor(
     // gate's own doc comment). Two thresholds needed re-deriving in bg_acce's own units, since
     // delta_accl's percentage scale doesn't translate directly: reuses the SAME 0.30mmol/5.4-raw bar
     // already established for bg_acce elsewhere in this file for the weaker "> 1" bar, and 3x that
-    // (0.90mmol/16.2-raw) for the stronger "> 25" fast-carb-rebound bar -- proportional to delta_accl's
-    // own 25:1 ratio between its two thresholds, but NOT independently calibrated against real bg_acce
-    // data the way the base 0.30mmol figure was. Judgment call, flagged as such; revisit once this
-    // branch has logged a few real fast-carb-rebound episodes to check against.
+    // (0.90mmol/16.2-raw) for the stronger "> 25" fast-carb-rebound bar. NOT mathematically proportional
+    // to delta_accl's own 25:1 ratio (that would be 25x, i.e. 7.5mmol/135-raw -- checked against real
+    // acceBG data from this session and that figure would be 15-30x anything actually observed, making
+    // the gate essentially unreachable) and NOT independently calibrated against real bg_acce data the
+    // way the base 0.30mmol figure was either -- 3x is a plain judgment call, picked as "meaningfully
+    // stronger than the base bar" with nothing more rigorous behind it. Revisit once this branch has
+    // logged a few real fast-carb-rebound episodes to check against.
     private fun tier3BoostReferenceComparison(
         rT: RT,
         glucose_status: GlucoseStatus,
