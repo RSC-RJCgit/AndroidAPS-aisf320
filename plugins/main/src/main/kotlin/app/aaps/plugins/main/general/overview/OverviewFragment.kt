@@ -1466,9 +1466,26 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // screen behind it -- same pattern/rationale as showTtCodesListDialog() on list1 (IOB icon area).
     // OKDialog.showConfirmation's 5-arg (title, message, ok, cancel) overload is used instead of the
     // simpler 3-arg one specifically so a cancel callback can be supplied.
+    // Added 2026-08-23: BasalDirectAction never had a "current value" shown before confirming, unlike
+    // TtCode.Single/Stepped's own currentValue reader on list 1 -- real gap, most noticeable on the
+    // toggle-shaped rows (MJ/steroid Kotlin button, Tier 3 Boost, UKF1-dosing) where "current" is exactly
+    // what you need to see before deciding whether to flip it. null for the plain one-shot triggers
+    // (MJ_START/RESTORE, ANYDESK_*) where there's no boolean state to show.
+    private fun basalDirectActionCurrentValue(action: BasalDirectAction): String? = when (action) {
+        BasalDirectAction.MJ_BUTTONS_TOGGLE      -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) "ON" else "OFF"}"
+        BasalDirectAction.STEROID_BUTTON_TOGGLE  -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) "ON" else "OFF"}"
+        BasalDirectAction.TIER3_BOOST_TOGGLE     -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "ON" else "OFF"}"
+        BasalDirectAction.UKF1_DOSING_TOGGLE     -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)) "ON" else "OFF"}"
+        BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,
+        BasalDirectAction.STEROID_INCREASE_190, BasalDirectAction.STEROID_INCREASE_250, BasalDirectAction.STEROID_TURN_OFF ->
+            "Current profile: ${profileFunction.getProfileName()}"
+        else -> null
+    }
+
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
-            return rh.gs(R.string.run_question, action.label)
+            val question = rh.gs(R.string.run_question, action.label)
+            return basalDirectActionCurrentValue(action)?.let { "$it\n\n$question" } ?: question
         }
         return if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
             "An active temporary target exists and will be preserved.\n\n" +
@@ -1505,7 +1522,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             act,
                             act.getString(app.aaps.core.ui.R.string.confirmation),
                             basalDirectActionConfirmation(action),
-                            Runnable { runBasalDirectAction(action) },
+                            // Added 2026-08-23: OK used to just run the action and drop back to the plain
+                            // Overview screen -- only Cancel returned to this list. Now both do, so e.g.
+                            // toggling Tier 3 Boost then UKF1-dosing back to back doesn't need a fresh
+                            // double-tap each time.
+                            Runnable { runBasalDirectAction(action); showBasalDirectActionListDialog() },
                             Runnable { showBasalDirectActionListDialog() }
                         )
                     } else if (which < actionEntries.size + list2SteppedEntries.size) {
@@ -1816,7 +1837,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             androidx.appcompat.app.AlertDialog.Builder(act)
                                 .setTitle(entry.label)
                                 .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(displayedTtCurrentValue(entry, reader)) } }
-                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value) }
+                                // Added 2026-08-23: OK used to just apply and drop back to the plain
+                                // Overview screen -- only Cancel returned to this list. Now both do.
+                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value); showTtCodesListDialog() }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                                 // setNegativeButton alone only catches an explicit tap on the Cancel
                                 // button -- back-press or tapping outside the dialog goes through
@@ -2201,11 +2224,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         androidx.appcompat.app.AlertDialog.Builder(act)
             .setTitle(entry.label)
             .setView(container)
+            // Added 2026-08-23: OK used to just apply and drop back to the plain Overview screen -- only
+            // Cancel returned to the outer list. Now both do (onReturn() after onApply()), matching
+            // TtCode.Single's own OK behaviour.
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 when {
-                    downBox.isChecked -> onApply(entry.down)
-                    upBox.isChecked   -> onApply(entry.up)
-                    // Neither checked: OK with no selection is a no-op, not an error.
+                    downBox.isChecked -> { onApply(entry.down); onReturn() }
+                    upBox.isChecked   -> { onApply(entry.up); onReturn() }
+                    // Neither checked: OK with no selection is a no-op, not an error -- still returns.
+                    else              -> onReturn()
                 }
             }
             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> onReturn() }
