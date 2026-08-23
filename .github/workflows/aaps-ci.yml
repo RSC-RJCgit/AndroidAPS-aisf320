@@ -216,7 +216,11 @@ jobs:
           -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
       - name: Build aapsclient2Release APK
-        if: ${{ github.event_name == 'push' || inputs.build_aapsclient2 }}
+        # Simplified 2026-08-23: was also unconditionally building on every push (matching fullRelease's
+        # own condition) -- per explicit request, push now builds full only; aapsclient/aapsclient2
+        # (Client2, the current additional flavor) stay manual-dispatch-only, same as pumpcontrol/wear
+        # already were (neither is built by this workflow at all).
+        if: ${{ inputs.build_aapsclient2 }}
         run: |
           ./gradlew :app:assembleAapsclient2Release \
           -Dorg.gradle.jvmargs="-Xmx8g" \

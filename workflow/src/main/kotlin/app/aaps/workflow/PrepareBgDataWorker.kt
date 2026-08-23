@@ -330,22 +330,11 @@ class PrepareBgDataWorker(
         // Computed here (moved up from its original spot just above ukfDeltaSeries below) so
         // isfWeightsRowSeries's HP2= field can reuse it too, instead of calling ukfFiveMinuteDelta() twice.
         val ukfDeltaResult = ukfFiveMinuteDelta(rawReadings)
-        data.overviewData.noisyBgDeltaSeries =
-            if (latest != null && noisyBg != null && aapsDelta != null && libreDelta != null) {
-                val delta5Txt = " A5=${aapsDelta5?.let { formatMmolDelta(it) } ?: "--"} L5=${libreDelta5?.let { formatMmolDelta(it) } ?: "--"}"
-                // Current MJ state (value only, no "MJ=" prefix), from the most recent MJ-lifecycle
-                // careportal note. Uses notes (which sync to the client) rather than automationStateService
-                // (which doesn't sync), so it's correct on both master and client — same source as the
-                // history table's MJ column, so this is just "the latest MJ value".
-                val mjTxt = " " + latestMjState(latest.timestamp)
-                val label = "L=${profileUtil.fromMgdlToStringInUnits(noisyBg)} " +
-                    "A1=${formatMmolDelta(aapsDelta)} L1=${formatMmolDelta(libreDelta)}" + delta5Txt + mjTxt
-                PointsWithLabelGraphSeries(
-                    arrayOf<DataPointWithLabelInterface>(
-                        NoisyBgDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(noisyBg), label, rh)
-                    )
-                )
-            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        // Removed 2026-08-23: the "L=.../A1=.../A5=.../MJ" label pinned to the main graph's own noisy-BG
+        // point, per explicit request to declutter the main BGL trace. Left the computation above
+        // (noisyBg/aapsDelta/libreDelta/aapsDelta5/libreDelta5) untouched in case another series needs
+        // it later -- only the label/point production itself is now unconditionally empty.
+        data.overviewData.noisyBgDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // "pp= acc= du= IOBth= HP2=" row, fixed near the bottom of graph3 — current (live)
         // ApsAutoIsfPpWeight/BgAccelWeight/DuraWeight, same style/mechanism as the "L=/A1=.../MJ" row
@@ -396,16 +385,11 @@ class PrepareBgDataWorker(
         // line's own current point rather than the raw/noisy one — see ukfFiveMinuteDelta() above.
         // (ukfDeltaResult itself is computed earlier, right after latestAiv, so isfWeightsRowSeries's
         // HP2= field can share it.)
-        data.overviewData.ukfDeltaSeries =
-            if (latest != null && ukfDeltaResult != null) {
-                val (ukfDeltaMgdl, ukfNowMgdl) = ukfDeltaResult
-                val label = "U=" + formatMmolDelta(ukfDeltaMgdl)
-                PointsWithLabelGraphSeries(
-                    arrayOf<DataPointWithLabelInterface>(
-                        UkfDeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(ukfNowMgdl), label, rh)
-                    )
-                )
-            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        // Removed 2026-08-23: the "U=..." label pinned to UKF1's own current point on the main graph,
+        // same declutter request as noisyBgDeltaSeries above. ukfDeltaResult itself is left computed
+        // (isfWeightsRowSeries's HP2= field below still reads it) -- only this series' label/point
+        // production is now unconditionally empty.
+        data.overviewData.ukfDeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // "hypoprediction= <value>" row, fixed near the bottom of the MAIN graph (near the basal-column
         // area — see Shape.HP_ROW_BOTTOM). Uses the same HP2 formula as graph3:
