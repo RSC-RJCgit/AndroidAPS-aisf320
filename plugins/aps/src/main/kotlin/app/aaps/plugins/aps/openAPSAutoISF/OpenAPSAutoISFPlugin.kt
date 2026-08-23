@@ -1570,8 +1570,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "Graph5ToggleTT" -> 5.142
         "MjStateNoMjTT" -> 5.144
         "MjStateMj3TT" -> 5.146
-        "ProfileStandardTT" -> 5.148
-        "ProfileLowTT" -> 5.150
         "LibreUkf1ToggleTT" -> 5.152
         // 5.154 (LibreUkf2ToggleTT) freed up 2026-08-15 -- UKFset2 toggling moved to list2's
         // "Graph: UKF2" entry (GraphToggleEntry.syncedLiveKey in OverviewFragment.kt), which wrote
@@ -2850,34 +2848,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MjStateMj3TT")
         }
 
-        // --- ProfileStandardTT / ProfileLowTT: manually setting a TT of 5.148 / 5.150 mmol switches the
-        // profile straight to Standard / Low — not real targets. Next values after MjStateMj3TT's 5.146.
-        // Paired in ttCodesList() as one TtCode.Stepped row ("Profile"), same as the MJ pair above.
-        //
-        // Permanent switches (switchProfileIfNeeded's default duration 0), matching what the automations
-        // themselves use, so a manual override isn't silently undone by a timer. It CAN still be undone
-        // by another automation though: BasalUp switches back to Standard on a rise (no longer time-gated),
-        // and TwilightTH15Acce (06:00-08:00) plus ExportSettingsPodActivation (any time, on pod change)
-        // switch to Low without an HP2 gate. So this is a "set it now" control, not a lock — if a switch
-        // gets reverted within minutes, one of those three is the thing to look at, not this block.
-        // Two one-way setters rather than one toggling TT, same reasoning as the MJ pair: the resulting
-        // profile is always known from which code was sent, never dependent on what it was beforehand
-        // (which matters precisely because the automations above can change it underneath you).
-        if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
-            cancelCurrentTempTarget()
-            sendSms("Profile: Standard")
-            addCarePortalNote("PrfS")
-            markRun("ProfileStandardTT")
-        }
-
-        if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
-            cancelCurrentTempTarget()
-            sendSms("Profile: Low")
-            addCarePortalNote("PrfL")
-            markRun("ProfileLowTT")
-        }
+        // ProfileStandardTT/ProfileLowTT (5.148/5.150 manual profile-switch remote-TT triggers) and
+        // their List1 "Profile (manual override)" row removed 2026-08-23 -- redundant with switching
+        // profiles directly (the normal AAPS profile-switch UI), and superseded for the *actual* need
+        // (changing which profile fills the Standard/Low role, not just switching to whichever already
+        // does) by the new "Re-pick coded profiles" List1 row -> showProfileNamesPopup(). 5.148/5.150
+        // are now free if a future TT code needs them.
 
         // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
         // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:

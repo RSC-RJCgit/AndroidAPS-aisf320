@@ -1751,7 +1751,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun showTtCodesListDialog() {
         activity?.let { act ->
             val ukf1LiveComparisonAllowed = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
-            val entries = ttCodesList().filter { entry ->
+            val entries = ttCodesList(act).filter { entry ->
                 entry !is TtCode.Single || entry.value != 5.152 || ukf1LiveComparisonAllowed
             }
             // Compact adapter (small text, minimal padding) instead of the default select_dialog_item
@@ -1828,6 +1828,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 .setOnCancelListener { showTtCodesListDialog() } // see TtCode.Single's comment on this above
                                 .show()
                         }
+
+                        // No confirm/cancel wrapper -- showProfileNamesPopup() (the only current use) is
+                        // already its own confirm dialog with OK/Cancel, so wrapping it in another one
+                        // would just be a pointless extra tap. onDone re-opens this same list, matching
+                        // every other row's cancel/confirm-then-return behaviour above.
+                        is TtCode.Action  -> entry.onSelect()
                     }
                 }
                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
@@ -1859,6 +1865,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // automation/profile state like MJ state or Profile override), so those popups look exactly as
         // before rather than show something misleading or half-right.
         class Stepped(label: String, val down: Double, val up: Double, val downLabel: String, val upLabel: String, val currentValue: (() -> String)? = null) : TtCode(label)
+        // Added 2026-08-23: a purely-local row with no TT value at all -- unlike Single/Stepped, this
+        // can never be usefully remote-relayed (there's no "set a TT of X" equivalent for popping up a
+        // two-spinner picker on the far end), so it's a distinct third case rather than shoehorned into
+        // Single. onSelect runs directly, in place of the normal "confirm -> applyTtControl(value)" path.
+        // First (only) use: re-opening showProfileNamesPopup() on demand -- see that function's own
+        // doc comment for why one existed already but only ever showed once automatically.
+        class Action(label: String, val onSelect: () -> Unit) : TtCode(label)
     }
 
     private fun mirroredAutoIsfSettings(): Map<String, String> =
@@ -1968,7 +1981,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // the setting, cancels the TT, and retains the two-minute relay guard.
     // Abbreviated for narrow-phone display: weight->Wt, SMB delivery->SMBdel, boost->Bst, normal->N,
     // (orig)->(Or), baseline->base, override->HARD, (high/boosted)->(High).
-    private fun ttCodesList(): List<TtCode> = listOf(
+    private fun ttCodesList(act: androidx.fragment.app.FragmentActivity): List<TtCode> = listOf(
         // SmbDeliveryDownTT/UpTT nudges BOTH ApsAutoIsfSmbDeliveryBaseline and ApsAutoIsfMildBoostRatio, both by the same ±0.01.
         // Dual-key: SmbDeliveryDownTT/UpTT nudges BOTH keys by the same amount, so unlike the
         // single-key rows above, both current values are shown rather than picking just one.
@@ -2032,25 +2045,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // show something other than either checkbox label.
             currentValue = { "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}" }
         ),
-        // Same Stepped shape as the MJ row above: one label, the two profiles as a mutually-exclusive
-        // checkbox pair. Labels are the two ROLES (Standard/Low), not the profiles' actual configured
-        // names — those are user-picked via StringKey.ApsAutoIsfStandardProfileName/...LowProfileName,
-        // so naming them here would go stale the moment either is repointed.
-        TtCode.Stepped(
-            "Profile (manual override)", 5.148, 5.150, "Standard", "Low",
-            // Compares the actual active profile name against the two configured role names, same
-            // resolution logic used throughout OpenAPSAutoISFPlugin.kt (e.g. onNormalProfile in
-            // BolusGiven) -- shows the real name too since neither role name is fixed text.
-            currentValue = {
-                val name = profileFunction.getProfileName()
-                val roleLabel = when (name) {
-                    preferences.get(StringKey.ApsAutoIsfStandardProfileName) -> "Standard"
-                    preferences.get(StringKey.ApsAutoIsfLowProfileName)      -> "Low"
-                    else                                                     -> "neither"
-                }
-                "Current: $roleLabel ($name)"
-            }
-        ),
+        // "Profile (manual override)" (switch active profile straight to Standard/Low, 5.148/5.150)
+        // removed 2026-08-23 -- redundant with switching profiles directly via AAPS's own profile-switch
+        // UI. Replaced by the row below, which addresses the actual need (changing which profile fills
+        // each role, not just switching to whichever already does) that row was originally meant for.
+        //
+        // Reuses showProfileNamesPopup() unchanged (the one-time onboarding popup, this file) -- that
+        // was previously shown only once ever, gated on OverviewStringKey.ApsAutoIsfProfileNamesReviewed,
+        // with no way back in short of an export/import edit to clear the flag. onDone re-opens this
+        // same list, matching every other row here.
+        TtCode.Action("Re-pick coded profiles (Standard/Low)") {
+            showProfileNamesPopup(act) { showTtCodesListDialog() }
+        },
         // UKFset2 removed from here 2026-08-15: it no longer has any live dosing effect on the graph
         // history itself (its function call in XdripSourcePlugin.kt/NsIncomingDataProcessor.kt discards
         // its own return value) -- it only feeds a persisted graph history now. Toggling it moved to
