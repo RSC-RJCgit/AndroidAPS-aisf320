@@ -5821,7 +5821,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smbSum30Min = smbSum30Min(),
             sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10),
             basalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5),
-            fastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
+            fastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio(),
+            // Tier 3's own stacking-type criteria, added 2026-08-23 -- same source calls BMild/Bg3 already
+            // use (see DetermineBasalAutoISF.kt's own param doc comments for why each matters there).
+            lastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE,
+            lastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE,
+            iobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints

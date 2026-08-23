@@ -49,6 +49,14 @@ class DetermineBasalAutoISF @Inject constructor(
     // resulting CarePortal/SMS side effects; this calculation class performs no I/O.
     var uamBoostFiredThisCycle: Boolean = false
 
+    // Tier 3's own 10-min self-throttle, added 2026-08-23 after a real same-morning firing delivered
+    // three consecutive doses (09:32/33/34am, no gap at all) -- BMild/Bg3 have always had this via
+    // OpenAPSAutoISFPlugin's readyToRun()/markRun(), but that mechanism lives on the plugin class, not
+    // here, so Tier 3 (whose logic lives entirely in this pure-calculation class) never had an
+    // equivalent. Persists across calls the same way this whole class instance does -- systemTime is
+    // already a determine_basal() parameter, used the same way tier3TimeAllowed already reads it.
+    private var lastUamBoostFireTimestamp: Long = 0L
+
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
 
@@ -262,7 +270,24 @@ class DetermineBasalAutoISF @Inject constructor(
         // a true Virtual pump (no real Libre calibration in play at all, so 0.75 isn't a meaningful
         // reference there), and the live ratio otherwise -- including on Client, which mirrors a real
         // device's already-calibrated data.
-        fastRiseSlopeCompensationRatio: Double = 1.0
+        fastRiseSlopeCompensationRatio: Double = 1.0,
+        // Three additions to Tier 3 UAM Boost's own entry gate, 2026-08-23 -- borrowed from BMild/Bg3's
+        // own stacking-type criteria (OpenAPSAutoISFPlugin.kt), which Tier 3 never had despite living
+        // right alongside them conceptually. All three default to values that leave existing
+        // callers/tests unaffected (Int.MAX_VALUE = "no recent manual bolus/carb seen", 0.0 = "no IOB
+        // change data supplied").
+        //
+        // lastBolusMinutes/lastCarbMinutes: minutes since the last MANUAL bolus/carb entry (mirrors
+        // BMild's own minutesSinceLastNormalBolus()/minutesSinceLastCarbs() exactly, including that it's
+        // manual entries, not SMBs -- a meal-timing quiet window, not an SMB-stacking check on its own).
+        lastBolusMinutes: Int = Int.MAX_VALUE,
+        lastCarbMinutes: Int = Int.MAX_VALUE,
+        // iobChange5Min: IOB delta over the last 5 minutes (mirrors BMild's own totalIobAt(now) -
+        // totalIobAt(now-5min) exactly). Feeds the same sub-7.5mmol delivery-rate ceiling BMild already
+        // uses -- blocks Tier 3 from re-arming when recent delivery is already running hot relative to a
+        // still-modest BG, the exact pattern behind the two real hypos that guard was originally added
+        // for on BMild's side.
+        iobChange5Min: Double = 0.0
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
@@ -1336,11 +1361,20 @@ class DetermineBasalAutoISF @Inject constructor(
                     // this bar would NOT have blocked the first two doses (genuinely accelerating) but
                     // WOULD have blocked the third (already decaying below it) -- a real, if partial,
                     // tightening, not a complete fix for that specific episode.
+                    // Stacking-type criteria added 2026-08-23, borrowed from BMild/Bg3 (see this
+                    // function's own param doc comments for each): a 10-min self-throttle Tier 3 never
+                    // had (would have blocked the 23 Aug 09:33/34am repeat doses on its own), the same
+                    // 2-hour manual-bolus/carb quiet window, and BMild's sub-7.5mmol delivery-rate
+                    // ceiling.
+                    val uamBoostThrottleOk = systemTime - lastUamBoostFireTimestamp >= 10 * 60 * 1000L
                     if (glucose_status.delta >= 5
                         && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
                         bg_acce > 0.30 * 18 &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
-                        && boostIobAllowance > 0.0) {
+                        && boostIobAllowance > 0.0
+                        && uamBoostThrottleOk
+                        && lastBolusMinutes >= 120 && lastCarbMinutes >= 120
+                        && !(bg < 135.1 /* 7.5 mmol */ && iobChange5Min > 0.8)) {
 
                         val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -2016,6 +2050,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("Microbolusing ${round(microBolus, 2)}U. ")
                         if (uamBoostEnhancedCandidateThisCycle) {
                             uamBoostFiredThisCycle = true
+                            lastUamBoostFireTimestamp = systemTime
                             rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
                         }
                     }
