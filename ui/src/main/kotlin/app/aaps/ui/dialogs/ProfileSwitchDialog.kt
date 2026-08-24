@@ -224,6 +224,11 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
             actions.add(rh.gs(app.aaps.core.ui.R.string.time) + ": " + dateUtil.dateAndTimeString(eventTime))
 
         val isTT = binding.duration.value > 0 && binding.percentage.value < 100 && binding.tt.isChecked
+        // submit() opens a second confirmation dialog and then returns true, which dismisses this
+        // ProfileSwitchDialog and clears its view binding before the confirmation callback runs.
+        // Capture the checkbox now; reading binding.setAsLowRole inside that callback would access a
+        // destroyed view and prevent either the Standard or Low preference from being updated.
+        val setAsLowRole = binding.setAsLowRole.isChecked
         val target = preferences.get(UnitDoubleKey.OverviewActivityTarget)
         val units = profileFunction.getUnits()
         if (isTT)
@@ -261,12 +266,13 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         // coincidental short match can't shadow a real longer one), that specific Steroid
                         // role is re-assigned and the checkbox is moot for this switch. Otherwise:
                         // unticked (default) assigns Standard, ticked assigns Low -- exactly one of the
-                        // two, always, never neither. Read here rather than earlier since submit() itself
-                        // is synchronous, so binding is still valid at this point.
+                        // two, always, never neither. The checkbox value was captured before opening this
+                        // confirmation dialog because the originating dialog's binding is cleared while
+                        // this callback is waiting for the user.
                         steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
                             preferences.put(steroidKey, profileName)
                         } ?: run {
-                            if (binding.setAsLowRole.isChecked)
+                            if (setAsLowRole)
                                 preferences.put(StringKey.ApsAutoIsfLowProfileName, profileName)
                             else
                                 preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileName)

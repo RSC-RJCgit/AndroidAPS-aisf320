@@ -1523,12 +1523,23 @@ class DetermineBasalAutoISF @Inject constructor(
                     // passed). bg_acce is a genuinely different, more robust measure: a quadratic
                     // least-squares fit's second derivative across a goodness-of-fit-selected window
                     // (GlucoseStatusCalculatorAutoIsf.kt), not a ratio of two raw point estimates.
-                    // Threshold reuses the SAME 0.30mmol bar the Low IOB Acceleration Glitch branch
-                    // already established for bg_acce elsewhere in this file (not a new number). Checked
-                    // against the 23 Aug firing: acceBG read 8.69/7.67/4.72 across those three minutes --
-                    // this bar would NOT have blocked the first two doses (genuinely accelerating) but
-                    // WOULD have blocked the third (already decaying below it) -- a real, if partial,
-                    // tightening, not a complete fix for that specific episode.
+                    //
+                    // bg_acce REMOVED 2026-08-25, per real 24 Aug data: it never once cleared its own
+                    // 0.30mmol/5.4-raw bar across 45 genuine reference-confirmed firing opportunities that
+                    // day (max observed 4.68), while the unmodified reference implementation (which has no
+                    // acceleration requirement in its own entry gate at all) fired repeatedly on the same
+                    // data. Root cause is structural, not a mistuned number: bg_acce (a second derivative)
+                    // provably peaks BEFORE Delta (a first derivative) reaches its own required bar, for
+                    // any smoothly accelerating rise -- confirmed against the 24 Aug log minute-by-minute
+                    // (bg_acce peaked at 7.79 one full cycle before Delta cleared 5mg/dL, then was already
+                    // below 5.4 by the time it did). Requiring both simultaneously is asking for peak
+                    // velocity and peak acceleration on the same cycle, which the rise's own shape makes
+                    // close to impossible. Decided (2026-08-25) to drop acceleration-based gating entirely
+                    // for this Tier rather than retune it (e.g. against acce_ISF/autoIsfValues.acceIsf,
+                    // which does track better but adds another parameter to calibrate) -- the remaining
+                    // conditions below (delta/ratio thresholds, IOB ceiling, throttle, quiet window,
+                    // sub-7.5mmol guard) are the same category of gate BolusGivenMild already relies on
+                    // successfully, on real pumps, with no acceleration term of its own.
                     // Stacking-type criteria added 2026-08-23, borrowed from BMild/Bg3 (see this
                     // function's own param doc comments for each): a 10-min self-throttle Tier 3 never
                     // had (would have blocked the 23 Aug 09:33/34am repeat doses on its own), the same
@@ -1537,7 +1548,6 @@ class DetermineBasalAutoISF @Inject constructor(
                     val uamBoostThrottleOk = systemTime - lastUamBoostFireTimestamp >= 10 * 60 * 1000L
                     if (glucose_status.delta >= 5
                         && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
-                        bg_acce > 0.30 * 18 &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
                         && boostIobAllowance > 0.0
                         && uamBoostThrottleOk
