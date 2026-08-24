@@ -169,11 +169,11 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     // a shorter number being a substring of a longer one that also appears in these names ("190" vs "90",
     // "250" vs "50" -- neither collides today, but checking specific-to-general is the safe habit).
     //
-    // Fixed 2026-08-25 (first pass): was a bare String.contains(), which also fired on the percent
+    // Fixed 2026-08-24 (first pass): was a bare String.contains(), which also fired on the percent
     // appearing as part of a LONGER digit run unrelated to a steroid tier. Tightened to require the
     // percent as its own standalone digit run.
     //
-    // Fixed 2026-08-25 (second pass): standalone-digit matching still isn't enough -- a real, ordinary,
+    // Fixed 2026-08-24 (second pass): standalone-digit matching still isn't enough -- a real, ordinary,
     // non-steroid profile can legitimately be named with a standalone number that coincides with a tier
     // ("Current Profile110" was reported misrouted to Steroid110 purely because "110" appeared standalone
     // in an otherwise unrelated numbering series alongside this user's actual Standard/Low profiles,

@@ -86,7 +86,7 @@ enum class StringKey(
     ApsAutoIsfSteroid110ProfileName("autoisf_steroid_110_profile_name", "Steroid Profile110"),
     ApsAutoIsfSteroid130ProfileName("autoisf_steroid_130_profile_name", "Steroid Profile130"),
     ApsAutoIsfSteroid150ProfileName("autoisf_steroid_150_profile_name", "Steroid Profile150"),
-    // Renamed 2026-08-25 (default text only): these two used to be "Current Profile190Real" /
+    // Renamed 2026-08-24 (default text only): these two used to be "Current Profile190Real" /
     // "Current ProfileReal250", the odd one out vs. the "Steroid ProfileNNN" pattern 110/130/150 already
     // used. ProfileSwitchDialog's steroidRoleKeyForProfileName() now requires the word "Steroid" (or a
     // "%") somewhere in the name before it will auto-detect a manual profile switch as a steroid-tier

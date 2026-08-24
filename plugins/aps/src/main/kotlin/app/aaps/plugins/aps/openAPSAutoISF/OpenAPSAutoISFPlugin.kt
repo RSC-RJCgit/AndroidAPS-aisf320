@@ -173,7 +173,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 ), APS, PluginConstraints {
 
     private var bgAcce: Double = 0.0  // <-- here
-    // Added 2026-08-25: same one-cycle-stale carry pattern as bgAcce just above -- acce_ISF (autoIsfValues.acceIsf)
+    // Added 2026-08-24: same one-cycle-stale carry pattern as bgAcce just above -- acce_ISF (autoIsfValues.acceIsf)
     // is only computed AFTER determine_basal() runs each cycle (it depends on this cycle's own fit_corr/
     // bgAccel_ISF_weight, computed later in invoke()), so the determine_basal() call site reads last
     // cycle's value here, and it's overwritten with this cycle's real value right after it's computed.
@@ -1919,7 +1919,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
         val smbRatio = determine_varSMBratio(glucoseStatus.glucose.toInt(), target_bg, loopWantedSmb)
 
-        // Extracted 2026-08-25 from BolusGivenMild's own inline `val fire = ...` computation, unchanged
+        // Extracted 2026-08-24 from BolusGivenMild's own inline `val fire = ...` computation, unchanged
         // in substance -- a pure query (readyToRun()/minutesSinceLast*()/totalIobAt() are all read-only,
         // no markRun() or preference writes happen in here), so it's safe to call this more than once per
         // cycle without consuming BolusGivenMild's own throttle or side effects. Two callers: the
@@ -4238,7 +4238,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
         // ApsAutoIsfBoostAutomationsEnabled: same combined master switch as BolusGiven bg1/2/3 above.
         //
-        // Own entry condition extracted 2026-08-25 into bmildBasicCriteriaMet() (declared earlier in this
+        // Own entry condition extracted 2026-08-24 into bmildBasicCriteriaMet() (declared earlier in this
         // function, see its own doc comment for why), unchanged in substance -- now ALSO passed into
         // DetermineBasalAutoISF.kt's determine_basal() call
         // (bmildBasicCriteriaMet param) as Tier 3 UAM Boost's entry trigger, replacing Tier 3's own former
@@ -6014,7 +6014,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("UamBst")
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
         }
-        // Added 2026-08-25: both observation-only, same no-I/O split as uamBoostFiredThisCycle above --
+        // Added 2026-08-24: both observation-only, same no-I/O split as uamBoostFiredThisCycle above --
         // CarePortal note only, deliberately no sendSms/graph announcement (explicit instruction: note-only
         // initially), and neither has ever touched dosing.
         if (determineBasalAutoISF.tier3AcceIsfObservedThisCycle) {

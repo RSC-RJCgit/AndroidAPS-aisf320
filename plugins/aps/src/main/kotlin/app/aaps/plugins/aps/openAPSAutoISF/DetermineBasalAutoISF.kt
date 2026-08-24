@@ -49,12 +49,12 @@ class DetermineBasalAutoISF @Inject constructor(
     // resulting CarePortal/SMS side effects; this calculation class performs no I/O.
     var uamBoostFiredThisCycle: Boolean = false
 
-    // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-25:
+    // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-24:
     // now that Tier 3's entry trigger IS bmildBasicCriteriaMet (see that gate's own doc comment), Tier 3
     // can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild", 10) throttle allows --
     // an independent, redundant 10-min throttle here was no longer doing any real work of its own.
 
-    // Added 2026-08-25: observation-only shadow check, deliberately separate from bmildBasicCriteriaMet's
+    // Added 2026-08-24: observation-only shadow check, deliberately separate from bmildBasicCriteriaMet's
     // real dosing trigger -- Tier 3's ORIGINAL gate shape (delta/ratio thresholds, throttle, quiet window,
     // sub-7.5mmol guard) with acce_ISF swapped in for bg_acce (see the earlier finding that acce_ISF
     // clears its own bar far more consistently than raw bg_acce did, but wasn't picked as the live trigger
@@ -64,7 +64,7 @@ class DetermineBasalAutoISF @Inject constructor(
     var tier3AcceIsfObservedThisCycle: Boolean = false
     private var lastTier3AcceIsfObservationTimestamp: Long = 0L
 
-    // Added 2026-08-25: observation-only shadow check for the reference's fastCarbRebound/fastCarbScale
+    // Added 2026-08-24: observation-only shadow check for the reference's fastCarbRebound/fastCarbScale
     // logic (see tier3BoostReferenceComparison()'s own doc comment) -- recomputed here using the SAME
     // inputs already in scope in the real (Bmild-triggered) dosing block, but only sets this flag; the
     // fastCarbScale reduction itself is NOT applied to microBolus yet, per explicit instruction to add
@@ -443,7 +443,7 @@ class DetermineBasalAutoISF @Inject constructor(
         // false for callers that don't pass it (tests, replay), same convention as the other optional
         // params above. Never read by real production dosing -- see that function's own doc comment.
         recentLowBG: Double = 999.0,
-        // Added 2026-08-25: Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/
+        // Added 2026-08-24: Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/
         // throttle/quiet-window gate entirely (see that gate's own doc comment for why). Pass the live
         // result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same condition that
         // decides whether BolusGivenMild itself fires this cycle, recomputed as a pure query (no
@@ -451,7 +451,7 @@ class DetermineBasalAutoISF @Inject constructor(
         // its actions. Default false = "no Bmild signal supplied" (tests, replay), same convention as
         // lastBolusMinutes/lastCarbMinutes above.
         bmildBasicCriteriaMet: Boolean = false,
-        // Added 2026-08-25: autoIsfValues.acceIsf from the PREVIOUS cycle (OpenAPSAutoISFPlugin.kt
+        // Added 2026-08-24: autoIsfValues.acceIsf from the PREVIOUS cycle (OpenAPSAutoISFPlugin.kt
         // computes it after this function returns, using this same cycle's data -- see that call site's
         // own comment for why a one-cycle-stale value is an acceptable tradeoff here). Feeds
         // tier3AcceIsfObservedThisCycle below ONLY -- an observation-only, non-dosing shadow check, kept
@@ -1544,7 +1544,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     )
                     consoleError.add("[Tier3Ref] result this cycle: $tier3ReferenceResult")
 
-                    // ----- Tier 3 acce_ISF observation (2026-08-25) -----
+                    // ----- Tier 3 acce_ISF observation (2026-08-24) -----
                     // Pure Tier 3, separate to BMild: Tier 3's ORIGINAL entry-gate shape (delta/ratio
                     // thresholds, IOB ceiling, own throttle, quiet window, sub-7.5mmol guard) with acce_ISF
                     // swapped in for bg_acce -- the variant NOT chosen as the live trigger (bmildBasicCriteriaMet
@@ -1575,7 +1575,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
                     // ----- Tier 3: UAM Boost -----
                     // Own entry gate (delta>=5, shortAvgDelta>=3, uamBoost1/uamBoost2 ratios, then
-                    // bg_acce added 2026-08-23) removed entirely 2026-08-25 and replaced with
+                    // bg_acce added 2026-08-23) removed entirely 2026-08-24 and replaced with
                     // bmildBasicCriteriaMet, for two compounding reasons found against real 24 Aug data:
                     //
                     // 1. The uamBoost1/uamBoost2 ratios are unstable near a small SDelta/LDelta
@@ -1645,7 +1645,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
                         }
-                        // Fast-carb rebound observation (2026-08-25), recomputed here since it's local to
+                        // Fast-carb rebound observation (2026-08-24), recomputed here since it's local to
                         // tier3BoostReferenceComparison() and not otherwise available in this (real
                         // dosing) block -- see that function's own doc comment for the original logic
                         // this mirrors. Observation-only per explicit instruction: sets a flag for
