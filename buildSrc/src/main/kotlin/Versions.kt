@@ -5,12 +5,12 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 object Versions {
 
     // On change edit aaps-ci.yml
-    const val appVersion = "3.4.2.6+aisf321UK_689"
+    const val appVersion = "3.4.2.6+aisf321UK_690"
     const val versionCode = 1500
 
     const val compileSdk = 36
     const val minSdk = 31
-    const val targetSdk = 32
+    const val targetSdk = 3290next
     const val wearMinSdk = 30
     const val wearTargetSdk = 30
 
