@@ -300,10 +300,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // draw data point
             if (!overdraw) {
                 if (value.shape == Shape.BG || value.shape == Shape.COB_FAIL_OVER) {
+                    mPaint.color = value.color(graphView.context)
                     mPaint.style = value.paintStyle
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, value.size * scaledPxSize, mPaint)
-                } else if (value.shape == Shape.BG || value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
+                } else if (value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
                     mPaint.color = value.color(graphView.context)
                     mPaint.style = value.paintStyle
                     mPaint.strokeWidth = 0f
