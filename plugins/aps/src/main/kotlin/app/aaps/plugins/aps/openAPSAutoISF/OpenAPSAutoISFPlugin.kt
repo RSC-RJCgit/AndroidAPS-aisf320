@@ -306,8 +306,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .toObservable(EventAutoIsfDirectTtCode::class.java)
             .subscribe({ event ->
                 if (!config.AAPSCLIENT) {
-                    pendingDirectTtCode = event.mmol
-                    aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
+                    if (kotlin.math.abs(event.mmol - 5.196) <= 0.0000001) {
+                        // This List 2 row is a local preference toggle, so apply it immediately instead
+                        // of waiting for the next APS invoke() to consume pendingDirectTtCode. Waiting
+                        // made the confirmation appear to do nothing whenever AutoISF did not run (or
+                        // returned early) soon afterwards. AAPSClient still uses the TT relay path and
+                        // is handled by the existing 5.196 block on the pump phone.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+                        preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
+                        sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("U1D${if (newState) "On" else "Off"}")
+                        aapsLogger.info(LTag.APS, "Applied local AutoISF UKF1-dosing toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
+                    } else {
+                        pendingDirectTtCode = event.mmol
+                        aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
+                    }
                 }
             }) {
                 aapsLogger.error(LTag.APS, "Direct AutoISF settings control failed", it)
@@ -2016,7 +2030,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         } else {
             val lastHandled = preferences.get(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt)
-            val searchFrom = if (lastHandled > 0L) lastHandled + 1L else dateUtil.now() - T.days(7).msecs()
+            val now = dateUtil.now()
+            val searchFrom = if (lastHandled > 0L) lastHandled + 1L else now - T.days(7).msecs()
             val receivedNote = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, false)
                 .filter {
                     val note = it.note.orEmpty()
@@ -2025,9 +2040,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 .maxByOrNull { it.timestamp }
             receivedNote?.let {
                 val note = it.note ?: return@let
-                uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
-                sendSms(note)
-                addGraphAnnouncement(note)
+                // The initial recovery scan deliberately reaches back seven days so its cursor can
+                // catch up after an install/settings reset. Do not turn an old, already-resolved
+                // low-storage Note into a fresh urgent alert on the Virtual Pump phone. Mark it handled
+                // either way; only warnings created recently enough to still be actionable are relayed.
+                if (it.timestamp >= now - T.hours(1).msecs()) {
+                    uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
+                    sendSms(note)
+                    addGraphAnnouncement(note)
+                }
                 preferences.put(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt, it.timestamp)
             }
         }
