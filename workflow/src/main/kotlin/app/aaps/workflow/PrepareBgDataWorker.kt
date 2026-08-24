@@ -483,17 +483,11 @@ class PrepareBgDataWorker(
         // don't run into each other when close together. Single trailing sign (not repeated), followed
         // by the live BG-acceleration value (same "acceBG" AIV-table column/formatting as
         // stepsExtraSeries's own "acce=" field below).
-        data.overviewData.a1DeltaSeries =
-            if (latest != null && aapsDelta != null) {
-                val formatted = formatMmolDelta(aapsDelta)
-                val acceStr = latestAiv?.let { String.format(Locale.getDefault(), "%.2f", it.bgAcceleration) } ?: "--"
-                val label = "___________A" + formatted + formatted.first() + "acce" + acceStr
-                PointsWithLabelGraphSeries(
-                    arrayOf<DataPointWithLabelInterface>(
-                        A1DeltaDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
-                    )
-                )
-            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        // Removed 2026-08-23: the "A<delta>...acce<value>" label pinned to the main BGL trace's own
+        // point -- missed in the first declutter pass (noisyBgDeltaSeries/ukfDeltaSeries), found on
+        // follow-up since it's a separate series (a1DeltaSeries) using the same aapsDelta computation.
+        // Left aapsDelta/aapsDelta5 computed above untouched -- other series still read them.
+        data.overviewData.a1DeltaSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
 
         // Two rows near the top (just under the green raw-BG/delta line), split so the steps row is
         // just steps: "S5=<5min> S15=<15min> S30=<30min> S60=<60min>". The extra row above it

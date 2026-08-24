@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.dialogs.OKDialog
@@ -163,6 +164,22 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         _binding = null
     }
 
+    // Added 2026-08-24. Longest-first order matters: "150" must be checked before "50" would ever be
+    // (there's no "50" tier here, but the principle holds generally) and, more concretely, guards against
+    // a shorter number being a substring of a longer one that also appears in these names ("190" vs "90",
+    // "250" vs "50" -- neither collides today, but checking specific-to-general is the safe habit).
+    // Substring match on the raw profile name, not a strict "Steroid ProfileNNN" pattern -- these role
+    // names can be freely re-picked/renamed via showProfileNamesPopup(), so this only assumes the percent
+    // itself stays somewhere in whatever name is chosen, not any particular surrounding text.
+    private fun steroidRoleKeyForProfileName(name: String): StringKey? = when {
+        name.contains("250") -> StringKey.ApsAutoIsfSteroid250ProfileName
+        name.contains("190") -> StringKey.ApsAutoIsfSteroid190ProfileName
+        name.contains("150") -> StringKey.ApsAutoIsfSteroid150ProfileName
+        name.contains("130") -> StringKey.ApsAutoIsfSteroid130ProfileName
+        name.contains("110") -> StringKey.ApsAutoIsfSteroid110ProfileName
+        else -> null
+    }
+
     override fun submit(): Boolean {
         if (_binding == null) return false
         val profileStore = activePlugin.activeProfileSource.profile
@@ -217,6 +234,23 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         )
                     ) {
                         if (percent == 90 && duration == 10) preferences.put(BooleanNonKey.ObjectivesProfileSwitchUsed, true)
+                        // Added 2026-08-24: every manual switch through this dialog re-assigns a coded
+                        // role to whatever was just picked -- the picked profile is never left un-
+                        // attached to any role. If the picked NAME itself carries one of the six Steroid
+                        // tier percentages (110/130/150/190/250 -- checked longest string first so a
+                        // coincidental short match can't shadow a real longer one), that specific Steroid
+                        // role is re-assigned and the checkbox is moot for this switch. Otherwise:
+                        // unticked (default) assigns Standard, ticked assigns Low -- exactly one of the
+                        // two, always, never neither. Read here rather than earlier since submit() itself
+                        // is synchronous, so binding is still valid at this point.
+                        steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
+                            preferences.put(steroidKey, profileName)
+                        } ?: run {
+                            if (binding.setAsLowRole.isChecked)
+                                preferences.put(StringKey.ApsAutoIsfLowProfileName, profileName)
+                            else
+                                preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileName)
+                        }
                         if (isTT) {
                             disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
                                 TT(

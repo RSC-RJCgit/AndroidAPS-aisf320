@@ -74,6 +74,13 @@
     <string name="reuse_profile_pct_hours">Reuse %1$d%% %2$dh</string>
     <string name="timeshift_label">Time shift</string>
     <string name="percentage_label">Percentage</string>
+    <!-- Added 2026-08-24: every manual switch through this dialog re-assigns a coded profile role to
+         whatever was just picked, never leaves the picked profile un-attached to any role. If the picked
+         name itself carries a Steroid tier percentage (110/130/150/190/250), that Steroid role is
+         re-assigned and this checkbox is moot. Otherwise: unticked (default) assigns
+         StringKey.ApsAutoIsfStandardProfileName; ticked assigns StringKey.ApsAutoIsfLowProfileName
+         instead. Exactly one role, always. -->
+    <string name="set_as_low_role_checkbox">Set as Low profile (unticked = Standard; ignored for Steroid-percent profiles)</string>
 
     <!-- LoopDialog -->
     <string name="suspendloopfor1h">Suspend loop for 1h</string>

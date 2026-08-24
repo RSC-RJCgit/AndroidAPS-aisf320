@@ -62,6 +62,24 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <LinearLayout
+            android:id="@+id/setAsLowRoleLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <CheckBox
+                android:id="@+id/setAsLowRole"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_weight="1"
+                android:checked="false"
+                android:text="@string/set_as_low_role_checkbox" />
+
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/reuselayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
