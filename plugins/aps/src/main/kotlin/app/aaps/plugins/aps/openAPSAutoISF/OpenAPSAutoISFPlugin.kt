@@ -173,6 +173,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 ), APS, PluginConstraints {
 
     private var bgAcce: Double = 0.0  // <-- here
+    // Added 2026-08-25: same one-cycle-stale carry pattern as bgAcce just above -- acce_ISF (autoIsfValues.acceIsf)
+    // is only computed AFTER determine_basal() runs each cycle (it depends on this cycle's own fit_corr/
+    // bgAccel_ISF_weight, computed later in invoke()), so the determine_basal() call site reads last
+    // cycle's value here, and it's overwritten with this cycle's real value right after it's computed.
+    // Feeds tier3AcceIsfObservedThisCycle only (observation-only, no dosing) -- see that flag's own doc
+    // comment in DetermineBasalAutoISF.kt.
+    private var lastAcceIsf: Double = 1.0
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
@@ -5978,7 +5985,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // entirely -- see determine_basal()'s own bmildBasicCriteriaMet param doc comment for why.
             // Recomputed fresh here (pure query, no side effects) rather than reusing a value cached from
             // the BolusGivenMild block above, so it reflects this exact moment regardless of call order.
-            bmildBasicCriteriaMet = bmildBasicCriteriaMet()
+            bmildBasicCriteriaMet = bmildBasicCriteriaMet(),
+            // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
+            // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
+            // alone, never real dosing.
+            acceIsfValue = lastAcceIsf
         ).also {
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
@@ -6002,6 +6013,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U")
             addCarePortalNote("UamBst")
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
+        }
+        // Added 2026-08-25: both observation-only, same no-I/O split as uamBoostFiredThisCycle above --
+        // CarePortal note only, deliberately no sendSms/graph announcement (explicit instruction: note-only
+        // initially), and neither has ever touched dosing.
+        if (determineBasalAutoISF.tier3AcceIsfObservedThisCycle) {
+            addCarePortalNote("T3AcceISF")
+        }
+        if (determineBasalAutoISF.tier3FastCarbReboundObservedThisCycle) {
+            addCarePortalNote("T3FastCarb")
         }
 
         autoIsfValues.timestamp = now
@@ -6634,6 +6654,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
         autoIsfValues.acceIsf = acce_ISF
+        lastAcceIsf = acce_ISF  // carried forward for next cycle's determine_basal() call -- see its own doc comment
 
         val bg_ISF = 1 + interpolate(100 - bg_off)
         consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
