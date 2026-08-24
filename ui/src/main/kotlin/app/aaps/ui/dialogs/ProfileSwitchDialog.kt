@@ -168,16 +168,36 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     // (there's no "50" tier here, but the principle holds generally) and, more concretely, guards against
     // a shorter number being a substring of a longer one that also appears in these names ("190" vs "90",
     // "250" vs "50" -- neither collides today, but checking specific-to-general is the safe habit).
-    // Substring match on the raw profile name, not a strict "Steroid ProfileNNN" pattern -- these role
-    // names can be freely re-picked/renamed via showProfileNamesPopup(), so this only assumes the percent
-    // itself stays somewhere in whatever name is chosen, not any particular surrounding text.
-    private fun steroidRoleKeyForProfileName(name: String): StringKey? = when {
-        name.contains("250") -> StringKey.ApsAutoIsfSteroid250ProfileName
-        name.contains("190") -> StringKey.ApsAutoIsfSteroid190ProfileName
-        name.contains("150") -> StringKey.ApsAutoIsfSteroid150ProfileName
-        name.contains("130") -> StringKey.ApsAutoIsfSteroid130ProfileName
-        name.contains("110") -> StringKey.ApsAutoIsfSteroid110ProfileName
-        else -> null
+    //
+    // Fixed 2026-08-25 (first pass): was a bare String.contains(), which also fired on the percent
+    // appearing as part of a LONGER digit run unrelated to a steroid tier. Tightened to require the
+    // percent as its own standalone digit run.
+    //
+    // Fixed 2026-08-25 (second pass): standalone-digit matching still isn't enough -- a real, ordinary,
+    // non-steroid profile can legitimately be named with a standalone number that coincides with a tier
+    // ("Current Profile110" was reported misrouted to Steroid110 purely because "110" appeared standalone
+    // in an otherwise unrelated numbering series alongside this user's actual Standard/Low profiles,
+    // "Current Profile100"/"Current Profile70"). A standalone number alone can never disambiguate "this is
+    // a steroid-tier profile" from "this user just numbers profiles that way". Now ALSO requires an
+    // unambiguous marker in the name -- "steroid" (case-insensitive) or a literal "%" -- so a switch is
+    // only ever auto-classified as a steroid pick when the name itself says so. This means the profile
+    // assigned to a StringKey.ApsAutoIsfSteroidNNNProfileName role must actually contain one of those
+    // markers for this dialog's auto-detection to recognize it on a future switch; a profile lacking the
+    // marker (even if it's the number-only default for Steroid190/250 below) simply falls through to the
+    // Standard/Low checkbox instead -- assign it explicitly via "Re-pick coded profiles" (List 1) or the
+    // Steroid escalation buttons if you want it recognized here too.
+    private fun steroidRoleKeyForProfileName(name: String): StringKey? {
+        val hasMarker = name.contains("steroid", ignoreCase = true) || name.contains("%")
+        if (!hasMarker) return null
+        fun hasStandaloneNumber(n: Int) = Regex("(?<!\\d)${n}(?!\\d)").containsMatchIn(name)
+        return when {
+            hasStandaloneNumber(250) -> StringKey.ApsAutoIsfSteroid250ProfileName
+            hasStandaloneNumber(190) -> StringKey.ApsAutoIsfSteroid190ProfileName
+            hasStandaloneNumber(150) -> StringKey.ApsAutoIsfSteroid150ProfileName
+            hasStandaloneNumber(130) -> StringKey.ApsAutoIsfSteroid130ProfileName
+            hasStandaloneNumber(110) -> StringKey.ApsAutoIsfSteroid110ProfileName
+            else -> null
+        }
     }
 
     override fun submit(): Boolean {

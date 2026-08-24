@@ -79,15 +79,21 @@ enum class StringKey(
     // Added 2026-08-23: same live-role indirection as the Standard/Low pair above, but for the six
     // steroid escalation tiers -- every switchProfileIfNeeded("Steroid Profile130")-style hardcoded
     // literal in the steroid escalation block (OpenAPSAutoISFPlugin.kt) now reads one of these instead.
-    // Defaults match the original hardcoded literals exactly (including "Current Profile190Real"/
-    // "Current ProfileReal250"'s inconsistent naming vs the "Steroid ProfileNNN" pattern the 110/130/150
-    // tiers used -- preserved as-is here, not renamed, since these are just the CURRENT profile names,
-    // not code identifiers), so nothing changes until actively re-picked via showProfileNamesPopup().
+    // Defaults originally matched the original hardcoded literals exactly, so nothing changed until
+    // actively re-picked via showProfileNamesPopup().
     // "100" = steroids off/baseline, same role STEROID_TURN_OFF already targeted.
     ApsAutoIsfSteroid100ProfileName("autoisf_steroid_100_profile_name", "Current ProfileReal"),
     ApsAutoIsfSteroid110ProfileName("autoisf_steroid_110_profile_name", "Steroid Profile110"),
     ApsAutoIsfSteroid130ProfileName("autoisf_steroid_130_profile_name", "Steroid Profile130"),
     ApsAutoIsfSteroid150ProfileName("autoisf_steroid_150_profile_name", "Steroid Profile150"),
-    ApsAutoIsfSteroid190ProfileName("autoisf_steroid_190_profile_name", "Current Profile190Real"),
-    ApsAutoIsfSteroid250ProfileName("autoisf_steroid_250_profile_name", "Current ProfileReal250"),
+    // Renamed 2026-08-25 (default text only): these two used to be "Current Profile190Real" /
+    // "Current ProfileReal250", the odd one out vs. the "Steroid ProfileNNN" pattern 110/130/150 already
+    // used. ProfileSwitchDialog's steroidRoleKeyForProfileName() now requires the word "Steroid" (or a
+    // "%") somewhere in the name before it will auto-detect a manual profile switch as a steroid-tier
+    // pick -- these two didn't qualify, so a switch to either one was silently falling through to
+    // Standard/Low instead. Changing the CODE DEFAULT alone does not rename anything on a device that
+    // already has a value stored here, and does not rename the actual profile in the profile store --
+    // both of those are real, separate, device-side steps still needed (see chat).
+    ApsAutoIsfSteroid190ProfileName("autoisf_steroid_190_profile_name", "Steroid190"),
+    ApsAutoIsfSteroid250ProfileName("autoisf_steroid_250_profile_name", "Steroid250"),
 }
