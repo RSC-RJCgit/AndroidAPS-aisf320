@@ -49,13 +49,10 @@ class DetermineBasalAutoISF @Inject constructor(
     // resulting CarePortal/SMS side effects; this calculation class performs no I/O.
     var uamBoostFiredThisCycle: Boolean = false
 
-    // Tier 3's own 10-min self-throttle, added 2026-08-23 after a real same-morning firing delivered
-    // three consecutive doses (09:32/33/34am, no gap at all) -- BMild/Bg3 have always had this via
-    // OpenAPSAutoISFPlugin's readyToRun()/markRun(), but that mechanism lives on the plugin class, not
-    // here, so Tier 3 (whose logic lives entirely in this pure-calculation class) never had an
-    // equivalent. Persists across calls the same way this whole class instance does -- systemTime is
-    // already a determine_basal() parameter, used the same way tier3TimeAllowed already reads it.
-    private var lastUamBoostFireTimestamp: Long = 0L
+    // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-25:
+    // now that Tier 3's entry trigger IS bmildBasicCriteriaMet (see that gate's own doc comment), Tier 3
+    // can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild", 10) throttle allows --
+    // an independent, redundant 10-min throttle here was no longer doing any real work of its own.
 
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
@@ -428,7 +425,15 @@ class DetermineBasalAutoISF @Inject constructor(
         // Default 999.0 = "no recent low known" -> that detector's lowTriggered branch is trivially
         // false for callers that don't pass it (tests, replay), same convention as the other optional
         // params above. Never read by real production dosing -- see that function's own doc comment.
-        recentLowBG: Double = 999.0
+        recentLowBG: Double = 999.0,
+        // Added 2026-08-25: Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/
+        // throttle/quiet-window gate entirely (see that gate's own doc comment for why). Pass the live
+        // result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same condition that
+        // decides whether BolusGivenMild itself fires this cycle, recomputed as a pure query (no
+        // markRun()/side effects) so calling it here doesn't consume Bmild's own throttle or duplicate
+        // its actions. Default false = "no Bmild signal supplied" (tests, replay), same convention as
+        // lastBolusMinutes/lastCarbMinutes above.
+        bmildBasicCriteriaMet: Boolean = false
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
@@ -1478,8 +1483,6 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("Tier 3 blocked outside 09:00-21:00; ")
                 }
                 if (boostActive && tier3TimeAllowed) {
-                    val uamBoost1 = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
-                    val uamBoost2 = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
                     val boost_max = profile.boost_max
                     val boostMaxIOBPercent = profile.boostMaxIOBPercent
                     val boostMaxIOB = profile.max_iob * boostMaxIOBPercent / 100.0
@@ -1514,45 +1517,43 @@ class DetermineBasalAutoISF @Inject constructor(
                         roundSMBTo = roundSMBTo
                     )
                     consoleError.add("[Tier3Ref] result this cycle: $tier3ReferenceResult")
-                    // ----- Tier 3: UAM Boost (strong acceleration with positive delta) -----
-                    // bg_acce added 2026-08-23: the "strong acceleration" in this comment was never
-                    // actually backed by an acceleration term -- uamBoost1/uamBoost2 are RATIOS of
-                    // delta/SDelta and delta/LDelta, unstable near a small denominator (exactly the
-                    // failure mode of a 23 Aug real firing: 09:32-34am, IOB already 2.0-2.6U, delivered
-                    // 0.30+0.25+0.10U on a secondary 8.3->8.5mmol wobble after the real peak had already
-                    // passed). bg_acce is a genuinely different, more robust measure: a quadratic
-                    // least-squares fit's second derivative across a goodness-of-fit-selected window
-                    // (GlucoseStatusCalculatorAutoIsf.kt), not a ratio of two raw point estimates.
+                    // ----- Tier 3: UAM Boost -----
+                    // Own entry gate (delta>=5, shortAvgDelta>=3, uamBoost1/uamBoost2 ratios, then
+                    // bg_acce added 2026-08-23) removed entirely 2026-08-25 and replaced with
+                    // bmildBasicCriteriaMet, for two compounding reasons found against real 24 Aug data:
                     //
-                    // bg_acce REMOVED 2026-08-25, per real 24 Aug data: it never once cleared its own
-                    // 0.30mmol/5.4-raw bar across 45 genuine reference-confirmed firing opportunities that
-                    // day (max observed 4.68), while the unmodified reference implementation (which has no
-                    // acceleration requirement in its own entry gate at all) fired repeatedly on the same
-                    // data. Root cause is structural, not a mistuned number: bg_acce (a second derivative)
-                    // provably peaks BEFORE Delta (a first derivative) reaches its own required bar, for
-                    // any smoothly accelerating rise -- confirmed against the 24 Aug log minute-by-minute
-                    // (bg_acce peaked at 7.79 one full cycle before Delta cleared 5mg/dL, then was already
-                    // below 5.4 by the time it did). Requiring both simultaneously is asking for peak
-                    // velocity and peak acceleration on the same cycle, which the rise's own shape makes
-                    // close to impossible. Decided (2026-08-25) to drop acceleration-based gating entirely
-                    // for this Tier rather than retune it (e.g. against acce_ISF/autoIsfValues.acceIsf,
-                    // which does track better but adds another parameter to calibrate) -- the remaining
-                    // conditions below (delta/ratio thresholds, IOB ceiling, throttle, quiet window,
-                    // sub-7.5mmol guard) are the same category of gate BolusGivenMild already relies on
-                    // successfully, on real pumps, with no acceleration term of its own.
-                    // Stacking-type criteria added 2026-08-23, borrowed from BMild/Bg3 (see this
-                    // function's own param doc comments for each): a 10-min self-throttle Tier 3 never
-                    // had (would have blocked the 23 Aug 09:33/34am repeat doses on its own), the same
-                    // 2-hour manual-bolus/carb quiet window, and BMild's sub-7.5mmol delivery-rate
-                    // ceiling.
-                    val uamBoostThrottleOk = systemTime - lastUamBoostFireTimestamp >= 10 * 60 * 1000L
-                    if (glucose_status.delta >= 5
-                        && glucose_status.shortAvgDelta >= 3 && uamBoost1 > 1.2 && uamBoost2 > 2 && boostActive &&
+                    // 1. The uamBoost1/uamBoost2 ratios are unstable near a small SDelta/LDelta
+                    //    denominator (the failure mode of a 23 Aug real firing: 09:32-34am, IOB already
+                    //    2.0-2.6U, delivered 0.30+0.25+0.10U on a secondary 8.3->8.5mmol wobble after the
+                    //    real peak had already passed).
+                    // 2. bg_acce (added to try to fix #1) never once cleared its own 5.4-raw bar across
+                    //    45 genuine reference-confirmed firing opportunities on 24 Aug (max observed
+                    //    4.68), while the unmodified reference implementation (no acceleration requirement
+                    //    at all) fired repeatedly on the same data. This is structural, not a mistuned
+                    //    number: bg_acce (a second derivative) provably peaks BEFORE Delta (a first
+                    //    derivative) reaches its own bar, for any smoothly accelerating rise -- confirmed
+                    //    minute-by-minute (bg_acce peaked at 7.79 one cycle before Delta cleared 5mg/dL,
+                    //    already back under 5.4 by the time it did). Requiring both simultaneously asks
+                    //    for peak velocity and peak acceleration on the same cycle, which the rise's own
+                    //    shape makes close to impossible.
+                    //
+                    // Rather than retune yet another number (e.g. against acce_ISF/autoIsfValues.acceIsf,
+                    // which does track better but is still one more parameter to calibrate), Tier 3's
+                    // trigger is now BolusGivenMild's OWN entry gate -- delta/ratio thresholds, IOB
+                    // ceiling, 10-min throttle, 2-hour quiet window, sub-7.5mmol guard, movement guard,
+                    // cross-cooldown with bg3 -- a gate already relied on successfully, on real pumps,
+                    // with no acceleration term of its own (see bmildBasicCriteriaMet()'s own doc
+                    // comment, OpenAPSAutoISFPlugin.kt). Tier 3 stays Virtual-only regardless (boostActive
+                    // below is unchanged), and still only STRENGTHENS whatever BolusGivenMild's own
+                    // setSmbDeliveryRatio ratio-boost already produced (preBoostMicroBolus below), never
+                    // replacing it -- see the max() comparison just below this gate.
+                    //
+                    // The IOB/boost_scale/eventualBG/bg/insulinReq/boostIobAllowance checks remain: these
+                    // guard the SIZE of the boost itself (don't oversize even when triggered), not
+                    // whether a rise is genuine -- that question is now bmildBasicCriteriaMet's alone.
+                    if (boostActive && bmildBasicCriteriaMet &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
-                        && boostIobAllowance > 0.0
-                        && uamBoostThrottleOk
-                        && lastBolusMinutes >= 120 && lastCarbMinutes >= 120
-                        && !(bg < 135.1 /* 7.5 mmol */ && iobChange5Min > 0.8)) {
+                        && boostIobAllowance > 0.0) {
 
                         val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -2228,7 +2229,6 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("Microbolusing ${round(microBolus, 2)}U. ")
                         if (uamBoostEnhancedCandidateThisCycle) {
                             uamBoostFiredThisCycle = true
-                            lastUamBoostFireTimestamp = systemTime
                             rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
                         }
                     }
