@@ -49,7 +49,7 @@
     <string name="fsl_calibration_end_title">Ignore remaining calibration time</string>
     <string name="fsl_calibration_end_summary">Skip the rest of the calibration warm-up period</string>
     <string name="old_sensor_adj_enabled_title">Aging-sensor calibration adjustment</string>
-    <string name="old_sensor_adj_enabled_summary">Off = stay at the slope/offset above as usual. On = override them with a tiered adjustment on days 12-15 of the sensor\'s life (while MJ hypo-warning state is active), reverting automatically outside that window</string>
+    <string name="old_sensor_adj_enabled_summary">Off = fully hands-off -- the live slope/offset are left exactly as they are, whether set by calibration or manually, and never reverted. On = override them with a tiered adjustment from 11-15 elapsed days of the sensor\'s life (starting at calendar day 12) or on a brand-new sensor\'s first 3 days, reverting automatically to the baseline above whenever outside those windows.</string>
     <string name="fsl_max_smooth_gap_title">Max gap to smooth (min)</string>
     <string name="fsl_max_smooth_gap_summary">Gaps longer than this skip smoothing and use the raw value directly</string>
 

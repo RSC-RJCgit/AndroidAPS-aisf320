@@ -2244,7 +2244,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // by sensor age (no MJ/hypo-state or cannula-age gating).
         // The configured LibreSlope_orig/LibreOffset_orig pair is the explicit baseline. Once outside
         // the 0-3/12-15 day tiers, the live slope/offset are restored to that baseline even if the
-        // oldSensorActive latch was lost during restart/import. No readyToRun throttle — deliberately
+        // oldSensorActive latch was lost during restart/import -- but ONLY while ApsAutoIsfOldSensorAdjEnabled
+        // is on; with it off this whole mechanism (tier engagement AND baseline restore) is skipped
+        // entirely, see that branch's own comment below. No readyToRun throttle — deliberately
         // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         run {
@@ -2339,10 +2341,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     preferences.put(DoubleKey.FslCalOffset, offset)
                     addCarePortalNote("OldSensor$tierLabel")
                 }
-            } else {
-                // At 3 full days and outside the old-sensor tiers, always restore the configured
-                // Libre baseline. The old latch alone is insufficient because it can be lost while
-                // the live day-3 value (for example 0.70) remains behind.
+            } else if (oldSensorEnabled) {
+                // Toggle is on but no tier currently applies (age outside every tier window, or no
+                // recent high-BGL divergence to justify one) -- restore the configured Libre
+                // baseline. The old latch alone is insufficient because it can be lost while the
+                // live day-3 value (for example 0.70) remains behind.
                 val baselineMismatch =
                     !fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), libreSlopeOrig) ||
                         !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), libreOffsetOrig)
@@ -2353,6 +2356,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
                 if (oldSensorActiveNow || baselineMismatch) addCarePortalNote("OldSensorOff")
             }
+            // else (oldSensorEnabled == false): fully hands-off by design, reworked 2026-08-25 after
+            // a real case where Virtual's live slope kept reverting to the configured 0.68 baseline
+            // moments after being set to 0.72 -- this toggle used to gate ONLY tier engagement while
+            // the baseline-restore above still ran regardless, so turning it off could never actually
+            // stop the revert. Now the toggle covers the whole mechanism: off means neither engaging
+            // a tier NOR restoring baseline -- FslCalSlope/FslCalOffset and the OldSensorAdjActive
+            // latch are all left exactly as they are, so a live-calibrated or manually-set value
+            // persists across cycles instead of being silently reverted. A deliberate consequence: if a
+            // tier was left active when this got switched off, its adjusted value now simply stays
+            // (no separate cleanup) until something else changes it -- accepted tradeoff, see this
+            // toggle's own Settings summary and the design discussion that led here.
         }
 
         // --- OldPod: notify (graph announcement + SMS) once a pod is over 60h old AND BGL has been

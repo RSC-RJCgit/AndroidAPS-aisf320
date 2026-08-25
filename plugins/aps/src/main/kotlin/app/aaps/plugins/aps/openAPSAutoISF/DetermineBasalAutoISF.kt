@@ -1636,6 +1636,20 @@ class DetermineBasalAutoISF @Inject constructor(
                             boostIobAllowance
                         )
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
+                        // Added 2026-08-25: unconditional diagnostic, logged every cycle this block runs
+                        // (i.e. every Bmild firing whose safety numerics also passed) regardless of
+                        // win/lose -- same reasoning as the SensorAge block's own "SensorAge check" line.
+                        // Before this, the candidate-vs-Bmild comparison was only ever logged inside the
+                        // win branch just below, so a losing cycle left no record of HOW close it came --
+                        // confirmed 25 Aug real data: Tier 3 lost all 8 of that day's Bmild firings, 5 of
+                        // which the unmodified reference implementation would have fired on, with no
+                        // margin visible in the export either way.
+                        consoleError.add(
+                            "Tier3-vs-Bmild: candidate=${round(roundedTier3Candidate, 2)}U vs ordinary(preBoost)=${round(preBoostMicroBolus, 2)}U " +
+                                "(margin=${round(roundedTier3Candidate - preBoostMicroBolus, 2)}U, ${if (roundedTier3Candidate > preBoostMicroBolus) "WON" else "lost"}) " +
+                                "boostInsulinReq=${round(boostInsulinReq, 2)} baselineRatio=${round(baselineRatioCandidate, 2)} boostedUsualSmb=${round(boostedUsualSmbCandidate, 2)} " +
+                                "boostIobAllowance=${round(boostIobAllowance, 2)} boost_scale=${round(boost_scale, 2)}"
+                        )
                         if (roundedTier3Candidate > preBoostMicroBolus) {
                             microBolus = roundedTier3Candidate
                             uamBoostEnhancedCandidateThisCycle = true

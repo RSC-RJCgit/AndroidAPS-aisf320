@@ -341,7 +341,7 @@
     <string name="autoisf_sensor_age_code_enabled_title">SensorAge code (master switch)</string>
     <string name="autoisf_sensor_age_code_enabled_summary">Off = the whole SensorAge tiered-compensation block (new-sensor days 0-3 AND aging-sensor days 11-15 below) is skipped every cycle and slope/offset stay at your explicit baseline. On = the block runs, still gated per-tier by its own toggle below and by recentHighBglSeen. Was List 1-only before 2026-08-23; this is the same flag, just also reachable from Settings now.</string>
     <string name="old_sensor_adj_enabled_title">Aging-sensor calibration adjustment</string>
-    <string name="old_sensor_adj_enabled_summary">Off = stay at the slope/offset above as usual. On = override them with a tiered adjustment from 11-15 elapsed days of the sensor\'s life, starting at calendar day 12, and revert automatically outside that window</string>
+    <string name="old_sensor_adj_enabled_summary">Off = fully hands-off -- the live slope/offset are left exactly as they are, whether set by calibration or manually, and never reverted. On = override them with a tiered adjustment from 11-15 elapsed days of the sensor\'s life (starting at calendar day 12) or on a brand-new sensor\'s first 3 days, reverting automatically to the baseline above whenever outside those windows.</string>
     <string name="key_fsl_exp1_correction" translatable="false">fslExp1SmoothCorrection</string>
     <!--
     <string name="fsl_exp1_correction_title">Libre 1st order exponential smoothing correction</string>
