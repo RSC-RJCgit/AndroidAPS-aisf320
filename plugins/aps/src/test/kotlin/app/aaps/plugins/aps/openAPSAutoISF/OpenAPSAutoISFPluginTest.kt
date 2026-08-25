@@ -18,6 +18,8 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.plugins.aps.openAPS.AccelerationCalculator
+import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -38,6 +40,14 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     @Mock lateinit var tddCalculator: TddCalculator
     @Mock lateinit var importExportPrefs: ImportExportPrefs
     @Mock lateinit var exportPasswordDataStore: ExportPasswordDataStore
+    // Added 2026-08-26 -- catching up this test to OpenAPSAutoISFPlugin's real constructor, which
+    // gained these three trailing dependencies at some point without this test being updated to
+    // match (found while getting tools/oref-digital-twin's replay adapter to actually compile;
+    // :plugins:aps:compileFullDebugUnitTestKotlin had never succeeded before this fix, for any
+    // purpose, since this file wouldn't compile). deltaCalculator is NOT re-declared here -- it's
+    // already provided (a real, non-mocked instance) by TestBaseWithProfile.
+    @Mock lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
+    @Mock lateinit var accelerationCalculator: AccelerationCalculator
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
@@ -46,7 +56,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, uiInteraction, determineBasalSMB, profiler,
             GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator), apsResultProvider, tddCalculator,
-            context, importExportPrefs, exportPasswordDataStore
+            context, importExportPrefs, exportPasswordDataStore, ukfSmoothing, deltaCalculator, accelerationCalculator
         )
         openAPSAutoISFPlugin.automationStateService = automationStateService
     }

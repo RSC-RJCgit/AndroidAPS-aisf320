@@ -145,7 +145,18 @@ class AutoIsfProcessOracle:
             raise AutoIsfOracleUnavailable(
                 f"AutoISF adapter failed: {(proc.stderr or 'no output')[:400]}"
             )
-        payload = json.loads(proc.stdout)
+        # Fixed 2026-08-26: this repo's gradlew.bat always prefixes stdout with an unrelated
+        # "isMaster/gitAvailable/allCommitted" status banner (confirmed unconditional -- present
+        # even with --quiet --console=plain, and not something this adapter or its own build
+        # script prints), before the adapter's single JSON response object. The adapter's output
+        # is always exactly one JSON object, so locate its start rather than assuming stdout is
+        # pure JSON -- avoids depending on suppressing or explaining that banner at all.
+        json_start = proc.stdout.find("{")
+        if json_start < 0:
+            raise AutoIsfOracleUnavailable(
+                f"AutoISF adapter produced no JSON payload: {proc.stdout[:400]!r}"
+            )
+        payload = json.loads(proc.stdout[json_start:])
         expected = {item.path: item.sha256 for item in self.manifest.files}
         if payload.get("source_sha256") != expected:
             raise AutoIsfSourceError(

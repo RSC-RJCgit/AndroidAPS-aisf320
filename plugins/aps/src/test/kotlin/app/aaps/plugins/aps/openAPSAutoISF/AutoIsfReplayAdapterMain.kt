@@ -131,7 +131,16 @@ object AutoIsfReplayAdapterMain {
         val utcHour = Instant.ofEpochMilli(currentTime).atZone(ZoneOffset.UTC).hour
         val offsetHours = (-12..14).firstOrNull { Math.floorMod(utcHour + it, 24) == localHour }
             ?: error("Cannot reconstruct replay timezone for local hour $localHour")
-        TimeZone.setDefault(SimpleTimeZone(offsetHours * 60 * 60 * 1000, "AutoIsfReplay"))
+        // Fixed 2026-08-26: the original fictional ID "AutoIsfReplay" is accepted by
+        // java.util.SimpleTimeZone (any string is a legal display ID there) but crashes the first
+        // time ANY code calls modern java.time.LocalDateTime.now() -- which needs
+        // TimeZone.getDefault().toZoneId(), and java.time refuses to resolve a non-IANA-recognized
+        // ID (ZoneRulesException: Unknown time-zone ID: AutoIsfReplay). DetermineBasalAutoISF.kt
+        // does call LocalDateTime.now(), so every replay record failed on this. A "GMT+HH:MM"
+        // style ID is specifically recognized by both java.util.TimeZone AND java.time.ZoneId.of()
+        // as a valid fixed-offset zone without needing a real tzdata entry, so it works both ways.
+        val offsetId = "GMT%+03d:00".format(offsetHours)
+        TimeZone.setDefault(SimpleTimeZone(offsetHours * 60 * 60 * 1000, offsetId))
     }
 
     private fun parsePreferenceSnapshot(snapshot: String): Map<String, String> =
