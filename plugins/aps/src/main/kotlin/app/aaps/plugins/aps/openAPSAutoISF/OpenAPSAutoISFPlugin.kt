@@ -3,6 +3,7 @@ package app.aaps.plugins.aps.openAPSAutoISF
 import android.content.Context
 import android.content.Intent
 import android.icu.util.Calendar
+import android.util.Base64
 import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import androidx.core.net.toUri
@@ -5944,6 +5945,82 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Freeze every state/query-derived argument once. The same values are passed to dosing and,
+        // when explicitly enabled, copied into the read-only replay trace below. This avoids a trace
+        // query a few milliseconds later seeing a different database/automation state.
+        val replaySmbInt5Sec = smbInterval5Sec()
+        val replaySmbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
+            && (rawDelta1Raw ?: -9999.0) >= 1.8
+            && (rawDelta5Raw ?: -9999.0) >= 1.8
+            && glucoseStatus.longAvgDelta > -1.8
+            && iobData.iob < 0.33 * oapsProfile.max_iob
+        val replayRawDelta5Mgdl = smbDelta5Raw ?: 9999.0
+        val replayImmediateRawDelta5Mgdl = rawDelta5Raw ?: 9999.0
+        val replayRawDelta1Mgdl = smbDelta1Raw ?: 9999.0
+        val replayAapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0
+        val replayRawDelta15Mgdl = rawDelta15Raw ?: 9999.0
+        val replayRecentLowActive = checkAutomationState("LowBG", "50recent")
+        val replaySmbSum10Min = smbSum10Min()
+        val replaySmbSum30Min = smbSum30Min()
+        val replaySub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
+        val replayBasalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5)
+        val replayFastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
+        val replayLastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+        val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+        val replayIobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+        val replayRecentLowBG = recentLowBgMgdl()
+        val replayBmildBasicCriteriaMet = bmildBasicCriteriaMet()
+        val replayAcceIsfValue = lastAcceIsf
+        val replayTraceInputs: Map<String, Any?> = if (preferences.get(BooleanKey.ApsAutoIsfReplayTraceEnabled)) mapOf(
+            "glucose_status" to glucoseStatus,
+            "currenttemp" to currentTemp,
+            "iob_data_array" to iobArray,
+            "profile" to oapsProfile,
+            "autosens_data" to autosensResult,
+            "meal_data" to mealData,
+            "parameters" to mapOf(
+                "microBolusAllowed" to microBolusAllowed,
+                "currentTime" to now,
+                "flatBGsDetected" to flatBGsDetected,
+                "autoIsfMode" to autoIsfMode,
+                "loop_wanted_smb" to loopWantedSmb,
+                "profile_percentage" to profile_percentage,
+                "smb_ratio" to smbRatio,
+                "smb_max_range_extension" to smbMaxRangeExtension,
+                "iob_threshold_percent" to iobThresholdPercent,
+                "activity_consoleLog" to activityLog,
+                "auto_isf_consoleError" to consoleError.toList(),
+                "auto_isf_consoleLog" to consoleLog.toList(),
+                "bg_acce" to bgAcce,
+                "steps180M" to steps180,
+                "steps15M" to steps15,
+                "steps5M" to steps5,
+                "smbInt5Sec" to replaySmbInt5Sec,
+                "smbBoostRecent" to replaySmbBoostRecent,
+                "rawDelta5Mgdl" to replayRawDelta5Mgdl,
+                "immediateRawDelta5Mgdl" to replayImmediateRawDelta5Mgdl,
+                "rawDelta1Mgdl" to replayRawDelta1Mgdl,
+                "aapsDelta1Mgdl" to replayAapsDelta1Mgdl,
+                "rawDelta15Mgdl" to replayRawDelta15Mgdl,
+                "recentLowActive" to replayRecentLowActive,
+                "smbSum10Min" to replaySmbSum10Min,
+                "smbSum30Min" to replaySmbSum30Min,
+                "sub75HeavyDeliveryCooldown" to replaySub75HeavyDeliveryCooldown,
+                "basalUpOffsetZeroActive" to replayBasalUpOffsetZeroActive,
+                "fastRiseSlopeCompensationRatio" to replayFastRiseSlopeCompensationRatio,
+                "lastBolusMinutes" to replayLastBolusMinutes,
+                "lastCarbMinutes" to replayLastCarbMinutes,
+                "iobChange5Min" to replayIobChange5Min,
+                "recentLowBG" to replayRecentLowBG,
+                "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
+                "acceIsfValue" to replayAcceIsfValue
+            ),
+            "determine_state" to mapOf(
+                "tddRatio" to determineBasalAutoISF.tddRatio,
+                "tdd7D" to determineBasalAutoISF.tdd7D
+            )
+        ) else emptyMap()
+
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -5967,7 +6044,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps180M = steps180,
             steps15M = steps15,
             steps5M = steps5,
-            smbInt5Sec = smbInterval5Sec(),  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
+            smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg3 or BolusGivenMild)
             // fired within the last 30 min: an unexpectedly high spike now reverts more readily (the
             // raw-delta-driven reversals), so the caps' conservatism isn't needed during that window.
@@ -5986,46 +6063,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // above typical daytime IOB but below the ~3.3-3.6U peaks actually observed during genuine
             // sustained rises, so the bypass stays available through those, only cutting out right at the
             // observed high-IOB tail.
-            smbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
-                && (rawDelta1Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */
-                && (rawDelta5Raw ?: -9999.0) >= 1.8 /* +0.1 mmol */
-                && glucoseStatus.longAvgDelta > -1.8 /* -0.1 mmol: longer trend not still reverting */
-                && iobData.iob < 0.33 * oapsProfile.max_iob,
+            smbBoostRecent = replaySmbBoostRecent,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
-            rawDelta5Mgdl = smbDelta5Raw ?: 9999.0,
-            immediateRawDelta5Mgdl = rawDelta5Raw ?: 9999.0,
-            rawDelta1Mgdl = smbDelta1Raw ?: 9999.0,
-            aapsDelta1Mgdl = aapsDelta1Raw ?: 9999.0,
-            rawDelta15Mgdl = rawDelta15Raw ?: 9999.0,
+            rawDelta5Mgdl = replayRawDelta5Mgdl,
+            immediateRawDelta5Mgdl = replayImmediateRawDelta5Mgdl,
+            rawDelta1Mgdl = replayRawDelta1Mgdl,
+            aapsDelta1Mgdl = replayAapsDelta1Mgdl,
+            rawDelta15Mgdl = replayRawDelta15Mgdl,
             // Same LowBG state BolusWizard reads to halve carb insulin -- see the recent-low rebound
             // guard in DetermineBasalAutoISF.kt. Reusing the existing, already-maintained flag (set on
             // lows, cleared on recovery, with its own anti-flap throttle) rather than adding a second
             // recent-low detector that could disagree with it.
-            recentLowActive = checkAutomationState("LowBG", "50recent"),
-            smbSum10Min = smbSum10Min(),
-            smbSum30Min = smbSum30Min(),
-            sub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10),
-            basalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5),
-            fastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio(),
+            recentLowActive = replayRecentLowActive,
+            smbSum10Min = replaySmbSum10Min,
+            smbSum30Min = replaySmbSum30Min,
+            sub75HeavyDeliveryCooldown = replaySub75HeavyDeliveryCooldown,
+            basalUpOffsetZeroActive = replayBasalUpOffsetZeroActive,
+            fastRiseSlopeCompensationRatio = replayFastRiseSlopeCompensationRatio,
             // Tier 3's own stacking-type criteria, added 2026-08-23 -- same source calls BMild/Bg3 already
             // use (see DetermineBasalAutoISF.kt's own param doc comments for why each matters there).
-            lastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE,
-            lastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE,
-            iobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L),
+            lastBolusMinutes = replayLastBolusMinutes,
+            lastCarbMinutes = replayLastCarbMinutes,
+            iobChange5Min = replayIobChange5Min,
             // UKFboost branch only -- feeds tier3BoostReferenceComparison()'s fast-carb-rebound
             // detection, see recentLowBgMgdl()'s own doc comment.
-            recentLowBG = recentLowBgMgdl(),
+            recentLowBG = replayRecentLowBG,
             // Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/acceleration gate
             // entirely -- see determine_basal()'s own bmildBasicCriteriaMet param doc comment for why.
             // Recomputed fresh here (pure query, no side effects) rather than reusing a value cached from
             // the BolusGivenMild block above, so it reflects this exact moment regardless of call order.
-            bmildBasicCriteriaMet = bmildBasicCriteriaMet(),
+            bmildBasicCriteriaMet = replayBmildBasicCriteriaMet,
             // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
             // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
             // alone, never real dosing.
-            acceIsfValue = lastAcceIsf
+            acceIsfValue = replayAcceIsfValue
         ).also {
+            logAutoIsfReplayTrace(now, replayTraceInputs, it)
             val determineBasalResult = apsResultProvider.get().with(it)
             determineBasalResult.inputConstraints = inputConstraints
             determineBasalResult.autosensResult = autosensResult
@@ -6127,6 +6201,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             lines.add("${it.key} = ${String.format(Locale.US, "%.2f", preferences.get(it))}")
         }
         StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        LongKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
         // These are live calibration values but their enum names do not contain "AutoIsf", so the
         // generic filters above would otherwise omit the day-0/day-1 sensor-age override actually in use.
         lines.add("${DoubleKey.FslCalSlope.key} = ${String.format(Locale.US, "%.2f", preferences.get(DoubleKey.FslCalSlope))}")
@@ -6135,8 +6210,64 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         lines.add("${BooleanKey.FslUseUkfSmoothing.key} = ${preferences.get(BooleanKey.FslUseUkfSmoothing)}")
         lines.add("${IntKey.OverviewBolusPercentage.key} = ${preferences.get(IntKey.OverviewBolusPercentage)}")
         lines.add("${IntKey.InsulinOrefPeak.key} = ${preferences.get(IntKey.InsulinOrefPeak)}")
+        // DetermineBasalAutoISF reads these activity settings directly although their enum names do
+        // not contain "AutoIsf". Include them so a replay never silently substitutes defaults.
+        lines.add("${BooleanKey.ActivityMonitorStepsActive.key} = ${preferences.get(BooleanKey.ActivityMonitorStepsActive)}")
+        lines.add("${BooleanKey.ActivityMonitorStepsInactive.key} = ${preferences.get(BooleanKey.ActivityMonitorStepsInactive)}")
+        lines.add("${DoubleKey.ActivityMonitorRatio.key} = ${String.format(Locale.US, "%.4f", preferences.get(DoubleKey.ActivityMonitorRatio))}")
         lines.add("automation_state_MJ = ${automationStateService.getState("MJ")}")
         return lines.sorted().joinToString("\n")
+    }
+
+    /**
+     * Emit one complete, versioned replay record after determine_basal() has returned.
+     *
+     * The payload is base64/chunked because Android/logcat has a per-line size limit. The ordinary
+     * AAPS file logger keeps the marker lines, and tools/oref-digital-twin reassembles them. Recording
+     * is deliberately off by default and this function has no path back into the dosing result.
+     */
+    private fun logAutoIsfReplayTrace(now: Long, inputs: Map<String, Any?>, result: RT) {
+        if (!preferences.get(BooleanKey.ApsAutoIsfReplayTraceEnabled)) return
+        runCatching {
+            val payload = JSONObject()
+                .put("schema_version", 1)
+                .put("controller", "aaps-autoisf-ukf3426")
+                .put("captured_at", now)
+                .put(
+                    "build",
+                    JSONObject()
+                        .put("flavor", config.FLAVOR)
+                        .put("version", config.VERSION_NAME)
+                        .put("application_id", config.APPLICATION_ID)
+                )
+                .put(
+                    "source_sha256",
+                    JSONObject()
+                        .put(
+                            "plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/DetermineBasalAutoISF.kt",
+                            AutoIsfReplaySourceIdentity.DETERMINE_BASAL_SHA256
+                        )
+                        .put(
+                            "plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt",
+                            AutoIsfReplaySourceIdentity.OPENAPS_PLUGIN_SHA256
+                        )
+                )
+                .put("profile_name", profileFunction.getProfileName())
+                .put("preference_snapshot", autoIsfSettingsSnapshot())
+                .put("inputs", JSONObject(Gson().toJson(inputs)))
+                .put("result", JSONObject(result.serialize()))
+                .toString()
+            val encoded = Base64.encodeToString(payload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            val traceId = "$now-${System.nanoTime()}"
+            val chunks = encoded.chunked(2800)
+            aapsLogger.debug(LTag.APS, "AUTOISF_REPLAY_BEGIN $traceId ${chunks.size}")
+            chunks.forEachIndexed { index, chunk ->
+                aapsLogger.debug(LTag.APS, "AUTOISF_REPLAY_DATA $traceId ${index + 1}/${chunks.size} $chunk")
+            }
+            aapsLogger.debug(LTag.APS, "AUTOISF_REPLAY_END $traceId")
+        }.onFailure { error ->
+            aapsLogger.error(LTag.APS, "AutoISF replay trace capture failed", error)
+        }
     }
 
     // UKF-smoothed Raw BG (mg/dL), computed once per cycle and persisted into autoIsfValues.ukfRawBgl /
@@ -7183,6 +7314,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // exactly which glucose_status fields this replaces and which it deliberately leaves
                 // alone.
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseUkf1ForDosing, summary = R.string.autoisf_use_ukf1_for_dosing_summary, title = R.string.autoisf_use_ukf1_for_dosing_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfReplayTraceEnabled, summary = R.string.autoisf_replay_trace_summary, title = R.string.autoisf_replay_trace_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope, dialogMessage = R.string.autoisf_ukf1_delta_compensation_slope_summary, title = R.string.autoisf_ukf1_delta_compensation_slope_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset, dialogMessage = R.string.autoisf_ukf1_delta_compensation_offset_summary, title = R.string.autoisf_ukf1_delta_compensation_offset_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))

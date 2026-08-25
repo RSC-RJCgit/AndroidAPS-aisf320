@@ -1,0 +1,10 @@
+{
+  "name": "oref-oracle",
+  "version": "0.0.1",
+  "description": "Thin wrapper that runs the real oref0 determine-basal as a decision oracle.",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "oref0": "0.7.1"
+  }
+}

@@ -1,0 +1,26 @@
+name = "oref-twin-narrator"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Workers AI — free daily allocation; the narrator uses a small Llama model.
+[ai]
+binding = "AI"
+
+# CORS: only allow the Pages site to call the Worker.
+[vars]
+ALLOWED_ORIGIN = "https://tim2000s.github.io"
+
+# Per-IP rate limit (binds as env.RL): 20 requests per 60 seconds.
+# A public keyless endpoint can be abused, which would burn the Workers AI allocation.
+#
+# VERIFY THIS IS ACTUALLY BOUND after deploying — `wrangler deploy` prints the bindings it
+# attached, and the Worker's Settings > Bindings page lists them. The rate-limiting binding
+# moved from `[[unsafe.bindings]]` (type = "ratelimit") to the top-level `[[ratelimits]]`
+# form; which one your wrangler accepts depends on its version, and an unrecognised block
+# is ignored rather than rejected, leaving env.RL undefined at runtime. worker.js now falls
+# back to an in-isolate limiter in that case, but the fallback is per-isolate and weak — it
+# is a backstop, not a substitute.
+[[ratelimits]]
+name = "RL"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }

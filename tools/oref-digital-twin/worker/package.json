@@ -1,0 +1,8 @@
+{
+  "name": "oref-twin-narrator",
+  "private": true,
+  "description": "Cloudflare Worker: narrates abstracted findings (Workers AI).",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  }
+}

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oref-digital-twin"
+version = "0.0.1"
+description = "Advisory decision-support for AAPS/Trio settings — ingestion and analysis."
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+odt-ingest = "ingestion.cli:main"
+odt-autoisf-trace = "replay.autoisf_trace:main"
+
+[tool.setuptools.packages.find]
+include = ["ingestion*", "variant*", "diagnostics*", "replay*", "settings*", "report*"]
+
+[tool.pytest.ini_options]
+testpaths = ["ingestion/tests", "variant/tests", "diagnostics/tests", "replay/tests",
+             "settings/tests", "report/tests"]

@@ -1,0 +1,43 @@
+# Secrets / user data — never commit. This is a public repo.
+.env
+.env.*
+*.token
+secrets/
+credentials/
+# Nightscout dumps, exported prefs, screenshots — may carry PII/tokens
+data/
+dumps/
+*.ns.json
+prefs_export*.json
+screenshots/
+uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node (replay oracle, web)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+coverage/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# web build artifact (Pyodide package bundle)
+web/odt-packages.zip
+_site/
+web/aaps_prefs.mjs

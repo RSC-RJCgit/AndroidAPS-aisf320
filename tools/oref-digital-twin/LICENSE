@@ -1,0 +1,11 @@
+Licence: intended AGPL-3.0-or-later.
+
+This project reads and replays the oref/OpenAPS controller as used by AAPS and Trio,
+which sits in an AGPL-licensed ecosystem. AGPL-3.0-or-later is therefore the intended
+licence, and is likely required if any oref logic is vendored.
+
+ACTION REQUIRED before the first substantive release: replace this file with the full
+GNU Affero General Public License v3.0 text (https://www.gnu.org/licenses/agpl-3.0.txt)
+and add SPDX headers, or deliberately choose a different licence.
+
+SPDX-License-Identifier: AGPL-3.0-or-later

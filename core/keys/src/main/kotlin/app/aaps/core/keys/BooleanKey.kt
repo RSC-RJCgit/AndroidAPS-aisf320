@@ -115,6 +115,10 @@ enum class BooleanKey(
     // opt-in, unproven for real dosing use. See OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc
     // comment for exactly which GlucoseStatusAutoIsf fields this does/doesn't replace.
     ApsAutoIsfUseUkf1ForDosing("autoisf_use_ukf1_for_dosing", false, defaultedBySM = true),
+    // Read-only diagnostics. When enabled, OpenAPSAutoISFPlugin writes a versioned, chunked replay
+    // trace to the ordinary AAPS log after determine_basal() returns. It never changes an input or
+    // result and is off by default because the trace is intentionally detailed.
+    ApsAutoIsfReplayTraceEnabled("autoisf_replay_trace_enabled", false, defaultedBySM = true),
     FslApplySmoothing("fsl_apply_smoothing", true, defaultedBySM = true),
     // Mutually-exclusive UKF requests. UKF1 replaces LibreSpecial EMA with smoothRawRealtime() only
     // on a non-Client Virtual Pump; real-pump and Client ingestion remain on LibreSpecial EMA. UKF2
