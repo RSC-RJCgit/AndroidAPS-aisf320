@@ -14,18 +14,18 @@ if (-not $OutputPath) {
 }
 $outputFile = [System.IO.Path]::GetFullPath($OutputPath)
 
+$codexBundledPython = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
-$codexBundledPython = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
 
 Push-Location $toolRoot
 try {
-    if ($py) {
+    if (Test-Path -LiteralPath $codexBundledPython) {
+        & $codexBundledPython -m replay.autoisf_trace $inputFile --output $outputFile
+    } elseif ($py) {
         & $py.Source -3 -m replay.autoisf_trace $inputFile --output $outputFile
     } elseif ($python) {
         & $python.Source -m replay.autoisf_trace $inputFile --output $outputFile
-    } elseif (Test-Path -LiteralPath $codexBundledPython) {
-        & $codexBundledPython -m replay.autoisf_trace $inputFile --output $outputFile
     } else {
         throw "Python 3 was not found. Install Python 3 or run replay.autoisf_trace with its full executable path."
     }

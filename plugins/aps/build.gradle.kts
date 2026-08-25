@@ -39,3 +39,18 @@ dependencies {
 
     ksp(libs.com.google.dagger.android.processor)
 }
+
+// Read-only JVM process used by tools/oref-digital-twin. It executes the production
+// DetermineBasalAutoISF source from the unit-test classpath and is never packaged in an APK.
+tasks.register<JavaExec>("runAutoIsfReplayAdapter") {
+    group = "verification"
+    description = "Run the source-pinned AutoISF replay JSON adapter on stdin/stdout"
+    dependsOn("compileDebugUnitTestKotlin")
+    classpath(
+        layout.buildDirectory.dir("tmp/kotlin-classes/debug"),
+        layout.buildDirectory.dir("tmp/kotlin-classes/debugUnitTest"),
+        configurations.getByName("debugUnitTestRuntimeClasspath")
+    )
+    mainClass.set("app.aaps.plugins.aps.openAPSAutoISF.AutoIsfReplayAdapterMain")
+    standardInput = System.`in`
+}

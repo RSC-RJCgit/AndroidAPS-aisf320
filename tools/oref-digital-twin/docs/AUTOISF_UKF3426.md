@@ -11,8 +11,9 @@ It never writes to Nightscout, a pump, or a dosing result.
 - A trace contains glucose, insulin/controller state, the active profile name and an
   AutoISF settings snapshot. Treat the exported log and JSONL as private health data.
 - No Nightscout URL, token or password is deliberately included.
-- The current importer validates captured baseline records. Counterfactual AutoISF
-  replay must remain disabled until a Kotlin adapter reproduces the recorded result.
+- The importer validates captured baseline records. The JVM-only Kotlin adapter then executes the
+  unchanged production `DetermineBasalAutoISF` source and compares every returned `RT` field with
+  the recorded result. Counterfactual AutoISF replay remains disabled unless every record matches.
 
 ## Collect a trace
 
@@ -50,6 +51,29 @@ Exit code `0` means at least one record was recovered with no validation errors.
 code `1` means records were recovered but at least one trace was invalid. Exit code `2`
 means no complete record was found.
 
+## Verify the Kotlin baseline on Windows
+
+After importing the ZIP, run:
+
+```powershell
+cd C:\Users\arjay\StudioProjects\AaAPS3422a320\tools\oref-digital-twin
+.\replay-autoisf-baseline.ps1 -InputPath `
+  "C:\backup\AAPS\logs_Virtual\AndroidAPS_LOG_1787683910107.log-autoisf-replay.jsonl"
+```
+
+The wrapper starts the `:plugins:aps:runAutoIsfReplayAdapter` JVM verification task. The adapter is
+compiled from the unit-test source set and is never packaged in the APK. For each JSONL row it:
+
+1. recomputes and verifies the two pinned Kotlin source hashes;
+2. restores the captured preference values and TDD state in isolated in-memory adapters;
+3. deserializes the exact `determine_basal()` arguments;
+4. runs the production `DetermineBasalAutoISF` class; and
+5. compares every result key, list item, string and number with the captured `RT`.
+
+Success is reported as `records=N matched=N differences=0 adapter_errors=0`. Any missing captured
+preference, source mismatch, adapter exception or result difference returns a failure and leaves
+counterfactual replay locked.
+
 ## Developer verification
 
 These checks require Python 3 but no Gradle build:
@@ -57,6 +81,7 @@ These checks require Python 3 but no Gradle build:
 ```powershell
 cd C:\Users\arjay\StudioProjects\AaAPS3422a320\tools\oref-digital-twin
 py -3 -m unittest replay.tests.test_autoisf_source replay.tests.test_autoisf_trace -v
+py -3 -m unittest replay.tests.test_autoisf_baseline -v
 py -3 -c "from replay.autoisf_source import build_source_manifest; print(build_source_manifest().to_dict())"
 ```
 
