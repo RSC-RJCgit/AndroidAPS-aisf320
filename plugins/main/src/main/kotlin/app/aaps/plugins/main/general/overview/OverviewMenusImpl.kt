@@ -167,9 +167,11 @@ class OverviewMenusImpl @Inject constructor(
                 }
             else
                 listOf(
-                    arrayOf(true, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
-                    arrayOf(false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
-                    arrayOf(false, false, false, false, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false)
+                    Array(CharTypeData.entries.size) { index ->
+                        index == CharTypeData.PRE.ordinal || index == CharTypeData.TREAT.ordinal
+                    },
+                    Array(CharTypeData.entries.size) { index -> index == CharTypeData.IOB.ordinal },
+                    Array(CharTypeData.entries.size) { index -> index == CharTypeData.COB.ordinal }
                 )
 
     @Synchronized
@@ -200,7 +202,8 @@ class OverviewMenusImpl @Inject constructor(
 
     @Synchronized
     override fun isActiveCharTypeData(graph: Int, m: Int): Boolean  {
-        return if (!setting[graph][m]) false else isSelectableCharTypeData(m)
+        val graphSetting = setting.getOrNull(graph) ?: return false
+        return if (graphSetting.getOrNull(m) != true) false else isSelectableCharTypeData(m)
     }
 
     @Synchronized

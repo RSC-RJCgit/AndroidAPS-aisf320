@@ -6215,7 +6215,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         lines.add("${BooleanKey.ActivityMonitorStepsActive.key} = ${preferences.get(BooleanKey.ActivityMonitorStepsActive)}")
         lines.add("${BooleanKey.ActivityMonitorStepsInactive.key} = ${preferences.get(BooleanKey.ActivityMonitorStepsInactive)}")
         lines.add("${DoubleKey.ActivityMonitorRatio.key} = ${String.format(Locale.US, "%.4f", preferences.get(DoubleKey.ActivityMonitorRatio))}")
-        lines.add("automation_state_MJ = ${automationStateService.getState("MJ")}")
+        lines.add("${BooleanKey.AutomationStatesEnabled.key} = ${preferences.get(BooleanKey.AutomationStatesEnabled)}")
+        REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
+            lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
+        }
         return lines.sorted().joinToString("\n")
     }
 
