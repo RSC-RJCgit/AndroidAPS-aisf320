@@ -4099,15 +4099,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // whenever the ratio isn't there and no TT is active (and it's not still-genuinely-stacking at
         // the hard-stack target — see DelOff's own exemption above), so the next cycle where this
         // condition is false, DelOff's own check (which runs first) puts it straight back.
-        // Excludes only the boost's OWN brief TT (75.7=4.2mmol bg3, 90.1=5.0mmol mild) — bg3/mild
-        // successfully delivering back-to-back during their own intended 2-min window looks identical to
-        // "stacking" by this same measure, and this must not cut that window short. Any OTHER active TT
-        // (or none) is fair game. No readyToRun throttle — deliberately checked every iteration, same as
+        // Excludes only the boost's OWN brief window (bg3/mild successfully delivering back-to-back
+        // during their own intended 2-min window looks identical to "stacking" by this same measure,
+        // and this must not cut that window short). Any OTHER active TT (or none) is fair game.
+        // Fixed 2026-08-26: this used to check activeTtMgdl() fuzzy-matching 75.7/90.1 (bg3's/mild's
+        // own TT value) as a proxy for "still inside our own boost window" -- but that ties correctness
+        // to the TT subsystem's own independent lifecycle timing, not to when the boost was actually
+        // set. Real capture (26 Aug, 10:05-10:06 cycles): BolusGivenMild fired and boosted the ratio,
+        // then HardStackDelOff fired on the VERY NEXT cycle (60s later, comfortably inside the intended
+        // 2-min window) anyway -- the TT had apparently already read as inactive by then, silently
+        // defeating the exemption and erasing BMild's boost before it ever influenced a real dose.
+        // Checking directly against BolusGiven/BolusGivenMild's own lastRunTimestamps entry (the same
+        // markRun() records used for their own 10-min readyToRun throttle) ties the exemption to the
+        // actual event this guard is meant to protect, not a second subsystem's own timing. 3 minutes
+        // (not the literal 2-min TT length) gives a small buffer against cycle-to-cycle timing slop --
+        // deliberately still far short of the 10-min readyToRun throttle those keys are otherwise used
+        // for, so this can't accidentally exempt a stale, long-past firing.
+        // No readyToRun throttle on this whole check — deliberately checked every iteration, same as
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
-        val onOwnBoostTt = activeTtMgdl()?.let { fuzzyEquals(it, 75.7) || fuzzyEquals(it, 90.1) } == true
+        val recentOwnBoostFire = (lastRunTimestamps["BolusGiven"] ?: 0L) > dateUtil.now() - T.mins(3).msecs() ||
+            (lastRunTimestamps["BolusGivenMild"] ?: 0L) > dateUtil.now() - T.mins(3).msecs()
         if (!atHardStackTarget
             && smbStacking
-            && !onOwnBoostTt) {
+            && !recentOwnBoostFire) {
             setSmbDeliveryRatio(hardStackTarget)
             addCarePortalNote("HardStackDelOff")
         }
