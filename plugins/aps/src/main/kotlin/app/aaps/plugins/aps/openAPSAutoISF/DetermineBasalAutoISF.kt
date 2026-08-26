@@ -1818,9 +1818,9 @@ class DetermineBasalAutoISF @Inject constructor(
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
-                    if (microBolus > 0.02 * profile.max_iob) {
-                        microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus fast rise 0.713 capped 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
+                    if (microBolus > 0.04 * profile.max_iob) {
+                        microBolus = 0.04* profile.max_iob
+                        rT.reason.append("microBolus fast rise 0.413 capped 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
@@ -1839,9 +1839,9 @@ class DetermineBasalAutoISF @Inject constructor(
                 ) {
                     val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
-                    if (microBolus > 0.02 * profile.max_iob) {
-                        microBolus = 0.02 * profile.max_iob
-                        rT.reason.append("microBolus capped fast rise 0.715 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
+                    if (microBolus > 0.04 * profile.max_iob) {
+                        microBolus = 0.04 * profile.max_iob
+                        rT.reason.append("microBolus capped fast rise 0.415 0.02 * profile.max_iob = ${round(microBolus, 2)} ")
                     }
                     if (microBolus + IOB > iobTHvirtualHARDshower) {
                         microBolus = iobTHvirtualHARDshower - IOB
