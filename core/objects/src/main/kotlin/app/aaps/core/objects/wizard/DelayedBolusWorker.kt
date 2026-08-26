@@ -13,6 +13,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -43,6 +44,31 @@ import kotlin.math.max
  * actual current IOB — the reduced multiplier is a flat safety margin for that staleness,
  * not a recalculation).
  * Formerly named SplitBolusWorker; renamed to keep the two mechanisms unmistakable.
+ *
+ * Fixed 2026-08-26: this worker and the closed loop's own dosing (SMBs, temp basals) are two
+ * entirely independent systems, and this one previously had no visibility into what the other
+ * had already done for the very same rise, or into how much of the original carb estimate is
+ * still actually outstanding -- its only gate was "is glucose still rising", not "how much
+ * coverage has already arrived since". A real capture showed a 50-minute-delayed 1.45U dose
+ * land on a window with zero SMBs, so nothing went wrong that time, but a first attempt at
+ * fixing this (subtracting only SMB deliveries) turned out to be incomplete: with zero SMBs it
+ * would have changed nothing for that exact case, and it ignored basal/TBR-driven IOB growth
+ * and residual COB entirely. Replaced with two independent, more direct checks instead of
+ * inferring coverage from SMB records alone:
+ *  - iobDelta = (current total IOB, bolus+basal) − (total IOB captured at the ORIGINAL bolus,
+ *    passed through from BolusWizard). Only counted if positive -- IOB naturally decays with no
+ *    further dosing, so a normal decline contributes nothing here; growth beyond that decline
+ *    can only mean something else (SMBs, a raised temp basal, anything) added insulin since,
+ *    and that additional insulin is treated as coverage already delivered toward fullRequired.
+ *    This subsumes the original SMB-only check (an SMB raises IOB directly, so it's already
+ *    reflected here) without needing a separate bolus-history query.
+ *  - cobFraction = current COB ÷ the ORIGINAL carbs entered (also passed through from
+ *    BolusWizard), clamped to [0,1]. fullRequired was sized for the full original carb amount;
+ *    if most of it has already been absorbed by delivery time, the remaining insulin-relative-
+ *    carbs gap shrinks with it, independent of anything IOB-side. 1.0 = essentially nothing
+ *    absorbed yet, 0.0 = fully absorbed (no further dose warranted on carb grounds alone).
+ * The two apply in sequence: iobDelta reduces the raw gap first, then cobFraction scales what's
+ * left, before the existing 90%/50% time multiplier.
  */
 class DelayedBolusWorker(
     context: Context,
@@ -59,6 +85,7 @@ class DelayedBolusWorker(
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var iobCobCalculator: IobCobCalculator
 
     // Release the SMB block set at scheduling time (terminal outcomes only)
     private fun unblockSmb(why: String) {
@@ -90,6 +117,8 @@ class DelayedBolusWorker(
         const val KEY_FULL_REQUIRED = "fullRequired"
         const val KEY_ATTEMPT = "attempt"
         const val KEY_ORIGINAL_TIME = "originalTime"
+        const val KEY_ORIGINAL_CARBS = "originalCarbs"
+        const val KEY_ORIGINAL_IOB = "originalIob"
 
         private val DELAYED_BGL_MGDL   = 4.5  * 18.0182
         private val DELAYED_DELTA_MGDL = 0.1  * 18.0182
@@ -100,7 +129,18 @@ class DelayedBolusWorker(
         // Flat 10-minute poll: each call (first attempt or retry) waits 10 min from whenever it's made,
         // for up to 8 attempts total (10 through 80 min), then gives up. originalTime is just carried along for logging
         // (total elapsed time since the original bolus), it doesn't affect the delay.
-        fun enqueue(context: Context, originalDose: Double, fullRequired: Double, attempt: Int, originalTime: Long = System.currentTimeMillis()) {
+        // originalCarbs/originalIob (added 2026-08-26): the wizard's own inputs at the moment of the
+        // original bolus, carried through every retry so the coverage checks in doWorkAndLog() always
+        // compare against the true original state, not whatever attempt just ran.
+        fun enqueue(
+            context: Context,
+            originalDose: Double,
+            fullRequired: Double,
+            attempt: Int,
+            originalTime: Long = System.currentTimeMillis(),
+            originalCarbs: Double = 0.0,
+            originalIob: Double = 0.0
+        ) {
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
                     WORK_NAME,
@@ -111,7 +151,9 @@ class DelayedBolusWorker(
                             KEY_ORIGINAL_DOSE to originalDose,
                             KEY_FULL_REQUIRED to fullRequired,
                             KEY_ATTEMPT to attempt,
-                            KEY_ORIGINAL_TIME to originalTime
+                            KEY_ORIGINAL_TIME to originalTime,
+                            KEY_ORIGINAL_CARBS to originalCarbs,
+                            KEY_ORIGINAL_IOB to originalIob
                         ))
                         .build()
                 )
@@ -123,6 +165,8 @@ class DelayedBolusWorker(
         val fullRequired = inputData.getDouble(KEY_FULL_REQUIRED, 0.0)
         val attempt = inputData.getInt(KEY_ATTEMPT, 1)
         val originalTime = inputData.getLong(KEY_ORIGINAL_TIME, dateUtil.now())
+        val originalCarbs = inputData.getDouble(KEY_ORIGINAL_CARBS, 0.0)
+        val originalIob = inputData.getDouble(KEY_ORIGINAL_IOB, 0.0)
 
         if (BolusProgressData.followUpBolusCancelled) {
             aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: cancelled by user")
@@ -143,20 +187,37 @@ class DelayedBolusWorker(
         val dbLabel = "Db${attempt * 10}"
 
         if (criteriaOk && bglFresh) {
-            val rawDose = fullRequired - originalDose
+            // Added 2026-08-26 (see class doc): don't double-count coverage that's already arrived
+            // since the original bolus, from ANY source -- more insulin than the original dose's own
+            // natural decline explains (iobDelta), or carbs that have already been absorbed
+            // (cobFraction).
+            val currentIob = iobCobCalculator.calculateIobFromBolus().iob +
+                iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().basaliob
+            val iobDelta = (currentIob - originalIob).coerceAtLeast(0.0)
+            val currentCob = iobCobCalculator.getCobInfo("DelayedBolusWorker").displayCob ?: 0.0
+            val cobFraction = if (originalCarbs > 0) (currentCob / originalCarbs).coerceIn(0.0, 1.0) else 1.0
+
+            val gapAfterIob = (fullRequired - originalDose - iobDelta).coerceAtLeast(0.0)
+            val rawDose = gapAfterIob * cobFraction
             // Flat time-based cut, not a live recalculation (see class doc): confirmation within
             // 20 min uses the normal 90%; later confirmation — where fullRequired's frozen IOB
             // deduction has had longer to go stale — drops to a more conservative 50%.
             val elapsedMin = attempt * 10
             val multiplier = if (elapsedMin > 20) 0.50 else 0.90
             val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U gap=${rawDose}U × ${(multiplier*100).toInt()}%)")
+            if (delayedDose <= 0.0) {
+                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — iobDelta=${Round.roundTo(iobDelta, 2)}U cobFraction=${Round.roundTo(cobFraction, 2)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
+                addCheckNote("$dbLabel covered")
+                unblockSmb("covered by IOB/COB check")
+                return Result.success()
+            }
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 2)}U cobFraction=${Round.roundTo(cobFraction, 2)} gap=${Round.roundTo(rawDose, 2)}U × ${(multiplier*100).toInt()}%)")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = delayedDose
-                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U × 90%)"
+                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U − iobDelta ${Round.roundTo(iobDelta, 2)}U, × cobFraction ${Round.roundTo(cobFraction, 2)} × ${(multiplier*100).toInt()}%)"
                 uel.log(
                     action = Action.BOLUS,
                     source = Sources.WizardDialog,
@@ -180,7 +241,7 @@ class DelayedBolusWorker(
             if (attempt < 8) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in 10 min")
                 addCheckNote("$dbLabel wait")
-                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime)
+                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob)
             } else {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
                 addCheckNote("$dbLabel end")
