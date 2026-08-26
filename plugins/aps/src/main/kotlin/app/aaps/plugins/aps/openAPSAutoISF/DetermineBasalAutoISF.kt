@@ -1604,11 +1604,28 @@ class DetermineBasalAutoISF @Inject constructor(
                     // setSmbDeliveryRatio ratio-boost already produced (preBoostMicroBolus below), never
                     // replacing it -- see the max() comparison just below this gate.
                     //
-                    // The IOB/boost_scale/eventualBG/bg/insulinReq/boostIobAllowance checks remain: these
-                    // guard the SIZE of the boost itself (don't oversize even when triggered), not
-                    // whether a rise is genuine -- that question is now bmildBasicCriteriaMet's alone.
+                    // The IOB/boost_scale/bg/boostIobAllowance checks remain: these guard the SIZE of the
+                    // boost itself (don't oversize even when triggered), not whether a rise is genuine --
+                    // that question is now bmildBasicCriteriaMet's alone.
+                    //
+                    // Fixed 2026-08-26: eventualBG > target_bg and insulinReq > 0 REMOVED. Real 26 Aug data
+                    // showed these two were never redundant-but-harmless the way the sizing checks are --
+                    // they check a fundamentally different, IOB-discounted forward-looking prediction, and
+                    // that prediction systematically disagrees with bmildBasicCriteriaMet's own immediate
+                    // rise-detection at exactly the moments that matter. Confirmed at two real, independent
+                    // BMild firings the same day: 09:55 (bg=145 rising, insulinReq=0.0, eventualBG=86 <
+                    // target=90) and 10:50 (bg=173 rising sharply, insulinReq=0.0, eventualBG=39 -- an
+                    // existing 3.12U IOB made the forward projection predict a LOW, not a continued rise).
+                    // With meaningful IOB already on board -- routine during a real rise -- the forward
+                    // projection routinely says "no more insulin needed" the instant BMild's own immediate
+                    // signal says the opposite, so the combined gate below never once fired across a full
+                    // day of real data despite BMild itself firing 20+ times. These two conditions were
+                    // load-bearing safety back when Tier 3 had no rise-confirmation of its own; now that
+                    // bmildBasicCriteriaMet supplies that (on real pumps, already relied on for its own
+                    // dosing), keeping them just made the combined path unreachable rather than adding
+                    // real protection.
                     if (boostActive && bmildBasicCriteriaMet &&
-                        iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
+                        iob_data.iob < boostMaxIOB && boost_scale < 3 && bg > 80
                         && boostIobAllowance > 0.0) {
 
                         val preBoostMicroBolus = microBolus
