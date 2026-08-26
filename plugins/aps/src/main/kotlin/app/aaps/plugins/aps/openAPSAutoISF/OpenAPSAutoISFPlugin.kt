@@ -947,6 +947,38 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // TEMP diagnostic 2026-08-27 (UKF3426 branch): recomputes what acce_ISF WOULD be if this UKF
+    // variant's own delta/acceleration output had driven the real formula (the acce_ISF block in
+    // autoISF(), ~6812-6838 below), instead of just comparing raw delta/accel numbers the way the
+    // blocks calling this already do. Faithfully reproduces that formula's main branch (fit_share,
+    // cap_weight, and the above-/below-target acce_weight selection). Known simplification:
+    // intentionally omits the separate "extrapolation below target soon" pre-adjustment
+    // (glucose_status.a0/a1/a2, ~6797-6811) that can override acce_weight to -bgBrake_ISF_weight
+    // BEFORE this formula runs -- AccelerationCalculator.ParabolaFitResult doesn't expose the raw
+    // parabola coefficients this UKF variant would have produced, only the derived
+    // bgAcceleration/corrSqu already used above, and that branch only fires in the narrow
+    // minmax_delta<=30min-and-extrapolating-below-target case. Same honest, clamp-aware framing as
+    // the earlier offline analysis this shares its formula with -- comparison-only, feeds no
+    // dosing decision.
+    private fun hypotheticalAcceIsf(bgAcceleration: Double, corrSqu: Double, glucoseMgdl: Double, targetBgMgdl: Double): Double {
+        if (corrSqu < 0.9) return 1.0
+        val fitShare = 10 * (corrSqu - 0.9)
+        var capWeight = 1.0
+        var acceWeight = 1.0
+        if (glucoseMgdl < targetBgMgdl) {           // below target acce goes towards target
+            if (bgAcceleration > 0) {
+                if (bgAcceleration > 1) capWeight = 0.5
+                acceWeight = bgBrake_ISF_weight
+            } else if (bgAcceleration < 0) {
+                acceWeight = bgAccel_ISF_weight
+            }
+        } else {                                    // above target acce goes away from target
+            if (bgAcceleration < 0.0) acceWeight = bgBrake_ISF_weight
+            else if (bgAcceleration > 0.0) acceWeight = bgAccel_ISF_weight
+        }
+        return 1.0 + bgAcceleration * capWeight * acceWeight * fitShare
+    }
+
     // Direct-launch fallback for the AnyDesk restart pipeline, added 2026-08-18: Tasker (which owns
     // the actual "kill AnyDesk, relaunch AnyDesk" work, see its own AnyDesk2 task) can itself be
     // killed by background-execution restrictions on the live phone -- even with battery optimization
@@ -5839,62 +5871,64 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Sub75Clr")
         }
 
-        // Gate added 2026-08-18: this whole 5-type comparison section (DropDetected/AccelSignDisagreement/
-        // LibreVsSet1Race/the five *MetricsLog blocks) is investigation tooling for the aapsVirtual
+        // Gate added 2026-08-18: this whole comparison section (DropDetected/AccelSignDisagreement/
+        // LibreVsSet1Race/the per-type *MetricsLog blocks) is investigation tooling for the aapsVirtual
         // device only -- see this branch's own standing policy. On a real pump it was still computing
-        // all five types' shadow histories/deltas/accelerations every 1-5min for no benefit (nothing
+        // all types' shadow histories/deltas/accelerations every 1-5min for no benefit (nothing
         // reads the results outside this diagnostic logging), real CPU/battery cost on a device that
         // actually needs it. `!config.AAPSCLIENT` added same day: VirtualPump alone isn't enough --
         // VirtualPumpPlugin.kt has its own config.AAPSCLIENT-specific branches (reservoir/serial
         // handling), confirming Client also runs with VirtualPump as its own (inert, mirror-only)
         // pump selection. Without this second check, this block would ALSO run on Client -- exactly
         // the device this gate exists to exclude, not just real-pump builds generally.
+        //
+        // UKF2 and UKF3 removed 2026-08-27 (real observation, this branch): both variants' graphs ran
+        // way smoother/flatter than the loop's own main line, way too smoothed-out to plausibly beat
+        // it at early detection, and being doubly-calculated (each is itself a smoothing pass over
+        // already-smoothed UKF output -- see their own ukf2RecentHistory/ukf3RecentHistory source
+        // data) made them a likely LAG risk on top of that, not just a wash. UKF1 stayed despite its
+        // own known problem (matching Raw's own glitches too closely -- see the FastRise-tuning
+        // discussion this session) because it's still the one variant with plausible early-detection
+        // upside; UKFset1 and LibreSpecial (the live production pair) were never in question. Their
+        // helper functions (ukf2DeltaMetrics/ukf2AccelerationMetrics/ukf3DeltaMetrics/
+        // ukf3AccelerationMetrics, ukf2RecentHistory/ukf3RecentHistory) are left in place rather than
+        // deleted -- unused-but-harmless, and cheap to revive if UKF2/UKF3 ever warrant a second look.
         if (activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) {
 
             // TEMP diagnostic 2026-08-16 (UKF3426 branch): loop's own ground-truth drop-crossing timestamp,
-            // logged EVERY cycle (not gated by the 5-min throttle the five per-type blocks below use) so its
+            // logged EVERY cycle (not gated by the 5-min throttle the per-type blocks below use) so its
             // timing precision isn't artificially coarsened to 5 minutes -- it's the reference point every
             // other type's "lead/lag vs first" text is measured against, and glucoseStatus.delta is already
             // computed at zero extra cost.
             logDropDetection("Loop", glucoseStatus.delta)
 
-            // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKF2's own delta5/delta15/delta30
-            // and bgAcceleration/deltaPl/deltaPn against the loop's actual (LibreSpecial/UKFset1) values --
-            // proof-of-concept for the per-type delta/acceleration comparison work, log-only for now (see
-            // this branch's scope notes). 5-min throttle, just to avoid spamming every 1-min cycle during
-            // this investigation phase. glucoseStatus itself doesn't expose bgAcceleration/deltaPl/deltaPn
+            // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKFset1's own delta5/delta15/
+            // delta30 and bgAcceleration/deltaPl/deltaPn against the loop's actual values -- proof-of-
+            // concept for the per-type delta/acceleration comparison work, log-only for now (see this
+            // branch's scope notes). 5-min throttle, just to avoid spamming every 1-min cycle during this
+            // investigation phase. glucoseStatus itself doesn't expose bgAcceleration/deltaPl/deltaPn
             // (those are AutoISF-specific, not on the base GlucoseStatus type -- same cast the existing
             // determine_basal() call site already does), so cast once here for the comparison.
-            if (readyToRun("Ukf2DeltaMetricsLog", 5)) {
-                val ukf2Deltas = ukf2DeltaMetrics()
-                val ukf2Accel = ukf2AccelerationMetrics()
-                val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
-                aapsLogger.debug(
-                    LTag.APS,
-                    "Ukf2DeltaMetrics: delta5=${round(ukf2Deltas.delta, 2)} delta15=${round(ukf2Deltas.shortAvgDelta, 2)} delta30=${round(ukf2Deltas.longAvgDelta, 2)} " +
-                        "accel=${round(ukf2Accel.bgAcceleration, 3)} deltaPl=${round(ukf2Accel.deltaPl, 2)} deltaPn=${round(ukf2Accel.deltaPn, 2)} window=${round(ukf2Accel.windowMinutes, 1)}min corrSqu=${round(ukf2Accel.corrSqu, 3)} " +
-                        "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
-                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
-                )
-                logAccelSignDisagreement("UKF2", ukf2Accel.bgAcceleration, loopStatus?.bgAcceleration)
-                logDropDetection("UKF2", ukf2Deltas.delta)
-                markRun("Ukf2DeltaMetricsLog")
-            }
-
-            // TEMP diagnostic 2026-08-15 (UKF3426 branch): second type in the per-type comparison, same
-            // shape as Ukf2DeltaMetricsLog above but separate log line/throttle key rather than combined
-            // into one line -- that one's already dense with two sets of numbers, a third would be
-            // unreadable. loopStatus reused from the block above (same glucoseStatus cast).
+            //
+            // acceIsf= added 2026-08-27: what the real acce_ISF adaptation (autoISF(), ~6812-6838 below)
+            // would compute if this variant's own accel/corrSqu had driven it, via hypotheticalAcceIsf()
+            // -- see that function's own doc comment for the formula and its one known simplification.
+            // Compared against lastAcceIsf, the loop's own real value from the previous cycle (this
+            // cycle's real acce_ISF isn't computed yet at this point in invoke() -- autoISF() runs
+            // later -- so lastAcceIsf is the freshest real value actually available here; same pattern
+            // replayAcceIsfValue below already relies on).
             if (readyToRun("UkfSet1DeltaMetricsLog", 5)) {
                 val ukfSet1Deltas = ukfSet1DeltaMetrics()
                 val ukfSet1Accel = ukfSet1AccelerationMetrics()
                 val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+                val ukfSet1AcceIsf = hypotheticalAcceIsf(ukfSet1Accel.bgAcceleration, ukfSet1Accel.corrSqu, glucoseStatus.glucose, target_bg)
                 aapsLogger.debug(
                     LTag.APS,
                     "UkfSet1DeltaMetrics: delta5=${round(ukfSet1Deltas.delta, 2)} delta15=${round(ukfSet1Deltas.shortAvgDelta, 2)} delta30=${round(ukfSet1Deltas.longAvgDelta, 2)} " +
                         "accel=${round(ukfSet1Accel.bgAcceleration, 3)} deltaPl=${round(ukfSet1Accel.deltaPl, 2)} deltaPn=${round(ukfSet1Accel.deltaPn, 2)} window=${round(ukfSet1Accel.windowMinutes, 1)}min corrSqu=${round(ukfSet1Accel.corrSqu, 3)} " +
+                        "acceIsf=${round(ukfSet1AcceIsf, 3)} " +
                         "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
-                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"} acceIsf=${round(lastAcceIsf, 3)})"
                 )
                 logAccelSignDisagreement("UKFset1", ukfSet1Accel.bgAcceleration, loopStatus?.bgAcceleration)
                 logDropDetection("UKFset1", ukfSet1Deltas.delta)
@@ -5902,19 +5936,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 markRun("UkfSet1DeltaMetricsLog")
             }
 
-            // TEMP diagnostic 2026-08-16 (UKF3426 branch): third and final type completing the live pair
-            // (LibreSpecial's own shadow computation) -- same shape as the two logs above, own separate
-            // line/throttle key.
+            // TEMP diagnostic 2026-08-16 (UKF3426 branch): completes the live pair (LibreSpecial's own
+            // shadow computation) -- same shape as the log above, own separate line/throttle key.
+            // acceIsf= added 2026-08-27, see UkfSet1DeltaMetricsLog's own comment above.
             if (readyToRun("LibreSpecialShadowMetricsLog", 5)) {
                 val libreSpecialDeltas = libreSpecialShadowDeltaMetrics()
                 val libreSpecialAccel = libreSpecialShadowAccelerationMetrics()
                 val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+                val libreSpecialAcceIsf = hypotheticalAcceIsf(libreSpecialAccel.bgAcceleration, libreSpecialAccel.corrSqu, glucoseStatus.glucose, target_bg)
                 aapsLogger.debug(
                     LTag.APS,
                     "LibreSpecialShadowMetrics: delta5=${round(libreSpecialDeltas.delta, 2)} delta15=${round(libreSpecialDeltas.shortAvgDelta, 2)} delta30=${round(libreSpecialDeltas.longAvgDelta, 2)} " +
                         "accel=${round(libreSpecialAccel.bgAcceleration, 3)} deltaPl=${round(libreSpecialAccel.deltaPl, 2)} deltaPn=${round(libreSpecialAccel.deltaPn, 2)} window=${round(libreSpecialAccel.windowMinutes, 1)}min corrSqu=${round(libreSpecialAccel.corrSqu, 3)} " +
+                        "acceIsf=${round(libreSpecialAcceIsf, 3)} " +
                         "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
-                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"} acceIsf=${round(lastAcceIsf, 3)})"
                 )
                 logAccelSignDisagreement("LibreSpecial", libreSpecialAccel.bgAcceleration, loopStatus?.bgAcceleration)
                 logDropDetection("LibreSpecial", libreSpecialDeltas.delta)
@@ -5922,40 +5958,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 markRun("LibreSpecialShadowMetricsLog")
             }
 
-            // TEMP diagnostic 2026-08-16 (UKF3426 branch): UKF1 and UKF3 -- both fully stateless/batch, no
-            // shadow-persistence problem like the live pair above, just a fresh recompute each call over a
-            // bounded raw-reading window. Same shape as the three logs above, own separate lines/throttle
-            // keys.
+            // TEMP diagnostic 2026-08-16 (UKF3426 branch): UKF1 -- fully stateless/batch, no shadow-
+            // persistence problem like the live pair above, just a fresh recompute each call over a
+            // bounded raw-reading window. Same shape as the two logs above, own separate line/throttle
+            // key. acceIsf= added 2026-08-27, see UkfSet1DeltaMetricsLog's own comment above.
             if (readyToRun("Ukf1DeltaMetricsLog", 5)) {
                 val ukf1Deltas = ukf1DeltaMetrics()
                 val ukf1Accel = ukf1AccelerationMetrics()
                 val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+                val ukf1AcceIsf = hypotheticalAcceIsf(ukf1Accel.bgAcceleration, ukf1Accel.corrSqu, glucoseStatus.glucose, target_bg)
                 aapsLogger.debug(
                     LTag.APS,
                     "Ukf1DeltaMetrics: delta5=${round(ukf1Deltas.delta, 2)} delta15=${round(ukf1Deltas.shortAvgDelta, 2)} delta30=${round(ukf1Deltas.longAvgDelta, 2)} " +
                         "accel=${round(ukf1Accel.bgAcceleration, 3)} deltaPl=${round(ukf1Accel.deltaPl, 2)} deltaPn=${round(ukf1Accel.deltaPn, 2)} window=${round(ukf1Accel.windowMinutes, 1)}min corrSqu=${round(ukf1Accel.corrSqu, 3)} " +
+                        "acceIsf=${round(ukf1AcceIsf, 3)} " +
                         "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
-                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
+                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"} acceIsf=${round(lastAcceIsf, 3)})"
                 )
                 logAccelSignDisagreement("UKF1", ukf1Accel.bgAcceleration, loopStatus?.bgAcceleration)
                 logDropDetection("UKF1", ukf1Deltas.delta)
                 markRun("Ukf1DeltaMetricsLog")
-            }
-
-            if (readyToRun("Ukf3DeltaMetricsLog", 5)) {
-                val ukf3Deltas = ukf3DeltaMetrics()
-                val ukf3Accel = ukf3AccelerationMetrics()
-                val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
-                aapsLogger.debug(
-                    LTag.APS,
-                    "Ukf3DeltaMetrics: delta5=${round(ukf3Deltas.delta, 2)} delta15=${round(ukf3Deltas.shortAvgDelta, 2)} delta30=${round(ukf3Deltas.longAvgDelta, 2)} " +
-                        "accel=${round(ukf3Accel.bgAcceleration, 3)} deltaPl=${round(ukf3Accel.deltaPl, 2)} deltaPn=${round(ukf3Accel.deltaPn, 2)} window=${round(ukf3Accel.windowMinutes, 1)}min corrSqu=${round(ukf3Accel.corrSqu, 3)} " +
-                        "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
-                        "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"})"
-                )
-                logAccelSignDisagreement("UKF3", ukf3Accel.bgAcceleration, loopStatus?.bgAcceleration)
-                logDropDetection("UKF3", ukf3Deltas.delta)
-                markRun("Ukf3DeltaMetricsLog")
             }
         }
 
