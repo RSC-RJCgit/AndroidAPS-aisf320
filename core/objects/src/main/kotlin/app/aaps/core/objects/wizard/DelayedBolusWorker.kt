@@ -206,18 +206,18 @@ class DelayedBolusWorker(
             val multiplier = if (elapsedMin > 20) 0.50 else 0.90
             val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
-                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — iobDelta=${Round.roundTo(iobDelta, 2)}U cobFraction=${Round.roundTo(cobFraction, 2)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
+                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
                 addCheckNote("$dbLabel covered")
                 unblockSmb("covered by IOB/COB check")
                 return Result.success()
             }
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 2)}U cobFraction=${Round.roundTo(cobFraction, 2)} gap=${Round.roundTo(rawDose, 2)}U × ${(multiplier*100).toInt()}%)")
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} gap=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}%)")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = delayedDose
-                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U − iobDelta ${Round.roundTo(iobDelta, 2)}U, × cobFraction ${Round.roundTo(cobFraction, 2)} × ${(multiplier*100).toInt()}%)"
+                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U − iobDelta ${Round.roundTo(iobDelta, 0.01)}U, × cobFraction ${Round.roundTo(cobFraction, 0.01)} × ${(multiplier*100).toInt()}%)"
                 uel.log(
                     action = Action.BOLUS,
                     source = Sources.WizardDialog,
