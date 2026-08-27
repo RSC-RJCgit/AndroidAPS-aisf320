@@ -181,6 +181,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Feeds tier3AcceIsfObservedThisCycle only (observation-only, no dosing) -- see that flag's own doc
     // comment in DetermineBasalAutoISF.kt.
     private var lastAcceIsf: Double = 1.0
+    // Added 2026-08-28: timestamp latch for EveningIobCeiling/NightIobCeiling's COB-sustained
+    // relaxation (see those blocks' own doc comments). 0L = "not currently sustained". Set once
+    // when mealCOB first crosses the sustained-COB threshold, left alone while it stays above
+    // that threshold, reset to 0L the moment it drops back below -- same latch-timestamp shape as
+    // lastRunTimestamps/lastTier3AcceIsfObservationTimestamp elsewhere in this file, just for a
+    // condition rather than a throttle.
+    private var cobSustainedSinceTimestamp: Long = 0L
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
@@ -5329,7 +5336,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // while MJ is still clear, then flips to a higher iobTH floor once MJ goes active overnight.
         // No live-pump gate: the original's Note field described a recent MJ-state change, not a
         // virtual-pump restriction.
-        // --- EveningIobCeiling: caps iobTH at 45% from 22:00 to midnight, independent of BGL direction ---
+        // --- COB-sustained tracker for the two ceilings just below (added 2026-08-28) ---
+        // Both EveningIobCeiling and NightIobCeiling were deliberately built with NO carb/COB
+        // awareness at all -- see their own doc comments -- because the two incidents that
+        // motivated them were both zero-COB SMB-stacking events. Real evidence 27-28 Aug (25g
+        // entered 21:48, backdated; BG stayed 7.4-7.8mmol for hours into the ceiling window) is a
+        // different, lower-risk kind of event: a genuine, sustained meal. This tracker exists so
+        // the two ceilings below can tell the two situations apart, rather than treating every
+        // overnight high identically regardless of cause.
+        // Threshold is intentionally on the low side (5g) and the SUSTAINED requirement (45 min
+        // continuously above it, not just "COB nonzero this instant") is what actually filters out
+        // noise -- a brief/trace COB blip resets this immediately, same as it should.
+        val cobSustainedMinNow = mealData.mealCOB
+        if (cobSustainedMinNow >= 5.0) {
+            if (cobSustainedSinceTimestamp == 0L) cobSustainedSinceTimestamp = dateUtil.now()
+        } else {
+            cobSustainedSinceTimestamp = 0L
+        }
+        val cobSustainedMinutes = if (cobSustainedSinceTimestamp > 0L) (dateUtil.now() - cobSustainedSinceTimestamp) / 60_000.0 else 0.0
+        val cobSustainedRelax = cobSustainedMinutes >= 45.0
+
+        // --- EveningIobCeiling: caps iobTH at 45% (60% if a real meal's been sustaining COB for
+        // 45+ min) from 22:00 to midnight, independent of BGL direction ---
         // Motivated by 27 Jul 2026 21:48-21:59: nine SMBs ~60s apart took IOB 3.02 -> 4.56 at BG 10.7-11.3,
         // and BG then fell to 3.8 by 04:38. Nothing stopped it -- the iobTH actually in force was 6.65-7.32U
         // (~70-77% of max_iob), roughly 2U above where the harm occurred, and EveningTH could not fire
@@ -5341,23 +5369,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // basal/ISF while BG is climbing risks trading an overnight low for an overnight high. This block
         // therefore touches iobTH and nothing else.
         //
-        // A true CEILING, not a setter: gated on iobThresholdPercent > 45 so it only ever lowers. That
-        // means it cannot fight the overnight blocks that set iobTH far lower (NightAcce 18, TwilightTH15
-        // 15) by raising it back up. Window ends at midnight rather than running into the small hours,
-        // specifically to avoid overlapping MJrec (00:00-08:00), which sets iobTH to 70 -- the two would
-        // otherwise contradict each other every cycle in the 00:00-01:00 overlap.
-        if (readyToRun("EveningIobCeiling", 5)
-            && isTimeBetween(22, 0, 0, 0)
-            && checkAutomationState("MJ", "NOMJremains")
-            && iobThresholdPercent > 45
-        ) {
-            preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
-            sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> 45")
-            addCarePortalNote("EvCap")
-            markRun("EveningIobCeiling")
+        // A true CEILING, not a setter: gated on iobThresholdPercent > the applicable cap so it only ever
+        // lowers. That means it cannot fight the overnight blocks that set iobTH far lower (NightAcce 18,
+        // TwilightTH15 15) by raising it back up. Window ends at midnight rather than running into the
+        // small hours, specifically to avoid overlapping MJrec (00:00-08:00), which sets iobTH to 70 -- the
+        // two would otherwise contradict each other every cycle in the 00:00-01:00 overlap.
+        //
+        // Relaxed cap added 2026-08-28: 45 -> 60 only while cobSustainedRelax is true (see tracker above).
+        // Still well below the ~70-77% level that actually caused the 27 Jul incident -- this is a partial
+        // relaxation, not a removal, and the zero-COB case is completely unchanged.
+        run {
+            val eveCap = if (cobSustainedRelax) 60 else 45
+            if (readyToRun("EveningIobCeiling", 5)
+                && isTimeBetween(22, 0, 0, 0)
+                && checkAutomationState("MJ", "NOMJremains")
+                && iobThresholdPercent > eveCap
+            ) {
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, eveCap)
+                sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> $eveCap${if (cobSustainedRelax) " (COB-relaxed)" else ""}")
+                addCarePortalNote(if (cobSustainedRelax) "EvCapR" else "EvCap")
+                markRun("EveningIobCeiling")
+            }
         }
 
-        // --- NightIobCeiling: caps iobTH at 18% from midnight to 06:00, independent of BGL ---
+        // --- NightIobCeiling: caps iobTH at 18% (35% if a real meal's been sustaining COB for 45+
+        // min) from midnight to 06:00, independent of BGL ---
         // Companion to EveningIobCeiling above, same ceiling-not-setter shape (only ever lowers), but a
         // far tighter value because overnight there are no carbs to cover -- IOB that would be routine
         // after a meal is dangerous at 03:00.
@@ -5371,30 +5407,79 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Starting at 00:00 rather than 01:00 also closes the midnight-to-01:00 gap.
         //
         // KNOWN CONFLICT, deliberate: HighNight00AM (01:00-05:45, 60-min throttle) sets iobTH to 51 to
-        // permit correcting a genuine overnight high, and this will pull it back to 18 within ~5 min.
-        // That is the intended precedence given the episode above -- an uncorrected overnight high is the
-        // accepted cost of not repeating a sustained 3.5 -- but it does mean HighNight00AM is now largely
-        // neutered between 01:00 and 05:45. Revisit that pairing if overnight highs start persisting.
-        // Caps BOTH iobTH (18%) and acce weight (0.35) -- the two settings NightAcce would have lowered
+        // permit correcting a genuine overnight high, and this will pull it back to 18 (or 35, see below)
+        // within ~5 min. That is the intended precedence given the episode above -- an uncorrected
+        // overnight high is the accepted cost of not repeating a sustained 3.5 -- but it does mean
+        // HighNight00AM is now largely neutered between 01:00 and 05:45.
+        //
+        // Relaxed cap added 2026-08-28, per the "revisit if overnight highs start persisting" note this
+        // comment used to end on: 18 -> 35 only while cobSustainedRelax is true (see tracker above, shared
+        // with EveningIobCeiling). Still roughly half of EveningIobCeiling's own relaxed 60 -- overnight
+        // stays more conservative than evening even with a genuine meal in progress -- and the zero-COB
+        // case (the actual 6-7 Aug failure mode) is completely unchanged.
+        // Caps BOTH iobTH and acce weight (0.35) -- the two settings NightAcce would have lowered
         // had it been able to fire. Checked against the 6->7 Aug data: SmbRatio sat at 0.14 and ppWt at
         // 0.08 all night, already their configured baselines (ApsAutoIsfSmbDeliveryBaseline /
         // ApsAutoIsfPpWeightNormal), so resetting those two would be a no-op and they are deliberately
         // not touched here. acce weight was the one genuinely carried in elevated: 0.50 from 23:00 through
         // 02:20 -- i.e. across BOTH SMB bursts -- only falling to 0.07 after 02:40, once BGL was already
         // collapsing. At 0.50 the acceleration term amplifies the ISF response to a rise, and both bursts
-        // occurred during rises (7.2->7.9 and 8.3->8.6), so it was actively compounding them.
+        // occurred during rises (7.2->7.9 and 8.3->8.6), so it was actively compounding them. The acce
+        // weight cap is NOT relaxed by cobSustainedRelax -- only iobTH is -- since acce amplification was
+        // the actual compounding factor in the incident this guard exists for, independent of COB.
         // Each cap is independent and only ever lowers, so neither can raise a value some other overnight
         // block has already set tighter (e.g. TwilightTH15Acce's iobTH 15).
-        if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0)) {
-            val nightAcceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val capIob = iobThresholdPercent > 18
-            val capAcce = nightAcceW > 0.35
-            if (capIob || capAcce) {
-                if (capIob) preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
-                if (capAcce) setBgAccelIsfWeight(0.35)
-                sendSms("NightIobCeiling: iobTH ${iobThresholdPercent}->${if (capIob) "18" else "unchanged"} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
-                addCarePortalNote("NtCap")
-                markRun("NightIobCeiling")
+        run {
+            val nightCap = if (cobSustainedRelax) 35 else 18
+            if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0)) {
+                val nightAcceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+                val capIob = iobThresholdPercent > nightCap
+                val capAcce = nightAcceW > 0.35
+                if (capIob || capAcce) {
+                    if (capIob) preferences.put(IntKey.ApsAutoIsfIobThPercent, nightCap)
+                    if (capAcce) setBgAccelIsfWeight(0.35)
+                    sendSms("NightIobCeiling: iobTH ${iobThresholdPercent}->${if (capIob) "$nightCap" else "unchanged"}${if (cobSustainedRelax) " (COB-relaxed)" else ""} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
+                    addCarePortalNote(if (cobSustainedRelax) "NtCapR" else "NtCap")
+                    markRun("NightIobCeiling")
+                }
+            }
+        }
+
+        // --- HighEveNightBrake: coded port of the "5-min IOB change too high" brake idea from the
+        // 27-28 Aug investigation, added 2026-08-28. NOT a replacement for the native "HighOver6.0ok1"
+        // Automation-tab trigger (confirmed via this file's own reconciliation registry: no coded
+        // automation here has a title matching it, so it is untouched and keeps running exactly as
+        // configured -- this is a second, independent mechanism, not a takeover).
+        //
+        // Deliberately routes through a temp target rather than raising iobTH% -- EveningIobCeiling and
+        // NightIobCeiling above only ever touch iobTH%/acce weight, so a TT is the one lever that reaches
+        // a genuine overnight high without reopening the stacking risk those two ceilings exist to
+        // prevent. Same 4.0mmol target HighOver6.0ok1 already uses.
+        //
+        // The brake: unlike every SMB-stacking guard elsewhere in this file (smbSum10Min()/
+        // smbSum30Min(), HardStackDelOff), which look at insulin already DELIVERED, this looks at how
+        // fast IOB is currently CHANGING -- a direct proxy for "a burst is in progress right now", the
+        // same signal DelayedBolusWorker's iobDelta check uses. Threshold (0.5U/5min) is set with real
+        // margin under the two incidents that motivated the ceilings above: 27 Jul's burst measured
+        // ~0.7U/5min, 6-7 Aug's two bursts ~0.9-1.0U/5min. Below 0.5U/5min is ordinary single-SMB
+        // cycling, not a burst.
+        // The 30-min floor only applies to an actual firing (markRun sits inside the brake-clear
+        // branch) -- a braked cycle is rechecked every following minute rather than waiting out the
+        // full 30, so the TT still fires promptly once the burst itself subsides.
+        if (readyToRun("HighEveNightBrake", 30)
+            && isTimeBetween(22, 0, 6, 0)
+            && glucoseStatus.glucose >= 135.1 /* 7.5 mmol */
+            && checkAutomationState("Steroids", "Steroids Off")
+            && activeTtMgdl() == null
+        ) {
+            val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+            if (iobChange5 < 0.5) {
+                startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                sendSms("HighEveNightBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                addCarePortalNote("HiBrk")
+                markRun("HighEveNightBrake")
+            } else {
+                consoleError.add("HighEveNightBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
             }
         }
 
