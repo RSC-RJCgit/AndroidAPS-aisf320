@@ -76,6 +76,11 @@ enum class StringKey(
     // until you actively repick via the on-update profile-selection popup (or here directly).
     ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", "Current ProfileReal"),
     ApsAutoIsfLowProfileName("autoisf_low_profile_name", "Current Profile"),
+    // Added 2026-08-27: Battery1pc/BatteryOver1pc (OpenAPSAutoISFPlugin.kt) previously hardcoded the
+    // literal string "Current Profile50" for the low-battery safety-profile switch -- the one coded
+    // profile role with no configurability or setup validation at all, unlike Standard/Low above.
+    // Default preserves that literal so existing installs are unaffected.
+    ApsAutoIsfSafetyProfileName("autoisf_safety_profile_name", "Current Profile50"),
     // Added 2026-08-23: same live-role indirection as the Standard/Low pair above, but for the six
     // steroid escalation tiers -- every switchProfileIfNeeded("Steroid Profile130")-style hardcoded
     // literal in the steroid escalation block (OpenAPSAutoISFPlugin.kt) now reads one of these instead.

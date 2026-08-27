@@ -448,7 +448,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("Turn SteroidsON")
                 setAutomationState("Steroids", "SteroidsON")
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 75)   // retuned 2026-08-27, was 71
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("SteroidsON")
             }
@@ -456,7 +456,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             EventSteroidUserAction.Action.INCREASE_130 -> {
                 sendSms("Steroids 110% are ON.. press to increase? to 130")
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 73)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 78)   // retuned 2026-08-27, was 73
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids130")
             }
@@ -464,7 +464,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             EventSteroidUserAction.Action.INCREASE_150 -> {
                 sendSms("Steroids 130% are ON.. press to increase? to 150")
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 74)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 81)   // retuned 2026-08-27, was 74
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids150")
             }
@@ -472,7 +472,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             EventSteroidUserAction.Action.INCREASE_190 -> {
                 sendSms("Steroids 150% are ON.. press to increase? to 190")
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 75)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 84)   // retuned 2026-08-27, was 75
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids190")
             }
@@ -480,7 +480,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             EventSteroidUserAction.Action.INCREASE_250 -> {
                 sendSms("Steroids 190% are ON.. press to increase? to 250")
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 76)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 88)   // retuned 2026-08-27, was 76
                 setBgAccelIsfWeight(0.70)
                 addCarePortalNote("Steroids250")
             }
@@ -1133,10 +1133,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return (dateUtil.now() - last.timestamp) / 3_600_000.0
     }
 
-    // Patch pumps represent a cannula change as a pod change. Keep pod-specific calculations separate
-    // from ordinary infusion-site age so a tubed pump (or MDI) can never look like a fresh/old pod.
+    // Patch-pump-only restriction REMOVED 2026-08-27 per explicit instruction: infusion-site age was
+    // judged to matter the same way regardless of delivery mechanism (tubed or patch), so this now
+    // reuses hoursSinceLastCannulaChange() unconditionally for every pump type. This repurposes tubed-
+    // pump/MDI site-change timestamps as "pod age" for every automation that calls this function --
+    // Pod1/Pod2 profile switches, PreSoakSensor24hrs/SensorS1hr/SensorS2hr reminders,
+    // PodChangeHighPP130, RecentPod, ConnectPod, HighOldPod, and several steroid/MJ branches -- whose
+    // exact hour thresholds (78h, 79h, 60h, 80h...) were originally tuned against Omnipod's ~80h wear
+    // cycle specifically, not a generic infusion set's own change cycle. Accepted tradeoff per that
+    // instruction, not independently re-tuned here.
     private fun hoursSinceCurrentPodChange(): Double? {
-        if (!activePlugin.activePump.pumpDescription.isPatchPump) return null
         return hoursSinceLastCannulaChange()
     }
 
@@ -3907,7 +3913,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- Battery1%: when phone battery drops to <=1%, switch to Current Profile50 and alert ---
+        // --- Battery1%: when phone battery drops to <=1%, switch to the configured safety profile and alert ---
         // Guard: profile=100% (precondition). State Profile must be PP130, C100, or AllOK (normal running states).
         // Self-guarding: switching to Profile50 makes profile_percentage=50 next cycle, failing the precondition.
         // Live-pump-only: skip entirely on Virtual Pump (model() == GENERIC_AAPS is how this codebase
@@ -3915,11 +3921,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // No cannula-age gate — that threshold (80h) was pod-specific and doesn't generalize to tubed
         // pumps with independent infusion-set lifespans; critical phone battery should react regardless.
         // 20-min floor throttle added on top of the state guard (see readyToRun() usage note).
+        // Fixed 2026-08-27: the target profile name was a hardcoded literal ("Current Profile50") with
+        // no configurability -- the one coded profile role that wasn't a preference like Standard/Low,
+        // and wasn't covered by ProfileRoleSanityCheck below until now. Now ApsAutoIsfSafetyProfileName,
+        // defaulting to that same literal so existing installs see no behavior change.
         if (readyToRun("Battery1pc", 20) && profile_percentage == 100
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
             && receiverStatusStore.batteryLevel <= 1
             && activePlugin.activePump !is VirtualPump) {
-            switchProfileIfNeeded("Current Profile50", 0)
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSafetyProfileName), 0)
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
             addCarePortalNote("Bt<1%")
@@ -3929,21 +3939,45 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BatteryOver1%: when battery recovers above 1%, restore Current ProfileReal ---
-        // Keys on being on the named "Current Profile50" (the battery-drop profile) rather than a state
-        // flag: that name uniquely marks the battery state, since a hypo 50% is a *percentage* on
+        // Keys on being on the configured safety-profile name (the battery-drop profile) rather than a
+        // state flag: that name uniquely marks the battery state, since a hypo 50% is a *percentage* on
         // ProfileReal (different name, profile_percentage==50). This replaced the old guard which
         // required checkAutomationState("Profile","Batt1%") — a flag Battery1pc never set, so recovery
         // never fired — and a "profile_percentage == 50" branch that would have wrongly matched (and
         // cancelled) a hypo 50%.
         // 5-min floor throttle added on top of the profile guard (see readyToRun() usage note).
         if (readyToRun("BatteryOver1pc", 5)
-            && profileFunction.getProfileName() == "Current Profile50"
+            && profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel > 1) {
             switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 0)
             sendSms("AllOK Batt")
             setAutomationState("Profile", "AllOK")
             addCarePortalNote("bat>1")
             markRun("BatteryOver1pc")
+        }
+
+        // --- ProfileRoleSanityCheck: non-blocking warning if a coded profile role doesn't resolve to a
+        // real profile in the current profile store. Added 2026-08-27 per explicit request. Deliberately
+        // ignorable -- a NORMAL-level notification only, never blocks dosing or forces a fix -- since the
+        // underlying switchProfileIfNeeded()/getProfileName() comparisons this guards are already
+        // null-safe (they no-op rather than throw); this exists purely so a name mismatch is surfaced
+        // instead of silently doing nothing across the ~30 automations that read these three roles.
+        // 6-hour throttle: this is a slow-changing configuration concern, not something worth checking
+        // every cycle.
+        if (readyToRun("ProfileRoleSanityCheck", 360)) {
+            val profileStoreForCheck = activePlugin.activeProfileSource.profile
+            val roleChecks = listOf(
+                "Standard" to preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+                "Low" to preferences.get(StringKey.ApsAutoIsfLowProfileName),
+                "Safety" to preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+            )
+            val missingRoles = roleChecks.filter { (_, name) -> profileStoreForCheck?.getSpecificProfile(name) == null }
+            if (missingRoles.isNotEmpty()) {
+                val missingNames = missingRoles.joinToString(", ") { it.first }
+                uiInteraction.addNotification(id = 9020, text = "ProfileRole: $missingNames profile(s) not found -- check Settings", level = Notification.NORMAL)
+                addCarePortalNote("ProfRoleMissing")
+            }
+            markRun("ProfileRoleSanityCheck")
         }
 
         // --- HighOldPod: sets a brief TT 5.0 + 110% profile when cannula is stale (>=60h) or fresh (<=6h) ---
