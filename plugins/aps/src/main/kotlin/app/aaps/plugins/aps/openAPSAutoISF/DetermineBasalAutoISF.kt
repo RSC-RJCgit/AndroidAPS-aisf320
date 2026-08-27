@@ -54,15 +54,14 @@ class DetermineBasalAutoISF @Inject constructor(
     // can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild", 10) throttle allows --
     // an independent, redundant 10-min throttle here was no longer doing any real work of its own.
 
-    // Added 2026-08-24: observation-only shadow check, deliberately separate from bmildBasicCriteriaMet's
-    // real dosing trigger -- Tier 3's ORIGINAL gate shape (delta/ratio thresholds, throttle, quiet window,
-    // sub-7.5mmol guard) with acce_ISF swapped in for bg_acce (see the earlier finding that acce_ISF
-    // clears its own bar far more consistently than raw bg_acce did, but wasn't picked as the live trigger
-    // to avoid retuning yet another number). Never touches microBolus/rT.units -- CarePortal-note-only,
-    // same "no I/O in this class" split as uamBoostFiredThisCycle above: this class only sets the flag,
-    // OpenAPSAutoISFPlugin.kt writes the actual note.
-    var tier3AcceIsfObservedThisCycle: Boolean = false
-    private var lastTier3AcceIsfObservationTimestamp: Long = 0L
+    // T3AcceISF observation-only shadow check (added 2026-08-24, removed 2026-08-27 per explicit
+    // instruction -- no longer wanted: "I don't need 'how often would the old approach have fired'").
+    // Was: Tier 3's ORIGINAL gate shape (delta/ratio thresholds, throttle, quiet window, sub-7.5mmol
+    // guard, including eventualBG/insulinReq) with acce_ISF swapped in for bg_acce, kept purely to log
+    // how often it WOULD have fired, independent of bmildBasicCriteriaMet. Never had any dosing effect.
+    // acceIsfValue (the determine_basal() parameter this fed) is left in place -- also used by the
+    // replay/digital-twin trace schema (OpenAPSAutoISFPlugin.kt's replayAcceIsfValue) -- just unused
+    // inside this function now.
 
     // Added 2026-08-24: observation-only shadow check for the reference's fastCarbRebound/fastCarbScale
     // logic (see tier3BoostReferenceComparison()'s own doc comment) -- recomputed here using the SAME
@@ -453,17 +452,16 @@ class DetermineBasalAutoISF @Inject constructor(
         bmildBasicCriteriaMet: Boolean = false,
         // Added 2026-08-24: autoIsfValues.acceIsf from the PREVIOUS cycle (OpenAPSAutoISFPlugin.kt
         // computes it after this function returns, using this same cycle's data -- see that call site's
-        // own comment for why a one-cycle-stale value is an acceptable tradeoff here). Feeds
-        // tier3AcceIsfObservedThisCycle below ONLY -- an observation-only, non-dosing shadow check, kept
-        // deliberately separate from bmildBasicCriteriaMet's real dosing trigger above. Default 1.0 =
-        // neutral/no-adaptation, same convention as the other optional params.
+        // own comment for why a one-cycle-stale value is an acceptable tradeoff here). No longer used
+        // inside this function (fed the now-removed T3AcceISF observation block) -- left in the
+        // signature since the replay/digital-twin trace schema still round-trips it by name. Default
+        // 1.0 = neutral/no-adaptation, same convention as the other optional params.
         acceIsfValue: Double = 1.0
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
         var uamBoostEnhancedCandidateThisCycle = false
         var uamBoostFinalIobAllowanceThisCycle: Double? = null
-        tier3AcceIsfObservedThisCycle = false
         tier3FastCarbReboundObservedThisCycle = false
         consoleError.clear()
         consoleError.add(activity_consoleLog)
@@ -1544,34 +1542,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     )
                     consoleError.add("[Tier3Ref] result this cycle: $tier3ReferenceResult")
 
-                    // ----- Tier 3 acce_ISF observation (2026-08-24) -----
-                    // Pure Tier 3, separate to BMild: Tier 3's ORIGINAL entry-gate shape (delta/ratio
-                    // thresholds, IOB ceiling, own throttle, quiet window, sub-7.5mmol guard) with acce_ISF
-                    // swapped in for bg_acce -- the variant NOT chosen as the live trigger (bmildBasicCriteriaMet
-                    // is, see that gate's own doc comment just below), kept running here purely to observe
-                    // and log how often it WOULD have fired, on its own timing, independent of Bmild. Never
-                    // touches microBolus/rT.units -- this class has no I/O of its own (see
-                    // tier3AcceIsfObservedThisCycle's own doc comment); OpenAPSAutoISFPlugin.kt writes the
-                    // actual CarePortal note when this flag comes back true.
-                    run {
-                        val uamBoost1Obs = if (abs(glucose_status.shortAvgDelta) > 0.001) glucose_status.delta / glucose_status.shortAvgDelta else 0.0
-                        val uamBoost2Obs = if (abs(glucose_status.longAvgDelta) > 0.001) abs(glucose_status.delta / glucose_status.longAvgDelta) else 0.0
-                        val obsThrottleOk = systemTime - lastTier3AcceIsfObservationTimestamp >= 10 * 60 * 1000L
-                        if (glucose_status.delta >= 5 && glucose_status.shortAvgDelta >= 3
-                            && uamBoost1Obs > 1.2 && uamBoost2Obs > 2
-                            && acceIsfValue > 1.5
-                            && iob_data.iob < boostMaxIOB && boost_scale < 3 && eventualBG > target_bg && bg > 80 && insulinReq > 0
-                            && boostIobAllowance > 0.0
-                            && obsThrottleOk
-                            && lastBolusMinutes >= 120 && lastCarbMinutes >= 120
-                            && !(bg < 135.1 /* 7.5 mmol */ && iobChange5Min > 0.8)
-                        ) {
-                            tier3AcceIsfObservedThisCycle = true
-                            lastTier3AcceIsfObservationTimestamp = systemTime
-                            consoleError.add("[Tier3AcceISF] pure-Tier3-with-acce_ISF gate WOULD have fired this cycle (acce_ISF=${round(acceIsfValue, 2)}); observation only, no dosing effect")
-                            rT.reason.append("[Tier3AcceISF] observed, no dosing effect; ")
-                        }
-                    }
+                    // T3AcceISF observation block removed 2026-08-27 per explicit instruction (no longer
+                    // wanted) -- see acceIsfValue's own doc comment above for what it used to feed.
 
                     // ----- Tier 3: UAM Boost -----
                     // Own entry gate (delta>=5, shortAvgDelta>=3, uamBoost1/uamBoost2 ratios, then

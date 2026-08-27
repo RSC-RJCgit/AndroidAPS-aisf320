@@ -2124,6 +2124,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Declared here, outside the big ApsAutoIsfCustomAutomationsEnabled block below, so it survives
+        // past that block's own closing brace -- see its assignment at the BolusGivenMild block's own
+        // doc comment (2026-08-27 throttle-reuse fix) for why it must be captured once and reused rather
+        // than calling bmildBasicCriteriaMet() again at the determine_basal() call site further down.
+        // Stays false (matching bmildBasicCriteriaMet()'s own false-if-disabled behavior) whenever the
+        // automations block below doesn't run at all.
+        var bmildFiredThisCycle = false
+
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 
         // Code port of the "Test" automation (MJ=MJ4). Self-guarding: state change prevents re-fire.
@@ -4322,13 +4330,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //
         // Own entry condition extracted 2026-08-24 into bmildBasicCriteriaMet() (declared earlier in this
         // function, see its own doc comment for why), unchanged in substance -- now ALSO passed into
-        // DetermineBasalAutoISF.kt's determine_basal() call
-        // (bmildBasicCriteriaMet param) as Tier 3 UAM Boost's entry trigger, replacing Tier 3's own former
-        // delta/ratio/acceleration gate entirely. See that param's own doc comment for why. A pure query
-        // (no markRun()/side effects), so calling it here AND at the determine_basal() call site in the
-        // same cycle is safe -- only this block's own markRun("BolusGivenMild") below actually consumes
-        // the throttle.
-        if (bmildBasicCriteriaMet()) {
+        // DetermineBasalAutoISF.kt's determine_basal() call (bmildBasicCriteriaMet param) as Tier 3 UAM
+        // Boost's entry trigger, replacing Tier 3's own former delta/ratio/acceleration gate entirely.
+        // See that param's own doc comment for why.
+        //
+        // Fixed 2026-08-27: snapshotted into bmildFiredThisCycle below and reused at the determine_basal()
+        // call site, rather than calling bmildBasicCriteriaMet() a second time there as originally
+        // written. The original comment here claimed calling it twice in the same cycle was safe because
+        // the function itself is "a pure query" -- true of the function, but not of this block: markRun
+        // ("BolusGivenMild") a few lines down consumes the exact throttle bmildBasicCriteriaMet()'s own
+        // first line (readyToRun("BolusGivenMild", 10)) checks. So the second call, later in this same
+        // invoke() cycle feeding determine_basal(), saw the throttle as just-used and returned false --
+        // every single cycle, unconditionally, regardless of BG. Confirmed via real 27 Aug device data:
+        // zero "Tier3-vs-Bmild:" diagnostic lines logged all day despite BMild itself firing 6 times --
+        // that diagnostic only prints once inside determine_basal()'s bmildBasicCriteriaMet-gated branch,
+        // so its total absence meant the branch was never once entered. Tier 3's real dosing block had
+        // been structurally unreachable since the 26 Aug fix that switched its trigger to
+        // bmildBasicCriteriaMet in the first place -- this makes that fix actually take effect.
+        bmildFiredThisCycle = bmildBasicCriteriaMet()
+        if (bmildFiredThisCycle) {
             val g = glucoseStatus.glucose
             // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
             // response; at/above 9.0 mmol, the unadjusted base. Tiers are relative bumps on top of
@@ -6005,7 +6025,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
         val replayIobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
         val replayRecentLowBG = recentLowBgMgdl()
-        val replayBmildBasicCriteriaMet = bmildBasicCriteriaMet()
+        // Fixed 2026-08-27: reuse bmildFiredThisCycle (captured once, above the BolusGivenMild block)
+        // instead of calling bmildBasicCriteriaMet() fresh here -- see that val's own doc comment for
+        // why a second call in the same cycle always returned false.
+        val replayBmildBasicCriteriaMet = bmildFiredThisCycle
         val replayAcceIsfValue = lastAcceIsf
         val replayTraceInputs: Map<String, Any?> = if (preferences.get(BooleanKey.ApsAutoIsfReplayTraceEnabled)) mapOf(
             "glucose_status" to glucoseStatus,
@@ -6159,12 +6182,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("UamBst")
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
         }
-        // Added 2026-08-24: both observation-only, same no-I/O split as uamBoostFiredThisCycle above --
+        // T3AcceISF CarePortal note removed 2026-08-27 (block itself removed in DetermineBasalAutoISF.kt,
+        // per explicit instruction -- no longer wanted).
+        // Added 2026-08-24: observation-only, same no-I/O split as uamBoostFiredThisCycle above --
         // CarePortal note only, deliberately no sendSms/graph announcement (explicit instruction: note-only
-        // initially), and neither has ever touched dosing.
-        if (determineBasalAutoISF.tier3AcceIsfObservedThisCycle) {
-            addCarePortalNote("T3AcceISF")
-        }
+        // initially), and has never touched dosing.
         if (determineBasalAutoISF.tier3FastCarbReboundObservedThisCycle) {
             addCarePortalNote("T3FastCarb")
         }
