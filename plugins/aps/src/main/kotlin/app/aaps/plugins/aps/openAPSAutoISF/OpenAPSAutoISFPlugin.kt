@@ -227,13 +227,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Tier 3 "UAM Boost" -- see DoubleKey/BooleanKey's own doc comments for the Boost-in-AAPS_3.4
     // porting notes. boost_scale is intentionally the raw, unscaled preference value here;
     // DetermineBasalAutoISF.kt applies the live profile-percentage scaling itself.
-    // VirtualPump-only per explicit request (matches the original reference code's own commented-out
-    // intent -- "and VirtualPump tru[e]" -- before this preference existed): untested Tier 3 dosing
-    // logic must not be able to fire on a real pump. Deliberately does NOT also exclude Client (unlike
-    // the UKF3426 comparison tooling's own VirtualPump && !config.AAPSCLIENT gate) -- flag if you want
-    // that added too; Client also runs on VirtualPump internally, so as written this can still compute
-    // (though not actually deliver, since Client doesn't drive a real pump) on Client too.
-    private val uamBoostActive; get() = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && activePlugin.activePump is VirtualPump
+    // VirtualPump-only restriction REMOVED 2026-08-27 per explicit instruction, after a full day of
+    // real Virtual data validated the combined gate (bmildFiredThisCycle-triggered, IOB-ceiling and
+    // boost_scale-bounded, passing through every shared downstream SMB safety modifier -- stacking
+    // trim, cumulative 10/30-min caps, sub-7.5mmol cooldown, recent-low rebound) behaving as intended:
+    // two real same-cycle BMild+UamBst coincidences the same evening the throttle-reuse fix (see that
+    // fix's own commit) made the gate reachable at all. Originally VirtualPump-only per explicit
+    // request (matching the original reference code's own commented-out intent -- "and VirtualPump
+    // tru[e]" -- before this preference existed): untested Tier 3 dosing logic must not be able to
+    // fire on a real pump. That precondition -- "untested" -- no longer holds.
+    private val uamBoostActive; get() = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
     private val uamBoostMaxBolus; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
     private val uamBoostMaxIobPercent; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent)
     private val uamBoostScale; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)
@@ -5706,10 +5709,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Experimental correction bolus for retrospective testing on Virtual Pump only. This is
-        // intentionally hard-gated twice (eligibility and immediately before queueing) so installing
-        // this branch on a real-pump build cannot deliver it. It runs the normal constrained Wizard in
-        // the background with a pseudo-COB input, but records carbs=0: no fake carb treatment is made.
+        // Experimental correction bolus, Virtual Pump only. Corrected 2026-08-27: this genuinely
+        // delivers dosing -- commandQueue.bolus() below is the same real delivery path any other
+        // bolus goes through, not a simulation or a passive log-only check -- it was mislabeled
+        // "retrospective testing... not a production dosing feature" here and in the manuals until
+        // that was caught and fixed. It is intentionally hard-gated twice (eligibility and
+        // immediately before queueing) so installing this branch on a real-pump build cannot
+        // deliver it -- that restriction to Virtual Pump only was always the intent, not a sign
+        // this doesn't really dose. It runs the normal constrained Wizard in the background with a
+        // pseudo-COB input, but records carbs=0: no fake carb treatment is made.
         run {
             val actionKey = "VirtualPseudoWizard"
             val virtualPump = activePlugin.activePump is VirtualPump
