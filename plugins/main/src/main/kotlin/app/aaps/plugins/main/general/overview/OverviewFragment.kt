@@ -1471,16 +1471,27 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // toggle-shaped rows (MJ/steroid Kotlin button, Tier 3 Boost, UKF1-dosing) where "current" is exactly
     // what you need to see before deciding whether to flip it. null for the plain one-shot triggers
     // (MJ_START/RESTORE, ANYDESK_*) where there's no boolean state to show.
+    // Same AAPSCLIENT-mirror gap as displayedTtCurrentValue()'s when(code) table, found 2026-08-28 while
+    // fixing that one: these 4 toggle rows read the raw local preference unconditionally, but on Client
+    // that value is never touched (the *TogTT handlers that actually flip it only run inside invoke(),
+    // which never executes on Client) -- so it showed Client's own stale value instead of Live's real
+    // one. mirroredOrLocalBoolean() below mirrors mirroredListSetting's own AAPSCLIENT branching.
     private fun basalDirectActionCurrentValue(action: BasalDirectAction): String? = when (action) {
-        BasalDirectAction.MJ_BUTTONS_TOGGLE      -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) "ON" else "OFF"}"
-        BasalDirectAction.STEROID_BUTTON_TOGGLE  -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) "ON" else "OFF"}"
-        BasalDirectAction.TIER3_BOOST_TOGGLE     -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "ON" else "OFF"}"
-        BasalDirectAction.UKF1_DOSING_TOGGLE     -> "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)) "ON" else "OFF"}"
+        BasalDirectAction.MJ_BUTTONS_TOGGLE      -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
+        BasalDirectAction.STEROID_BUTTON_TOGGLE  -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+        BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
+        BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+        // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
+        // ProfileSwitch treatments (normal sync), not a bespoke preference, so it's already correct on Client.
         BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,
         BasalDirectAction.STEROID_INCREASE_190, BasalDirectAction.STEROID_INCREASE_250, BasalDirectAction.STEROID_TURN_OFF ->
             "Current profile: ${profileFunction.getProfileName()}"
         else -> null
     }
+
+    private fun mirroredOrLocalBoolean(key: BooleanKey): String =
+        if (config.AAPSCLIENT) mirroredListSetting(key.key) { mirroredBoolean(it) }
+        else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
@@ -2008,6 +2019,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             5.148 -> mirroredProfileSetting()
             5.152 -> mirroredListSetting(BooleanKey.FslUseUkfSmoothing.key) { mirroredBoolean(it) }
             5.156 -> mirroredListSetting(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled.key) { mirroredBoolean(it) }
+            // List 2's three Tier 3 UAM Boost tuning rows (added 2026-08-23, see list2SteppedEntries)
+            // were missing from this table entirely -- real gap found 2026-08-28: Client showed its own
+            // never-updated local value instead of what's actually driving Live's dosing, since
+            // BoostScaleDownTT/UpTT etc. only ever execute inside invoke(), which never runs on Client.
+            5.182 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostScale.key)
+            5.186 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostMaxBolus.key) { "${it}U" }
+            5.190 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent.key) { "$it%" }
             else  -> localValue()
         }
     }
