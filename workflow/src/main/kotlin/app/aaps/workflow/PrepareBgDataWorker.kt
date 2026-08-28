@@ -29,6 +29,7 @@ import app.aaps.core.graph.data.UkfDeltaDataPoint
 import com.jjoe64.graphview.series.DataPoint
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
@@ -39,6 +40,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -62,6 +64,7 @@ class PrepareBgDataWorker(
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var config: Config
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var automationStateService: AutomationStateInterface
     // Display-only smoothing for the Raw BG line below -- see UnscentedKalmanFilterPlugin.smoothForDisplay().
@@ -415,7 +418,28 @@ class PrepareBgDataWorker(
                 // uamBoostActive, which additionally requires VirtualPump). So this can read "On" on a
                 // real pump even though Tier 3 itself will never fire there -- shows configuration
                 // intent, not the fully-gated live dosing state.
-                val boostModeText = if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
+                //
+                // Fixed 2026-08-29: on Client this used to read Client's own local preference, never
+                // updated since the toggle handler (BasalDirectAction.TIER3_BOOST_TOGGLE) only runs
+                // inside invoke(), which never executes on Client -- same class of gap as List2's boost
+                // rows/toggles (see OverviewFragment.kt's mirroredListSetting/mirroredOrLocalBoolean),
+                // just missed in that pass since this is a WorkManager worker, not that Fragment, so it
+                // can't reuse those private helpers directly. Duplicates the minimal parsing here instead
+                // of a larger cross-module refactor for one boolean.
+                val boostModeText = if (config.AAPSCLIENT) {
+                    val mirrored = preferences.get(StringNonKey.MirroredAutoIsfSettings)
+                        .lineSequence()
+                        .mapNotNull { line ->
+                            val sep = line.indexOf(" = ")
+                            if (sep <= 0) null else line.substring(0, sep) to line.substring(sep + 3)
+                        }
+                        .toMap()
+                    when (mirrored[BooleanKey.ApsAutoIsfUamBoostEnabled.key]?.lowercase(Locale.ROOT)) {
+                        "true"  -> "On"
+                        "false" -> "Off"
+                        else    -> "?"
+                    }
+                } else if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
                 // HP3: same formula as HP2 above, but BOTH the base-glucose term and the delta5 term are
                 // swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
                 // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction

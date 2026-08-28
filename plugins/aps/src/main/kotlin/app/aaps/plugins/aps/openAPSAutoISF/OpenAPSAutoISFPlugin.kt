@@ -2035,8 +2035,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
             // cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            // Window extended to end of day, same reasoning/date as bg3's identical change above.
-            return isTimeBetween(8, 30, 0, 0)
+            // Window extended to 02:00 (was end of day/midnight) at explicit request 2026-08-29.
+            // isTimeBetween handles the overnight wraparound itself (startMins > endMins), so this
+            // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
+            return isTimeBetween(8, 30, 2, 0)
                 && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
@@ -3624,7 +3626,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         }
                         uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     }
-                    addGraphAnnouncement("________________Gentle5")
+                    addGraphAnnouncement("________________G")
                     addCarePortalNote("Gntl5")
                     markRun("GentleHypoRisk")
                     aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW UKFrawG=${ukfG?.let { String.format("%.1f", it / 18.016) }} UKFrawD1=${ukfD1?.let { String.format("%.2f", it / 18.016) }} UKFrawD5=${ukfD5?.let { String.format("%.2f", it / 18.016) }} HP2=${hp?.let { String.format("%.1f", it) }}")
