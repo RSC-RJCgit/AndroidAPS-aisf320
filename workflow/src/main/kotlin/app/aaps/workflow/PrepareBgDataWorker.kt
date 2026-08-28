@@ -494,7 +494,6 @@ class PrepareBgDataWorker(
         // (DR=/AW=/LS=/acce=/IOd5=) is a separate line with its own spacing.
         data.overviewData.stepsStackedSeries =
             if (latest != null && latestSteps != null) {
-                val avgInterval = avgReadingIntervalSec(data.overviewData.bgReadingsArray)
                 // HP = hypo-prediction: (BGL[mmol] - IOB) + 0.25*SDelta[mmol] + 0.25*LibreDelta5[mmol] +
                 // COB/12. BGL/IOB/SDelta from latestAiv (internally consistent timestamp); LibreDelta5 from
                 // libreDelta5 (computed above for noisyBgDeltaSeries's L5= field). mmol conversion is fixed
@@ -510,9 +509,15 @@ class PrepareBgDataWorker(
                     val hp = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * libreDelta5Mmol + cob / 12.0
                     String.format(Locale.getDefault(), "%.1f", hp)
                 } else "--")
+                // Removed 2026-08-29 at explicit request: I5= (avg reading interval seconds). Replaced
+                // with MJ= (current MJ automation-lifecycle state), restoring the display latestMjState()
+                // used to feed on noisyBgDeltaSeries's own "L=/A1=.../MJ" row on the main graph before that
+                // whole row was removed 2026-08-23 (declutter pass, see that removal's own comment) --
+                // latestMjState() itself was left in place and still works identically here (CarePortal-note
+                // based, so correct on both master and Client, unlike automationStateService).
                 val label = "S5=${latestSteps.steps5min} S15=${latestSteps.steps15min}" +
                     " S30=${latestSteps.steps30min} S60=${latestSteps.steps60min}" +
-                    " I5=${avgInterval?.let { it.roundToInt().toString() } ?: "--"} $hpTxt"
+                    " MJ=${latestMjState(latest.timestamp)} $hpTxt"
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         StepsStackedDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
