@@ -5795,7 +5795,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // that must also agree -- HP1 uses raw Libre delta5 (not UKF) and treats COB as always
             // protective (no gating), so requiring both narrows this branch to cases where the two
             // formulas' disagreements (COB handling, delta source, delta weight) don't matter.
-            val ah1b4 = hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && acceW <= 0.08
+            //
+            // Added 2026-08-29: gated on no bolus/carb entry in the last 20 minutes. hp/hp1 both read
+            // current delta/IOB/COB -- a just-given bolus or carb entry dominates those signals for a
+            // few minutes afterward, which can make the predictors read as a steep incoming low even
+            // while raw g is still comfortably high (e.g. g~6.5mmol at trigger, per a real report).
+            // ah1b1/b2/b3 are untouched -- they already gate on g itself, so a fresh dose/meal can't
+            // spoof them the same way.
+            val ah1b4RecentBolusOrCarbs = (minutesSinceLastNormalBolus() ?: Int.MAX_VALUE) < 20 ||
+                (minutesSinceLastCarbs() ?: Int.MAX_VALUE) < 20
+            val ah1b4 = hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && acceW <= 0.08 && !ah1b4RecentBolusOrCarbs
             if (ah1b1 || ah1b2 || ah1b3 || ah1b4) {
                 setBgAccelIsfWeight(0.10)
                 val ah1SmsText = "AlarmHypo: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}" +
@@ -5840,9 +5849,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val hp = hypoPrediction2Mmol(g, sd, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce, ukfRaw)
             val hp1 = hypoPrediction1Mmol(g, iobData.iob, sd, mealData.mealCOB)
             // 3.8 -> 3.4 (tightened), AND'd with HP1 <= 3.8 -- same reasoning as AlarmHypo1's ah1b4.
+            // Same recent-bolus/carb gate added 2026-08-29 on this branch too -- see ah1b4's own comment
+            // for why. Only applies to the HP-predictive branch; the two raw-g branches above are untouched.
+            val ah2HpRecentBolusOrCarbs = (minutesSinceLastNormalBolus() ?: Int.MAX_VALUE) < 20 ||
+                (minutesSinceLastCarbs() ?: Int.MAX_VALUE) < 20
             val lowOk = g <= 77.5 /* 4.3 mmol */ ||
                 (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000) ||
-                (hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8)
+                (hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && !ah2HpRecentBolusOrCarbs)
             // 07:30-23:30 gate REMOVED, alerting silenced in quiet hours instead -- same treatment and
             // reasoning as AlarmHypo1 above and GentleHypoRisk. This one matters most of the three for
             // the LowBG=50recent write, since that is what arms the recent-low rebound guard in

@@ -19,12 +19,6 @@ import android.widget.TableRow
 import android.widget.TextView
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.RM
-import app.aaps.core.data.ue.Action
-import app.aaps.core.data.ue.Sources
-import app.aaps.core.data.ue.ValueWithUnit
-import app.aaps.core.interfaces.aps.Loop
-import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileStore
@@ -32,7 +26,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventLocalProfileChanged
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
@@ -43,7 +36,6 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
-import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.WeekDay
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
@@ -71,12 +63,10 @@ class AutotuneFragment : DaggerFragment() {
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var fabricPrivacy: FabricPrivacy
-    @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var uiInteraction: UiInteraction
-    @Inject lateinit var loop: Loop
     @Inject lateinit var profileStoreProvider: Provider<ProfileStore>
     @Inject lateinit var atProfileProvider: Provider<ATProfile>
 
@@ -154,69 +144,11 @@ class AutotuneFragment : DaggerFragment() {
             updateGui()
         }
 
-        binding.autotuneCopyLocal.setOnClickListener {
-            val localName = rh.gs(R.string.autotune_tunedprofile_name) + " " + dateUtil.dateAndTimeString(autotunePlugin.lastRun)
-            val circadian = preferences.get(BooleanKey.AutotuneCircadianIcIsf)
-            autotunePlugin.tunedProfile?.let { tunedProfile ->
-                OKDialog.showConfirmation(
-                    requireContext(),
-                    rh.gs(R.string.autotune_copy_localprofile_button),
-                    rh.gs(R.string.autotune_copy_local_profile_message) + "\n" + localName,
-                    {
-                        val profilePlugin = activePlugin.activeProfileSource
-                        profilePlugin.addProfile(profilePlugin.copyFrom(tunedProfile.getProfile(circadian), localName))
-                        rxBus.send(EventLocalProfileChanged())
-                        uel.log(
-                            action = Action.NEW_PROFILE,
-                            source = Sources.Autotune,
-                            value = ValueWithUnit.SimpleString(localName)
-                        )
-                        updateGui()
-                    })
-            }
-        }
-
-        binding.autotuneUpdateProfile.setOnClickListener {
-            val localName = autotunePlugin.pumpProfile.profileName
-            OKDialog.showConfirmation(
-                requireContext(),
-                rh.gs(R.string.autotune_update_input_profile_button),
-                rh.gs(R.string.autotune_update_local_profile_message, localName),
-                {
-                    autotunePlugin.tunedProfile?.profileName = localName
-                    autotunePlugin.updateProfile(autotunePlugin.tunedProfile)
-                    autotunePlugin.updateButtonVisibility = View.GONE
-                    autotunePlugin.saveLastRun()
-                    uel.log(
-                        action = Action.STORE_PROFILE,
-                        source = Sources.Autotune,
-                        value = ValueWithUnit.SimpleString(localName)
-                    )
-                    updateGui()
-                }
-            )
-        }
-
-        binding.autotuneRevertProfile.setOnClickListener {
-            val localName = autotunePlugin.pumpProfile.profileName
-            OKDialog.showConfirmation(
-                requireContext(),
-                rh.gs(R.string.autotune_revert_input_profile_button),
-                rh.gs(R.string.autotune_revert_local_profile_message, localName),
-                {
-                    autotunePlugin.tunedProfile?.profileName = ""
-                    autotunePlugin.updateProfile(autotunePlugin.pumpProfile)
-                    autotunePlugin.updateButtonVisibility = View.VISIBLE
-                    autotunePlugin.saveLastRun()
-                    uel.log(
-                        action = Action.STORE_PROFILE,
-                        source = Sources.Autotune,
-                        value = ValueWithUnit.SimpleString(localName)
-                    )
-                    updateGui()
-                }
-            )
-        }
+        // Deactivated 2026-08-29 at explicit request: this screen is used view-only (never to apply
+        // settings). No click listeners attached to Copy to local profile / Update input profile /
+        // Revert input profile -- combined with their permanent GONE visibility in updateGui() below,
+        // these three are inert even if some other path ever made them visible. Unconditional, not
+        // gated on the insulin-curve-tuning toggle, since they were never used to apply results at all.
 
         binding.autotuneCheckInputProfile.setOnClickListener {
             val pumpProfile = profileFunction.getProfile()?.let { currentProfile ->
@@ -254,45 +186,9 @@ class AutotuneFragment : DaggerFragment() {
             )
         }
 
-        binding.autotuneProfileswitch.setOnClickListener {
-            val tunedProfile = autotunePlugin.tunedProfile
-            autotunePlugin.updateProfile(tunedProfile)
-            val circadian = preferences.get(BooleanKey.AutotuneCircadianIcIsf)
-            if (loop.runningMode == RM.Mode.DISCONNECTED_PUMP) {
-                activity?.let { it1 -> OKDialog.show(it1, rh.gs(R.string.not_available_full), rh.gs(R.string.pump_disconnected)) }
-            } else {
-                tunedProfile?.let { tunedP ->
-                    tunedP.profileStore(circadian)?.let {
-                        OKDialog.showConfirmation(
-                            requireContext(),
-                            rh.gs(app.aaps.core.ui.R.string.activate_profile) + ": " + tunedP.profileName + "?",
-                            {
-                                uel.log(
-                                    action = Action.STORE_PROFILE,
-                                    source = Sources.Autotune,
-                                    value = ValueWithUnit.SimpleString(tunedP.profileName)
-                                )
-                                val now = dateUtil.now()
-                                profileFunction.createProfileSwitch(
-                                    profileStore = it,
-                                    profileName = tunedP.profileName,
-                                    durationInMinutes = 0,
-                                    percentage = 100,
-                                    timeShiftInHours = 0,
-                                    timestamp = now,
-                                    action = Action.PROFILE_SWITCH,
-                                    source = Sources.Autotune,
-                                    note = "Autotune AutoSwitch",
-                                    listValues = listOf(ValueWithUnit.SimpleString(autotunePlugin.tunedProfile!!.profileName))
-                                )
-                                rxBus.send(EventLocalProfileChanged())
-                                updateGui()
-                            }
-                        )
-                    }
-                }
-            }
-        }
+        // Deactivated 2026-08-29 alongside the three buttons above: this one is the most direct apply of
+        // all four -- it doesn't just save a profile, it immediately activates the tuned profile via
+        // createProfileSwitch(). No click listener attached; permanently GONE in updateGui() below.
 
         binding.tuneLastRun.setOnClickListener {
             if (!autotunePlugin.calculationRunning) {
@@ -360,10 +256,12 @@ class AutotuneFragment : DaggerFragment() {
             }
 
             autotunePlugin.lastRunSuccess     -> {
-                binding.autotuneCopyLocal.visibility = View.VISIBLE
-                binding.autotuneUpdateProfile.visibility = autotunePlugin.updateButtonVisibility
-                binding.autotuneRevertProfile.visibility = if (autotunePlugin.updateButtonVisibility == View.VISIBLE) View.GONE else View.VISIBLE
-                binding.autotuneProfileswitch.visibility = View.VISIBLE
+                // Deactivated 2026-08-29 at explicit request: this screen is used view-only here (never
+                // to apply settings), so Copy to local profile / Update input profile / Revert input
+                // profile / Activate profile (autotuneProfileswitch) all stay permanently hidden -- their
+                // default GONE above is left standing rather than flipped to VISIBLE here. Unconditional
+                // (not gated on the insulin-curve-tuning toggle) since none of these four were ever used
+                // for applying results at all, peak-tuning runs or otherwise.
                 binding.tuneWarning.text = rh.gs(R.string.autotune_warning_after_run)
                 binding.autotuneCompare.visibility = View.VISIBLE
             }
