@@ -1597,6 +1597,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "MJ" to RequiredAutomationState(listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"), defaultValue = "NOMJremains"),
         "Steroids" to RequiredAutomationState(listOf("Steroids Off", "SteroidsON"), defaultValue = "Steroids Off"),
         "LowBG" to RequiredAutomationState(listOf("50recent", "NO50rec"), defaultValue = "NO50rec"),
+        // Added 2026-08-28: LowBG=50recent is written by six different places (both Alarm hypo tiers,
+        // GentleHypoRisk's own prepare50 predecessor, SkittlesHypoRisk, 50SetRecent -- which fires on
+        // plain profile_percentage==50 with no hypo signal at all -- and one fall-detection block), so
+        // it cannot distinguish "a genuine Alarm-tier hypo warning fired" from "some other 50%-adjacent
+        // protective mechanism ran." MoreMJ needs specifically the former (explicit request: only
+        // AlarmHypo1/AlarmHypo2 should be able to trigger MJ3 reinstatement, not GentleHypoRisk or any
+        // other 50%-profile path). This is a SEPARATE state, not a new LowBG value -- LowBG=50recent
+        // keeps its existing meaning and every existing reader unchanged; AlarmHypo1/2 now additionally
+        // write this alongside their existing LowBG write, and only this one is exclusive to them.
+        "AlarmHypo" to RequiredAutomationState(listOf("AlarmRecent", "NoAlarmRecent"), defaultValue = "NoAlarmRecent"),
         "Profile" to RequiredAutomationState(listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"), defaultValue = "AllOK"),
         "Sleeping" to RequiredAutomationState(listOf("True"))
     )
@@ -3762,6 +3772,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && glucoseStatus.delta >= 1.8 /* 0.1 mmol */
             && glucoseStatus.glucose >= 99.1 /* 5.5 mmol -- don't clear while still in low-normal range */) {
             setAutomationState("LowBG", "NO50rec")
+            // Cleared alongside LowBG on the same real-recovery signal -- same lifecycle, added 2026-08-28
+            // together with AlarmHypo's own introduction (see MoreMJ's doc comment). No-op if it was
+            // already NoAlarmRecent (this clear fires on every genuine 50%-recovery regardless of which
+            // mechanism set 50recent in the first place).
+            setAutomationState("AlarmHypo", "NoAlarmRecent")
             addCarePortalNote("No50")
             markRun("Not50Recently")
         }
@@ -5102,13 +5117,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // NONE -- it was a one-way latch, so after the first hypo alert the device ever fired it
                 // read BGLlastLOW permanently. As a "recent low" signal it was therefore a constant:
                 // always true once any alert had fired, always false if none ever had. Either way it
-                // carried no information here. Swapped to LowBG=50recent, which is genuinely maintained
-                // (set on lows, cleared by Not50Recently on recovery, with its own anti-flap throttle)
-                // and is the same flag BolusWizard and the recent-low rebound guard in
-                // DetermineBasalAutoISF.kt both read, so all three agree on what "recent low" means.
-                // BGLstate's own writes were removed entirely 2026-08-22 (it had no remaining readers
-                // anywhere), along with its bootstrap declaration.
-                && checkAutomationState("LowBG", "50recent")
+                // carried no information here. BGLstate's own writes were removed entirely 2026-08-22
+                // (it had no remaining readers anywhere), along with its bootstrap declaration.
+                //
+                // Swapped 2026-08-22 to LowBG=50recent, then swapped AGAIN 2026-08-28 to a new,
+                // dedicated AlarmHypo=AlarmRecent state, per explicit request: MJ3 reinstatement should
+                // only be reachable via the further Alarm-tier hypo warnings, not GentleHypoRisk or any
+                // other 50%-profile-adjacent mechanism. LowBG=50recent turned out to be exactly as
+                // overloaded as BGLstate was, just for a different reason -- not a one-way latch, but
+                // written by SIX different places (both Alarm tiers, GentleHypoRisk's own prepare50
+                // predecessor, SkittlesHypoRisk, 50SetRecent -- which fires on plain
+                // profile_percentage==50 with no hypo signal at all -- and one fall-detection block), so
+                // it could not distinguish "a genuine Alarm-tier hypo fired" from "some other 50%-
+                // adjacent protective mechanism ran," which is exactly the ambiguity that let Gentle
+                // qualify this gate indirectly (acce weight <=0.11 from Gentle itself, 50recent from
+                // whatever separately dropped the profile to 50% beforehand). AlarmHypo=AlarmRecent is
+                // written ONLY by AlarmHypo1/AlarmHypo2 (see those blocks' own state writes), cleared
+                // alongside LowBG by the same Not50Recently recovery signal.
+                && checkAutomationState("AlarmHypo", "AlarmRecent")
                 && iobData.iob >= 0.2
             // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
             // state still allowing it -- ignores all the other existingConditionsMet checks above.
@@ -5794,6 +5820,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
                 addGraphAnnouncement("_____H4")
                 setAutomationState("LowBG", "50recent")
+                setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
                 markRun("AlarmHypo1")
             }
         }
@@ -5839,6 +5866,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
                 addGraphAnnouncement("__________A4")
                 setAutomationState("LowBG", "50recent")
+                setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("H4")
                 markRun("AlarmHypo2")
