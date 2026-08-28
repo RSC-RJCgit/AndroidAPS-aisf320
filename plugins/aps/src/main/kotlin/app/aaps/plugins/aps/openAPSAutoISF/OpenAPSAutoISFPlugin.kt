@@ -5528,12 +5528,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             } else if (readyToRun("HighEveNightBrake", 30)
                 && isTimeBetween(22, 0, 6, 0)
-                && glucoseStatus.glucose >= 135.1 /* 7.5 mmol */
+                // Raised 2026-08-29 from 135.1 (7.5mmol) to 162.2 (9.0mmol) at explicit request -- 7.5mmol
+                // was firing on real data at ~8.0-8.1mmol readings that felt too low a bar for this brake.
+                && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
                 && glucoseStatus.delta < 1.8 /* 0.1 mmol */
                 && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
                 && activeTtMgdl() == null
+                // Added 2026-08-29 at explicit request: only fire when duraISF is genuinely the dominant
+                // adaptation factor behind finalISF, not acce/bg/pp -- same "duraIsf is the largest
+                // component" concept OvernightDuraRescue already uses (see that block's own duraDominant
+                // comment), reused here without its extra >2.5 absolute-value floor since that threshold
+                // was calibrated specifically for OvernightDuraRescue's own (much bigger) profile-switch
+                // intervention, not asked for here.
+                && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 if (iobChange5 < 0.5) {
