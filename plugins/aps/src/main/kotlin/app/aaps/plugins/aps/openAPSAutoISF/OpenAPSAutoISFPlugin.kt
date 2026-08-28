@@ -5446,10 +5446,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- HighEveNightBrake: coded port of the "5-min IOB change too high" brake idea from the
-        // 27-28 Aug investigation, added 2026-08-28. NOT a replacement for the native "HighOver6.0ok1"
-        // Automation-tab trigger (confirmed via this file's own reconciliation registry: no coded
-        // automation here has a title matching it, so it is untouched and keeps running exactly as
-        // configured -- this is a second, independent mechanism, not a takeover).
+        // 27-28 Aug investigation, added 2026-08-28, revised same day after a real gap was found:
+        // dropping the native trigger's flat-BG requirement meant this could fire an aggressive low
+        // TT DURING an active rise, and the one-time pre-fire brake had no say over the following 5
+        // minutes -- everything downstream (core SMB math against the lower target, plus any of
+        // BolusGiven/BolusGivenMild's own Delta/SDelta-gated branches) could compound past the brake
+        // entirely. Two changes fix that: the flat-BG gate is back (native's own values, not an
+        // approximation -- see below), and the IOB brake now also runs CONTINUOUSLY while the TT it
+        // set is active, cutting it short rather than only ever gating the initial decision.
+        //
+        // NOT a replacement for the native "HighOver6.0ok1" Automation-tab trigger (confirmed via this
+        // file's own reconciliation registry: no coded automation here has a title matching it, so it
+        // is untouched and keeps running exactly as configured -- this is a second, independent
+        // mechanism, not a takeover). Still deliberately narrower than that trigger in other respects
+        // (no COB<=0 exclusion, no IOB-level or cannula-age/activity gating, different time window --
+        // 22:00-06:00 here vs. its 01:00-22:00 sub-branch) -- ported the flat-BG gate specifically
+        // because that is what was doing the actual safety work; the rest was left out on purpose.
+        //
+        // Flat-BG gate, native's own thresholds converted to mg/dL (0.1mmol=1.8, 0.3mmol=5.4,
+        // -0.2mmol=-3.6): SDelta in [0.0, 1.8), Delta < 1.8, LDelta in [-3.6, 5.4). Restricts firing to
+        // a genuinely plateaued high, same as the native trigger -- not an active rise, which is
+        // already the job of everything else (BMild, Tier 3, the ordinary SMB cascade).
         //
         // Deliberately routes through a temp target rather than raising iobTH% -- EveningIobCeiling and
         // NightIobCeiling above only ever touch iobTH%/acce weight, so a TT is the one lever that reaches
@@ -5466,20 +5483,41 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // The 30-min floor only applies to an actual firing (markRun sits inside the brake-clear
         // branch) -- a braked cycle is rechecked every following minute rather than waiting out the
         // full 30, so the TT still fires promptly once the burst itself subsides.
-        if (readyToRun("HighEveNightBrake", 30)
-            && isTimeBetween(22, 0, 6, 0)
-            && glucoseStatus.glucose >= 135.1 /* 7.5 mmol */
-            && checkAutomationState("Steroids", "Steroids Off")
-            && activeTtMgdl() == null
-        ) {
-            val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-            if (iobChange5 < 0.5) {
-                startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                sendSms("HighEveNightBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                addCarePortalNote("HiBrk")
-                markRun("HighEveNightBrake")
-            } else {
-                consoleError.add("HighEveNightBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+        run {
+            // Identifies OUR specific TT (rather than any TT) so this doesn't cut short a TT some
+            // other automation or the user set for an unrelated reason -- direct value proximity
+            // (<4.3mmol/77.5mg/dL) against the 4.0mmol target this block itself uses, not the small-TT
+            // remote-control-code convention (activeTtNear) used elsewhere for List1/TT-code toggles.
+            val myTtActive = activeTtMgdl()?.let { it < 77.5 /* 4.3 mmol */ } == true
+
+            if (myTtActive) {
+                // Continuous monitoring while the TT is live: cut it short the moment either signal
+                // says the situation has stopped looking like the plateaued high this was meant for.
+                val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+                val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
+                if (iobChange5 >= 0.5 || resumedRise) {
+                    cancelCurrentTempTarget()
+                    sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
+                    addCarePortalNote("HiBrkCut")
+                }
+            } else if (readyToRun("HighEveNightBrake", 30)
+                && isTimeBetween(22, 0, 6, 0)
+                && glucoseStatus.glucose >= 135.1 /* 7.5 mmol */
+                && checkAutomationState("Steroids", "Steroids Off")
+                && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
+                && glucoseStatus.delta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
+                && activeTtMgdl() == null
+            ) {
+                val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+                if (iobChange5 < 0.5) {
+                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                    sendSms("HighEveNightBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    addCarePortalNote("HiBrk")
+                    markRun("HighEveNightBrake")
+                } else {
+                    consoleError.add("HighEveNightBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                }
             }
         }
 
