@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.aaps.core.interfaces.maintenance.FileListProvider
@@ -41,8 +40,19 @@ class PrefImportListActivity : TranslatedDaggerAppCompatActivity() {
 
         binding.recyclerview.layoutManager = LinearLayoutManager(this)
         val preferenceFiles = fileListProvider.listPreferenceFiles()
+        // Real gap found 2026-08-29: with >LOCAL_IMPORT_FILE_LIMIT files, this used to route through a
+        // blocking AlertDialog.setItems() choice popup (show all / show latest) before reaching the
+        // actual file list. Reported repeatedly as "import doesn't work with >10 files, only reports the
+        // count" -- no dialog ever appeared at all, i.e. a construction-time failure before .show(),
+        // not a click-handling one, so patching the dialog blind wasn't safe. CloudPrefImportListActivity
+        // (proven working, same shared layout/binding) never used a dialog for this in the first place --
+        // it just shows the list directly with an inline fileCount text and a Load More button. Matching
+        // that pattern here removes the failure-prone code path entirely instead of trying to fix it:
+        // default straight to the latest LOCAL_IMPORT_FILE_LIMIT files, with the existing fileCount
+        // TextView (see showPreferenceFiles() below) now doubling as a tap-to-show-all control so no
+        // capability is lost.
         if (preferenceFiles.size > LOCAL_IMPORT_FILE_LIMIT) {
-            showFileCountChoice(preferenceFiles)
+            showPreferenceFiles(preferenceFiles.take(LOCAL_IMPORT_FILE_LIMIT), preferenceFiles.size, allFiles = preferenceFiles)
         } else {
             showPreferenceFiles(preferenceFiles)
         }
@@ -53,35 +63,21 @@ class PrefImportListActivity : TranslatedDaggerAppCompatActivity() {
         binding.recyclerview.adapter = null
     }
 
-    private fun showFileCountChoice(preferenceFiles: List<PrefsFile>) {
-        val choices = arrayOf(
-            rh.gs(R.string.preferences_import_show_all_files, preferenceFiles.size),
-            rh.gs(R.string.preferences_import_show_latest_files, LOCAL_IMPORT_FILE_LIMIT)
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle(rh.gs(R.string.preferences_import_file_count_title))
-            .setMessage(rh.gs(R.string.preferences_import_file_count_message, preferenceFiles.size))
-            .setItems(choices) { _, which ->
-                val filesToShow = when (which) {
-                    0    -> preferenceFiles
-                    else -> preferenceFiles.take(LOCAL_IMPORT_FILE_LIMIT)
-                }
-                showPreferenceFiles(filesToShow, preferenceFiles.size)
-            }
-            .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
-            .setOnCancelListener { finish() }
-            .show()
-    }
-
-    private fun showPreferenceFiles(preferenceFiles: List<PrefsFile>, totalCount: Int = preferenceFiles.size) {
+    // allFiles: the full unfiltered list, only needed so a truncated view's fileCount tap can expand to
+    // "show all" without re-querying the filesystem. Null when already showing everything (nothing to
+    // expand to) or when the count never exceeded the limit in the first place.
+    private fun showPreferenceFiles(preferenceFiles: List<PrefsFile>, totalCount: Int = preferenceFiles.size, allFiles: List<PrefsFile>? = null) {
         binding.recyclerview.adapter = RecyclerViewAdapter(preferenceFiles)
         if (totalCount > LOCAL_IMPORT_FILE_LIMIT) {
             binding.fileCount.visibility = View.VISIBLE
-            binding.fileCount.text = if (preferenceFiles.size == totalCount) {
-                rh.gs(R.string.cloud_import_file_count_all, totalCount)
+            if (preferenceFiles.size == totalCount) {
+                binding.fileCount.text = rh.gs(R.string.cloud_import_file_count_all, totalCount)
+                binding.fileCount.isClickable = false
+                binding.fileCount.setOnClickListener(null)
             } else {
-                rh.gs(R.string.cloud_import_file_count, preferenceFiles.size, totalCount)
+                binding.fileCount.text = rh.gs(R.string.preferences_import_tap_to_show_all, preferenceFiles.size, totalCount)
+                binding.fileCount.isClickable = true
+                binding.fileCount.setOnClickListener { allFiles?.let { showPreferenceFiles(it) } }
             }
         }
     }
