@@ -100,8 +100,32 @@ class BolusWizard @Inject constructor(
         private set
     var ic = 0.0
         private set
+    // Set in doCalc() alongside ic -- see the "QuickWizard/wizard correction" comment there. >1.0 means
+    // the active profile is boosted above 100% and ic/sens above have already been recovered back to
+    // their base-100 values, NOT what the profile itself is actually running at. Exposed so the calc-info
+    // note can report it -- previously the boosted/recovered distinction was invisible from the outside.
+    var profileBaseScale = 1.0
+        private set
+    // Set in doCalc() -- true when the Recent50 mechanism silently halved insulinFromCarbsOnly (see that
+    // block's own doc comment). Does NOT show up in ic itself, so without this flag the calc-info note
+    // would report a carb ratio that doesn't match the insulin actually calculated from it.
+    var carbsHalvedByRecent50 = false
+        private set
     var glucoseStatus: GlucoseStatus? = null
         private set
+    // Snapshot of constraintChecker.getMaxBolusAllowed(), taken once at the top of confirmAndExecute()
+    // (see there) -- every split/calc-info decision after that point must read THIS, not query the
+    // constraint fresh. Real bug found 2026-08-30: WizardDialog's own max-bolus-override stepper writes
+    // DoubleKey.SafetyMaxBolus live so the OPEN dialog's own split preview reflects it, but that override
+    // is reverted in WizardDialog.onDestroy() -- which runs synchronously, immediately after
+    // confirmAndExecute() is called, well before the async command-queue callback that actually runs
+    // scheduleSplitProteinFatDoses()/builds the calc-info note. Any fresh re-query of the constraint from
+    // that callback therefore silently saw the REVERTED (pre-override) limit, so a raised-in-dialog max
+    // bolus had no effect on the real split decision or the saved calc info -- only on the previewed/
+    // delivered dose amount itself (insulinAfterConstraints, computed earlier via doCalc() while the
+    // override was still live). Defaults to Double.MAX_VALUE so an early exit path (e.g. protein/fat-only,
+    // never reaching confirmAndExecute()'s main branch) can't leave this at a stale small value.
+    private var maxBolusAllowedAtConfirm = Double.MAX_VALUE
     private var targetBGLow = 0.0
     private var targetBGHigh = 0.0
     private var bgDiff = 0.0
@@ -263,6 +287,7 @@ class BolusWizard @Inject constructor(
         // NOT touch the user's manual percentageCorrection from the wizard dialog.
         val activePct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
         val baseScale = if (activePct > 100) activePct / 100.0 else 1.0
+        profileBaseScale = baseScale
 
         // Insulin from BG
         sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData)) * baseScale
@@ -305,10 +330,10 @@ class BolusWizard @Inject constructor(
         // on activeProfileSwitchPct() != 50 so this can never stack with that other path (which already
         // halves things via a doubled IC) -- without the guard, both conditions being true at once would
         // silently quarter the dose instead of halving it.
-        if ((automationStateService.inState("LowBG", "50recent") ||
-                (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0)) &&
+        carbsHalvedByRecent50 = (automationStateService.inState("LowBG", "50recent") ||
+            (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0)) &&
             activeProfileSwitchPct() != 50
-        ) {
+        if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
         insulinFromProteinOnly = (protein / 25.0) / ic
@@ -425,7 +450,9 @@ class BolusWizard @Inject constructor(
         val parts = mutableListOf<String>()
         val schedulingPct = activeProfileSwitchPct()
         val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
-        val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
+        // maxBolusAllowedAtConfirm, not a fresh query -- see its own doc comment for why a fresh call here
+        // would silently miss a live in-dialog max-bolus override.
+        val maxBolusAllowed = maxBolusAllowedAtConfirm
         aapsLogger.info(
             LTag.CORE,
             "splitProjectionNote check: splitBolusScheduled=$splitBolusScheduled superBolusActive=$superBolusActive " +
@@ -461,7 +488,9 @@ class BolusWizard @Inject constructor(
     // confirmation; the later, real determination is what actually governs behaviour regardless of what
     // this preview says.
     private fun alwaysShownCalcInfoNote(): String {
-        val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
+        // maxBolusAllowedAtConfirm, not a fresh query -- see its own doc comment for why a fresh call here
+        // would silently miss a live in-dialog max-bolus override.
+        val maxBolusAllowed = maxBolusAllowedAtConfirm
         val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
         val splitPending = !splitBolusScheduled && !superBolusActive && manualSplitBolusEnabled &&
             activeProfileSwitchPct() >= 100 && calculatedTotalInsulin > maxBolusAllowed &&
@@ -486,8 +515,17 @@ class BolusWizard @Inject constructor(
             val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
             "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 10min up to 80min)"
         }
-        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U, Exercise ${if (walkingSoon) "ON" else "off"}, " +
-            "Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel"
+        // IC/Profile% reporting -- added 2026-08-30 per explicit request: ic itself (set in doCalc()) is
+        // already "recovered" back to its base-100 value whenever the active profile is boosted above
+        // 100% (see profileBaseScale's own doc comment), and the separate Recent50 mechanism can halve
+        // the carbs-driven insulin WITHOUT touching ic at all -- so the plain ic number alone couldn't
+        // answer "was this actually a 130% profile, or a recent50 halving?" without these annotations.
+        val icAnnotations = mutableListOf<String>()
+        if (profileBaseScale != 1.0) icAnnotations.add("profile@${(profileBaseScale * 100).toInt()}%, recovered to base")
+        if (carbsHalvedByRecent50) icAnnotations.add("carbs halved: recent50")
+        val icText = "IC=${decimalFormatter.to2Decimal(ic)}" + if (icAnnotations.isNotEmpty()) " (${icAnnotations.joinToString("; ")})" else ""
+        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U, $icText, Profile=${delayedProfilePctPreview}%, " +
+            "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel"
     }
 
     fun createBolusCalculatorResult(): BCR {
@@ -623,6 +661,10 @@ class BolusWizard @Inject constructor(
     }
 
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
+        // Snapshot HERE, synchronously, before returning to the caller (WizardDialog's OK handler calls
+        // dismiss() immediately after this returns, which reverts any live max-bolus-override) -- see
+        // maxBolusAllowedAtConfirm's own doc comment for the real bug this fixes.
+        maxBolusAllowedAtConfirm = constraintChecker.getMaxBolusAllowed().value()
         // insulinFromProteinOnly/insulinFromFatOnly are deliberately excluded from calculatedTotalInsulin
         // (see their own doc comments) — but a protein-only or fat-only entry (no carbs, no other
         // component) still needs to reach commonProcessing() below to schedule its delayed dose, or it
@@ -939,14 +981,18 @@ class BolusWizard @Inject constructor(
         // Human-readable detail per component actually scheduled below — joined into the combined note's
         // full audit text (User Entry log) so it says WHAT/WHEN, not just that something was scheduled.
         val noteDetails = mutableListOf<String>()
+        // maxBolusAllowedAtConfirm, not a fresh query -- this callback runs asynchronously, after
+        // WizardDialog has already been dismissed and reverted any live max-bolus-override the user set
+        // via its own stepper; a fresh query here would silently use the pre-override limit instead,
+        // triggering (or missing) a split against a number the user never actually confirmed against.
         if (!splitBolusScheduled &&
             !superBolusActive &&
             manualSplitBolusEnabled &&
             schedulingPct >= 100 &&
-            calculatedTotalInsulin > constraintChecker.getMaxBolusAllowed().value()
+            calculatedTotalInsulin > maxBolusAllowedAtConfirm
         ) {
             splitBolusScheduled = true
-            val maxPart = constraintChecker.getMaxBolusAllowed().value()
+            val maxPart = maxBolusAllowedAtConfirm
             val intervalMins = manualSplitBolusIntervalMins
             val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
             if (numParts > 1) {
