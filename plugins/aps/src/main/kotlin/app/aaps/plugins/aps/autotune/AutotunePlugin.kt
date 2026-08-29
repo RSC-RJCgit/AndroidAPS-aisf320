@@ -481,11 +481,12 @@ class AutotunePlugin @Inject constructor(
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneAutoSwitchProfile, summary = R.string.autotune_auto_summary, title = R.string.autotune_auto_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneCategorizeUamAsBasal, summary = R.string.autotune_categorize_uam_as_basal_summary, title = R.string.autotune_categorize_uam_as_basal_title))
-            // Re-enabled 2026-08-29: was commented out with no on-device toggle to turn it back on --
-            // the underlying tuning logic (AutotuneCore.kt/AutotunePrep.kt) was never removed, just
-            // unreachable. Relevant here since Free Peak (IntKey.InsulinOrefPeak) is the live insulin
-            // curve; see this preference's own summary for the Free-Peak requirement.
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneTuneInsulinCurve, summary = R.string.autotune_tune_insulin_curve_summary, title = R.string.autotune_tune_insulin_curve_title))
+            // Reverted 2026-08-30: briefly re-enabled 2026-08-29, then reverted back to commented-out --
+            // the whole AutotunePlugin has never actually been reachable in Config Builder (unresolved
+            // visibility investigation from this same session), so the toggle was inert either way; not
+            // worth exposing a setting for a feature that can't currently be turned on. The underlying
+            // tuning logic (AutotuneCore.kt/AutotunePrep.kt) is untouched either way, just unreachable.
+            //addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneTuneInsulinCurve, summary = R.string.autotune_tune_insulin_curve_summary, title = R.string.autotune_tune_insulin_curve_title))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.AutotuneDefaultTuneDays, dialogMessage = R.string.autotune_default_tune_days_summary, title = R.string.autotune_default_tune_days_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneCircadianIcIsf, summary = R.string.autotune_circadian_ic_isf_summary, title = R.string.autotune_circadian_ic_isf_title))
             //addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutotuneAdditionalLog, summary = R.string.autotune_additional_log_summary, title = R.string.autotune_additional_log_title))
