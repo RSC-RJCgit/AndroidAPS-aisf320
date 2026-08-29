@@ -257,16 +257,12 @@ class WizardDialog : DaggerDialogFragment() {
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
         binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
 
-        // "Walking soon" pre-tick default: either currently quiet (steps60<100, anticipating an
-        // imminent walk) or already active (steps60>=1000, exercising right now) -- same thresholds
-        // this fork's other automations use for "low"/"sustained activity" -- AND BG isn't already
-        // rising fast, since a genuine ongoing rise means more insulin is needed regardless of
-        // activity, not less. User can still untick/tick manually regardless of this default.
-        val recentSteps60 = persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - T.mins(60).msecs(), dateUtil.now())
-            .maxByOrNull { it.timestamp }?.steps60min ?: 0
-        val currentDelta = glucoseStatusProvider.getGlucoseStatusData()?.delta ?: 0.0
-        val notRisingFast = currentDelta <= 0.9 /* +0.05 mmol/5min */
-        binding.walkingSoonCheckbox.isChecked = (recentSteps60 < 100 || recentSteps60 >= 1000) && notRisingFast
+        // "Walking soon" pre-tick default: changed 2026-08-29 at explicit request from a step-count/delta
+        // heuristic (quiet or already-active recent steps, not currently rising fast) to a plain current-BG
+        // check -- ticked when BG is already on the lower side (under 6.0mmol), off otherwise. User can
+        // still untick/tick manually regardless of this default.
+        val currentBgMgdl = glucoseStatusProvider.getGlucoseStatusData()?.glucose ?: 999.0
+        binding.walkingSoonCheckbox.isChecked = currentBgMgdl < 108.1 /* 6.0 mmol */
         // ok button
         binding.okcancel.ok.setOnClickListener {
             if (okClicked) {

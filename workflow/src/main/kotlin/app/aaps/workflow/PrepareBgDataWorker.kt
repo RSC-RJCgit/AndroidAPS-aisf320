@@ -407,6 +407,28 @@ class PrepareBgDataWorker(
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val cobTerm = cob / 12.0
                 val hp2 = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cobTerm
+                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
+                PointsWithLabelGraphSeries(
+                    arrayOf<DataPointWithLabelInterface>(
+                        HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                    )
+                )
+            } else PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+
+        // Fixed 2026-08-29: this whole row (targetOffset=/HP3=/Boost=) used to be built ONLY inside
+        // hpSeries's own ukfDeltaResult!=null branch above, purely because it was convenient to reuse
+        // sdeltaMmol/cobTerm computed there -- but none of targetOffset=, boostModeText, or HP3= (which
+        // already has its own independent ukf3RawMgdl-based "--" fallback) actually need ukfDeltaResult
+        // at all. Real gap: right after app start/reopen, ukfDeltaResult is null until enough raw BG
+        // history accumulates for a 5-min-ago UKF comparison point, so this whole row sat empty that
+        // whole time even though every field in it was independently computable -- "looks missing, then
+        // appears" a few minutes later once ukfDeltaResult catches up. Split into its own block, gated
+        // only on latest/latestAiv, so it renders immediately regardless of hpSeries's own readiness.
+        data.overviewData.targetOffsetDuTSeries =
+            if (latest != null && latestAiv != null) {
+                val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
+                val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+                val cobTerm = cob / 12.0
                 // targetBgOffset is the final live offset threshold actually used by DetermineBasal,
                 // not a reconstruction from the current preferences. Reading it from the latest APS
                 // reason also keeps this correct on Client, where that Pump result is mirrored via NS.
@@ -445,7 +467,7 @@ class PrepareBgDataWorker(
                 // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction
                 // say if UKF3's own retrospective smoothing were the BGL source instead of whatever's
                 // actually dosing right now". "--" if UKF3's window doesn't have a point ~5min back yet
-                // (mirrors HP2's own ukfDeltaResult-unavailable fallback).
+                // (independent of hpSeries's own ukfDeltaResult-unavailable fallback).
                 val ukf3Latest = ukf3RawMgdl.lastOrNull()
                 val ukf3Delta5Mgdl = ukf3Latest?.let { (latestTs, latestMgdl) ->
                     val target = latestTs - 5 * 60_000L
@@ -459,24 +481,10 @@ class PrepareBgDataWorker(
                     String.format(Locale.getDefault(), "%.1f", hp3)
                 } else "--"
                 val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  Boost= $boostModeText"
-                val label = "hypoprediction= " + String.format(Locale.getDefault(), "%.1f", hp2)
                 // 75.6 (4.2mmol) -> 50.0 (2.8mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
                 // anchor above -- the renderer draws this row at endY + a small pixel offset BELOW the
                 // pp= row's anchor, so lowering both keeps that same relative "one line below" spacing
                 // while moving the whole pair clear of the in-range (green) BG trace on graph5.
-                data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries(
-                    arrayOf<DataPointWithLabelInterface>(
-                        TargetOffsetDuTDataPoint(
-                            latest.timestamp,
-                            profileUtil.fromMgdlToUnits(50.0),
-                            targetOffsetDuTLabel,
-                            rh
-                        )
-                    )
-                )
-                // Graph1's copy renders at a fixed pixel row (targetOffsetDuTGraph1RowPy) regardless of
-                // this Y value -- kept in sync with the graph5 anchor above purely for consistency, no
-                // visual effect on graph1 either way.
                 data.overviewData.targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
                         TargetOffsetDuTGraph1DataPoint(
@@ -489,11 +497,15 @@ class PrepareBgDataWorker(
                 )
                 PointsWithLabelGraphSeries(
                     arrayOf<DataPointWithLabelInterface>(
-                        HPDataPoint(latest.timestamp, profileUtil.fromMgdlToUnits(latest.value), label, rh)
+                        TargetOffsetDuTDataPoint(
+                            latest.timestamp,
+                            profileUtil.fromMgdlToUnits(50.0),
+                            targetOffsetDuTLabel,
+                            rh
+                        )
                     )
                 )
             } else {
-                data.overviewData.targetOffsetDuTSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
                 data.overviewData.targetOffsetDuTGraph1Series = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
                 PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
             }

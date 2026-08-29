@@ -1914,8 +1914,13 @@ class DetermineBasalAutoISF @Inject constructor(
                     LDelta <= 0.08 * 18 &&
                     SDelta >= 3.0 * (LDelta + 0.01)
                 ) {
-                    microBolus = microBolus * 0.5
-                    rT.reason.append(" CHANGED SIZE fast rise 0.513 short spike no trend ")
+                    // Softened 2026-08-29 from 0.5 to 0.7 at explicit request, per real data (Aug 28
+                    // hours 18/20) showing this was the dominant actually-applied fast-rise cut (the
+                    // 0.750 branch fires more often in the trace but is mostly exempted via the
+                    // BolusGiven/Mild 30-min skip) -- still a real cut for a genuine short-spike/no-trend
+                    // read, just less aggressive than the previous 50%.
+                    microBolus = microBolus * 0.7
+                    rT.reason.append(" CHANGED SIZE fast rise 0.513->0.713 short spike no trend ")
                 } else if (
                     libreActive &&
                     !profile.temptargetSet
