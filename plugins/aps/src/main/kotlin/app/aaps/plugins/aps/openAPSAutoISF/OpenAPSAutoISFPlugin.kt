@@ -1066,6 +1066,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return readings.all { it.value > minimumMgdl }
     }
 
+    // General sustained-BGL-in-range check over an arbitrary window, added 2026-08-30 for
+    // MorningRoleSwapHigh/Normal below. Same coverage-gap safety shape as allRecentBgAbove90Minutes just
+    // above (kept separate rather than generalizing that one -- its own 90-min/10-reading thresholds are
+    // specifically tuned for that shorter window and a different caller). Pass null for either bound to
+    // skip that side (e.g. minMgdl=null checks "all below maxMgdl" only). Fails closed (returns false) on
+    // any coverage gap or insufficient reading count -- a missing-data window can never be mistaken for
+    // "sustained in range". Reading-count floor and gap tolerance scale the same ~9-min/reading lenience
+    // allRecentBgAbove90Minutes uses (10 readings / 90 min).
+    private fun allRecentBgInRange(hours: Int, minMgdl: Double?, maxMgdl: Double?): Boolean {
+        val now = dateUtil.now()
+        val windowMs = T.hours(hours.toLong()).msecs()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - windowMs, now, ascending = true)
+        if (readings.size < (hours * 60 / 9)) return false
+        if (readings.first().timestamp > now - windowMs + T.mins(15).msecs()) return false
+        if (readings.last().timestamp < now - T.mins(10).msecs()) return false
+        if (readings.zipWithNext().any { (a, b) -> b.timestamp - a.timestamp > T.mins(10).msecs() }) return false
+        return readings.all { (minMgdl == null || it.value > minMgdl) && (maxMgdl == null || it.value < maxMgdl) }
+    }
+
     /**
      * Minutes during the last 15 where the stored/current AutoISF factor was actively raising insulin.
      * Factors themselves are normally near 1, so the requested >7 and >4 thresholds are interpreted as
@@ -5628,6 +5647,42 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     markRun("HighDaytimeBrake")
                 } else {
                     consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                }
+            }
+        }
+
+        // --- MorningRoleSwapHigh / MorningRoleSwapNormal: added 2026-08-30 at explicit request. Both
+        // re-pick which real profile fills the Standard/Low roles (StringKey.ApsAutoIsfStandardProfileName/
+        // ApsAutoIsfLowProfileName -- the same preferences List1's own "Re-pick coded profiles" action
+        // writes), restricted to 03:00-07:00. Per explicit request: switches the ACTIVE running profile
+        // immediately too if it currently matches whichever role just got repointed (matching how the
+        // manual re-pick action behaves); the new role assignment itself is a standing change, NOT reverted
+        // at 07:00 -- stays in effect until something else re-picks it. Own readyToRun/markRun throttle
+        // (240 min) per explicit request, shared between the two since they can never both match at once
+        // (High requires MJ==NOMJremains, Normal requires MJ!=NOMJremains -- mutually exclusive).
+        run {
+            if (isTimeBetween(3, 0, 7, 0) && checkAutomationState("Steroids", "Steroids Off") && readyToRun("MorningRoleSwap", 240)) {
+                val hp = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
+                val highMatch = hp != null && hp > 6.0 &&
+                    checkAutomationState("MJ", "NOMJremains") &&
+                    allRecentBgInRange(8, minMgdl = 108.1 /* 6.0 mmol */, maxMgdl = null)
+                val normalMatch = hp != null && hp < 5.0 &&
+                    !checkAutomationState("MJ", "NOMJremains") &&
+                    allRecentBgInRange(8, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = 126.1 /* 7.0 mmol */)
+                val newLow = when { highMatch -> "Current Profile80a"; normalMatch -> "Current Profile70"; else -> null }
+                val newStandard = when { highMatch -> "Current Profile110Real"; normalMatch -> "Current Profile100"; else -> null }
+                if (newLow != null && newStandard != null) {
+                    val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                    val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                    val currentProfileName = profileFunction.getProfileName()
+                    preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
+                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
+                    if (currentProfileName == previousLow) switchProfileIfNeeded(newLow)
+                    else if (currentProfileName == previousStandard) switchProfileIfNeeded(newStandard)
+                    val tag = if (highMatch) "RolesHi" else "RolesNorm"
+                    sendSms("MorningRoleSwap $tag: Low=$newLow Standard=$newStandard (HP=${round(hp!!, 1)})")
+                    addCarePortalNote(tag)
+                    markRun("MorningRoleSwap")
                 }
             }
         }
