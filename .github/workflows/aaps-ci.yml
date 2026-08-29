@@ -264,9 +264,17 @@ jobs:
           fi
 
           echo "📁 Checking or creating version folder: $VERSION"
+          # Fixed 2026-08-29: VERSION always contains a literal "+" (e.g. "3.4.2.6+aisf321UK_718") and
+          # was being spliced into this URL unencoded -- an unencoded "+" in a query string decodes as a
+          # space on the server, so this lookup NEVER matched the real folder name and every run created
+          # its own duplicate "found nothing -> create" folder (confirmed: three separate folders, all
+          # named identically, one per job that uploaded that version). Only the VERSION substitution
+          # itself needs encoding -- the template's own literal "+" separators (meant to decode as the
+          # spaces in "name='X' and mimeType=...") are left untouched.
+          ENCODED_VERSION=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$VERSION")
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
+            "https://www.googleapis.com/drive/v3/files?q=name='${ENCODED_VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
             | jq -r '.files[0].id')
 
           if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then

@@ -244,9 +244,15 @@ jobs:
           fi
 
           echo "📁 Checking or creating version folder: $VERSION"
+          # Fixed 2026-08-29: see aaps-ci.yml's identical fix for the full explanation -- VERSION always
+          # contains a literal "+", which decodes as a space when spliced unencoded into this URL, so the
+          # lookup never matched an existing folder and every job created its own duplicate (confirmed:
+          # aapsclientRelease and aapsclient2Release each created a SEPARATE version folder here, on top
+          # of the one AAPS CI's own fullRelease upload had already created for the same version).
+          ENCODED_VERSION=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$VERSION")
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
+            "https://www.googleapis.com/drive/v3/files?q=name='${ENCODED_VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
             | jq -r '.files[0].id')
 
           if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
