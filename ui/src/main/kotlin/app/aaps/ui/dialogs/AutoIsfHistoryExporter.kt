@@ -479,9 +479,16 @@ class AutoIsfHistoryExporter @Inject constructor(
             val sourceLogFiles = loggerUtils.findSourceLogFiles()
             val sb = StringBuilder()
 
+            // Fixed 2026-08-29: readText() loaded the entire live log into memory as one String BEFORE
+            // lineSequence() ever got to be lazy about it -- a real OutOfMemoryError on a real device
+            // once this file grows large enough (confirmed via logcat: "Failed to allocate a 134250504
+            // byte allocation" i.e. 128MB, right here). useLines() streams line-by-line via a
+            // BufferedReader instead, and closes the reader automatically once the lambda (which fully
+            // consumes the sequence inside appendUkfCheckMatches) returns -- never holds more than one
+            // line's worth of the file in memory at a time, however large the file gets.
             val liveLog = sourceLogFiles.filter { it.name == "AndroidAPS.log" }.maxByOrNull { it.lastModified() }
             if (liveLog != null) {
-                appendUkfCheckMatches(sb, "AndroidAPS.log (live, ${liveLog.parentFile?.name})", liveLog.readText().lineSequence())
+                liveLog.useLines { lines -> appendUkfCheckMatches(sb, "AndroidAPS.log (live, ${liveLog.parentFile?.name})", lines) }
             }
 
             val rotatedZips = sourceLogFiles.filter { it.name.endsWith(".log.zip") }
@@ -492,8 +499,12 @@ class AutoIsfHistoryExporter @Inject constructor(
                     var entry = zis.nextEntry
                     while (entry != null) {
                         if (!entry.isDirectory) {
-                            val text = zis.readBytes().toString(Charsets.UTF_8)
-                            appendUkfCheckMatches(sb, zip.name, text.lineSequence())
+                            // Same fix/reasoning as the live-log read above -- readBytes() materialized
+                            // the whole entry at once; bufferedReader().lineSequence() streams it instead.
+                            // Not wrapped in .use{} deliberately: closing would close the underlying zis
+                            // too, ending the loop after the first entry -- the outer ZipInputStream(...)
+                            // .use{} block already owns closing zis once every entry is done.
+                            appendUkfCheckMatches(sb, zip.name, zis.bufferedReader().lineSequence())
                         }
                         zis.closeEntry()
                         entry = zis.nextEntry
