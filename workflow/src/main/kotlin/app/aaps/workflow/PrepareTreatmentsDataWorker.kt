@@ -128,11 +128,32 @@ class PrepareTreatmentsDataWorker(
                     .maxByOrNull { it.x }
                     ?.hasDelayedComponent = true
             }
-        persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
+        val carbsExpanded = persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
+        carbsExpanded
             .map { CarbsDataPoint(it, rh) }
             .forEach {
                 it.y = getNearestBg(data.overviewData, it.x.toLong())
                 filteredTreatments.add(it)
+            }
+
+        // 0U-calculated Wizard events (see BolusWizard.kt commonProcessing()/confirmAndExecute() --
+        // carbs != 0 but insulinAfterConstraints == 0.0 takes CommandQueueImplementation's carbs-only
+        // early-return path, so no BS bolus entity is ever created for these; only the CA carbs record,
+        // tagged with the " Wizard: 0U calculated" note). Requested 2026-08-29: rather than a new/separate
+        // marker, reuse the exact same triangle + amount-label rendering as a real bolus by wrapping a
+        // synthetic, DB-untouched BS(amount = 0.0) in the same BolusDataPoint class -- so these show up on
+        // graph1 exactly where a real 0U bolus would, with "0" where the delivered amount normally prints.
+        carbsExpanded
+            .filter { it.notes?.contains("Wizard: 0U calculated") == true }
+            .map {
+                BolusDataPoint(
+                    BS(timestamp = it.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = it.notes, isValid = it.isValid),
+                    rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter
+                )
+            }
+            .forEach { dp ->
+                dp.y = getNearestBg(data.overviewData, dp.x.toLong())
+                filteredTreatments.add(dp)
             }
 
         // ProfileSwitch

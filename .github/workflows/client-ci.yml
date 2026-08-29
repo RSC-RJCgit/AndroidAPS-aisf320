@@ -1,9 +1,20 @@
 name: Client CI
 
-# Chained after "Branch CI" (branch-ci.yml) finishes, rather than folded into that workflow, so
-# branch-ci.yml itself stays completely untouched -- a working fallback to revert to if this one
+# Chained after "AAPS CI" (aaps-ci.yml) finishes, rather than folded into that workflow, so
+# aaps-ci.yml itself stays completely untouched -- a working fallback to revert to if this one
 # needs changes. Builds both AAPSClient variants (aapsclientRelease, aapsclient2Release) and
 # uploads them to the same Google Drive AAPS/<version> folder the main workflow already uses.
+#
+# Chained off "AAPS CI" specifically (NOT "Branch CI", despite this file's own history -- see
+# below) because AAPS CI is the workflow that actually push-triggers on every commit (branches:
+# ['**'] in aaps-ci.yml) and is what builds/uploads the fullRelease APK you already get from a
+# normal `git push`. AAPS CI deliberately builds Client variants only on manual dispatch (2026-08-23
+# doc comment in that file) -- this is the automatic counterpart for that gap.
+#
+# Originally chained off "Branch CI" (branch-ci.yml) instead -- that file is a separate,
+# rarely-used, workflow_dispatch-only workflow. Chaining off it never fired automatically because
+# nothing ever automatically triggers Branch CI itself; discovered 2026-08-29 that aaps-ci.yml was
+# the real, already-automatic pipeline the whole time.
 #
 # IMPORTANT: workflow_run only fires for listener workflows registered on the repository's
 # DEFAULT branch on GitHub (a hard platform requirement, not something this file controls) -- if
@@ -11,15 +22,16 @@ name: Client CI
 # workflow itself is broken.
 on:
   workflow_run:
-    workflows: ["Branch CI"]
+    workflows: ["AAPS CI"]
     types: [completed]
 
 jobs:
   build-clients:
     name: Build AAPSClient variants
-    # Only chain after a successful Branch CI run -- a failed/cancelled fullRelease build
-    # shouldn't trigger a Client build attempt on the same (presumably broken) commit.
-    if: github.event.workflow_run.conclusion == 'success'
+    # Only chain after a successful AAPS CI run on UKF3426 specifically -- aaps-ci.yml's own push
+    # trigger matches basically every branch ('**'), so without this a build on some unrelated
+    # feature/PR branch would also kick off a Client build.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'UKF3426'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
