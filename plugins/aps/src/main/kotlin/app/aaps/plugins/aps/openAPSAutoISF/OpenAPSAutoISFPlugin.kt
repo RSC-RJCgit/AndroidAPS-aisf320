@@ -5560,6 +5560,53 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- HighDaytimeBrake: daytime counterpart to HighEveNightBrake above, added 2026-08-29 at
+        // explicit request. Exact complement time window (06:00-22:00 vs the night one's 22:00-06:00),
+        // giving 24/7 coverage of this plateau-brake concept with no gap or overlap between the two.
+        // Same entry criteria as the night version (9.0mmol, duraISF-dominant, native flat-BG bands,
+        // 4.0mmol/5min TT, continuous cut-short monitoring) -- see HighEveNightBrake's own doc comment
+        // above for the full reasoning behind each of those. The one addition specific to this daytime
+        // version: a "no bolus in the last 60 minutes" gate. Daytime carries far more routine bolus
+        // activity (meals, corrections) than overnight, so without this a fresh dose's own IOB/delta
+        // signature could look enough like "genuinely plateaued high" to fire the brake right on top of
+        // insulin that's already addressing the same high -- the night version doesn't need this since
+        // unannounced overnight boluses are comparatively rare.
+        run {
+            val myTtActive = activeTtMgdl()?.let { it < 77.5 /* 4.3 mmol */ } == true
+
+            if (myTtActive) {
+                val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+                val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
+                if (iobChange5 >= 0.5 || resumedRise) {
+                    cancelCurrentTempTarget()
+                    sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
+                    addCarePortalNote("HiBrkDayCut")
+                }
+            } else if (readyToRun("HighDaytimeBrake", 30)
+                && isTimeBetween(6, 0, 22, 0)
+                && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
+                && checkAutomationState("Steroids", "Steroids Off")
+                && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
+                && glucoseStatus.delta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
+                && activeTtMgdl() == null
+                && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
+                && (minutesSinceLastNormalBolus() ?: Int.MAX_VALUE) > 60
+            ) {
+                val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+                if (iobChange5 < 0.5) {
+                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                    sendSms("HighDaytimeBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    addCarePortalNote("HiBrkDay")
+                    markRun("HighDaytimeBrake")
+                } else {
+                    consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                }
+            }
+        }
+
         if (readyToRun("EveningTH", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
