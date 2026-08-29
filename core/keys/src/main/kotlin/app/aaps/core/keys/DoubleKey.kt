@@ -109,7 +109,7 @@ enum class DoubleKey(
     // relative bumps (+0.05 / +0.02 / +0) on top of this value, so raising or lowering it shifts all
     // three tiers together. BolusGiven bg3's own ("strong") boost ratio is derived from this value
     // + 0.03, not set independently — see ApsAutoIsfBoostAutomationsEnabled for the on/off toggle.
-    ApsAutoIsfMildBoostRatio("autoisf_mild_boost_ratio", 0.20, 0.1, 0.5, defaultedBySM = true),
+    ApsAutoIsfMildBoostRatio("autoisf_mild_boost_ratio", 0.20, 0.1, 1.0, defaultedBySM = true),
     // Tier 3 "UAM Boost" numeric knobs (DetermineBasalAutoISF.kt), ported from Boost-in-AAPS_3.4's
     // OapsProfileBoost.boost_bolus/boost_maxIOB/boost_scale -- same defaults/ranges as that project's
     // own DoubleKey entries (boost_bolus_cap/boost_max_iob/boost_scale_value). "Uam" prefix to stay

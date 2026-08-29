@@ -1300,8 +1300,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
     }
 
-    // Not yet called anywhere; ready for later conditions. Mirrors ActionSetSmbDeliveryRatio: same
-    // underlying preference key the smb_delivery_ratio getter above already reads.
+    // Mirrors ActionSetSmbDeliveryRatio: same underlying preference key the smb_delivery_ratio getter
+    // above already reads. Called from several boost/recovery automations throughout this file (search
+    // "setSmbDeliveryRatio(" for the full list) -- each boost relies on the shared "no active TT" reset
+    // (search "DelOff") to revert back to baseline once its own TT ends.
     private fun setSmbDeliveryRatio(ratio: Double) {
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
     }
@@ -2533,11 +2535,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- SmbDeliveryUpTT: manually setting a TT of 5.04 mmol is used as a remote +0.01 nudge on
-        // both SMB delivery settings, clamped to each key's own max (0.5 for both). Same pattern and
-        // same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
+        // both SMB delivery settings, clamped to each key's own max -- 0.5 for ApsAutoIsfSmbDeliveryBaseline,
+        // 1.0 for ApsAutoIsfMildBoostRatio (widened 2026-08-29, see DoubleKey.kt; this combined block's own
+        // ±0.01 step is untouched, unlike the dedicated MildBoostDownTT/UpTT pair below which now steps by
+        // 0.05). Same pattern and same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
         if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.004, 0.0001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
@@ -3469,12 +3473,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctUpTT")
         }
 
-        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.01 nudge on
+        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.25 nudge on
         // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
-        // ApsAutoIsfSmbDeliveryBaseline), clamped to its own min of 0.1 — not a real target. Same
+        // ApsAutoIsfSmbDeliveryBaseline, and stays at its own separate ±0.01 step), clamped to its own
+        // min of 0.1 — not a real target. Step widened 0.01 -> 0.05 -> 0.25 on 2026-08-29, alongside the
+        // key's own max widening 0.5->1.0 (see ApsAutoIsfMildBoostRatio in DoubleKey.kt). Same
         // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
         if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
@@ -3482,10 +3488,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MildBoostDownTT")
         }
 
-        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.01 nudge on
-        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 0.5. Same pattern as MildBoostDownTT above.
+        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.25 nudge on
+        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0 (widened from 0.5 on 2026-08-29).
+        // Same pattern as MildBoostDownTT above.
         if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(0.5)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
@@ -3493,13 +3500,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MildBoostUpTT")
         }
 
-        // --- BoostScaleDownTT / BoostScaleUpTT: remote ±0.1 nudge on ApsAutoIsfUamBoostScale (Tier 3
-        // UAM Boost's boost_scale multiplier) -- not real targets. Same pattern as MildBoostDownTT/UpTT
-        // above. Up is clamped to 2.9, NOT the preference's own nominal max of 3.0: DetermineBasalAutoISF.kt's
-        // entry gate requires "boost_scale < 3" -- at exactly 3.0 Tier 3 stops firing entirely, a silent
-        // cliff rather than a graceful cap, so 2.9 keeps this control from ever landing on that trap.
+        // --- BoostScaleDownTT / BoostScaleUpTT: remote ±0.25 nudge (widened from ±0.1 -> ±0.05 -> ±0.25,
+        // 2026-08-29, per explicit request) on ApsAutoIsfUamBoostScale (Tier 3 UAM Boost's boost_scale
+        // multiplier) -- not real targets. Same pattern as MildBoostDownTT/UpTT above. Up is clamped to
+        // 2.9, NOT the preference's own nominal max of 3.0: DetermineBasalAutoISF.kt's entry gate
+        // requires "boost_scale < 3" -- at exactly 3.0 Tier 3 stops firing entirely, a silent cliff
+        // rather than a graceful cap, so 2.9 keeps this control from ever landing on that trap.
         if (readyToRun("BoostScaleDownTT", 2) && activeTtNear(5.182, 0.0001)) {
-            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.1).coerceAtLeast(0.1)
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
             sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
@@ -3508,7 +3516,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         if (readyToRun("BoostScaleUpTT", 2) && activeTtNear(5.184, 0.0001)) {
-            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.1).coerceAtMost(2.9)
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.25).coerceAtMost(2.9)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
             sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
@@ -5550,8 +5558,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 if (iobChange5 < 0.5) {
+                    // Added 2026-08-29 at explicit request: on top of the lowered TT itself, double the
+                    // current SMB delivery ratio for this same 5-min window -- gives the brake actual
+                    // dosing teeth rather than relying solely on the lower target. Reuses the existing
+                    // global "no active TT" delivery-ratio reset (search "DelOff" a few hundred lines up)
+                    // to revert automatically once this TT ends, whether that's the natural 5-min expiry
+                    // or the early HiBrkCut branch above cancelling it -- no separate revert logic needed
+                    // here. Doubles whatever the ratio currently IS (not the configured baseline), since
+                    // another boost could already be active; clamped to the ratio's own configured max.
+                    val preBoostDeliveryRatio = smb_delivery_ratio
+                    val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
+                    setSmbDeliveryRatio(boostedDeliveryRatio)
                     startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                    sendSms("HighEveNightBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    sendSms("HighEveNightBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                     addCarePortalNote("HiBrk")
                     markRun("HighEveNightBrake")
                 } else {
@@ -5597,8 +5616,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 if (iobChange5 < 0.5) {
+                    // Same 2x-current-SMB-delivery addition as HighEveNightBrake above, added 2026-08-29 --
+                    // see that block's own doc comment for the full reasoning (relies on the existing
+                    // global "DelOff" no-active-TT reset to revert once this TT ends, early or on time).
+                    val preBoostDeliveryRatio = smb_delivery_ratio
+                    val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
+                    setSmbDeliveryRatio(boostedDeliveryRatio)
                     startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                    sendSms("HighDaytimeBrake: TT 4.0mmol@5min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    sendSms("HighDaytimeBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                     addCarePortalNote("HiBrkDay")
                     markRun("HighDaytimeBrake")
                 } else {

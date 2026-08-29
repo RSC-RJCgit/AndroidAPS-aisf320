@@ -1307,7 +1307,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // entries below (which must stay last, see graphToggleEntries' own comment).
     private val list2SteppedEntries = listOf(
         TtCode.Stepped(
-            "Boost scale (boost_scale)", 5.182, 5.184, "-0.1", "+0.1",
+            "Boost scale (boost_scale)", 5.182, 5.184, "-0.25", "+0.25",
             currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale))}" }
         ),
         TtCode.Stepped(
@@ -2086,7 +2086,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         ),
         TtCode.Stepped("Wizard bolus %", 5.046, 5.048, "-5%", "+5%", currentValue = { "Current: ${preferences.get(IntKey.OverviewBolusPercentage)}%" }),
         // MildBoostDownTT/UpTT nudges ApsAutoIsfMildBoostRatio ALONE (unlike SMBdel base + mild-Bst above, which nudges it together with the baseline).
-        TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}" }),
+        TtCode.Stepped("MildBst ratio", 5.052, 5.054, "-0.25", "+0.25", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}" }),
         TtCode.Stepped("pp ISF Wt (High)", 5.056, 5.058, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))}" }),
         TtCode.Stepped("acce ISF Wt (High)", 5.062, 5.064, "-0.01", "+0.01", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))}" }),
         TtCode.Stepped("higher ISF range Wt", 5.068, 5.070, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight))}" }),

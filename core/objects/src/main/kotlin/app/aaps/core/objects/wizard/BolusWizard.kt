@@ -446,16 +446,61 @@ class BolusWizard @Inject constructor(
         return parts.joinToString(" and ") + " split, less IOB rise"
     }
 
+    // Added 2026-08-29, per explicit request: an UNCONDITIONAL calc-info line, appended to every note
+    // regardless of whether anything unusual is happening -- matches the calculator GUI's own
+    // always-visible checkboxes/limits, rather than only speaking up when a limit/feature actually
+    // engages (see splitProjectionNote() above for the richer, still-conditional detail on an ACTUAL
+    // split/protein/fat schedule -- this line's own "Split" field is a plain yes/no summary, not a
+    // replacement for that richer detail, and both can appear together).
+    //
+    // Delayed-bolus status here is a PREVIEW, using the identical trigger logic re-derived in
+    // commonProcessing()'s own success callback (delayedProfilePct/recent50Triggered there) -- computed
+    // independently because the real determination only happens after an async pump-delivery success
+    // callback, well after this note is already built and saved. The two can only diverge if
+    // profile%/automation state/BG changes in the brief gap between record creation and pump
+    // confirmation; the later, real determination is what actually governs behaviour regardless of what
+    // this preview says.
+    private fun alwaysShownCalcInfoNote(): String {
+        val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
+        val superBolusActive = loop.runningMode == RM.Mode.SUPER_BOLUS
+        val splitPending = !splitBolusScheduled && !superBolusActive && manualSplitBolusEnabled &&
+            activeProfileSwitchPct() >= 100 && calculatedTotalInsulin > maxBolusAllowed &&
+            ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1
+        val delayedProfilePctPreview = activeProfileSwitchPct()
+        val recent50TriggeredPreview = delayedProfilePctPreview != 50 &&
+            (automationStateService.inState("LowBG", "50recent") ||
+                (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0))
+        val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
+            preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
+            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoon)
+        val delayedLabel = if (!delayedWillFire) {
+            "none"
+        } else {
+            // fullRequired mirrors DelayedBolusWorker's own formula exactly (see the real
+            // determination in commonProcessing()'s success callback) -- on the profile-50% path IC
+            // itself is already halved by the profile switch, so normal IC = 2x ic; on the other two
+            // paths ic was never touched. Schedule (10min x 8 attempts, up to 80min) is
+            // DelayedBolusWorker's own fixed poll -- see its companion object.
+            val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else "walkingSoon"
+            val normalIc = if (delayedProfilePctPreview == 50) ic / 2.0 else ic
+            val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+            "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 10min up to 80min)"
+        }
+        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U, Exercise ${if (walkingSoon) "ON" else "off"}, " +
+            "Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel"
+    }
+
     fun createBolusCalculatorResult(): BCR {
         val unit = profileFunction.getUnits()
         val splitNote = splitProjectionNote()
+        val alwaysNote = alwaysShownCalcInfoNote()
         val hpSafetyNote = if (hpSafetyApplied) {
             "HP safety ${decimalFormatter.to2Decimal(hpSafetyOriginalDose)}U -> " +
                 "${decimalFormatter.to2Decimal(hpSafetyAdjustedDose)}U " +
                 "(projected HP ${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
                 "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U)"
         } else ""
-        val combinedNote = listOf(notes, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
+        val combinedNote = listOf(notes, alwaysNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
