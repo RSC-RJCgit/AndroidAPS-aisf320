@@ -3698,7 +3698,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         }
                         uiInteraction.addNotification(id = 9001, text = "GentleHypoRisk G5 [b$ghBlock]: g=${String.format("%.1f", g / 18.016)}mmol", level = Notification.URGENT)
                     }
-                    addGraphAnnouncement("________________G")
+                    addGraphAnnouncement("G")
                     addCarePortalNote("Gntl5")
                     markRun("GentleHypoRisk")
                     aapsLogger.debug(LTag.APS, "GentleHypoRisk block $ghBlock: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} acceW=$acceW UKFrawG=${ukfG?.let { String.format("%.1f", it / 18.016) }} UKFrawD1=${ukfD1?.let { String.format("%.2f", it / 18.016) }} UKFrawD5=${ukfD5?.let { String.format("%.2f", it / 18.016) }} HP2=${hp?.let { String.format("%.1f", it) }}")
