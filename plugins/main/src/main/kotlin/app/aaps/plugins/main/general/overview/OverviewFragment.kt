@@ -2484,6 +2484,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         profileNames[pos]
                     }
                     preferences.put(spec.key, value)
+                    // Mirror the Standard row into its own stable 100%-baseline anchor -- see
+                    // StringKey.ApsAutoIsfStandard100ProfileName's own doc comment for why this needs to
+                    // be a separate preference from ApsAutoIsfStandardProfileName itself (which
+                    // MorningRoleSwapHigh overwrites once it escalates).
+                    if (spec.key == StringKey.ApsAutoIsfStandardProfileName) {
+                        preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, value)
+                    }
                 }
                 preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 onDone()

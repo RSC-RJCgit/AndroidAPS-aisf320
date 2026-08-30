@@ -5731,7 +5731,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val normalMatch = hp != null && hp < 5.0 &&
                     !checkAutomationState("MJ", "NOMJremains") &&
                     allRecentBgInRange(8, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = 126.1 /* 7.0 mmol */)
-                val standardLadder = listOf(StringKey.ApsAutoIsfStandardProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
+                // Standard100 (the stable canonical anchor -- see its own doc comment in StringKey.kt),
+                // not the mutable ApsAutoIsfStandardProfileName, is the ladder's floor rung: the ladder
+                // itself needs a fixed identity for "rung 0" that doesn't move just because the active
+                // role has been escalated.
+                val standardLadder = listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
                 val lowLadder = listOf(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLow90ProfileName)
                 val stepUp = highMatch // false for normalMatch (stepping down); meaningless if neither matched
                 val newLow = when {
@@ -5746,7 +5750,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     highMatch || normalMatch -> {
                         val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
                         val newIndex = ladderStepIndex(currentIndex, standardLadder.size, stepUp)
-                        if (newIndex == -1) null else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandardProfileName)
+                        if (newIndex == -1) null else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
                     }
                     else -> null
                 }
@@ -5762,6 +5766,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("MorningRoleSwap $tag: Low=$newLow Standard=$newStandard (HP=${round(hp!!, 1)})")
                     addCarePortalNote(tag)
                     markRun("MorningRoleSwap")
+                }
+            }
+        }
+
+        // --- AlarmHypoRoleRevert: added 2026-08-30 at explicit request. A hypo alarm (AlarmHypo1/2, shared
+        // "AlarmHypo"="AlarmRecent" state) happening WHILE the MJ cycle is still active (state != NOMJremains)
+        // is a worse combination than either alone -- any Standard/Low escalation MorningRoleSwapHigh put in
+        // place should be undone immediately, not wait for the next 03:00-07:00/240min cycle. Unlike
+        // MorningRoleSwapNormal's one-rung-at-a-time step, this is a hard reset straight to the mildest
+        // known tier on each ladder (Low70, Standard100) -- a hypo alarm during an active MJ cycle warrants
+        // full de-escalation, not a gradual one. No time-of-day restriction and no Steroids gate, unlike
+        // MorningRoleSwap -- a hypo is a hypo regardless of time or steroid state. Only acts (and only
+        // throttles/notifies) when a role is actually not already at its target, so this doesn't spam a
+        // note every cycle while the alarm state persists.
+        run {
+            if (checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")) {
+                val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
+                val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+                val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                if ((currentLow != targetLow || currentStandard != targetStandard) && readyToRun("AlarmHypoRoleRevert", 30)) {
+                    val currentProfileName = profileFunction.getProfileName()
+                    preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
+                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
+                    if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
+                    else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
+                    sendSms("AlarmHypoRoleRevert: Low=$targetLow Standard=$targetStandard (hypo alarm during active MJ)")
+                    addCarePortalNote("HypoRevert")
+                    markRun("AlarmHypoRoleRevert")
                 }
             }
         }

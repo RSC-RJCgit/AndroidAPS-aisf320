@@ -70,18 +70,31 @@ enum class StringKey(
     PumpCommonBolusStorage("pump_sync_storage_bolus", ""),
     PumpCommonTbrStorage("pump_sync_storage_tbr", ""),
 
-    // Coded-profile indirection: OpenAPSAutoISFPlugin.kt's ~36 switchProfileIfNeeded("Current Profile"/
-    // "Current ProfileReal") call sites read these instead of the literal names, so any locally-named
-    // profile can fill either role. Defaults match the original hardcoded literals, so nothing changes
-    // until you actively repick via the on-update profile-selection popup (or here directly).
-    ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", "Current ProfileReal"),
-    ApsAutoIsfLowProfileName("autoisf_low_profile_name", "Current Profile"),
+    // Coded-profile indirection: OpenAPSAutoISFPlugin.kt's ~36 switchProfileIfNeeded() call sites read
+    // these instead of any literal profile name, so any locally-named profile can fill either role.
+    // Defaults blanked 2026-08-30 at explicit request (removing the old "Current Profile"/"Current
+    // ProfileReal" literal defaults, since real installs have long since actively re-picked real names
+    // via the profile-selection popup and the literal default text was stale/misleading) -- an unpicked
+    // install now shows the popup's normal "nothing selected yet" fallback rather than a name that may
+    // not even exist as a real profile.
+    ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", ""),
+    ApsAutoIsfLowProfileName("autoisf_low_profile_name", ""),
     // Added 2026-08-30 at explicit request: finer-grained tiers WITHIN the Standard/Low roles above, for
     // automations (e.g. MorningRoleSwapHigh/Normal) that want a specific percentage variant rather than
     // just "the" Standard or Low profile. Empty by default -- per explicit request, an unconfigured tier
     // silently falls back to its own base role's profile (see resolveTieredProfileName()) until you
-    // actually re-pick a distinct profile for it (extended "Re-pick coded profiles" popup). No "Standard100"
-    // entry: bare ApsAutoIsfStandardProfileName above already serves as that 100% tier.
+    // actually re-pick a distinct profile for it (extended "Re-pick coded profiles" popup).
+    //
+    // ApsAutoIsfStandard100ProfileName (added same day, second pass): a STABLE anchor for the true 100%
+    // baseline, deliberately SEPARATE from the mutable ApsAutoIsfStandardProfileName above.
+    // ApsAutoIsfStandardProfileName is the live "currently active role" preference -- MorningRoleSwapHigh
+    // overwrites it directly when it escalates to Standard110, which means it can no longer answer "what
+    // was the real 100% profile" once that's happened. This anchor is written ONLY by
+    // showProfileNamesPopup() (mirrored alongside the Standard row there), never by any automation, so it
+    // always still holds the user's actual chosen 100% profile regardless of what the active role has
+    // since been escalated to. Standard105/110's own fallback, and the Standard ladder's floor rung, both
+    // read this instead of the mutable role.
+    ApsAutoIsfStandard100ProfileName("autoisf_standard100_profile_name", ""),
     ApsAutoIsfStandard105ProfileName("autoisf_standard105_profile_name", ""),
     ApsAutoIsfStandard110ProfileName("autoisf_standard110_profile_name", ""),
     ApsAutoIsfLow70ProfileName("autoisf_low70_profile_name", ""),
@@ -97,8 +110,9 @@ enum class StringKey(
     // literal in the steroid escalation block (OpenAPSAutoISFPlugin.kt) now reads one of these instead.
     // Defaults originally matched the original hardcoded literals exactly, so nothing changed until
     // actively re-picked via showProfileNamesPopup().
-    // "100" = steroids off/baseline, same role STEROID_TURN_OFF already targeted.
-    ApsAutoIsfSteroid100ProfileName("autoisf_steroid_100_profile_name", "Current ProfileReal"),
+    // "100" = steroids off/baseline, same role STEROID_TURN_OFF already targeted. Default blanked
+    // 2026-08-30 alongside Standard/Low above (was "Current ProfileReal").
+    ApsAutoIsfSteroid100ProfileName("autoisf_steroid_100_profile_name", ""),
     ApsAutoIsfSteroid110ProfileName("autoisf_steroid_110_profile_name", "Steroid Profile110"),
     ApsAutoIsfSteroid130ProfileName("autoisf_steroid_130_profile_name", "Steroid Profile130"),
     ApsAutoIsfSteroid150ProfileName("autoisf_steroid_150_profile_name", "Steroid Profile150"),
