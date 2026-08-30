@@ -2034,8 +2034,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // Switched 2026-08-30 at explicit request from the pure raw/noise channel (rawDelta5MinMgdl/
+            // rawDelta1MinMgdl -- still used elsewhere, e.g. bg3's own mirror check) to ukfRawMetrics(),
+            // the same Kalman-filtered raw-channel helper HP2 (hypoPrediction2Mmol) already relies on
+            // throughout this file's real, non-Virtual-gated automations. One call, both values, rather
+            // than two independent raw queries. Note: this closes nothing against a SUSTAINED multi-minute
+            // sensor artifact -- no smoothing algorithm can tell a held artifact from a held real trend,
+            // whether raw, EMA, or Kalman -- it only helps against brief single-sample noise, same
+            // category of protection the two-point raw delta already gave, just filtered first.
+            val ukfRawForMild = ukfRawMetrics()
+            val rawDelta5 = ukfRawForMild.delta5 ?: -9999.0
+            val rawDelta1 = ukfRawForMild.delta1 ?: -9999.0
             // While SMBs are stacking (avg gap <=70s), shift the whole band up 10% (x1.10) rather than
             // blocking. The upper cap scales too, so mild and bg3 stay complementary at 14.4*stackK.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0

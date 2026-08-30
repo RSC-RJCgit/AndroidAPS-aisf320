@@ -52,6 +52,14 @@ class PrepareTreatmentsDataWorker(
         val overviewData: OverviewData
     )
 
+    companion object {
+
+        // Routine periodic export-status "success" note tags, hidden from graph4 -- see this file's own
+        // forEach comment above for why. Matches AutoIsfHistoryExporter.addExportCarePortalNote()'s exact
+        // literal tag strings (that function's own require() enumerates the full set this is a subset of).
+        private val EXPORT_STATUS_NOTES_HIDDEN_ON_GRAPH4 = setOf("ACEs", "AVLs", "AVCs")
+    }
+
     override suspend fun doWorkAndLog(): Result {
 
         val data = dataWorkerStorage.pickupObject(inputData.getLong(DataWorkerStorage.STORE_KEY, -1)) as PrepareTreatmentsData?
@@ -181,7 +189,16 @@ class PrepareTreatmentsDataWorker(
             .filterTimeframe(fromTime, endTime)
             .forEach {
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
-                if (it.data.type == TE.Type.NOTE) filteredNotes.add(it) else filteredTherapyEvents.add(it)
+                if (it.data.type == TE.Type.NOTE) {
+                    // Excludes the routine periodic export-status "success" notes (added 2026-08-30 at
+                    // explicit request) -- see AutoIsfHistoryExporter.addExportCarePortalNote()'s own doc
+                    // comment for the full tag set. These fire automatically every ~6h regardless of
+                    // anything dosing-relevant happening, and would otherwise clutter graph4 with the same
+                    // repeating bookkeeping note every cycle. Their failure counterparts (AVLf/AVCf/ACEf)
+                    // and the UKFcheck diagnostic tags (UKCs/UKCf/UKCn) are deliberately left visible -- a
+                    // failure is worth seeing, unlike routine success.
+                    if (it.data.note !in EXPORT_STATUS_NOTES_HIDDEN_ON_GRAPH4) filteredNotes.add(it)
+                } else filteredTherapyEvents.add(it)
             }
 
         // increase maxY if a treatment forces it's own height that's higher than a BG value
