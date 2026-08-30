@@ -625,6 +625,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return tiered.ifEmpty { preferences.get(baseRoleKey) }
     }
 
+    // Added 2026-08-30 for MorningRoleSwapHigh/Normal's stepped ladder -- see that block's own doc
+    // comment for the full spec. Returns the 0-based rung index (0 = mildest) whose CONFIGURED (non-blank)
+    // preference value equals currentProfileName, or -1 if it matches none of them. Deliberately checks
+    // each rung's raw configured value, not its resolved-with-fallback value -- several rungs can share
+    // the same fallback (their base role's current profile) while unconfigured, which would make them
+    // spuriously all "match" if compared post-fallback.
+    private fun ladderIndexOf(currentProfileName: String, rungsAscending: List<StringKey>): Int {
+        rungsAscending.forEachIndexed { index, key ->
+            val configured = preferences.get(key).trim()
+            if (configured.isNotEmpty() && configured == currentProfileName) return index
+        }
+        return -1
+    }
+
+    // Added 2026-08-30 for MorningRoleSwapHigh/Normal. currentIndex is ladderIndexOf()'s result (-1 if
+    // off-ladder). stepUp=true steps toward the ceiling (High), false toward the floor (Normal). Per
+    // explicit spec: off-ladder + stepUp enters at the floor (rung 0); off-ladder + !stepUp returns -1
+    // (caller treats this as "leave that role untouched" -- nothing to de-escalate from an unrecognized
+    // position). On-ladder movement is clamped to [0, size-1], so already-at-the-floor + !stepUp or
+    // already-at-the-ceiling + stepUp is a no-op (returns the same index).
+    private fun ladderStepIndex(currentIndex: Int, ladderSize: Int, stepUp: Boolean): Int {
+        if (currentIndex == -1) return if (stepUp) 0 else -1
+        return (currentIndex + if (stepUp) 1 else -1).coerceIn(0, ladderSize - 1)
+    }
+
     // Added 2026-08-23. Classifies the CURRENTLY RUNNING profile against all eight coded roles (Standard/
     // Low plus the six Steroid tiers) in one place, with explicit defaults for a profile that matches
     // none of them -- e.g. a profile picked manually that was never assigned to any role, or one of these
@@ -5671,22 +5696,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- MorningRoleSwapHigh / MorningRoleSwapNormal: added 2026-08-30 at explicit request. Both
-        // re-pick which real profile fills the Standard/Low roles (StringKey.ApsAutoIsfStandardProfileName/
-        // ApsAutoIsfLowProfileName -- the same preferences List1's own "Re-pick coded profiles" action
-        // writes), restricted to 03:00-07:00. Per explicit request: switches the ACTIVE running profile
-        // immediately too if it currently matches whichever role just got repointed (matching how the
-        // manual re-pick action behaves); the new role assignment itself is a standing change, NOT reverted
-        // at 07:00 -- stays in effect until something else re-picks it. Own readyToRun/markRun throttle
-        // (240 min) per explicit request, shared between the two since they can never both match at once
-        // (High requires MJ==NOMJremains, Normal requires MJ!=NOMJremains -- mutually exclusive).
+        // --- MorningRoleSwapHigh / MorningRoleSwapNormal: added 2026-08-30 at explicit request, converted
+        // to a STEPPED ladder the same day per explicit follow-up spec. Both re-pick which real profile
+        // fills the Standard/Low roles (StringKey.ApsAutoIsfStandardProfileName/ApsAutoIsfLowProfileName --
+        // the same preferences List1's own "Re-pick coded profiles" action writes), restricted to
+        // 03:00-07:00. Per explicit request: switches the ACTIVE running profile immediately too if it
+        // currently matches whichever role just got repointed (matching how the manual re-pick action
+        // behaves); the new role assignment itself is a standing change, NOT reverted at 07:00 -- stays in
+        // effect until something else re-picks it. Own readyToRun/markRun throttle (240 min) -- combined
+        // with the 4-hour 03:00-07:00 window, this means at most ONE step per morning, not a same-morning
+        // multi-step escalation.
         //
-        // Targets resolved via resolveTieredProfileName() (added 2026-08-30 alongside the new
-        // Standard105/110, Low70/80/90 tier preferences) rather than hardcoded literal profile names --
-        // each tier silently falls back to its own base role's CURRENT profile until you explicitly
-        // re-pick a distinct one for it. Until you do that re-pick, High/Normal firing is a no-op
-        // (reassigns the role to whatever it already points to) -- this is the intended, safe default,
-        // not a bug.
+        // Ladders (mildest -> most escalated), spec'd 2026-08-30:
+        //   Standard: [base Standard, Standard105, Standard110] -- base IS the ladder's own floor.
+        //   Low:      [Low70, Low80, Low90] -- base "Low" is deliberately OUTSIDE this ladder entirely
+        //             (it's "the original Low selected", not a tier), so it's never a step target.
+        // High steps UP one rung, Normal steps DOWN one rung, independently per role. Already-at-the-
+        // floor + Normal, or already-at-the-ceiling + High, is a no-op (re-writes the same value). Current
+        // position "off ladder" (matches none of a role's known tier profiles -- e.g. Low still on base
+        // "Low", or Standard on some unrelated manually-picked profile): High enters at the ladder's floor
+        // (rung 0); Normal leaves that role untouched entirely (nothing to de-escalate from an unknown
+        // position -- see ladderStepIndex()'s own doc comment).
+        //
+        // Each rung is resolved via resolveTieredProfileName() (added 2026-08-30 alongside the
+        // Standard105/110, Low70/80/90 tier preferences) -- a rung silently falls back to its own base
+        // role's CURRENT profile until you explicitly re-pick a distinct one for it via the extended
+        // "Select coded profiles" popup, so stepping through unconfigured rungs stays a safe no-op.
         run {
             if (isTimeBetween(3, 0, 7, 0) && checkAutomationState("Steroids", "Steroids Off") && readyToRun("MorningRoleSwap", 240)) {
                 val hp = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
@@ -5696,15 +5731,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val normalMatch = hp != null && hp < 5.0 &&
                     !checkAutomationState("MJ", "NOMJremains") &&
                     allRecentBgInRange(8, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = 126.1 /* 7.0 mmol */)
+                val standardLadder = listOf(StringKey.ApsAutoIsfStandardProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
+                val lowLadder = listOf(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLow90ProfileName)
+                val stepUp = highMatch // false for normalMatch (stepping down); meaningless if neither matched
                 val newLow = when {
-                    highMatch   -> resolveTieredProfileName(StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLowProfileName)
-                    normalMatch -> resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
-                    else        -> null
+                    highMatch || normalMatch -> {
+                        val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfLowProfileName), lowLadder)
+                        val newIndex = ladderStepIndex(currentIndex, lowLadder.size, stepUp)
+                        if (newIndex == -1) null else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName)
+                    }
+                    else -> null
                 }
                 val newStandard = when {
-                    highMatch   -> resolveTieredProfileName(StringKey.ApsAutoIsfStandard110ProfileName, StringKey.ApsAutoIsfStandardProfileName)
-                    normalMatch -> preferences.get(StringKey.ApsAutoIsfStandardProfileName)   // "Standard" tier == the base role itself, no separate Standard100 key
-                    else        -> null
+                    highMatch || normalMatch -> {
+                        val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
+                        val newIndex = ladderStepIndex(currentIndex, standardLadder.size, stepUp)
+                        if (newIndex == -1) null else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandardProfileName)
+                    }
+                    else -> null
                 }
                 if (newLow != null && newStandard != null) {
                     val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
