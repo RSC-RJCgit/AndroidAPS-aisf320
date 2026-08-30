@@ -614,6 +614,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Added 2026-08-30: resolves a fine-grained tier (e.g. Standard110, Low80) down to a real profile
+    // name, falling back to its base role (baseRoleKey -- ApsAutoIsfStandardProfileName or
+    // ApsAutoIsfLowProfileName) whenever the tier itself hasn't been explicitly re-picked yet (blank by
+    // default -- see each tier StringKey's own doc comment). This is what lets MorningRoleSwapHigh/Normal
+    // stay a safe no-op (reassigning a role to whatever it already points to) until you actually go and
+    // assign a distinct profile to a tier.
+    private fun resolveTieredProfileName(tierKey: StringKey, baseRoleKey: StringKey): String {
+        val tiered = preferences.get(tierKey).trim()
+        return tiered.ifEmpty { preferences.get(baseRoleKey) }
+    }
+
     // Added 2026-08-23. Classifies the CURRENTLY RUNNING profile against all eight coded roles (Standard/
     // Low plus the six Steroid tiers) in one place, with explicit defaults for a profile that matches
     // none of them -- e.g. a profile picked manually that was never assigned to any role, or one of these
@@ -5669,6 +5680,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // at 07:00 -- stays in effect until something else re-picks it. Own readyToRun/markRun throttle
         // (240 min) per explicit request, shared between the two since they can never both match at once
         // (High requires MJ==NOMJremains, Normal requires MJ!=NOMJremains -- mutually exclusive).
+        //
+        // Targets resolved via resolveTieredProfileName() (added 2026-08-30 alongside the new
+        // Standard105/110, Low70/80/90 tier preferences) rather than hardcoded literal profile names --
+        // each tier silently falls back to its own base role's CURRENT profile until you explicitly
+        // re-pick a distinct one for it. Until you do that re-pick, High/Normal firing is a no-op
+        // (reassigns the role to whatever it already points to) -- this is the intended, safe default,
+        // not a bug.
         run {
             if (isTimeBetween(3, 0, 7, 0) && checkAutomationState("Steroids", "Steroids Off") && readyToRun("MorningRoleSwap", 240)) {
                 val hp = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
@@ -5678,8 +5696,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val normalMatch = hp != null && hp < 5.0 &&
                     !checkAutomationState("MJ", "NOMJremains") &&
                     allRecentBgInRange(8, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = 126.1 /* 7.0 mmol */)
-                val newLow = when { highMatch -> "Current Profile80a"; normalMatch -> "Current Profile70"; else -> null }
-                val newStandard = when { highMatch -> "Current Profile110Real"; normalMatch -> "Current Profile100"; else -> null }
+                val newLow = when {
+                    highMatch   -> resolveTieredProfileName(StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLowProfileName)
+                    normalMatch -> resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
+                    else        -> null
+                }
+                val newStandard = when {
+                    highMatch   -> resolveTieredProfileName(StringKey.ApsAutoIsfStandard110ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+                    normalMatch -> preferences.get(StringKey.ApsAutoIsfStandardProfileName)   // "Standard" tier == the base role itself, no separate Standard100 key
+                    else        -> null
+                }
                 if (newLow != null && newStandard != null) {
                     val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                     val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)

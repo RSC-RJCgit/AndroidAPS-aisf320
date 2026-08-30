@@ -2401,7 +2401,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     //
     // Grown from 2 spinners to 8 the same day the Steroid roles were added -- generalized into a
     // data-driven loop (roleSpecs) rather than duplicating the label+spinner+apply block six more times.
-    private data class ProfileRoleSpec(val label: String, val key: StringKey)
+    // optional=true (added 2026-08-30, the five new tier rows below): the dropdown gets a leading "(not
+    // set...)" sentinel and picking it writes "" back to the preference, rather than forcing a real
+    // profile choice the way the original 8 roles always have -- these tiers are meant to stay
+    // unconfigured (silently falling back to their base Standard/Low role, see
+    // resolveTieredProfileName()) until you deliberately want a distinct profile for one.
+    private data class ProfileRoleSpec(val label: String, val key: StringKey, val optional: Boolean = false)
 
     private fun showProfileNamesPopup(act: androidx.fragment.app.FragmentActivity, onDone: () -> Unit) {
         val profileNames = activePlugin.activeProfileSource.profile?.getProfileList()?.map { it.toString() } ?: emptyList()
@@ -2419,19 +2424,29 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             ProfileRoleSpec("Steroid 130%:", StringKey.ApsAutoIsfSteroid130ProfileName),
             ProfileRoleSpec("Steroid 150%:", StringKey.ApsAutoIsfSteroid150ProfileName),
             ProfileRoleSpec("Steroid 190%:", StringKey.ApsAutoIsfSteroid190ProfileName),
-            ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName)
+            ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName),
+            // Fine-grained tiers within the Standard/Low roles above (added 2026-08-30) -- see
+            // resolveTieredProfileName()'s own doc comment for the fallback behavior these enable.
+            ProfileRoleSpec("Standard 105% tier (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
+            ProfileRoleSpec("Standard 110% tier (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
+            ProfileRoleSpec("Low 70% tier (optional):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
+            ProfileRoleSpec("Low 80% tier (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
+            ProfileRoleSpec("Low 90% tier (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
         )
+        val notSetSentinel = "(not set -- falls back to Standard/Low)"
 
-        fun spinnerFor(current: String): Spinner {
+        fun spinnerFor(current: String, optional: Boolean): Spinner {
             val spinner = Spinner(act)
-            val adapter = ArrayAdapter(act, android.R.layout.simple_spinner_item, profileNames)
+            val choices = if (optional) listOf(notSetSentinel) + profileNames else profileNames
+            val adapter = ArrayAdapter(act, android.R.layout.simple_spinner_item, choices)
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinner.adapter = adapter
-            spinner.setSelection(profileNames.indexOf(current).let { if (it >= 0) it else 0 })
+            val selectedIndex = if (optional && current.isBlank()) 0 else choices.indexOf(current).let { if (it >= 0) it else 0 }
+            spinner.setSelection(selectedIndex)
             return spinner
         }
 
-        val spinners = roleSpecs.map { spec -> spinnerFor(preferences.get(spec.key)) }
+        val spinners = roleSpecs.map { spec -> spinnerFor(preferences.get(spec.key), spec.optional) }
         val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
@@ -2462,7 +2477,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             .setCancelable(false)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 roleSpecs.forEachIndexed { i, spec ->
-                    preferences.put(spec.key, profileNames[spinners[i].selectedItemPosition])
+                    val pos = spinners[i].selectedItemPosition
+                    val value = if (spec.optional) {
+                        if (pos == 0) "" else profileNames[pos - 1]
+                    } else {
+                        profileNames[pos]
+                    }
+                    preferences.put(spec.key, value)
                 }
                 preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 onDone()

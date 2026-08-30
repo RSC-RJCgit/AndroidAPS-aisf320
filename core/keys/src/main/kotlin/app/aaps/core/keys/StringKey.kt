@@ -76,6 +76,17 @@ enum class StringKey(
     // until you actively repick via the on-update profile-selection popup (or here directly).
     ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", "Current ProfileReal"),
     ApsAutoIsfLowProfileName("autoisf_low_profile_name", "Current Profile"),
+    // Added 2026-08-30 at explicit request: finer-grained tiers WITHIN the Standard/Low roles above, for
+    // automations (e.g. MorningRoleSwapHigh/Normal) that want a specific percentage variant rather than
+    // just "the" Standard or Low profile. Empty by default -- per explicit request, an unconfigured tier
+    // silently falls back to its own base role's profile (see resolveTieredProfileName()) until you
+    // actually re-pick a distinct profile for it (extended "Re-pick coded profiles" popup). No "Standard100"
+    // entry: bare ApsAutoIsfStandardProfileName above already serves as that 100% tier.
+    ApsAutoIsfStandard105ProfileName("autoisf_standard105_profile_name", ""),
+    ApsAutoIsfStandard110ProfileName("autoisf_standard110_profile_name", ""),
+    ApsAutoIsfLow70ProfileName("autoisf_low70_profile_name", ""),
+    ApsAutoIsfLow80ProfileName("autoisf_low80_profile_name", ""),
+    ApsAutoIsfLow90ProfileName("autoisf_low90_profile_name", ""),
     // Added 2026-08-27: Battery1pc/BatteryOver1pc (OpenAPSAutoISFPlugin.kt) previously hardcoded the
     // literal string "Current Profile50" for the low-battery safety-profile switch -- the one coded
     // profile role with no configurability or setup validation at all, unlike Standard/Low above.
