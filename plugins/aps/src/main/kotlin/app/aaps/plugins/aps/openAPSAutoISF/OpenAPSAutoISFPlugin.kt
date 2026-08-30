@@ -2101,11 +2101,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
             // cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            // High-BGL exception to the standard 120-min post-bolus/carb quiet window, added 2026-08-30
+            // after real data showed BMild/Tier3 (this fn is Tier 3's sole entry trigger too) going
+            // silent for ~2 hours during a genuine 12+mmol plateau because a bolus/carb entry around
+            // 5pm reset this gate right as the high was worsening -- with bg3 also locked out above its
+            // own former ceiling (see BolusGiven's bg3 val, fixed same day), nothing was left to help.
+            // Only SHORTENS the window (to 30min, not 0) -- still requires some clearance from the
+            // entry, not none -- and only once BG is unambiguously high on its own terms, not near any
+            // normal post-meal/correction range. The d/rawDelta5/rawDelta1 rise-confirmation gates below
+            // are unchanged, so this doesn't turn a stale or flat-but-high plateau into a fresh fire --
+            // it only removes the timing veto once BG is high AND those gates independently confirm the
+            // rise is real. 198.2 (11.0mmol)/30min are first-cut numbers, not yet device-verified.
+            val recentEntryGateMin = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
             // Window extended to 02:00 (was end of day/midnight) at explicit request 2026-08-29.
             // isTimeBetween handles the overnight wraparound itself (startMins > endMins), so this
             // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
             return isTimeBetween(8, 30, 2, 0)
-                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && lastBolusMin >= recentEntryGateMin && lastCarbMin >= recentEntryGateMin
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
@@ -4402,11 +4414,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // this window. Deliberately NOT extended into the 00:00-06:00 overnight guard territory
             // (NightIobCeiling, MJrec, etc.) -- see isTimeBetween()'s own doc comment for why endH=0/
             // endM=0 here means "runs to end of day," not "wraps past midnight."
+            // Same high-BGL exception as bmildBasicCriteriaMet()'s recentEntryGateMin, extended here
+            // 2026-08-30 (same day, at explicit request) to close a gap the ceiling removal above left
+            // open on its own: removing bg3's BG ceiling doesn't help during THIS episode's exact
+            // pattern if a bolus/carb entry also independently blocks bg3 on lastBolusMin/lastCarbMin
+            // for the same 2 hours -- see that val's own doc comment for the full reasoning.
+            val recentEntryGateMinBg3 = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
             val bg3 = isTimeBetween(8, 30, 0, 0)
-                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && lastBolusMin >= recentEntryGateMinBg3 && lastCarbMin >= recentEntryGateMinBg3
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
-                && g <= 171.2 /* 9.5 mmol: no strong (bg3) boost above this */
+                // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
+                // sustained 12+mmol plateau where bg3 was the only mechanism strict enough (confirmed
+                // active rise via d/rawDelta5/longAvgDelta, not just "is it high") to have helped, but
+                // structurally couldn't fire at all above the old ceiling -- BMild/Tier3 need an active
+                // rise too and had gone silent, and HighEveNightBrake/HighDaytimeBrake are for a flat
+                // plateau, not one still moving. bg1/bg2 above have no analogous ceiling (bg2 only has
+                // a FLOOR, g >= 180.2), so this brought bg3 in line with them. Safety isn't reopened by
+                // removing it: bg3's own rise-confirmation gates (d, rawDelta5/rawDelta1, longAvgDelta,
+                // iobChange5-or-deliverySuppressed) are unchanged and are what actually gate this, not
+                // an arbitrary BG level -- a strong, well-confirmed rise doesn't deserve LESS boost just
+                // because BG already got away. First cut, watch next real high-BG episode to confirm.
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName)                  // not on the MJ/night profile
                 && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses (BS.Type.NORMAL),
@@ -4580,11 +4608,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
+            val recentEntryGateMinBg3 = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
             val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 0, 0)
-                && lastBolusMin >= 120 && lastCarbMin >= 120
+                && lastBolusMin >= recentEntryGateMinBg3 && lastCarbMin >= recentEntryGateMinBg3
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
-                && g <= 171.2 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
+                // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
+                && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenMild", 10) && movementOk
                 && recentSteps60Minutes < 300 && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
@@ -5593,9 +5623,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (myTtActive) {
                 // Continuous monitoring while the TT is live: cut it short the moment either signal
                 // says the situation has stopped looking like the plateaued high this was meant for.
+                //
+                // iobChange5's cut-short bar is DOUBLED to 1.0U (from the pre-fire 0.5U gate below)
+                // while our own TT/boost is active. Fixed 2026-08-30 after real data showed this brake
+                // cancelling itself within the same or next cycle it fired (HiBrkDay immediately
+                // followed by HiBrkDayCut on the daytime sibling): the 0.5U bar was calibrated against
+                // ORDINARY, un-boosted delivery -- once this block doubles smb_delivery_ratio for the
+                // window, the resulting IOB rise is the intended effect, not evidence of a runaway
+                // burst layered on top of it. Comparing the boosted period against the un-boosted
+                // threshold meant every successful boost tripped its own abort almost immediately.
+                // resumedRise stays unchanged -- it reads glucose delta, not IOB, so it isn't
+                // contaminated by our own delivery and still correctly catches "this stopped being a
+                // plateau."
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
-                if (iobChange5 >= 0.5 || resumedRise) {
+                if (iobChange5 >= 1.0 || resumedRise) {
                     cancelCurrentTempTarget()
                     sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
                     addCarePortalNote("HiBrkCut")
@@ -5658,9 +5700,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val myTtActive = activeTtMgdl()?.let { it < 77.5 /* 4.3 mmol */ } == true
 
             if (myTtActive) {
+                // Cut-short bar doubled to 1.0U while our own boost is active -- see
+                // HighEveNightBrake's own doc comment above (fixed 2026-08-30) for the full reasoning;
+                // this is where the actual self-cancelling pattern was first spotted in real data.
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
-                if (iobChange5 >= 0.5 || resumedRise) {
+                if (iobChange5 >= 1.0 || resumedRise) {
                     cancelCurrentTempTarget()
                     sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
                     addCarePortalNote("HiBrkDayCut")
