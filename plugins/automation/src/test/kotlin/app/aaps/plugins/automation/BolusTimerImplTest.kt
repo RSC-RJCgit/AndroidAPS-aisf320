@@ -38,6 +38,8 @@ class BolusTimerImplTest : TestBase() {
     @Mock lateinit var profileFunction: ProfileFunction
     @Mock lateinit var timerUtil: TimerUtil
     @Mock lateinit var preferences: Preferences
+    @Mock lateinit var automationPresets: AutomationPresets
+    @Mock lateinit var codedLocationAutomations: CodedLocationAutomations
 
     private val injector = HasAndroidInjector {
         AndroidInjector {
@@ -57,7 +59,7 @@ class BolusTimerImplTest : TestBase() {
         dateUtil = DateUtilImpl(context)
         automationPlugin = AutomationPlugin(
             injector, aapsLogger, rh, preferences, context, fabricPrivacy, loop, rxBus, constraintChecker, aapsSchedulers, config, locationServiceHelper, dateUtil,
-            activePlugin, timerUtil
+            activePlugin, timerUtil, automationPresets, codedLocationAutomations
         )
     }
 

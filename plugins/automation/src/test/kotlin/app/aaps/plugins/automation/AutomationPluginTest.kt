@@ -4,6 +4,7 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.validators.preferences.AdaptiveListPreference
+import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.plugins.automation.services.LocationServiceHelper
 import app.aaps.plugins.automation.ui.TimerUtil
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -20,11 +21,15 @@ class AutomationPluginTest : TestBaseWithProfile() {
     @Mock lateinit var locationServiceHelper: LocationServiceHelper
     @Mock lateinit var timerUtil: TimerUtil
     @Mock lateinit var automationPresets: AutomationPresets
+    @Mock lateinit var codedLocationAutomations: CodedLocationAutomations
     private lateinit var automationPlugin: AutomationPlugin
 
     init {
         addInjector {
             if (it is AdaptiveListPreference) {
+                it.preferences = preferences
+            }
+            if (it is AdaptiveStringPreference) {
                 it.preferences = preferences
             }
         }
@@ -33,7 +38,7 @@ class AutomationPluginTest : TestBaseWithProfile() {
     @BeforeEach fun prepare() {
         automationPlugin = AutomationPlugin(
             injector, aapsLogger, rh, preferences, context, fabricPrivacy, loop, rxBus, constraintChecker,
-            aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil, automationPresets
+            aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil, automationPresets, codedLocationAutomations
         )
     }
 

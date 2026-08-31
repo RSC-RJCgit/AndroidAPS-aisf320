@@ -40,6 +40,8 @@ class CarbTimerImplTest : TestBase() {
     @Mock lateinit var activePlugin: ActivePlugin
     @Mock lateinit var profileFunction: ProfileFunction
     @Mock lateinit var preferences: Preferences
+    @Mock lateinit var automationPresets: AutomationPresets
+    @Mock lateinit var codedLocationAutomations: CodedLocationAutomations
 
     private val injector = HasAndroidInjector {
         AndroidInjector {
@@ -60,7 +62,8 @@ class CarbTimerImplTest : TestBase() {
         dateUtil = DateUtilImpl(context)
         timerUtil = TimerUtil(context)
         automationPlugin = AutomationPlugin(
-            injector, aapsLogger, rh, preferences, context, fabricPrivacy, loop, rxBus, constraintChecker, aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil
+            injector, aapsLogger, rh, preferences, context, fabricPrivacy, loop, rxBus, constraintChecker, aapsSchedulers, config, locationServiceHelper, dateUtil, activePlugin, timerUtil,
+            automationPresets, codedLocationAutomations
         )
     }
 

@@ -39,6 +39,7 @@ import app.aaps.core.utils.CodedAutomationNames
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import app.aaps.core.validators.preferences.AdaptiveListPreference
+import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
@@ -138,7 +139,8 @@ class AutomationPlugin @Inject constructor(
     private val dateUtil: DateUtil,
     private val activePlugin: ActivePlugin,
     private val timerUtil: TimerUtil,
-    private val automationPresets: AutomationPresets
+    private val automationPresets: AutomationPresets,
+    private val codedLocationAutomations: CodedLocationAutomations
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -203,6 +205,15 @@ class AutomationPlugin @Inject constructor(
                            }
                            if (e.isChanged(BooleanKey.AutomationFuzzyEquals.key))
                                Comparator.Compare.fuzzyEquals = preferences.get(BooleanKey.AutomationFuzzyEquals)
+                           if (e.isChanged(BooleanKey.AutomationCodedLocationsEnabled.key) ||
+                               listOf(
+                                   StringKey.AutomationLocationSmsNumbers,
+                                   StringKey.AutomationAirport1, StringKey.AutomationAirport2, StringKey.AutomationAirport3,
+                                   StringKey.AutomationAirport4, StringKey.AutomationAirport5,
+                                   StringKey.AutomationAddress1, StringKey.AutomationAddress2, StringKey.AutomationAddress3,
+                                   StringKey.AutomationAddress4, StringKey.AutomationAddress5
+                               ).any { e.isChanged(it.key) }
+                           ) codedLocationAutomations.reset()
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventAutomationDataChanged::class.java)
@@ -215,7 +226,10 @@ class AutomationPlugin @Inject constructor(
                            aapsLogger.debug(LTag.AUTOMATION, "Grabbed location: ${it.location.latitude} ${it.location.longitude} Provider: ${it.location.provider}")
                            // Serialize evaluation on the handler thread: concurrent processActions()
                            // passes can double-fire events before lastRun is updated
-                           handler?.post { processActions() }
+                           handler?.post {
+                               codedLocationAutomations.onLocation(it.location)
+                               processActions()
+                           }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventChargingState::class.java)
@@ -241,6 +255,7 @@ class AutomationPlugin @Inject constructor(
         handler?.looper?.quit()
         handler = null
         locationServiceHelper.stopService(context)
+        codedLocationAutomations.stop()
         super.onStop()
     }
 
@@ -809,6 +824,18 @@ class AutomationPlugin @Inject constructor(
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveListPreference(ctx = context, stringKey = StringKey.AutomationLocation, title = R.string.locationservice, entries = entries, entryValues = entryValues))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutomationFuzzyEquals, summary = R.string.automation_fuzzy_equals_summary, title = R.string.automation_fuzzy_equals_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutomationCodedLocationsEnabled, summary = R.string.coded_locations_enabled_summary, title = R.string.coded_locations_enabled_title))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationLocationSmsNumbers, dialogMessage = R.string.coded_location_numbers_summary, title = R.string.coded_location_numbers_title))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport1, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_1))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport2, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_2))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport3, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_3))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport4, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_4))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport5, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_5))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAddress1, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_address_1))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAddress2, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_address_2))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAddress3, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_address_3))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAddress4, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_address_4))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAddress5, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_address_5))
         }
     }
 }
