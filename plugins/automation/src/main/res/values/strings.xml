@@ -232,7 +232,7 @@
     <string name="profilecheck">Profile check</string>
     <string name="trigger_phone_battery_label">Phone battery level</string>
     <string name="coded_locations_enabled_title">Coded location arrival/exit messages</string>
-    <string name="coded_locations_enabled_summary">Enable the reviewed airport/address slots below. The first location fix seeds state without sending a message.</string>
+    <string name="coded_locations_enabled_summary">Enabled by default. On first installation, being inside a configured location sends its arrival SMS and CarePortal note. Persisted state prevents repeat arrivals after an ordinary restart.</string>
     <string name="coded_location_numbers_title">Extra location SMS recipients</string>
     <string name="coded_location_numbers_summary">Additional directed recipients, separated by semicolons. General SMS recipients are also notified.</string>
     <string name="coded_location_slot_summary">Format: Name|@latitude,longitude or address|radius metres|arrival note|exit note|cooldown minutes. Use - to disable the slot.</string>

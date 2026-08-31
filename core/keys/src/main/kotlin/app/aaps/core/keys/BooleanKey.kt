@@ -245,9 +245,10 @@ enum class BooleanKey(
     WearNotifyOnSmb(key = "wear_notifySMB", defaultValue = true),
     WearBroadcastData(key = "wear_broadcast_data", defaultValue = false),
     AutomationFuzzyEquals("automation_fuzzy_equals", defaultValue = false),
-    // Optional fixed-location helper. Off by default so importing/upgrading settings can never start
-    // location SMS messages until the user has reviewed the ten slots and explicitly enables it.
-    AutomationCodedLocationsEnabled("automation_coded_locations_enabled", defaultValue = false),
+    // Fixed-location helper. Enabled by default at the user's request. On a genuinely uninitialized
+    // slot, the first fix sends its arrival outputs if already inside; persisted state prevents an
+    // ordinary process restart from repeating that arrival.
+    AutomationCodedLocationsEnabled("automation_coded_locations_enabled", defaultValue = true),
     WizardCalculationVisible("wizard_calculation_visible", defaultValue = false),
     WizardCorrectionPercent("wizard_correction_percent", defaultValue = false),
     // Delayed bolus (50%-profile wizard mechanism). Constant renamed from WizardSplitBolusEnabled;

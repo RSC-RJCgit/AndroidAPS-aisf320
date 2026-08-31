@@ -2274,11 +2274,19 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // SUB-7.5MMOL HEAVY-DELIVERY COOLDOWN (hard pause, not a rolling cap)
 // =====================================================
-                if (sub75HeavyDeliveryCooldown) {
+                // BGL-gated 2026-08-31: only zero SMB while BG is STILL under 7.5mmol. Once BG has
+                // climbed back over 7.5 the cooldown stops starving delivery even if its 10-min window
+                // hasn't elapsed and sc7.5's own explicit sbClr release (which also needs a >0.3mmol
+                // rise) hasn't fired -- a real event on 30->31 Aug had SMB zeroed the full 10 min
+                // through a 7.4->8.3mmol rise. The cooldown stays armed (re-zeroes if BG dips back
+                // under 7.5 within the window); sbClr is what fully clears it so it can re-arm.
+                if (sub75HeavyDeliveryCooldown && bg < 135.1 /* 7.5 mmol */) {
                     val beforeSub75Cooldown = microBolus
                     microBolus = 0.0
-                    rT.reason.append(" Sub75HeavyDelivery cooldown: ${round(beforeSub75Cooldown, 2)} -> 0.0 ")
-                    consoleError.add("Sub75HeavyDelivery cooldown active -> microBolus ${round(beforeSub75Cooldown, 2)} zeroed ")
+                    rT.reason.append(" sc7.5 cooldown (BG<7.5): ${round(beforeSub75Cooldown, 2)} -> 0.0 ")
+                    consoleError.add("sc7.5 cooldown active, BG ${round(bg, 0)} < 7.5mmol -> microBolus ${round(beforeSub75Cooldown, 2)} zeroed ")
+                } else if (sub75HeavyDeliveryCooldown) {
+                    consoleError.add("sc7.5 cooldown armed but BG ${round(bg, 0)} >= 7.5mmol -> SMB not blocked ")
                 }
 // =====================================================
 // ROUND / ZERO / APPLY SMB

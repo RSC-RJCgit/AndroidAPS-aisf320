@@ -18,6 +18,9 @@ import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.automation.keys.AutomationStringKey
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.Locale
@@ -29,8 +32,9 @@ import kotlin.math.max
  * Optional, fixed-slot location automations for carers who need the same small set of arrival/exit
  * messages on every phone. Native Automation rules remain available for ad-hoc locations.
  *
- * The first usable fix only seeds each slot's inside/outside state. A message is sent only after a
- * genuine transition, with exit hysteresis and a per-direction cooldown to suppress GPS flapping.
+ * A new slot already occupied on its first usable fix sends its arrival outputs. Slot state is
+ * persisted so ordinary restarts do not repeat that arrival; later messages require a genuine
+ * transition, with exit hysteresis and a per-direction cooldown to suppress GPS flapping.
  */
 @Singleton
 class CodedLocationAutomations @Inject constructor(
@@ -54,11 +58,17 @@ class CodedLocationAutomations @Inject constructor(
     )
 
     private data class Point(val latitude: Double, val longitude: Double)
-    private data class SlotState(var inside: Boolean, var lastArrival: Long = 0, var lastExit: Long = 0)
+    private data class SlotState(
+        var signature: String,
+        var inside: Boolean,
+        var lastArrival: Long = 0,
+        var lastExit: Long = 0
+    )
 
     private val disposables = CompositeDisposable()
     private val states = mutableMapOf<String, SlotState>()
     private val pointCache = mutableMapOf<String, Point?>()
+    private var statesLoaded = false
 
     private val slotKeys = listOf(
         StringKey.AutomationAirport1,
@@ -76,6 +86,7 @@ class CodedLocationAutomations @Inject constructor(
     fun reset() {
         states.clear()
         pointCache.clear()
+        statesLoaded = false
     }
 
     fun stop() {
@@ -90,6 +101,7 @@ class CodedLocationAutomations @Inject constructor(
         }
         // A very poor fix can put a phone kilometres across a geofence. Wait for a useful fix.
         if (location.hasAccuracy() && location.accuracy > 1_000f) return
+        loadStates()
 
         slotKeys.forEach { key ->
             val raw = preferences.get(key)
@@ -103,9 +115,19 @@ class CodedLocationAutomations @Inject constructor(
         val result = FloatArray(1)
         Location.distanceBetween(location.latitude, location.longitude, point.latitude, point.longitude, result)
         val distance = result[0]
+        val signature = spec.signature()
         val prior = states[spec.id]
-        if (prior == null) {
-            states[spec.id] = SlotState(inside = distance <= spec.radiusMetres)
+        if (prior == null || prior.signature != signature) {
+            val inside = distance <= spec.radiusMetres
+            val initial = SlotState(signature = signature, inside = inside)
+            states[spec.id] = initial
+            // A new installation/configured slot that is already occupied counts as an arrival. State
+            // is persisted first so a process restart cannot repeat the notification.
+            if (inside && spec.arrivalNote.isNotBlank()) {
+                initial.lastArrival = dateUtil.now()
+                persistStates()
+                send(spec, spec.arrivalNote, arriving = true)
+            } else persistStates()
             return
         }
 
@@ -115,11 +137,18 @@ class CodedLocationAutomations @Inject constructor(
         prior.inside = nowInside
 
         val note = if (nowInside) spec.arrivalNote else spec.exitNote
-        if (note.isBlank()) return
+        if (note.isBlank()) {
+            persistStates()
+            return
+        }
         val now = dateUtil.now()
         val lastRun = if (nowInside) prior.lastArrival else prior.lastExit
-        if (lastRun != 0L && now - lastRun < spec.cooldownMinutes * 60_000L) return
+        if (lastRun != 0L && now - lastRun < spec.cooldownMinutes * 60_000L) {
+            persistStates()
+            return
+        }
         if (nowInside) prior.lastArrival = now else prior.lastExit = now
+        persistStates()
         send(spec, note, nowInside)
     }
 
@@ -196,5 +225,24 @@ class CodedLocationAutomations @Inject constructor(
         val exit = fields[4].trim()
         if (label.isBlank() || locationText.isBlank() || (arrival.isBlank() && exit.isBlank())) return null
         return Spec(id, label, locationText, radius, arrival, exit, cooldown)
+    }
+
+    private fun Spec.signature(): String = "$label|$locationText|$radiusMetres|$arrivalNote|$exitNote|$cooldownMinutes"
+
+    private fun loadStates() {
+        if (statesLoaded) return
+        statesLoaded = true
+        val json = preferences.get(AutomationStringKey.CodedLocationStates)
+        if (json.isBlank()) return
+        try {
+            val type = object : TypeToken<Map<String, SlotState>>() {}.type
+            states.putAll(Gson().fromJson<Map<String, SlotState>>(json, type).orEmpty())
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.AUTOMATION, "Could not restore coded location state: ${e.message}")
+        }
+    }
+
+    private fun persistStates() {
+        preferences.put(AutomationStringKey.CodedLocationStates, Gson().toJson(states))
     }
 }
