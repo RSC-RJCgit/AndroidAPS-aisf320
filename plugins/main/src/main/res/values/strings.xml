@@ -264,6 +264,10 @@
     <string name="aisfdebug">Script Debug</string>
     <string name="data_status">BG data status</string>
     <string name="quickwizard_settings">QuickWizard settings</string>
+    <string name="quick_wizard_max_bolus_title">Quick Wizard bolus limit</string>
+    <string name="quick_wizard_max_bolus_this_bolus">Max bolus (this bolus only)</string>
+    <string name="quick_wizard_max_bolus_not_saved">This temporary limit is restored after this Quick Wizard attempt.</string>
+    <string name="quick_wizard_max_bolus_summary">Calculated: %1$.2f U\nAllowed now: %2$.2f U</string>
     <string name="keep_screen_on_title">Keep screen on</string>
     <string name="keep_screen_on_summary">Prevent Android to turn screen off. It will consume lot of energy when not plugged to power outlet.</string>
     <string name="custom_automations_enabled_title">Custom AutoISF automations</string>

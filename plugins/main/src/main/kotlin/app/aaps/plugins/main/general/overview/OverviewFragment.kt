@@ -118,7 +118,9 @@ import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
+import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
@@ -126,6 +128,7 @@ import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
 import app.aaps.plugins.main.R
+import app.aaps.plugins.main.databinding.DialogQuickWizardMaxBolusBinding
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
 import app.aaps.plugins.main.general.overview.keys.OverviewStringKey
@@ -203,6 +206,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private var lastUserAction = ""
 
     private var _binding: OverviewFragmentBinding? = null
+    private var quickWizardMaxBolusDialog: androidx.appcompat.app.AlertDialog? = null
+    private var quickWizardOriginalSafetyMaxBolus: Double? = null
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -456,6 +461,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     @Synchronized
     override fun onDestroyView() {
+        // A configuration change/back navigation must never leave the one-attempt Quick Wizard
+        // MaxBolus override in Preferences after its dialog disappears.
+        quickWizardMaxBolusDialog?.dismiss()
+        quickWizardMaxBolusDialog = null
+        restoreQuickWizardSafetyMaxBolus()
         super.onDestroyView()
         // Remove listeners and detach series to prevent memory leaks
         _binding?.graphsLayout?.bgGraph?.let { graph ->
@@ -634,10 +644,86 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\n" + rh.gs(R.string.change_your_input))
                         return
                     }
-                    wizard.confirmAndExecute(it, quickWizardEntry)
+                    val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
+                    if (wizard.calculatedTotalInsulin > maxBolusAllowed && maxBolusAllowed > 0.0) {
+                        showQuickWizardMaxBolusDialog(it, quickWizardEntry)
+                    } else {
+                        wizard.confirmAndExecute(it, quickWizardEntry)
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Gives Quick Wizard the same live, one-session MaxBolus adjustment as the full Bolus Wizard.
+     *
+     * BolusWizard.doCalc() reads SafetyMaxBolus through the normal constraint pipeline, so the
+     * temporary value must be live while this dialog is open. confirmAndExecute() snapshots the
+     * resulting allowed maximum synchronously; the dismiss listener can therefore restore the real
+     * preference immediately after handing the freshly calculated wizard to the shared confirmation.
+     */
+    private fun showQuickWizardMaxBolusDialog(
+        activity: androidx.fragment.app.FragmentActivity,
+        quickWizardEntry: QuickWizardEntry
+    ) {
+        quickWizardMaxBolusDialog?.dismiss()
+        restoreQuickWizardSafetyMaxBolus()
+
+        val originalMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        quickWizardOriginalSafetyMaxBolus = originalMaxBolus
+        val dialogBinding = DialogQuickWizardMaxBolusBinding.inflate(layoutInflater)
+        val bolusStep = activePlugin.activePump.pumpDescription.bolusStep.takeIf { it > 0.0 } ?: 0.05
+
+        fun recalculateAndShowSummary(): BolusWizard? {
+            val currentProfile = profileFunction.getProfile() ?: return null
+            val currentBg = iobCobCalculator.ads.actualBg() ?: return null
+            val recalculated = quickWizardEntry.doCalc(currentProfile, profileFunction.getProfileName(), currentBg)
+            dialogBinding.summary.text = rh.gs(
+                R.string.quick_wizard_max_bolus_summary,
+                recalculated.calculatedTotalInsulin,
+                recalculated.insulinAfterConstraints
+            )
+            return recalculated
+        }
+
+        dialogBinding.maxBolusInput.setParams(
+            originalMaxBolus,
+            0.1,
+            60.0,
+            bolusStep,
+            decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+            false,
+            null
+        )
+        dialogBinding.maxBolusInput.setOnValueChangedListener {
+            preferences.put(DoubleKey.SafetyMaxBolus, dialogBinding.maxBolusInput.value)
+            recalculateAndShowSummary()
+        }
+        recalculateAndShowSummary()
+
+        quickWizardMaxBolusDialog = androidx.appcompat.app.AlertDialog.Builder(activity)
+            .setTitle(rh.gs(R.string.quick_wizard_max_bolus_title))
+            .setView(dialogBinding.root)
+            .setNegativeButton(app.aaps.core.ui.R.string.cancel, null)
+            .setPositiveButton(app.aaps.core.ui.R.string.ok) { _, _ ->
+                // Re-read BG/profile and recalculate at the final temporary limit. The shared
+                // confirmation remains the authoritative dose/constraint confirmation.
+                recalculateAndShowSummary()?.confirmAndExecute(activity, quickWizardEntry)
+            }
+            .create()
+            .also { dialog ->
+                dialog.setOnDismissListener {
+                    restoreQuickWizardSafetyMaxBolus()
+                    quickWizardMaxBolusDialog = null
+                }
+                dialog.show()
+            }
+    }
+
+    private fun restoreQuickWizardSafetyMaxBolus() {
+        quickWizardOriginalSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
+        quickWizardOriginalSafetyMaxBolus = null
     }
 
     @SuppressLint("SetTextI18n")
