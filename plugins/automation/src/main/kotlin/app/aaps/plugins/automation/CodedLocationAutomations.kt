@@ -216,9 +216,13 @@ class CodedLocationAutomations @Inject constructor(
     internal fun parseSpec(id: String, raw: String): Spec? {
         if (raw.isBlank() || raw.trim() == "-") return null
         val fields = raw.split('|')
-        if (fields.size != 7) return null
+        // Format: label|location|radius|arrivalNote|exitNote|cooldownMinutes  (6 fields).
+        // Was `!= 7` with cooldown read from fields[6] -- an off-by-one: no field 5 was ever used, and
+        // every shipped default (airports and addresses) is 6 fields, so nothing parsed and no coded
+        // location ever fired. Fixed 2026-09-01.
+        if (fields.size != 6) return null
         val radius = fields[2].trim().toFloatOrNull()?.takeIf { it in 50f..10_000f } ?: return null
-        val cooldown = fields[6].trim().toLongOrNull()?.takeIf { it in 1..1_440 } ?: return null
+        val cooldown = fields[5].trim().toLongOrNull()?.takeIf { it in 1..1_440 } ?: return null
         val label = fields[0].trim()
         val locationText = fields[1].trim()
         val arrival = fields[3].trim()
