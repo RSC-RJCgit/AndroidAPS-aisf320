@@ -4365,9 +4365,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val hardStackTarget = deliveryBaseline - 0.03
         val smbStacking = smbInterval5Sec() < 65.0 && smbCount5Min() >= 4
         val atHardStackTarget = fuzzyEquals(smb_delivery_ratio, hardStackTarget)
-        if (!fuzzyEquals(smb_delivery_ratio, deliveryBaseline) && activeTtMgdl() == null && !(atHardStackTarget && smbStacking)) {
-            setSmbDeliveryRatio(deliveryBaseline)
-            addCarePortalNote("DelOff")   // delivery-ratio boost ended (fires once as it drops back to baseline)
+        // restingDeliveryBaseline is tier-aware (2026-08-31, items 9/10): +0.15 (matching
+        // BolusGivenMild's own flat boost) while the Standard role sits on an ELEVATED ladder rung
+        // (Standard105/110, put there by MorningRoleSwapHigh), plain ApsAutoIsfSmbDeliveryBaseline at the
+        // floor (Standard100). Computed live from the current Standard role -- no stored flag -- so
+        // stepping back down (MorningRoleSwapNormal, AlarmHypoRoleRevert, or a manual re-pick to the
+        // floor) un-elevates it automatically and a restart can't lose it. Used ONLY as the DelOff
+        // resting-reset target below -- deliveryBaseline itself stays raw, so hardStackTarget, the
+        // thresholdScale entry-gate calibration, and the hypo/overnight resets elsewhere are all
+        // unaffected. This only lifts what SMBdel settles back to between boosts while the higher tier
+        // is in effect.
+        val standardRoleRung = ladderIndexOf(
+            preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+            listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
+        )
+        val restingDeliveryBaseline = (deliveryBaseline + (if (standardRoleRung >= 1) 0.15 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
+        if (!fuzzyEquals(smb_delivery_ratio, restingDeliveryBaseline) && activeTtMgdl() == null && !(atHardStackTarget && smbStacking)) {
+            setSmbDeliveryRatio(restingDeliveryBaseline)
+            addCarePortalNote("DelOff")   // delivery ratio settled back to the (tier-aware) resting baseline
         }
 
         // MildOffsetZero restore: same "no active TT" timer as the delivery-ratio boost above — clears
