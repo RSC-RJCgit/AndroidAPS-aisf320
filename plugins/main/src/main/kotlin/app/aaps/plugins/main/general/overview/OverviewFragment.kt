@@ -1259,6 +1259,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc comment. Same
         // EventAutoIsfDirectTtCode dispatch as the two toggles above.
         UKF1_DOSING_TOGGLE("AutoISF calcs: UKF1 vs LibreSpecial EMA", 5.196),
+        // Same preference as Settings -> Automation -> Coded location arrival/exit messages.
+        // Local pump builds toggle immediately; AAPSClient relays 5.198 to the pump phone.
+        LOCATION_SMS_TOGGLE("Location SMS + CarePortal notes on/off", 5.198),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
@@ -1446,7 +1449,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.MJ_BUTTONS_TOGGLE,
                 BasalDirectAction.STEROID_BUTTON_TOGGLE,
                 BasalDirectAction.TIER3_BOOST_TOGGLE,
-                BasalDirectAction.UKF1_DOSING_TOGGLE ->
+                BasalDirectAction.UKF1_DOSING_TOGGLE,
+                BasalDirectAction.LOCATION_SMS_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
                 // Unreachable here -- the early-return guards above (action == ANYDESK_RESTART /
@@ -1481,6 +1485,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.STEROID_BUTTON_TOGGLE  -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
         BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+        BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
         // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
         // ProfileSwitch treatments (normal sync), not a bespoke preference, so it's already correct on Client.
         BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,

@@ -329,6 +329,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("U1D${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local AutoISF UKF1-dosing toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.198) <= 0.0000001) {
+                        // Like 5.196 above, this is a local preference toggle and must take effect even
+                        // when no AutoISF invoke follows the List 2 click. Client builds still relay the
+                        // TT to the pump, where the invoke-time 5.198 block below consumes it.
+                        val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
+                        preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
+                        sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("Loc${if (newState) "On" else "Off"}")
+                        aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("Coded locations toggled", true))
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -1825,6 +1835,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "BoostIobMaxUpTT" -> 5.192
         "Tier3BoostToggleTT" -> 5.194
         "Ukf1DosingToggleTT" -> 5.196
+        "LocationSmsToggleTT" -> 5.198
         else -> null
     }
 
@@ -3490,6 +3501,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("U1D${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
             markRun("Ukf1DosingToggleTT")
+        }
+
+        // List 2 coded-location master switch. This changes only the enable preference; the five
+        // airport/five address definitions remain editable local preferences under Automation.
+        if (readyToRun("LocationSmsToggleTT", 2) && activeTtNear(5.198, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
+            preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Loc${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Coded locations toggled", true))
+            markRun("LocationSmsToggleTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
@@ -6932,6 +6955,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         lines.add("${BooleanKey.ActivityMonitorStepsInactive.key} = ${preferences.get(BooleanKey.ActivityMonitorStepsInactive)}")
         lines.add("${DoubleKey.ActivityMonitorRatio.key} = ${String.format(Locale.US, "%.4f", preferences.get(DoubleKey.ActivityMonitorRatio))}")
         lines.add("${BooleanKey.AutomationStatesEnabled.key} = ${preferences.get(BooleanKey.AutomationStatesEnabled)}")
+        // List 2 exposes this non-AutoIsf preference too; mirror it so AAPSClient shows the pump's
+        // real ON/OFF state before sending the 5.198 relay rather than its unrelated local value.
+        lines.add("${BooleanKey.AutomationCodedLocationsEnabled.key} = ${preferences.get(BooleanKey.AutomationCodedLocationsEnabled)}")
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }
