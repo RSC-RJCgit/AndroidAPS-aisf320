@@ -616,7 +616,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val actualBg = iobCobCalculator.ads.actualBg()
         val profile = profileFunction.getProfile()
         val profileName = profileFunction.getProfileName()
-        val pump = activePlugin.activePump
         val quickWizardEntry = quickWizard.getActive()
         if (quickWizardEntry != null && actualBg != null && profile != null) {
             binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
@@ -624,7 +623,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
                 val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
                 activity?.let {
-                    if (abs(wizard.insulinAfterConstraints - wizard.calculatedTotalInsulin) >= pump.pumpDescription.pumpType.determineCorrectBolusStepSize(wizard.insulinAfterConstraints) || carbsAfterConstraints != quickWizardEntry.carbs()) {
+                    // A changed carb amount is still a hard input error because BolusWizard would
+                    // otherwise record the original, unconstrained QuickWizard carbs. An insulin
+                    // constraint is different: the shared BolusWizard confirmation deliberately
+                    // shows the clamp, delivers insulinAfterConstraints (the allowed first part),
+                    // and, when this QuickWizard entry has Split bolus enabled, schedules the
+                    // calculatedTotalInsulin remainder. Blocking here on the normal MaxBolus clamp
+                    // used to prevent both the bolus confirmation/delivery and the split scheduler.
+                    if (carbsAfterConstraints != quickWizardEntry.carbs()) {
                         OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\n" + rh.gs(R.string.change_your_input))
                         return
                     }
