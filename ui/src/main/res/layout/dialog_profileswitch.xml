@@ -62,20 +62,20 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <LinearLayout
-            android:id="@+id/setAsLowRoleLayout"
+            android:id="@+id/roleAssignLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
-            <CheckBox
-                android:id="@+id/setAsLowRole"
-                style="@style/Widget.App.CheckBox"
-                android:layout_width="0dp"
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_weight="1"
-                android:checked="false"
-                android:text="@string/set_as_low_role_checkbox" />
+                android:text="@string/assign_coded_role_label" />
+
+            <Spinner
+                android:id="@+id/roleAssignSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
 
         </LinearLayout>
 

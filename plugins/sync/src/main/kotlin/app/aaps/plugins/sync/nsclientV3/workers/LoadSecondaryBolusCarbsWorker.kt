@@ -159,8 +159,12 @@ class LoadSecondaryBolusCarbsWorker(
                                         trimmedNote.startsWith("AcTT") ||
                                         trimmedNote.startsWith("AcLT")
                                     )
+                                // "SetRole <prefKey>=<profile>" carries a coded-profile-role assignment made in the
+                                // ProfileSwitchDialog on the other device; stored locally so the OpenAPSAutoISFPlugin
+                                // receiver block can apply it on the loop phone. Display/store only here, like the acks.
+                                val setRoleCommand = te.type == TE.Type.NOTE && trimmedNote.startsWith("SetRole ")
                                 val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes && (te.type != TE.Type.NOTE ||
-                                    note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck)
+                                    note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck || setRoleCommand)
                                 if (acceptedSecondaryEvent) {
                                     storeDataForDb.addToTherapyEvents(te)
                                     pageTherapyEvents++

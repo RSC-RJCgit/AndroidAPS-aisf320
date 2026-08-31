@@ -74,13 +74,17 @@
     <string name="reuse_profile_pct_hours">Reuse %1$d%% %2$dh</string>
     <string name="timeshift_label">Time shift</string>
     <string name="percentage_label">Percentage</string>
-    <!-- Added 2026-08-24: every manual switch through this dialog re-assigns a coded profile role to
-         whatever was just picked, never leaves the picked profile un-attached to any role. If the picked
-         name itself carries a Steroid tier percentage (110/130/150/190/250), that Steroid role is
-         re-assigned and this checkbox is moot. Otherwise: unticked (default) assigns
-         StringKey.ApsAutoIsfStandardProfileName; ticked assigns StringKey.ApsAutoIsfLowProfileName
-         instead. Exactly one role, always. -->
+    <!-- Added 2026-08-24, reworked 2026-08-31 from a binary checkbox to a role selector. Every manual
+         switch through this dialog can re-assign one coded profile role to whatever was just picked.
+         If the picked name itself carries a Steroid tier percentage (110/130/150/190/250) that Steroid
+         role is re-assigned and the selector is moot. Otherwise the selector chooses which role (or
+         "(no role change)", the default -- so a throwaway short switch no longer repoints Standard).
+         When the selection is a Standard/Low base or tier, the assignment is also relayed to the loop
+         phone: encoded as a coded ProfileSwitch duration (51-57 min at 100%, fast) and as a
+         "SetRole <prefKey>=<profile>" secondary-NS Note (slow backup). Both are idempotent.
+         set_as_low_role_checkbox is retained (unused) so the other-locale strings aren't orphaned. -->
     <string name="set_as_low_role_checkbox">Set as Low profile (unticked = Standard; ignored for Steroid-percent profiles)</string>
+    <string name="assign_coded_role_label">Assign this profile to coded role</string>
 
     <!-- LoopDialog -->
     <string name="suspendloopfor1h">Suspend loop for 1h</string>

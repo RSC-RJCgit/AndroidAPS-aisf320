@@ -62,4 +62,17 @@ enum class LongKey(
     // stops mattering once passed.
     ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0, defaultedBySM = true),
 
+    // Cursors for the two channels that carry a coded-profile-ROLE assignment made in the
+    // ProfileSwitchDialog on another device (notably the AAPSCLIENT follower, whose local
+    // preferences.put there is inert since it never runs the loop) to the loop phone -- see the two
+    // receiver blocks in OpenAPSAutoISFPlugin.invoke():
+    //  - ...NoteHandledAt: timestamp of the newest "SetRole <prefKey>=<profile>" careportal Note
+    //    already applied. Arrives via the secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) --
+    //    slow (~40-70 min) but an independent channel.
+    //  - ...DurationHandledAt: timestamp of the newest ProfileSwitch whose coded duration (51-57 min
+    //    at 100%) already applied. Rides the normal profile-switch sync -- fast.
+    // A later record has a newer timestamp and is applied once, across restarts.
+    ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0, defaultedBySM = true),
+    ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0, defaultedBySM = true),
+
 }

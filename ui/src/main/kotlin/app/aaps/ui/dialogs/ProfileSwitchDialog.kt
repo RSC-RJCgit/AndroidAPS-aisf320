@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
@@ -141,6 +142,12 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
             }
         }
 
+        context?.let { context ->
+            binding.roleAssignSpinner.adapter =
+                ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, roleOptions.map { it.label })
+            binding.roleAssignSpinner.setSelection(0)
+        }
+
         profileFunction.getProfile()?.let { profile ->
             if (profile is ProfileSealed.EPS)
                 if (profile.value.originalPercentage != 100 || profile.value.originalTimeshift != 0L) {
@@ -200,21 +207,71 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         }
     }
 
+    // Role selector (replaces the old binary "set as Low" checkbox, 2026-08-31). Index 0 = no change;
+    // indexes 1..7 map 1:1 to setRoleKeysInOrder AND to coded ProfileSwitch durations 51..57 min (see
+    // the two receiver blocks in OpenAPSAutoISFPlugin.invoke()). Keep this order in lockstep with that
+    // list -- the duration code is (index + 50).
+    private data class RoleOption(val label: String, val key: StringKey?)
+    private val roleOptions = listOf(
+        RoleOption("(no role change)", null),
+        RoleOption("Standard", StringKey.ApsAutoIsfStandardProfileName),
+        RoleOption("Standard 105 tier", StringKey.ApsAutoIsfStandard105ProfileName),
+        RoleOption("Standard 110 tier", StringKey.ApsAutoIsfStandard110ProfileName),
+        RoleOption("Low", StringKey.ApsAutoIsfLowProfileName),
+        RoleOption("Low 70 tier", StringKey.ApsAutoIsfLow70ProfileName),
+        RoleOption("Low 80 tier", StringKey.ApsAutoIsfLow80ProfileName),
+        RoleOption("Low 90 tier", StringKey.ApsAutoIsfLow90ProfileName)
+    )
+
+    // Backup channel to the loop phone: a "SetRole <prefKey>=<profile>" careportal Note, picked up via
+    // the secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) and applied by OpenAPSAutoISFPlugin.
+    // Slow (~40-70 min) but independent of the fast coded-duration path; both are idempotent.
+    private fun emitSetRoleNote(roleKey: StringKey, profileName: String) {
+        val te = TE(
+            timestamp = dateUtil.now(),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            note = "SetRole ${roleKey.key}=$profileName"
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = te,
+            action = Action.CAREPORTAL,
+            source = Sources.ProfileSwitchDialog,
+            note = null,
+            listValues = listOf(ValueWithUnit.SimpleString("SetRole ${roleKey.key}"))
+        ).subscribe({}, { e -> aapsLogger.error(LTag.APS, "SetRole note insert failed", e) })
+    }
+
     override fun submit(): Boolean {
         if (_binding == null) return false
         val profileStore = activePlugin.activeProfileSource.profile
             ?: return false
 
         val actions: LinkedList<String> = LinkedList()
-        val duration = binding.duration.value.toInt()
+        val profileName = binding.profileList.text.toString()
+        val percent = binding.percentage.value.toInt()
+        val timeShift = binding.timeshift.value.toInt()
+        val typedDuration = binding.duration.value.toInt()
+
+        // Role selector: index 0 = no change; 1..7 -> roleOptions / setRoleKeysInOrder. Captured now --
+        // submit() dismisses this dialog (clearing its binding) before the confirmation callback runs.
+        val roleIndex = binding.roleAssignSpinner.selectedItemPosition
+        val roleOption = roleOptions.getOrElse(roleIndex) { roleOptions[0] }
+        // Fast relay to the loop phone: when a Standard/Low base or tier is chosen AND the user left an
+        // indefinite, 100% switch, carry the assignment on the ProfileSwitch itself as a coded duration
+        // (51..57 min). OpenAPSAutoISFPlugin.invoke() there applies it and immediately re-issues the
+        // switch as indefinite. If the user set their own duration or percent<100, that field is theirs
+        // -- only the slower SetRole Note carries the role then. Other direction: a stray 51..57 with no
+        // role selected is bumped to 60 so the receiver can't misread it as a code.
+        val roleDurationCode = if (roleOption.key != null && typedDuration == 0 && percent == 100) 50 + roleIndex else null
+        val duration = roleDurationCode ?: if (roleOption.key == null && typedDuration in 51..57) 60 else typedDuration
+
         if (duration > 0L)
             actions.add(rh.gs(app.aaps.core.ui.R.string.duration) + ": " + rh.gs(app.aaps.core.ui.R.string.format_mins, duration))
-        val profileName = binding.profileList.text.toString()
         actions.add(rh.gs(app.aaps.core.ui.R.string.profile) + ": " + profileName)
-        val percent = binding.percentage.value.toInt()
         if (percent != 100)
             actions.add(rh.gs(app.aaps.core.ui.R.string.percent) + ": " + percent + "%")
-        val timeShift = binding.timeshift.value.toInt()
         if (timeShift != 0)
             actions.add(rh.gs(R.string.timeshift_label) + ": " + rh.gs(app.aaps.core.ui.R.string.format_hours, timeShift.toDouble()))
         val notes = binding.notesLayout.notes.text.toString()
@@ -222,13 +279,10 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
             actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + notes)
         if (eventTimeChanged)
             actions.add(rh.gs(app.aaps.core.ui.R.string.time) + ": " + dateUtil.dateAndTimeString(eventTime))
+        if (roleOption.key != null)
+            actions.add("Assign role: ${roleOption.label}" + (roleDurationCode?.let { " (coded ${it}m relay)" } ?: " (Note relay)"))
 
         val isTT = binding.duration.value > 0 && binding.percentage.value < 100 && binding.tt.isChecked
-        // submit() opens a second confirmation dialog and then returns true, which dismisses this
-        // ProfileSwitchDialog and clears its view binding before the confirmation callback runs.
-        // Capture the checkbox now; reading binding.setAsLowRole inside that callback would access a
-        // destroyed view and prevent either the Standard or Low preference from being updated.
-        val setAsLowRole = binding.setAsLowRole.isChecked
         val target = preferences.get(UnitDoubleKey.OverviewActivityTarget)
         val units = profileFunction.getUnits()
         if (isTT)
@@ -259,23 +313,21 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         )
                     ) {
                         if (percent == 90 && duration == 10) preferences.put(BooleanNonKey.ObjectivesProfileSwitchUsed, true)
-                        // Added 2026-08-24: every manual switch through this dialog re-assigns a coded
-                        // role to whatever was just picked -- the picked profile is never left un-
-                        // attached to any role. If the picked NAME itself carries one of the six Steroid
-                        // tier percentages (110/130/150/190/250 -- checked longest string first so a
-                        // coincidental short match can't shadow a real longer one), that specific Steroid
-                        // role is re-assigned and the checkbox is moot for this switch. Otherwise:
-                        // unticked (default) assigns Standard, ticked assigns Low -- exactly one of the
-                        // two, always, never neither. The checkbox value was captured before opening this
-                        // confirmation dialog because the originating dialog's binding is cleared while
-                        // this callback is waiting for the user.
+                        // Coded-role assignment (2026-08-24, reworked 2026-08-31 checkbox -> selector).
+                        // A Steroid-marked name (steroid/% + standalone 110/130/150/190/250, longest
+                        // first) always re-assigns that Steroid role and the selector is moot. Otherwise
+                        // the selector decides: "(no role change)" (default) touches nothing; any base
+                        // or tier does a local preferences.put -- authoritative on the loop phone, inert
+                        // on a follower -- plus emits the SetRole Note. The coded duration (set above)
+                        // is the fast follower->loop path; the Note is the slow backup. roleOption was
+                        // captured before this confirmation opened (the dialog binding is now cleared).
                         steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
                             preferences.put(steroidKey, profileName)
-                        } ?: run {
-                            if (setAsLowRole)
-                                preferences.put(StringKey.ApsAutoIsfLowProfileName, profileName)
-                            else
-                                preferences.put(StringKey.ApsAutoIsfStandardProfileName, profileName)
+                        } ?: roleOption.key?.let { roleKey ->
+                            preferences.put(roleKey, profileName)
+                            if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
+                                preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+                            emitSetRoleNote(roleKey, profileName)
                         }
                         if (isTT) {
                             disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(

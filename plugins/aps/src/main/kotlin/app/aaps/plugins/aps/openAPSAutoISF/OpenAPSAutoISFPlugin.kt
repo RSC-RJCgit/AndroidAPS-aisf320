@@ -614,6 +614,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Added 2026-08-31 for the SetRole coded-duration receiver: re-issue an INDEFINITE switch to a
+    // profile even when it is already the active one -- switchProfileIfNeeded() bails out in that case,
+    // which is wrong here because the coded 51..57 min switch has already made this profile active and
+    // would otherwise expire and revert. A fresh duration-0 ProfileSwitch supersedes the short one.
+    private fun reassertProfileIndefinite(targetProfileName: String): Boolean {
+        val profileStore = activePlugin.activeProfileSource.profile ?: return false
+        if (profileStore.getSpecificProfile(targetProfileName) == null) return false
+        return profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = targetProfileName,
+            durationInMinutes = 0,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = dateUtil.now(),
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF SetRole: profile held indefinite",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(targetProfileName),
+                ValueWithUnit.Percent(100)
+            )
+        )
+    }
+
     // Added 2026-08-30: resolves a fine-grained tier (e.g. Standard110, Low80) down to a real profile
     // name, falling back to its base role (baseRoleKey -- ApsAutoIsfStandardProfileName or
     // ApsAutoIsfLowProfileName) whenever the tier itself hasn't been explicitly re-picked yet (blank by
@@ -648,6 +672,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun ladderStepIndex(currentIndex: Int, ladderSize: Int, stepUp: Boolean): Int {
         if (currentIndex == -1) return if (stepUp) 0 else -1
         return (currentIndex + if (stepUp) 1 else -1).coerceIn(0, ladderSize - 1)
+    }
+
+    // Added 2026-08-31. The seven Standard/Low base+tier role keys a "SetRole" assignment can target,
+    // in the exact order the ProfileSwitchDialog's role selector lists them -- so the coded ProfileSwitch
+    // duration (51..57 min) maps as (durationMinutes - 50), and the "SetRole <prefKey>=<profile>" Note
+    // matches on prefKey. Steroid tiers are deliberately NOT here: those are name-detected in the dialog
+    // (steroidRoleKeyForProfileName) and never travel this channel.
+    private val setRoleKeysInOrder = listOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    private fun setRoleKeyForIndex(oneBasedIndex: Int): StringKey? = setRoleKeysInOrder.getOrNull(oneBasedIndex - 1)
+    private fun setRoleKeyForToken(prefKeyToken: String): StringKey? = setRoleKeysInOrder.firstOrNull { it.key == prefKeyToken }
+
+    // Applies a resolved role assignment locally: writes the role pref, mirrors a base-Standard write
+    // into the Standard100 ladder anchor (as the ProfileSwitchDialog and "Select coded profiles" picker
+    // both do), and only if <profileName> actually exists in the active store. Returns true if applied.
+    private fun applySetRole(roleKey: StringKey, profileName: String): Boolean {
+        if (profileName.isBlank()) return false
+        if (activePlugin.activeProfileSource.profile?.getSpecificProfile(profileName) == null) return false
+        preferences.put(roleKey, profileName)
+        if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
+            preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+        return true
     }
 
     // Added 2026-08-23. Classifies the CURRENTLY RUNNING profile against all eight coded roles (Standard/
@@ -2192,6 +2246,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- SetRole (Note channel): coded-profile-role assignment made in ProfileSwitchDialog on
+        // another device (added 2026-08-31). The dialog writes a "SetRole <prefKey>=<profile>" Note; the
+        // secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) stores it locally here; this applies it
+        // on the loop phone. Slow (~40-70 min) but independent of the fast coded-duration path below --
+        // both are idempotent (preferences.put of the same value is a no-op). Cursor-tracked by Note
+        // timestamp; each Note applied once, across restarts. Only the seven Standard/Low base+tier keys
+        // are honoured, and only if <profile> exists in the active store (applySetRole checks).
+        run {
+            val handledAt = preferences.get(LongKey.ApsAutoIsfSetRoleNoteHandledAt)
+            val searchFrom = if (handledAt > 0L) handledAt + 1L else dateUtil.now() - T.days(2).msecs()
+            val notes = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, true)
+                .filter { it.isValid && it.timestamp > handledAt }
+            for (te in notes) {
+                val n = te.note.orEmpty()
+                if (!n.startsWith("SetRole ")) continue
+                val body = n.removePrefix("SetRole ").trim()
+                val eq = body.indexOf('=')
+                if (eq <= 0) continue
+                val roleKey = setRoleKeyForToken(body.substring(0, eq).trim())
+                val profileName = body.substring(eq + 1).trim()
+                if (roleKey != null && applySetRole(roleKey, profileName)) {
+                    sendSms("SetRole(note): ${roleKey.key} -> $profileName")
+                    addCarePortalNote("RoleSet")
+                }
+            }
+            // Advance the cursor to the newest Note in the window regardless of match, so a phone that
+            // never receives a SetRole Note doesn't re-scan the same 2-day window every cycle. This fork
+            // writes careportal Notes continuously, so the cursor tracks forward from the first invoke.
+            notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfSetRoleNoteHandledAt, it.timestamp) }
+        }
+
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
         // this device's secondary-NS worker records that server revision, and this sends one
         // implicit broadcast per revision. Tasker's Intent Received profile owns the existing AnyDesk
@@ -3201,6 +3286,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
             addCarePortalNote("PrLow")
             markRun("ProfileLowTT")
+        }
+
+        // --- SetRole (coded-duration channel): the fast counterpart to the SetRole Note block above
+        // (added 2026-08-31). ProfileSwitchDialog on another device, when a Standard/Low base or tier is
+        // picked on an otherwise indefinite 100% switch, sends the switch with a coded duration of
+        // 51..57 min (role index = durationMinutes - 50). This rides the normal profile-switch sync
+        // (minutes, not the ~40-70 min secondary-NS lag), applies the role, then immediately re-issues
+        // the switch as indefinite so the coded duration never actually expires in normal use. 100% +
+        // the odd (non-10-multiple) minute value keep a genuine short switch from being misread.
+        // Cursor-tracked by PS timestamp; idempotent with the Note channel.
+        run {
+            val cursor = preferences.get(LongKey.ApsAutoIsfSetRoleDurationHandledAt)
+            val activePs = persistenceLayer.getProfileSwitchActiveAt(dateUtil.now())
+            if (activePs != null && activePs.isValid && activePs.timestamp > cursor) {
+                val roleIndex = (activePs.duration / 60_000L).toInt() - 50
+                if (activePs.percentage == 100 && roleIndex in 1..7) {
+                    val roleKey = setRoleKeyForIndex(roleIndex)
+                    if (roleKey != null && applySetRole(roleKey, activePs.profileName)) {
+                        reassertProfileIndefinite(activePs.profileName)   // supersede the coded short switch so it can't expire/revert
+                        sendSms("SetRole(dur): ${roleKey.key} -> ${activePs.profileName}")
+                        addCarePortalNote("RoleSet")
+                    }
+                }
+                preferences.put(LongKey.ApsAutoIsfSetRoleDurationHandledAt, activePs.timestamp)
+            }
         }
 
         // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
@@ -5561,7 +5671,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // block has already set tighter (e.g. TwilightTH15Acce's iobTH 15).
         run {
             val nightCap = if (cobSustainedRelax) 35 else 18
-            if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0)) {
+            // Stand down while genuinely active. Usual2forTH70 block 3 (UsuIP-3) restores iobTH to 70 /
+            // acce 0.50 from 05:01 whenever recentSteps60Minutes >= 100, and this block -- which has no
+            // step awareness of its own -- was capping it straight back to 18 / 0.35 on the very same
+            // pass, flip-flopping UsuIP-3 <-> NtCap for the whole 05:01-06:00 overlap (observed on
+            // Virtual, night of 30->31 Aug 2026: ~11 NtCap fires in one hour while S60 sat at 350-530).
+            // Yielding on the SAME steps60 >= 100 threshold UsuIP-3 fires on guarantees the two can't
+            // both act on one cycle. The 6->7 Aug incident this guard exists for was a sleeping,
+            // zero-step event, so an activity carve-out does not reopen it. A genuine no-step morning
+            // rise (UsuIP-3's g>=8.5 / sd>=1.0 disjuncts) can still flip-flop and is deliberately left
+            // for a follow-up -- this covers only the movement case the flip-flop was traced to.
+            val nightActive = recentSteps60Minutes >= 100
+            if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0) && !nightActive) {
                 val nightAcceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
                 val capIob = iobThresholdPercent > nightCap
                 val capAcce = nightAcceW > 0.35
@@ -5787,7 +5908,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     highMatch || normalMatch -> {
                         val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfLowProfileName), lowLadder)
                         val newIndex = ladderStepIndex(currentIndex, lowLadder.size, stepUp)
-                        if (newIndex == -1) null else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName)
+                        if (newIndex == -1) null else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
                     }
                     else -> null
                 }
@@ -5795,11 +5916,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     highMatch || normalMatch -> {
                         val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
                         val newIndex = ladderStepIndex(currentIndex, standardLadder.size, stepUp)
-                        if (newIndex == -1) null else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
+                        // Resolve tier -> Standard100 anchor -> (added 2026-08-31) the live Standard role
+                        // as a last resort, then null if STILL blank. Before this, an unconfigured
+                        // Standard100 on a device that never opened the "Select coded profiles" picker
+                        // (e.g. the real loop phone, roles set via plain Preferences) made this resolve to
+                        // "" -- which is not null, so the guard below passed and the empty string was
+                        // written straight over a perfectly good Standard role every qualifying morning.
+                        if (newIndex == -1) null
+                        else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
+                            .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+                            .takeIf { it.isNotBlank() }
                     }
                     else -> null
                 }
-                if (newLow != null && newStandard != null) {
+                if (!newLow.isNullOrBlank() && !newStandard.isNullOrBlank()) {
                     val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                     val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                     val currentProfileName = profileFunction.getProfileName()
@@ -5829,9 +5959,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")) {
                 val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
                 val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
                 val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                 val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-                if ((currentLow != targetLow || currentStandard != targetStandard) && readyToRun("AlarmHypoRoleRevert", 30)) {
+                // targetStandard.isNotBlank() guard added 2026-08-31: same empty-Standard100 hazard as
+                // MorningRoleSwap above -- never write an empty string over a real role.
+                if (targetLow.isNotBlank() && targetStandard.isNotBlank() &&
+                    (currentLow != targetLow || currentStandard != targetStandard) && readyToRun("AlarmHypoRoleRevert", 30)) {
                     val currentProfileName = profileFunction.getProfileName()
                     preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
                     preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
