@@ -78,7 +78,7 @@
          switch through this dialog can re-assign one coded profile role to whatever was just picked.
          If the picked name itself carries a Steroid tier percentage (110/130/150/190/250) that Steroid
          role is re-assigned and the selector is moot. Otherwise the selector chooses which role (or
-         "(no role change)", the default -- so a throwaway short switch no longer repoints Standard).
+         "(no role change)", the default - so a throwaway short switch no longer repoints Standard).
          When the selection is a Standard/Low base or tier, the assignment is also relayed to the loop
          phone: encoded as a coded ProfileSwitch duration (51-57 min at 100%, fast) and as a
          "SetRole <prefKey>=<profile>" secondary-NS Note (slow backup). Both are idempotent.

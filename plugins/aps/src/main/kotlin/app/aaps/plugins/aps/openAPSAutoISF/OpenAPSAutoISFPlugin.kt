@@ -4621,16 +4621,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         bmildFiredThisCycle = bmildBasicCriteriaMet()
         if (bmildFiredThisCycle) {
             val g = glucoseStatus.glucose
-            // Tiered delivery boost: lower BGL (caught the rise earlier, more headroom) -> stronger
-            // response; at/above 9.0 mmol, the unadjusted base. Tiers are relative bumps on top of
-            // the configurable base (ApsAutoIsfMildBoostRatio), not independent absolutes — raising
-            // or lowering the base shifts all three together.
+            // Flat delivery boost (2026-08-31, was a 3-way BGL-tiered when: +0.05/+0.02/+0 at 7.5/9.0mmol).
+            // The tiers meant a BGL wobbling across 7.5 or 9.0 flipped the boost by 0.03 cycle-to-cycle,
+            // right when a rise was passing those marks -- a poorly-defined SMB-ratio change exactly when
+            // it mattered. Now one value on every fire; retune the single number (or ApsAutoIsfMildBoostRatio
+            // itself) later. A relative bump on the configurable base, not an absolute.
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-            val deliveryRatio = when {
-                g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
-                g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
-                else                     -> mildBase
-            }
+            val deliveryRatio = mildBase + 0.15
             setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores baseline
             startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
             // Below 5.9mmol, the separate "no COB + BG under target+offset -> zero SMB" gate in
@@ -4679,12 +4676,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && readyToRun("BolusGivenMild", 10)       // and with BolusGivenMild itself
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             if (fire) {
+                // Flat delivery boost, matching BolusGivenMild above (2026-08-31, was the same 3-way
+                // BGL-tiered when). One value on every fire.
                 val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-                val deliveryRatio = when {
-                    g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
-                    g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
-                    else                     -> mildBase
-                }
+                val deliveryRatio = mildBase + 0.15
                 setSmbDeliveryRatio(deliveryRatio)
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)
                 if (g < 106.2 /* 5.9 mmol */) {
@@ -4738,11 +4733,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && readyToRun("BolusGivenBg3", 10) && movementOk
                 && !(g < 135.1 && iobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-            val mildDeliveryRatioWould = when {
-                g < 135.1 /* 7.5 mmol */ -> mildBase + 0.05
-                g < 162.1 /* 9.0 mmol */ -> mildBase + 0.02
-                else                     -> mildBase
-            }
+            val mildDeliveryRatioWould = mildBase + 0.15   // flat, matches BolusGivenMild/Failsafe (2026-08-31)
             consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 2)} mildBase=${round(mildBase, 2)} hardStackTarget=${round(hardStackTarget, 2)} currentRatio=${round(smb_delivery_ratio, 2)} thresholdScale=${round(thresholdScale, 2)} ;;")
             consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=${round(stackK, 2)} ;;")
             consoleError.add("BoostDebug signals: g=${convert_bg(g)} d=${deltaForDisplay(d)} rawDelta5=${deltaForDisplay(rawDelta5)} rawDelta1=${deltaForDisplay(rawDelta1)} iobChange5=${round(iobChange5, 2)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${deltaForDisplay(glucoseStatus.longAvgDelta)} recentSteps60Minutes=$recentSteps60Minutes ;;")
@@ -5833,7 +5824,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             } else if (readyToRun("HighDaytimeBrake", 30)
                 && isTimeBetween(6, 0, 22, 0)
-                && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
                 && glucoseStatus.delta < 1.8 /* 0.1 mmol */
@@ -5844,20 +5834,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
                 && (minutesSinceLastNormalBolus() ?: Int.MAX_VALUE) > 60
             ) {
-                val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                if (iobChange5 < 0.5) {
-                    // Same 2x-current-SMB-delivery addition as HighEveNightBrake above, added 2026-08-29 --
-                    // see that block's own doc comment for the full reasoning (relies on the existing
-                    // global "DelOff" no-active-TT reset to revert once this TT ends, early or on time).
-                    val preBoostDeliveryRatio = smb_delivery_ratio
-                    val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
-                    setSmbDeliveryRatio(boostedDeliveryRatio)
-                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                    sendSms("HighDaytimeBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                    addCarePortalNote("HiBrkDay")
-                    markRun("HighDaytimeBrake")
-                } else {
-                    consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                // Two entry BGL bands, both with every gate above (flat-BG bands, duraISF-dominant,
+                // Steroids Off, no bolus 60 min, iobChange5 < 0.5):
+                //  - high (>= 9.0 mmol): the original plateaued-high brake -- TT 4.0mmol, SMBdel x2.
+                //  - mid  (>  6.5 mmol, added 2026-08-31): a stubborn plateau brake, only when MJ is
+                //    clear (NOMJremains -- not post-meal digestion) and no recent hypo (LowBG != 50recent).
+                //    Same 4.0mmol TT but a gentler SMBdel x1.5, since starting from 6.5 there is far less
+                //    headroom to 4.0 than from 9.0.
+                // Shared 30-min throttle: at most one brake (either band) per 30 min.
+                val highBand = glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
+                val midBand = !highBand && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
+                    && checkAutomationState("MJ", "NOMJremains")
+                    && !checkAutomationState("LowBG", "50recent")
+                if (highBand || midBand) {
+                    val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
+                    if (iobChange5 < 0.5) {
+                        // SMBdel boost (x2 high / x1.5 mid); relies on the global "DelOff" no-active-TT
+                        // reset to revert once this TT ends, early or on time.
+                        val boostFactor = if (highBand) 2.0 else 1.5
+                        val preBoostDeliveryRatio = smb_delivery_ratio
+                        val boostedDeliveryRatio = (preBoostDeliveryRatio * boostFactor).coerceAtMost(smb_delivery_ratio_max)
+                        setSmbDeliveryRatio(boostedDeliveryRatio)
+                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                        sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)} (x$boostFactor), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                        addCarePortalNote(if (highBand) "HiBrkDay" else "HiBrkDayMid")
+                        markRun("HighDaytimeBrake")
+                    } else {
+                        consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                    }
                 }
             }
         }
@@ -6500,32 +6504,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "D5=${smbDelta5Raw?.let { String.format("%.2f", it) } ?: "--"}"
         )
 
-        // --- Sub75HeavyDelivery: arms a hard 10-min cooldown once smbSum10Min() exceeds 1.0U while
-        // glucose is still under 7.5mmol -- see determine_basal()'s sub75HeavyDeliveryCooldown param
-        // (DetermineBasalAutoISF.kt) for the two real events (4.4mmol, sustained 4.5mmol) this is
-        // anchored on. Deliberately a plain markRun/readyToRun cooldown, not another rolling-window
-        // amount cap like smbSum10Min/30Min below it -- this forces a genuine pause instead of
-        // re-permitting delivery the instant the oldest minute ages out of its own window, giving
-        // already-delivered insulin time to actually show up in BG before more goes in. First cut, not
-        // yet device-verified against a case that genuinely needed to keep dosing through this window.
+        // --- Sub75HeavyDelivery: arms a hard 10-min cooldown once smbSum10Min() exceeds 1.5U (raised
+        // from 1.0U 2026-08-31) while glucose is still under 7.5mmol -- see determine_basal()'s
+        // sub75HeavyDeliveryCooldown param (DetermineBasalAutoISF.kt) for the two real events (4.4mmol,
+        // sustained 4.5mmol) this is anchored on. Deliberately a plain markRun/readyToRun cooldown, not
+        // another rolling-window amount cap like smbSum10Min/30Min below it -- this forces a genuine
+        // pause instead of re-permitting delivery the instant the oldest minute ages out of its own
+        // window, giving already-delivered insulin time to actually show up in BG before more goes in.
+        // Careportal note is "sc7.5" (renamed from "Sub75Cap" 2026-08-31); the internal throttle key
+        // stays "Sub75HeavyDelivery" (not user-visible, referenced in several places).
         // readyToRun() gates the trigger itself (not just markRun's own effect) so the note/SMS fires
         // once per 10-min window, not every single cycle the condition happens to stay true.
-        if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.0 && readyToRun("Sub75HeavyDelivery", 10)) {
-            sendSms("Sub75HeavyDelivery: SMB cooldown armed (10min=${round(smbSum10Min(), 2)}U, g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)})")
-            addCarePortalNote("Sub75Cap")
+        if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.5 && readyToRun("Sub75HeavyDelivery", 10)) {
+            sendSms("sc7.5: SMB cooldown armed (10min=${round(smbSum10Min(), 2)}U, g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)})")
+            addCarePortalNote("sc7.5")
             markRun("Sub75HeavyDelivery")
         }
         // Early release: if the cooldown is currently active but bg has already recovered above 7.5mmol
-        // AND is climbing fast (delta > 0.7mmol), clear it rather than waiting out the remaining minutes.
-        // A fast rise past the trigger threshold is itself evidence the earlier heavy delivery is already
-        // taking effect, not still stacking -- continuing to block SMB through the rest of the window at
-        // that point risks under-treating the recovery rather than protecting against it. Clearing (not
-        // just letting it lapse) resets lastRunTimestamps directly so the very next cycle can dose again,
-        // instead of waiting for the 10-min mark. Separate note (not "Sub75Cap" again) so an early release
-        // is distinguishable from a fresh arm/re-arm in the careportal history.
-        if (!readyToRun("Sub75HeavyDelivery", 10) && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.delta > 12.6 /* 0.7 mmol */) {
+        // AND is still rising (delta > 0.3mmol, lowered from 0.7mmol 2026-08-31 -- a real event on the
+        // night of 30->31 Aug had SMB blocked the full 10 min through a 7.4->8.3mmol rise because the
+        // ~0.5mmol/5min rise never met the old 0.7mmol bar), clear it rather than waiting out the
+        // remaining minutes. A continued rise past the trigger threshold is itself evidence the earlier
+        // heavy delivery is being outpaced, not still stacking. Clearing (not just letting it lapse)
+        // resets lastRunTimestamps directly so the very next cycle can dose again. Separate note
+        // ("sbClr", renamed from "Sub75Clr" 2026-08-31) so an early release is distinguishable from a
+        // fresh arm/re-arm in the careportal history.
+        if (!readyToRun("Sub75HeavyDelivery", 10) && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.delta > 5.4 /* 0.3 mmol */) {
             lastRunTimestamps.remove("Sub75HeavyDelivery")
-            addCarePortalNote("Sub75Clr")
+            addCarePortalNote("sbClr")
         }
 
         // Gate added 2026-08-18: this whole comparison section (DropDetected/AccelSignDisagreement/

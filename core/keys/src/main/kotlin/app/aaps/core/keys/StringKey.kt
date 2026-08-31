@@ -40,6 +40,19 @@ enum class StringKey(
     MaintenanceEmail("maintenance_logs_email", "logs@aaps.app", defaultedBySM = true),
     MaintenanceIdentification("email_for_crash_report", ""),
     AutomationLocation("location", "PASSIVE", hideParentScreenIfHidden = true),
+    // Format: label|@latitude,longitude OR postal address|radius metres|arrival note|exit note|cooldown minutes.
+    // A dash disables an unused slot. Street-address slots are resolved by Android's geocoder and cached.
+    AutomationLocationSmsNumbers("automation_location_sms_numbers", "+61411600285", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAirport1("automation_airport_1", "Adelaide Airport|@-34.945000,138.530556|1500|AptAd||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAirport2("automation_airport_2", "Sydney Airport|@-33.946111,151.177222|1500|AptSy||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAirport3("automation_airport_3", "Dubai International Airport|@25.252778,55.364444|2000|AptDb||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAirport4("automation_airport_4", "Melbourne Airport|@-37.673333,144.843333|1500|AptMb||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAirport5("automation_airport_5", "Brisbane Airport|@-27.384167,153.117500|1500|AptBn||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAddress1("automation_address_1", "Home|5 Rockness Court, Woodforde SA 5072, Australia|150|HmEnt|HmLve|30", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAddress2("automation_address_2", "Netball|155 Railway Terrace, Keswick Terminal SA 5035, Australia|200|NblAr|NblLv|30", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAddress3("automation_address_3", "Cheer|5 McInnes Street, Ridleyton SA 5008, Australia|150|ChrAr|ChrLv|30", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAddress4("automation_address_4", "-", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    AutomationAddress5("automation_address_5", "-", dependency = BooleanKey.AutomationCodedLocationsEnabled),
 
     SmsAllowedNumbers("smscommunicator_allowednumbers", ""),
     SmsBattAlertNumbers("smscommunicator_battalertnumbers", ""),
