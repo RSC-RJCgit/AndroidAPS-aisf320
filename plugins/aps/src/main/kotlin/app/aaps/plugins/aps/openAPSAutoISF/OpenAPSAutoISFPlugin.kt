@@ -5769,9 +5769,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // because that is what was doing the actual safety work; the rest was left out on purpose.
         //
         // Flat-BG gate, native's own thresholds converted to mg/dL (0.1mmol=1.8, 0.3mmol=5.4,
-        // -0.2mmol=-3.6): SDelta in [0.0, 1.8), Delta < 1.8, LDelta in [-3.6, 5.4). Restricts firing to
-        // a genuinely plateaued high, same as the native trigger -- not an active rise, which is
-        // already the job of everything else (BMild, Tier 3, the ordinary SMB cascade).
+        // -0.2mmol=-3.6), except SDelta's floor was loosened 2026-09-02 from >=0.0 to > -1.8
+        // (> -0.1 mmol): a 2 Sep 08:10-08:30 dura-dominant plateau sat at SDelta -0.01 to -0.10 and
+        // could not fire until SDelta returned to 0. Delta now >= 0.0 and still < 1.8 -- last 5-min
+        // tick must not be falling even if the 15-min average is slightly negative. LDelta still
+        // [-3.6, 5.4). Still not an active rise -- that remains BMild / Tier 3 / the ordinary SMB cascade.
         //
         // Deliberately routes through a temp target rather than raising iobTH% -- EveningIobCeiling and
         // NightIobCeiling above only ever touch iobTH%/acce weight, so a TT is the one lever that reaches
@@ -5827,8 +5829,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // was firing on real data at ~8.0-8.1mmol readings that felt too low a bar for this brake.
                 && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 && checkAutomationState("Steroids", "Steroids Off")
-                && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
-                && glucoseStatus.delta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
                 && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
                 && activeTtMgdl() == null
                 // Added 2026-08-29 at explicit request: only fire when duraISF is genuinely the dominant
@@ -5877,7 +5879,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // The no-bolus-60min gate is the daytime-specific extra vs night HiBrk: daytime carries far
         // more routine bolus activity, so without it a fresh dose's own IOB/delta signature could
         // look enough like "genuinely plateaued high" to fire on top of insulin already addressing
-        // the same high.
+        // the same high. SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
         run {
             // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
@@ -5900,8 +5902,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } else if (readyToRun("HighDaytimeBrake", 30)
                 && isTimeBetween(6, 0, 2, 0)
                 && checkAutomationState("Steroids", "Steroids Off")
-                && glucoseStatus.shortAvgDelta >= 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.0-0.1 mmol */
-                && glucoseStatus.delta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
                 && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
                 && activeTtMgdl() == null
                 && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
