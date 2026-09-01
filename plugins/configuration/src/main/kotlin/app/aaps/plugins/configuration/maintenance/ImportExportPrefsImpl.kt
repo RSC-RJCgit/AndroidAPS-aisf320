@@ -1090,14 +1090,17 @@ class ImportExportPrefsImpl @Inject constructor(
         }
     }
 
+    // Interactive "Export User Entries CSV" (Maintenance button + Treatments→User Entry menu) must
+    // match long-press AIV and Maintenance→Export Logs: full AIV + UserEntries + log-zip local/cloud
+    // bundle. UserEntries-only WorkManager work remains on [exportUserEntriesCsvAuto], which
+    // writeExport() already enqueues as a rider -- calling sendLogs here would recurse if Auto also
+    // did the full bundle.
     override fun exportUserEntriesCsv(activity: FragmentActivity) {
-        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT exportUserEntriesCsv called, enqueuing WorkManager")
-        WorkManager.getInstance(activity).enqueueUniqueWork(
-            "export",
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
-            OneTimeWorkRequest.Builder(CsvExportWorker::class.java).build()
+        aapsLogger.info(
+            LTag.CORE,
+            "${CloudConstants.LOG_PREFIX} CSV_EXPORT exportUserEntriesCsv -> sendLogs(full AIV/UserEntries/logs bundle)"
         )
-        aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT WorkManager enqueued")
+        sendLogs(trigger = "MANUAL", alsoExportAiv = true)
     }
 
     // See ImportExportPrefs.exportUserEntriesCsvAuto's own doc comment. Same unique work name
