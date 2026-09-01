@@ -1,6 +1,5 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.icu.util.Calendar
@@ -1096,16 +1095,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // profile, which dies when Android reclaims Tasker, and Tasker's own Termux kill/relaunch is a
     // second process the OS can also skip. Receipt notes never claimed Tasker ran.
     //
-    // This does the restart from AAPS's own foreground-service loop context:
-    //  1. force-stop via su if the phone is rooted (the only in-app way to kill a hung *foreground*
-    //     AnyDesk host)
-    //  2. ActivityManager.killBackgroundProcesses otherwise
-    //  3. launch AnyDesk with CLEAR_TASK so a stale activity stack is not reused
-    //  4. also fire Tasker's official ACTION_TASK broadcast with an explicit package (more likely
-    //     to be delivered than the implicit RESTART_ANYDESK broadcast the call sites still send)
-    // Package names: Play-store AnyDesk, plus the AD1/host variant. Android 11+ needs the matching
-    // <queries> entries (shared/impl AndroidManifest). AdOn/AdMs CarePortal notes show which path
-    // actually resolved, truncated to 5 chars on graph4.
+    // Bring AnyDesk to the front from AAPS's own loop context. Do NOT kill or force-stop first:
+    // Unattended Access is a host *service*. 1 Sep 23:42 AdOn after killBackgroundProcesses +
+    // CLEAR_TASK matched "AAPS launched the UI" while the remote listener stayed down -- the
+    // saved UA setting was unchanged. Hung-foreground recovery (su force-stop) is dropped for
+    // the same reason: these phones are not rooted, and a kill that does land takes the listener
+    // with it. NEW_TASK only so an already-running task/service is brought forward, not reset.
+    // Tasker's ACTION_TASK for AnyDesk2 still fires (backup). AdOn/AdMs = startActivity result
+    // only, truncated to 5 chars on graph4 -- not "unattended is accepting connections".
     private fun launchAnyDeskDirect() {
         sendTaskerRunTask("AnyDesk2")
         val pkg = resolveAnyDeskPackage()
@@ -1114,26 +1111,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("AdMs")
             return
         }
-        tryForceStopAnyDesk(pkg)
-        try {
-            context.getSystemService(ActivityManager::class.java)?.killBackgroundProcesses(pkg)
-        } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "AnyDesk killBackgroundProcesses failed for $pkg: ${e.message}")
-        }
         val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
         if (launchIntent == null) {
             aapsLogger.warn(LTag.APS, "AnyDesk launch intent missing for $pkg")
             addCarePortalNote("AdMs")
             return
         }
-        launchIntent.addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP
-        )
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(launchIntent)
-            aapsLogger.info(LTag.APS, "AnyDesk launched directly by AAPS ($pkg)")
+            aapsLogger.info(LTag.APS, "AnyDesk brought to front by AAPS without kill ($pkg)")
             addCarePortalNote("AdOn")
         } catch (e: Exception) {
             aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
@@ -1145,16 +1132,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val pm = context.packageManager
         return listOf("com.anydesk.anydeskandroid", "com.anydesk.adcontrol.ad1")
             .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
-    }
-
-    private fun tryForceStopAnyDesk(pkg: String) {
-        try {
-            val proc = ProcessBuilder("su", "-c", "am force-stop $pkg").start()
-            if (!proc.waitFor(400, TimeUnit.MILLISECONDS)) proc.destroy()
-        } catch (_: Exception) {
-            // Not rooted, or su not on PATH -- expected on the Z Flip. killBackgroundProcesses +
-            // CLEAR_TASK launch below still run.
-        }
     }
 
     // Official Tasker "run this named task" broadcast (TaskerIntent ACTION_TASK). Package-restricted
@@ -2430,8 +2407,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
         // this device's secondary-NS worker records that server revision, and this sends one
         // implicit RESTART_ANYDESK broadcast per revision (kept for the existing Intent Received
-        // profile). The actual restart is launchAnyDeskDirect(): AAPS kill+relaunch, plus Tasker's
-        // official ACTION_TASK for AnyDesk2. Receipt notes do not claim AnyDesk opened.
+        // profile). The actual start is launchAnyDeskDirect(): bring AnyDesk to front without
+        // kill (preserves Unattended Access), plus Tasker's ACTION_TASK for AnyDesk2. Receipt
+        // notes do not claim a remote session is up.
         run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
@@ -3575,8 +3553,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
         // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
         // worker's next poll picks up the Note's revision. Still sends the existing RESTART_ANYDESK
-        // broadcast (independent of the Note-channel revision pair) then launchAnyDeskDirect().
-        // Reaching this block is receipt of the TT trigger. AdOn/AdMs report the AAPS launch result.
+        // broadcast then launchAnyDeskDirect() (bring to front, no kill). AdOn/AdMs are startActivity
+        // only, not that Unattended Access is accepting connections.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             val deviceRole = when {

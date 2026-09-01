@@ -127,6 +127,7 @@ import app.aaps.core.ui.elements.SingleClickButton
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
+import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.DialogQuickWizardMaxBolusBinding
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
@@ -2479,7 +2480,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (popupsShownThisSession) return
         popupsShownThisSession = true
         val act = activity ?: return
-        if (preferences.get(OverviewStringKey.ApsAutoIsfProfileNamesReviewed).isEmpty())
+        if (config.AAPSCLIENT) {
+            checkCodedAutomationReviewPopup(act)
+        } else if (preferences.get(OverviewStringKey.ApsAutoIsfProfileNamesReviewed).isEmpty())
             showProfileNamesPopup(act) { checkCodedAutomationReviewPopup(act) }
         else
             checkCodedAutomationReviewPopup(act)
@@ -2496,14 +2499,40 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // literals. Not cancelable (no tap-outside-to-dismiss) since Cancel/OK are both handled explicitly
     // below and either one marks the flag reviewed.
     //
-    // Grown from 2 spinners to 8 the same day the Steroid roles were added -- generalized into a
-    // data-driven loop (roleSpecs) rather than duplicating the label+spinner+apply block six more times.
-    // optional=true (added 2026-08-30, the five new tier rows below): the dropdown gets a leading "(not
-    // set...)" sentinel and picking it writes "" back to the preference, rather than forcing a real
-    // profile choice the way the original 8 roles always have -- these tiers are meant to stay
-    // unconfigured (silently falling back to their base Standard/Low role, see
-    // resolveTieredProfileName()) until you deliberately want a distinct profile for one.
+    // Client (AAPSCLIENT) 2026-09-02: this phone does not loop and must not read or write the role
+    // prefs locally -- those belong on Live/Virtual. On Client the spinners start at "leave unchanged"
+    // (no local pref as default), OK emits SetRole Notes only (the slow ProfileSwitchDialog backup
+    // channel; Live's invoke() applies them). Steroid rows are not in setRoleKeysInOrder so they are
+    // not sent from here -- use Profile Switch with a steroid-marked name. Fast coded-duration (51-57
+    // min) still only carries ONE role per Profile Switch, which is why Re-pick on Client is Note-only.
     private data class ProfileRoleSpec(val label: String, val key: StringKey, val optional: Boolean = false)
+
+    private val setRoleRelayKeys = listOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    private fun emitSetRoleRelayNote(roleKey: StringKey, profileName: String) {
+        val te = TE(
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            note = "SetRole ${roleKey.key}=$profileName"
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = te,
+            action = Action.CAREPORTAL,
+            source = Sources.ProfileSwitchDialog,
+            note = null,
+            listValues = listOf(ValueWithUnit.SimpleString("SetRole ${roleKey.key}"))
+        ).subscribe({}, { e -> aapsLogger.error(LTag.APS, "SetRole note insert failed", e) })
+    }
 
     private fun showProfileNamesPopup(act: androidx.fragment.app.FragmentActivity, onDone: () -> Unit) {
         val profileNames = activePlugin.activeProfileSource.profile?.getProfileList()?.map { it.toString() } ?: emptyList()
@@ -2530,7 +2559,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             ProfileRoleSpec("Low 80% tier (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
             ProfileRoleSpec("Low 90% tier (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
         )
-        val notSetSentinel = "(not set -- falls back to Standard/Low)"
+        val relayOnly = config.AAPSCLIENT
+        val notSetSentinel = if (relayOnly) "(leave unchanged — not sent to Live)" else "(not set -- falls back to Standard/Low)"
 
         fun spinnerFor(current: String, optional: Boolean): Spinner {
             val spinner = Spinner(act)
@@ -2543,19 +2573,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return spinner
         }
 
-        val spinners = roleSpecs.map { spec -> spinnerFor(preferences.get(spec.key), spec.optional) }
+        val spinners = roleSpecs.map { spec ->
+            val optional = relayOnly || spec.optional
+            val current = if (relayOnly) "" else preferences.get(spec.key)
+            spinnerFor(current, optional)
+        }
         val container = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
-            // Message inlined here rather than setMessage(), and the whole thing wrapped in a
-            // WRAP_CONTENT ScrollView below -- same reasoning as showCodedAutomationReviewPopup()'s
-            // layout note. This dialog previously had NO scroll container at all, so on a short screen
-            // (or with large system font / display scaling, which inflates both labels and the two
-            // spinners) its content could exceed the window and push the OK button out of reach, with
-            // setCancelable(false) below meaning there was then no way to dismiss it either. Now even
-            // more essential with 8 spinners instead of 2.
             addView(TextView(act).apply {
-                text = "Pick which of your profiles fill each role the AutoISF ported automations switch between."
+                text = if (relayOnly)
+                    "Client does not loop. Rows start unchanged and are not read from this phone. OK sends SetRole Notes to Live (slow NS path). Fast coded Profile Switch still carries one role at a time. Steroid rows are not sent from here."
+                else
+                    "Pick which of your profiles fill each role the AutoISF ported automations switch between."
                 setPadding(0, 0, 0, 24)
             })
             roleSpecs.forEachIndexed { i, spec ->
@@ -2569,34 +2599,45 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
 
         androidx.appcompat.app.AlertDialog.Builder(act)
-            .setTitle("Select coded profiles")
+            .setTitle(if (relayOnly) "Relay coded profiles to Live" else "Select coded profiles")
             .setView(scrollView)
             .setCancelable(false)
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                roleSpecs.forEachIndexed { i, spec ->
-                    val pos = spinners[i].selectedItemPosition
-                    val value = if (spec.optional) {
-                        if (pos == 0) "" else profileNames[pos - 1]
-                    } else {
-                        profileNames[pos]
+                if (relayOnly) {
+                    var sent = 0
+                    roleSpecs.forEachIndexed { i, spec ->
+                        if (spec.key !in setRoleRelayKeys) return@forEachIndexed
+                        val pos = spinners[i].selectedItemPosition
+                        if (pos == 0) return@forEachIndexed
+                        val value = profileNames[pos - 1]
+                        emitSetRoleRelayNote(spec.key, value)
+                        sent++
                     }
-                    preferences.put(spec.key, value)
-                    // Mirror the Standard row into its own stable 100%-baseline anchor -- see
-                    // StringKey.ApsAutoIsfStandard100ProfileName's own doc comment for why this needs to
-                    // be a separate preference from ApsAutoIsfStandardProfileName itself (which
-                    // MorningRoleSwapHigh overwrites once it escalates).
-                    if (spec.key == StringKey.ApsAutoIsfStandardProfileName) {
-                        preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, value)
+                    ToastUtils.infoToast(
+                        act,
+                        if (sent == 0) "Nothing sent (all left unchanged). Use Profile Switch for a fast one-role relay."
+                        else "Sent $sent SetRole Note(s) to Live. Wait for RoleSet on the pump phone."
+                    )
+                } else {
+                    roleSpecs.forEachIndexed { i, spec ->
+                        val pos = spinners[i].selectedItemPosition
+                        val value = if (spec.optional) {
+                            if (pos == 0) "" else profileNames[pos - 1]
+                        } else {
+                            profileNames[pos]
+                        }
+                        preferences.put(spec.key, value)
+                        if (spec.key == StringKey.ApsAutoIsfStandardProfileName) {
+                            preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, value)
+                        }
                     }
+                    preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 }
-                preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 onDone()
             }
             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ ->
-                // Skip: leave the current (possibly still-default) preference values untouched, but
-                // still mark reviewed so this doesn't nag on every single launch -- change later via
-                // Preferences if needed.
-                preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
+                if (!relayOnly)
+                    preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())
                 onDone()
             }
             .show()

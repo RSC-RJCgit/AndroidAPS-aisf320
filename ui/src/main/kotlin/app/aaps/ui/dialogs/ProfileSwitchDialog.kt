@@ -314,19 +314,20 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                     ) {
                         if (percent == 90 && duration == 10) preferences.put(BooleanNonKey.ObjectivesProfileSwitchUsed, true)
                         // Coded-role assignment (2026-08-24, reworked 2026-08-31 checkbox -> selector).
-                        // A Steroid-marked name (steroid/% + standalone 110/130/150/190/250, longest
-                        // first) always re-assigns that Steroid role and the selector is moot. Otherwise
-                        // the selector decides: "(no role change)" (default) touches nothing; any base
-                        // or tier does a local preferences.put -- authoritative on the loop phone, inert
-                        // on a follower -- plus emits the SetRole Note. The coded duration (set above)
-                        // is the fast follower->loop path; the Note is the slow backup. roleOption was
-                        // captured before this confirmation opened (the dialog binding is now cleared).
+                        // A Steroid-marked name always re-assigns that Steroid role and the selector is
+                        // moot. Otherwise the selector decides. Local preferences.put is Live/Virtual
+                        // only (2026-09-02): Client must not keep a shadow copy of role prefs — it
+                        // confused Re-pick into showing Client-local Profile70 while Live still had
+                        // Profile90. Client still emits the SetRole Note and the coded 51-57 min
+                        // duration (fast follower->loop path).
                         steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
-                            preferences.put(steroidKey, profileName)
+                            if (!config.AAPSCLIENT) preferences.put(steroidKey, profileName)
                         } ?: roleOption.key?.let { roleKey ->
-                            preferences.put(roleKey, profileName)
-                            if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
-                                preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+                            if (!config.AAPSCLIENT) {
+                                preferences.put(roleKey, profileName)
+                                if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
+                                    preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+                            }
                             emitSetRoleNote(roleKey, profileName)
                         }
                         if (isTT) {
