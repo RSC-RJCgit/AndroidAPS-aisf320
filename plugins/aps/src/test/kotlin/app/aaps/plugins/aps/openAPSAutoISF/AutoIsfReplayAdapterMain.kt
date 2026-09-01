@@ -119,6 +119,9 @@ object AutoIsfReplayAdapterMain {
             iobChange5Min = parameters.doubleValue("iobChange5Min"),
             recentLowBG = parameters.doubleValue("recentLowBG"),
             bmildBasicCriteriaMet = parameters.booleanValue("bmildBasicCriteriaMet"),
+            bg3BasicCriteriaMet = parameters.get("bg3BasicCriteriaMet")
+                ?.takeIf { it.isJsonPrimitive }?.asBoolean
+                ?: false,
             acceIsfValue = parameters.doubleValue("acceIsfValue")
         )
     }

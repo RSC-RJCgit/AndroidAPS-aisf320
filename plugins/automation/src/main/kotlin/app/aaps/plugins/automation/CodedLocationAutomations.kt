@@ -11,6 +11,8 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
@@ -24,6 +26,7 @@ import com.google.gson.reflect.TypeToken
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
@@ -44,6 +47,7 @@ class CodedLocationAutomations @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val profileFunction: ProfileFunction,
     private val dateUtil: DateUtil,
+    private val rxBus: RxBus,
     private val aapsLogger: AAPSLogger
 ) {
 
@@ -170,6 +174,11 @@ class CodedLocationAutomations @Inject constructor(
         ).also {
             it.enteredBy = "AAPS"
             it.note = note
+            // Same 1-min duration addCarePortalNote() writes. Duration 0 used Shape.GENERAL and was
+            // Y-culled on graph4; Treatments still listed the note. Existing duration=0 rows are
+            // covered separately by TherapyEventDataPoint treating every TE.Type.NOTE as
+            // GENERAL_WITH_DURATION.
+            it.duration = TimeUnit.MINUTES.toMillis(1)
         }
         disposables += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = therapyEvent,
@@ -178,7 +187,10 @@ class CodedLocationAutomations @Inject constructor(
             note = "Coded location: ${spec.label}",
             listValues = listOf(ValueWithUnit.TEType(TE.Type.NOTE), ValueWithUnit.SimpleString(note))
         ).subscribe(
-            { aapsLogger.info(LTag.AUTOMATION, "Coded location fired: $text") },
+            {
+                aapsLogger.info(LTag.AUTOMATION, "Coded location fired: $text")
+                rxBus.send(EventRefreshOverview("Coded location note", true))
+            },
             { aapsLogger.error(LTag.AUTOMATION, "Coded location note failed: ${it.message}") }
         )
     }

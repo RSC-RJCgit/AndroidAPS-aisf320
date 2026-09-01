@@ -47,6 +47,13 @@ class TherapyEventDataPoint(
                 data.type == TE.Type.ANNOUNCEMENT          -> Shape.ANNOUNCEMENT
                 data.type == TE.Type.SETTINGS_EXPORT       -> Shape.SETTINGS_EXPORT
                 data.type == TE.Type.EXERCISE              -> Shape.EXERCISE
+                // All CarePortal notes use the graph4 stacked-text shape, even when duration is 0.
+                // Coded-location notes (HmEnt/HmLve and the other arrival/exit tags) were inserted
+                // without a duration, so they used to fall through to Shape.GENERAL, get Y-range
+                // culled on graph4 (that panel isn't glucose-scaled), and vanish there while still
+                // showing in Treatments. addCarePortalNote() already writes duration=1min (UamBst,
+                // BMild, etc.) -- this also covers those older duration=0 rows already in the DB.
+                data.type == TE.Type.NOTE                  -> Shape.GENERAL_WITH_DURATION
                 duration > 0                               -> Shape.GENERAL_WITH_DURATION
                 else                                       -> Shape.GENERAL
             }

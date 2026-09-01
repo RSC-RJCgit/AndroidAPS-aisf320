@@ -2119,12 +2119,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // no markRun() or preference writes happen in here), so it's safe to call this more than once per
         // cycle without consuming BolusGivenMild's own throttle or side effects. Two callers: the
         // BolusGivenMild block below (unchanged behavior) and DetermineBasalAutoISF.kt's determine_basal()
-        // call site (as the bmildBasicCriteriaMet parameter, now Tier 3 UAM Boost's sole entry trigger --
-        // see that param's own doc comment for why). Declared here (invoke()'s own top level, before any
-        // automation's own if-block) rather than immediately above the BolusGivenMild block itself, so
-        // it's also in scope down at the determine_basal() call site much further below -- a local
-        // function declared inside another automation's nested if-block would go out of scope the moment
-        // that block closes.
+        // call site (as the bmildBasicCriteriaMet parameter, one of two Tier 3 UAM Boost entry triggers
+        // alongside bg3BasicCriteriaMet -- see those params' own doc comments for why). Declared here
+        // (invoke()'s own top level, before any automation's own if-block) rather than immediately above
+        // the BolusGivenMild block itself, so it's also in scope down at the determine_basal() call site
+        // much further below -- a local function declared inside another automation's nested if-block
+        // would go out of scope the moment that block closes.
         fun bmildBasicCriteriaMet(): Boolean {
             if (!(profile_percentage == 100 && activeTtMgdl() == null
                     && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
@@ -2132,8 +2132,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // Switched 2026-08-30 at explicit request from the pure raw/noise channel (rawDelta5MinMgdl/
             // rawDelta1MinMgdl -- still used elsewhere, e.g. bg3's own mirror check) to ukfRawMetrics(),
@@ -2166,23 +2164,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
             // cap (<14.4) so it still can't overlap bg3's territory.
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            // High-BGL exception to the standard 120-min post-bolus/carb quiet window, added 2026-08-30
-            // after real data showed BMild/Tier3 (this fn is Tier 3's sole entry trigger too) going
-            // silent for ~2 hours during a genuine 12+mmol plateau because a bolus/carb entry around
-            // 5pm reset this gate right as the high was worsening -- with bg3 also locked out above its
-            // own former ceiling (see BolusGiven's bg3 val, fixed same day), nothing was left to help.
-            // Only SHORTENS the window (to 30min, not 0) -- still requires some clearance from the
-            // entry, not none -- and only once BG is unambiguously high on its own terms, not near any
-            // normal post-meal/correction range. The d/rawDelta5/rawDelta1 rise-confirmation gates below
-            // are unchanged, so this doesn't turn a stale or flat-but-high plateau into a fresh fire --
-            // it only removes the timing veto once BG is high AND those gates independently confirm the
-            // rise is real. 198.2 (11.0mmol)/30min are first-cut numbers, not yet device-verified.
-            val recentEntryGateMin = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
+            // Post-bolus/carb quiet window (was 120 min, or 30 min above 11.0 mmol) REMOVED 2026-09-01
+            // at explicit request: BMild / Tier 3 / BolusGiven bg3 must still be able to fire on a
+            // confirmed rise even when a recent manual bolus or carb entry would previously have
+            // locked them out for up to two hours.
             // Window extended to 02:00 (was end of day/midnight) at explicit request 2026-08-29.
             // isTimeBetween handles the overnight wraparound itself (startMins > endMins), so this
             // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
             return isTimeBetween(8, 30, 2, 0)
-                && lastBolusMin >= recentEntryGateMin && lastCarbMin >= recentEntryGateMin
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
@@ -2209,6 +2198,83 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // cut, not yet device-verified against a case that needed the full-strength tier and
                 // would have been wrongly capped by this -- watch for that before trusting the number.
                 && !(g < 135.1 /* 7.5 mmol */ && iobChange5 > 0.8)
+        }
+
+        // Extracted 2026-09-01 from BolusGiven's inline `val bg3 = ...`, same pure-query pattern as
+        // bmildBasicCriteriaMet() above -- readyToRun()/minutesSinceLast*()/totalIobAt() are all
+        // read-only, no markRun() or preference writes happen in here. Two callers: the BolusGiven
+        // block below (its bg3 branch, still wrapped in that automation's own no-TT outer guard) and
+        // determine_basal()'s bg3BasicCriteriaMet param (Tier 3's second entry trigger).
+        //
+        // Deliberately does NOT require activeTtMgdl() == null. BolusGiven's own action-set still does
+        // (it cancels/replaces the TT, switches profile, writes iobTH, etc.), but Tier 3 only needs the
+        // rise confirmation -- a TT may already be active (BolusGiven's own 2-min 4.2mmol TT from this
+        // same cycle, leftover BMild 5.0mmol TT, eating-soon, etc.) and that shouldn't block the dosing
+        // boost. readyToRun("BolusGivenBg3", 10) is included so the TT-independent path still has a
+        // 10-min cadence of its own: without it, a TT that blocks BolusGiven from markRun("BolusGiven")
+        // would leave this returning true every cycle. The no-TT BolusGiven path already markRuns both
+        // "BolusGiven" and "BolusGivenBg3" on a bg3 fire, so this extra check is a no-op there
+        // (first fire: never-run = ready; subsequent: both keys consumed together).
+        fun bg3BasicCriteriaMet(): Boolean {
+            if (!(profile_percentage == 100
+                    && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+                    && readyToRun("BolusGiven", 10)
+                    && readyToRun("BolusGivenBg3", 10))
+            ) return false
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
+            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
+            // (x1.10) rather than blocking outright -- the boost can still fire on a strong enough rise.
+            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
+            // Keeps the iobChange5 U-thresholds calibrated in real terms as ApsAutoIsfSmbDeliveryBaseline
+            // moves. 0.17 is the reference point: the device was actually delivering at 0.17 on
+            // 2026-07-22, the data the 0.85/0.40 thresholds were tuned from (commit 347smbcriteriaFixed)
+            // -- baseline has since dropped to 0.14 via the DelOff/baseline-preference work, so the same
+            // real-world rise now delivers proportionally less insulin per SMB (~x0.82 at 0.14) and
+            // would produce a smaller iobChange5 than the tuning assumed. Only applied to the
+            // IOB-quantity thresholds; the rawDelta/d mmol thresholds measure glucose movement, not
+            // insulin delivered. Reads the preference directly (same reason as bmildBasicCriteriaMet).
+            val thresholdScale = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) / 0.17
+            // d/iobChange5 loosened from 0.7mmol/1.00 to 0.60mmol/0.85 (2026-07-24): an incident showed
+            // rawDelta5 already unambiguously in bg3's territory (1.17-1.89mmol, well above the 0.8mmol
+            // floor) for several straight minutes while d (peaked 0.69mmol) and iobChange5 (peaked 0.93)
+            // sat just under the old bar. rawDelta5's own >=0.8mmol floor is unchanged.
+            // Same incident also showed rawDelta1 declining through the window even while
+            // d/iobChange5/rawDelta5 all confirmed a genuine rise, so bg3's own unconditional >=0.8mmol
+            // rawDelta1 floor would STILL have blocked it. Mirrors mild's exact exception: fully dropped
+            // below 9.0mmol, reduced to >=0.25mmol (4.5*stackK) at/above it.
+            val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            // Delivery-suppressed bypass: if a fast-rise cap has throttled SMB to ~zero (0-1 delivered
+            // in the last 5 min) while raw signals are unambiguously still confirming a rise, don't let
+            // the resulting stalled/negative iobChange5 -- an artifact of the suppression itself --
+            // block the boost. Raw-only, no `d`. Direct numbers, not stackK-scaled: stackK is provably
+            // always 1.0 whenever smbCount5Min() <= 1.
+            val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
+            // Window extended 22:00 -> end of day (2026-08-14). Deliberately NOT extended into the
+            // 00:00-06:00 overnight guard territory -- see isTimeBetween()'s own doc comment for why
+            // endH=0/endM=0 here means "runs to end of day," not "wraps past midnight."
+            // Post-bolus/carb quiet window (was 120 min, or 30 min above 11.0 mmol) REMOVED 2026-09-01
+            // at explicit request -- same as bmildBasicCriteriaMet. Rise-confirmation gates below are
+            // unchanged; this only drops the timing veto after a manual bolus/carb entry.
+            val profileName = profileFunction.getProfileName()
+            return isTimeBetween(8, 30, 0, 0)
+                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
+                && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
+                // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
+                // sustained 12+mmol plateau where bg3 was the only mechanism strict enough to have
+                // helped. bg1/bg2 above have no analogous ceiling (bg2 only has a FLOOR, g >= 180.2).
+                && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                && !mjActive()
+                // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses
+                // (BS.Type.NORMAL), never SMB -- without this, bg3's own IOB bump from a mild fire
+                // ~minutes ago could sit inside bg3's next 5-min iobChange5 window.
+                && readyToRun("BolusGivenMild", 10)
+                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                && recentSteps60Minutes < 300
+                && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
         }
 
         // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
@@ -2333,6 +2399,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Stays false (matching bmildBasicCriteriaMet()'s own false-if-disabled behavior) whenever the
         // automations block below doesn't run at all.
         var bmildFiredThisCycle = false
+        // Same snapshot pattern for BolusGiven bg3 -> Tier 3. Captured once before BolusGiven's own
+        // markRun("BolusGiven") / markRun("BolusGivenBg3"), then reused at determine_basal() -- a
+        // second bg3BasicCriteriaMet() call after those markRuns would always return false (the 2026-08-27
+        // BMild throttle-reuse bug). Stays false when the automations block doesn't run.
+        var bg3FiredThisCycle = false
 
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 
@@ -4465,6 +4536,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (bg1/bg2); the SMB-driven branch (bg3) does NOT require them.
         // ApsAutoIsfBoostAutomationsEnabled is the combined master switch for this WHOLE block (bg1/2/3)
         // and BolusGivenMild below — one toggle disables both, per user request.
+        //
+        // Snapshot bg3 BEFORE this block's markRun: bg3BasicCriteriaMet() includes
+        // readyToRun("BolusGiven"/"BolusGivenBg3"), so a second call after markRun would always be
+        // false (same 2026-08-27 BMild bug). Also markRun("BolusGivenBg3") here so the TT-independent
+        // Tier 3 path still has a 10-min cadence when BolusGiven's own no-TT outer guard blocks the
+        // action-set. BolusGiven's actions still require no TT; Tier 3 does not.
+        bg3FiredThisCycle = bg3BasicCriteriaMet()
+        if (bg3FiredThisCycle) markRun("BolusGivenBg3")
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             && readyToRun("BolusGiven", 10)) {
@@ -4477,8 +4556,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Safety cap: within the first 30 min post-bolus, don't let bg1/bg2 fire if delta is
             // already >=0.5 mmol — an early, already-large delta this soon after a bolus reads as a
             // stacking risk, not clearer evidence of need. No effect past 30 min (bg1/bg2's own windows
-            // extend well beyond it). Not applied to bg3 (or BolusGivenMild below) — both require
-            // lastBolusMin>=120, so a <30-min cap could never bind there anyway.
+            // extend well beyond it). Not applied to bg3 (or BolusGivenMild below) — those are
+            // rise-driven, not post-bolus, and as of 2026-09-01 no longer have a lastBolusMin quiet
+            // window of their own either.
             val recentBolusDeltaCapOk = !(lastBolusMin < 30 && d >= 9.0 /* 0.5 mmol */)
             // per-block gate for the manual-bolus branches (was the global guard)
             val postBolusGate = cob >= 9
@@ -4506,104 +4586,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
                 && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol raw confirmation */ && recentBolusDeltaCapOk
                 && !checkAutomationState("MJ", "NOMJremains")
-            // Block 3 (NEW): delivery-driven rise with NO recent manual bolus/carbs (>=120 min for both).
-            // Total IOB (bolus + basal) rose > 0.80 U over 5 min, and BGL rising on the AAPS delta and on
-            // BOTH the raw Libre 5-min AND 1-min deltas at the same >=0.8 mmol threshold. NB: rawDelta1MinMgdl()
-            // normalises the 1-min trend to a per-5-min rate (×5), so it's the same scale as rawDelta5 —
-            // 0.8 here means 0.8 mmol/5min, not 0.8 mmol in one minute.
-            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
-            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
-            // (x1.10) rather than blocking outright — the boost can still fire on a strong enough rise.
-            val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
-            // Keeps the iobChange5 U-thresholds calibrated in real terms as ApsAutoIsfSmbDeliveryBaseline
-            // moves. 0.17 is the reference point: the device was actually delivering at 0.17 on
-            // 2026-07-22, the data the 0.85/0.40 thresholds below were tuned from (commit
-            // 347smbcriteriaFixed) — baseline has since dropped to 0.14 via the DelOff/baseline-preference
-            // work, so the same real-world rise now delivers proportionally less insulin per SMB
-            // (~x0.82 at 0.14) and would produce a smaller iobChange5 than the tuning assumed, making
-            // these thresholds harder to clear than intended for identical underlying urgency. Only
-            // applied to the IOB-quantity thresholds (0.85/0.40 here, 0.40 in Mild below); the rawDelta/d
-            // mmol thresholds measure glucose movement, not insulin delivered, so scaling them by a
-            // delivery ratio wouldn't be meaningful.
-            val thresholdScale = deliveryBaseline / 0.17
-            // d/iobChange5 loosened from 0.7mmol/1.00 to 0.60mmol/0.85 (2026-07-24): an incident showed
-            // rawDelta5 already unambiguously in bg3's territory (1.17-1.89mmol, well above the 0.8mmol
-            // floor) for several straight minutes while d (peaked 0.69mmol) and iobChange5 (peaked 0.93)
-            // sat just under the old bar the whole time — bg3 never fired, fast-rise caps kept cutting
-            // delivery with nothing to counteract them, and mild only caught it minutes later once
-            // rawDelta5 had settled back under its own upper cap. rawDelta5's own >=0.8mmol floor is
-            // unchanged — this only closes the gap on bg3's smoothed-signal confirmation.
-            // Same incident also showed rawDelta1 (the noisiest single-point signal — see mild's own
-            // rawDelta1FloorOk comment) declining through the window (1.94->1.39->0.54->0.28mmol) even
-            // while d/iobChange5/rawDelta5 all confirmed a genuine rise, so bg3's own unconditional
-            // >=0.8mmol rawDelta1 floor would STILL have blocked it even after the d/iobChange5 fix
-            // above. Mirrors mild's exact exception: fully dropped below 9.0mmol, reduced to >=0.25mmol
-            // (4.5*stackK) at/above it — same threshold values as mild's, since it's the identical
-            // underlying noise problem, not a new one needing separate justification.
-            val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            // Delivery-suppressed bypass: if a fast-rise cap has throttled SMB to ~zero (0-1 delivered
-            // in the last 5 min) while raw signals are unambiguously still confirming a rise, don't let
-            // the resulting stalled/negative iobChange5 — an artifact of the suppression itself, not
-            // evidence the rise resolved — block the boost. Raw-only, no `d`: `d` is itself downstream
-            // of how much insulin has actually been delivered, so requiring it here just re-imports the
-            // same lag this bypass exists to route around. Direct numbers, not stackK-scaled: stackK is
-            // provably always 1.0 whenever smbCount5Min() <= 1 (smbInterval5Sec() can't compute an
-            // interval — and so can't detect stacking — with fewer than 2 SMBs in the window), so
-            // scaling by it here would be dead weight implying a scaling that can never actually apply.
-            val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            // Window extended 22:00 -> end of day (2026-08-14): a real event showed bg3's own signal
-            // thresholds satisfied at 9:57pm, with iobChange5 closing fast, only to be cut off by the
-            // old 22:00 boundary before it could fire -- the rise then ran uncontested another 30+ min.
-            // Later meals are common enough that the boost shouldn't structurally stop working for them.
-            // Safety is NOT reopened by this: the cumulative 30-min/10-min SMB caps in
-            // DetermineBasalAutoISF.kt (built from the Aug 6-7 hypo incident) trim/zero microBolus
-            // AFTER this fires regardless of time of day -- they're what actually prevents stacking, not
-            // this window. Deliberately NOT extended into the 00:00-06:00 overnight guard territory
-            // (NightIobCeiling, MJrec, etc.) -- see isTimeBetween()'s own doc comment for why endH=0/
-            // endM=0 here means "runs to end of day," not "wraps past midnight."
-            // Same high-BGL exception as bmildBasicCriteriaMet()'s recentEntryGateMin, extended here
-            // 2026-08-30 (same day, at explicit request) to close a gap the ceiling removal above left
-            // open on its own: removing bg3's BG ceiling doesn't help during THIS episode's exact
-            // pattern if a bolus/carb entry also independently blocks bg3 on lastBolusMin/lastCarbMin
-            // for the same 2 hours -- see that val's own doc comment for the full reasoning.
-            val recentEntryGateMinBg3 = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
-            val bg3 = isTimeBetween(8, 30, 0, 0)
-                && lastBolusMin >= recentEntryGateMinBg3 && lastCarbMin >= recentEntryGateMinBg3
-                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
-                && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
-                // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
-                // sustained 12+mmol plateau where bg3 was the only mechanism strict enough (confirmed
-                // active rise via d/rawDelta5/longAvgDelta, not just "is it high") to have helped, but
-                // structurally couldn't fire at all above the old ceiling -- BMild/Tier3 need an active
-                // rise too and had gone silent, and HighEveNightBrake/HighDaytimeBrake are for a flat
-                // plateau, not one still moving. bg1/bg2 above have no analogous ceiling (bg2 only has
-                // a FLOOR, g >= 180.2), so this brought bg3 in line with them. Safety isn't reopened by
-                // removing it: bg3's own rise-confirmation gates (d, rawDelta5/rawDelta1, longAvgDelta,
-                // iobChange5-or-deliverySuppressed) are unchanged and are what actually gate this, not
-                // an arbitrary BG level -- a strong, well-confirmed rise doesn't deserve LESS boost just
-                // because BG already got away. First cut, watch next real high-BG episode to confirm.
-                && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName)                  // not on the MJ/night profile
-                && !mjActive()         // and MJ must not be in an active cycle (was: == NOMJremains)
-                // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses (BS.Type.NORMAL),
-                // never SMB — so mild firing doesn't touch that gate and couldn't otherwise block bg3 here.
-                // Without this, bg3's own IOB bump from a mild fire ~minutes ago could sit inside bg3's next
-                // 5-min iobChange5 window and look like fresh evidence for a second (redundant) boost.
-                // Matches mild's own 10-min self-throttle, so both blocks reason about the same window.
-                && readyToRun("BolusGivenMild", 10)
-                // Movement guard: don't boost while actively walking/exercising — both a sensor-artifact
-                // risk (movement can distort readings) and a hypo-risk multiplier (activity raises
-                // insulin sensitivity), so a big boost is specifically the wrong response right then.
-                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
-                // Steps60 guard: same movement-risk reasoning as the 5m/30m checks above, extended to a
-                // full hour so a longer walk/activity session still blocks the boost even once the
-                // shorter windows have quieted back down.
-                && recentSteps60Minutes < 300
-                // Long-smoothed-avg-delta floor: glucoseStatus.longAvgDelta averages the ~17.5-42.5 min-old
-                // readings (DeltaCalculator.kt) — requiring it above 7.2 mg/dL (0.4mmol) confirms the rise
-                // isn't just a short-lived spike riding on an otherwise flat/falling longer trend.
-                && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
-            //WAS && iobChange5 > 0.80 && d >= 1.8 /* 0.1 mmol */ && rawDelta5 >= 3.6 /* 0.2 mmol */
+            // Block 3: delivery-driven rise with NO recent manual bolus/carbs. Inner rise criteria live
+            // in bg3BasicCriteriaMet() (snapshotted above, before this block's markRun). Reuse that
+            // snapshot rather than recomputing -- the extracted function skips the no-TT guard that
+            // this outer if already enforced, so the two agree whenever we reach here.
+            val bg3 = bg3FiredThisCycle
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
                 markRun("BolusGiven")
@@ -4639,9 +4626,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //
         // Own entry condition extracted 2026-08-24 into bmildBasicCriteriaMet() (declared earlier in this
         // function, see its own doc comment for why), unchanged in substance -- now ALSO passed into
-        // DetermineBasalAutoISF.kt's determine_basal() call (bmildBasicCriteriaMet param) as Tier 3 UAM
-        // Boost's entry trigger, replacing Tier 3's own former delta/ratio/acceleration gate entirely.
-        // See that param's own doc comment for why.
+        // DetermineBasalAutoISF.kt's determine_basal() call (bmildBasicCriteriaMet param) as one of two
+        // Tier 3 UAM Boost entry triggers (alongside bg3BasicCriteriaMet), replacing Tier 3's own former
+        // delta/ratio/acceleration gate entirely. See those params' own doc comments for why.
         //
         // Fixed 2026-08-27: snapshotted into bmildFiredThisCycle below and reused at the determine_basal()
         // call site, rather than calling bmildBasicCriteriaMet() a second time there as originally
@@ -4691,7 +4678,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Restricted to 09:00-21:00 (narrower than BolusGivenMild's own 8:30-22:00) and, like it, no
         // separate enable toggle -- shares ApsAutoIsfBoostAutomationsEnabled with its siblings, since
         // this should fire rarely and a dedicated switch would be one more thing to remember to turn on.
-        // Keeps the same recent-bolus/carb gate as regular BolusGivenMild.
+        // Post-bolus/carb quiet window removed 2026-09-01 along with regular BolusGivenMild's.
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             && isTimeBetween(9, 0, 21, 0)
@@ -4701,15 +4688,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val ld = glucoseStatus.longAvgDelta
             val iobNow = totalIobAt(dateUtil.now())
-            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val fire = g > 117.0 /* 6.5 mmol */
                 && d >= 5.4 /* 0.3 mmol Delta */
                 && sd >= 5.4 /* 0.3 mmol SDelta */
                 && ld >= 3.6 /* 0.2 mmol longAvgDelta */
                 && iobNow <= 0.20
                 && smbCount20Min() == 0                  // genuine silence, not just a normal gap
-                && lastBolusMin >= 120 && lastCarbMin >= 120
                 && readyToRun("BolusGivenBg3", 10)        // cross-cooldown, same as BolusGivenMild
                 && readyToRun("BolusGivenMild", 10)       // and with BolusGivenMild itself
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
@@ -4751,9 +4735,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val recentEntryGateMinBg3 = if (g >= 198.2 /* 11.0 mmol */) 30 else 120
             val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 0, 0)
-                && lastBolusMin >= recentEntryGateMinBg3 && lastCarbMin >= recentEntryGateMinBg3
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
                 // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
@@ -4763,7 +4745,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 0, 0)
-                && lastBolusMin >= 120 && lastCarbMin >= 120
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
@@ -4842,12 +4823,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // MildConfirmed — BolusGivenMild's own full fire condition, recomputed here since Mild can't
             // run while this TT is active (its outer gate requires activeTtMgdl()==null). Reuses every
             // guard from Mild's own block (not just the delta threshold) — raw delta bounds, iobChange5,
-            // bolus/carb timing, MJ state, cross-cooldown with bg3, movement guard — on the reasoning
+            // MJ state, cross-cooldown with bg3, movement guard — on the reasoning
             // that Mild's own strict multi-signal rise confirmation is itself adequate evidence the hypo
             // risk this TT was protecting against has passed. Cancelling here lets Mild actually fire
             // (delivery ratio + offset-zero) on the next loop cycle once activeTtMgdl() is clear.
-            val mildLastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val mildLastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            // Post-bolus/carb quiet window omitted 2026-09-01 to match bmildBasicCriteriaMet.
             val mildIobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val mildRawDelta5 = rawDelta5MinMgdl() ?: -9999.0
             val mildRawDelta1 = rawDelta1MinMgdl() ?: -9999.0
@@ -4857,7 +4837,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mildDeliverySuppressed = smbCount5Min() <= 1 && mildRawDelta5 >= 5.4 && mildRawDelta5 < 14.4 && mildRawDelta1 < 14.4
             val mildConfirmed = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
                 isTimeBetween(8, 30, 0, 0) &&
-                mildLastBolusMin >= 120 && mildLastCarbMin >= 120 &&
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
@@ -6710,6 +6689,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // instead of calling bmildBasicCriteriaMet() fresh here -- see that val's own doc comment for
         // why a second call in the same cycle always returned false.
         val replayBmildBasicCriteriaMet = bmildFiredThisCycle
+        val replayBg3BasicCriteriaMet = bg3FiredThisCycle
         val replayAcceIsfValue = lastAcceIsf
         val replayTraceInputs: Map<String, Any?> = if (preferences.get(BooleanKey.ApsAutoIsfReplayTraceEnabled)) mapOf(
             "glucose_status" to glucoseStatus,
@@ -6753,6 +6733,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "iobChange5Min" to replayIobChange5Min,
                 "recentLowBG" to replayRecentLowBG,
                 "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
+                "bg3BasicCriteriaMet" to replayBg3BasicCriteriaMet,
                 "acceIsfValue" to replayAcceIsfValue
             ),
             "determine_state" to mapOf(
@@ -6829,11 +6810,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // UKFboost branch only -- feeds tier3BoostReferenceComparison()'s fast-carb-rebound
             // detection, see recentLowBgMgdl()'s own doc comment.
             recentLowBG = replayRecentLowBG,
-            // Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/acceleration gate
-            // entirely -- see determine_basal()'s own bmildBasicCriteriaMet param doc comment for why.
-            // Recomputed fresh here (pure query, no side effects) rather than reusing a value cached from
-            // the BolusGivenMild block above, so it reflects this exact moment regardless of call order.
+            // Two Tier 3 UAM Boost entry triggers (BMild and BolusGiven bg3), replacing its own former
+            // delta/ratio/acceleration gate entirely -- see determine_basal()'s own bmildBasicCriteriaMet
+            // / bg3BasicCriteriaMet param doc comments. Snapshots captured once above, before each
+            // automation's markRun, so a second query here would not see a just-consumed throttle as false.
             bmildBasicCriteriaMet = replayBmildBasicCriteriaMet,
+            bg3BasicCriteriaMet = replayBg3BasicCriteriaMet,
             // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
             // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
             // alone, never real dosing.

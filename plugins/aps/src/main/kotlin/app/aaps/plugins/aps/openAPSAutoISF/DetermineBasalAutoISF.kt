@@ -50,9 +50,10 @@ class DetermineBasalAutoISF @Inject constructor(
     var uamBoostFiredThisCycle: Boolean = false
 
     // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-24:
-    // now that Tier 3's entry trigger IS bmildBasicCriteriaMet (see that gate's own doc comment), Tier 3
-    // can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild", 10) throttle allows --
-    // an independent, redundant 10-min throttle here was no longer doing any real work of its own.
+    // now that Tier 3's entry triggers ARE bmildBasicCriteriaMet / bg3BasicCriteriaMet (see those gates'
+    // own doc comments), Tier 3 can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild",
+    // 10) or BolusGiven bg3's readyToRun("BolusGivenBg3", 10) throttle allows -- an independent, redundant
+    // 10-min throttle here was no longer doing any real work of its own.
 
     // T3AcceISF observation-only shadow check (added 2026-08-24, removed 2026-08-27 per explicit
     // instruction -- no longer wanted: "I don't need 'how often would the old approach have fired'").
@@ -442,14 +443,22 @@ class DetermineBasalAutoISF @Inject constructor(
         // false for callers that don't pass it (tests, replay), same convention as the other optional
         // params above. Never read by real production dosing -- see that function's own doc comment.
         recentLowBG: Double = 999.0,
-        // Added 2026-08-24: Tier 3 UAM Boost's entry trigger, replacing its own former delta/ratio/
-        // throttle/quiet-window gate entirely (see that gate's own doc comment for why). Pass the live
-        // result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same condition that
-        // decides whether BolusGivenMild itself fires this cycle, recomputed as a pure query (no
-        // markRun()/side effects) so calling it here doesn't consume Bmild's own throttle or duplicate
-        // its actions. Default false = "no Bmild signal supplied" (tests, replay), same convention as
-        // lastBolusMinutes/lastCarbMinutes above.
+        // Added 2026-08-24: one of two Tier 3 UAM Boost entry triggers, replacing its own former
+        // delta/ratio/throttle/quiet-window gate entirely (see that gate's own doc comment for why).
+        // Pass the live result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same
+        // condition that decides whether BolusGivenMild itself fires this cycle, snapshotted once per
+        // invoke() (no markRun()/side effects in the query itself). Default false = "no Bmild signal
+        // supplied" (tests, replay), same convention as lastBolusMinutes/lastCarbMinutes above.
         bmildBasicCriteriaMet: Boolean = false,
+        // Added 2026-09-01: BolusGiven bg3's own rise-confirmation gate as a second Tier 3 trigger,
+        // alongside BMild. Pass OpenAPSAutoISFPlugin's bg3BasicCriteriaMet() snapshot -- same inner
+        // rise criteria as BolusGiven's bg3 branch, but deliberately WITHOUT that automation's
+        // activeTtMgdl()==null outer guard: BolusGiven itself starts a 2-min TT when it fires, and a
+        // TT may already be active from something else, neither of which should block the dosing
+        // boost. When this is the trigger (and BMild is not), Tier 3 uses the independent candidate
+        // (no preBoostMicroBolus * boost_scale multiply) -- BMild's original compounded multiply is
+        // restored only for the BMild-only path. Default false = "no bg3 signal supplied".
+        bg3BasicCriteriaMet: Boolean = false,
         // Added 2026-08-24: autoIsfValues.acceIsf from the PREVIOUS cycle (OpenAPSAutoISFPlugin.kt
         // computes it after this function returns, using this same cycle's data -- see that call site's
         // own comment for why a one-cycle-stale value is an acceptable tradeoff here). No longer used
@@ -1568,20 +1577,22 @@ class DetermineBasalAutoISF @Inject constructor(
                     // Rather than retune yet another number (e.g. against acce_ISF/autoIsfValues.acceIsf,
                     // which does track better but is still one more parameter to calibrate), Tier 3's
                     // trigger is now BolusGivenMild's OWN entry gate -- delta/ratio thresholds, IOB
-                    // ceiling, 10-min throttle, 2-hour quiet window, sub-7.5mmol guard, movement guard,
+                    // ceiling, 10-min throttle, sub-7.5mmol guard, movement guard,
                     // cross-cooldown with bg3 -- a gate already relied on successfully, on real pumps,
                     // with no acceleration term of its own (see bmildBasicCriteriaMet()'s own doc
-                    // comment, OpenAPSAutoISFPlugin.kt). Tier 3 runs wherever ApsAutoIsfUamBoostEnabled is
+                    // comment, OpenAPSAutoISFPlugin.kt) -- PLUS, as of 2026-09-01, BolusGiven bg3's own
+                    // rise gate (bg3BasicCriteriaMet) as a second trigger for the stronger delivery-driven
+                    // rise that bg3 already owns. Tier 3 runs wherever ApsAutoIsfUamBoostEnabled is
                     // set (no pump-type gate any more -- boostActive is just that preference), and can only
                     // ever RAISE the ordinary SMB, never lower it -- see the max() comparison just below
-                    // this gate. As of 2026-09-01 its candidate is computed INDEPENDENTLY of BolusGivenMild's
-                    // own setSmbDeliveryRatio boost (see the dropped boostedUsualSmbCandidate below), so the
-                    // final SMB is the LARGER of {BMild's boosted dose, Tier 3's own dose} rather than the
-                    // product of the two.
+                    // this gate. Candidate compounding is path-specific: BMild-only restores the original
+                    // preBoostMicroBolus * boost_scale multiply; the bg3 path keeps the 2026-09-01
+                    // independent candidate (no multiply) so BolusGiven's own delivery-ratio boost is not
+                    // then scaled again.
                     //
                     // The IOB/boost_scale/bg/boostIobAllowance checks remain: these guard the SIZE of the
                     // boost itself (don't oversize even when triggered), not whether a rise is genuine --
-                    // that question is now bmildBasicCriteriaMet's alone.
+                    // that question is now bmildBasicCriteriaMet / bg3BasicCriteriaMet's.
                     //
                     // Fixed 2026-08-26: eventualBG > target_bg and insulinReq > 0 REMOVED. Real 26 Aug data
                     // showed these two were never redundant-but-harmless the way the sizing checks are --
@@ -1599,7 +1610,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     // bmildBasicCriteriaMet supplies that (on real pumps, already relied on for its own
                     // dosing), keeping them just made the combined path unreachable rather than adding
                     // real protection.
-                    if (boostActive && bmildBasicCriteriaMet &&
+                    if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && bg > 80
                         && boostIobAllowance > 0.0) {
 
@@ -1617,22 +1628,23 @@ class DetermineBasalAutoISF @Inject constructor(
                         // deemed not relevant to Tier 3 here, so left back at its original always-on form
                         // rather than porting that whole separate feature just to make the check meaningful.
                         val baselineRatioCandidate = min(insulinReq / insulinDivisor, boost_max)
-                        // boostedUsualSmbCandidate (preBoostMicroBolus * boost_scale) was DROPPED from the
-                        // candidate set 2026-09-01: preBoostMicroBolus already carries BolusGivenMild's
-                        // +0.15 delivery-ratio boost, so scaling it again by boost_scale compounded the two
-                        // (BMild ~2x, then Tier 3 up to ~3x). Tier 3's candidate is now the two
-                        // BMild-ratio-independent terms only -- boost_scale*basal and insulinReq/insulinDivisor
-                        // -- and the max() vs preBoostMicroBolus just below still means the final SMB is the
-                        // larger of the two mechanisms, never their product. Still logged below for the
-                        // diagnostic so the compounded figure stays visible for comparison.
                         val boostedUsualSmbCandidate = min(preBoostMicroBolus * boost_scale, boost_max)
-                        val tier3Candidate = min(
-                            max(boostInsulinReq, baselineRatioCandidate),
-                            boostIobAllowance
-                        )
+                        // BMild-only: restore the original multiplied candidate (preBoostMicroBolus *
+                        // boost_scale) to the max() set -- that was the live strength until 2026-09-01
+                        // dropped it to stop compounding BMild's +0.15 delivery-ratio boost with boost_scale.
+                        // bg3 path (and any same-cycle overlap, which the cross-cooldown should prevent):
+                        // keep the independent candidate, no multiply -- BolusGiven bg3 already writes its
+                        // own milder delivery-ratio boost (mildBase+0.03), and compounding that with
+                        // boost_scale is the combination this split exists to avoid.
+                        val includeMultipliedUsual = bmildBasicCriteriaMet && !bg3BasicCriteriaMet
+                        val tier3Uncapped = if (includeMultipliedUsual)
+                            max(boostInsulinReq, max(boostedUsualSmbCandidate, baselineRatioCandidate))
+                        else
+                            max(boostInsulinReq, baselineRatioCandidate)
+                        val tier3Candidate = min(tier3Uncapped, boostIobAllowance)
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
                         // Added 2026-08-25: unconditional diagnostic, logged every cycle this block runs
-                        // (i.e. every Bmild firing whose safety numerics also passed) regardless of
+                        // (i.e. every BMild or bg3 firing whose safety numerics also passed) regardless of
                         // win/lose -- same reasoning as the SensorAge block's own "SensorAge check" line.
                         // Before this, the candidate-vs-Bmild comparison was only ever logged inside the
                         // win branch just below, so a losing cycle left no record of HOW close it came --
@@ -1642,6 +1654,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         consoleError.add(
                             "Tier3-vs-Bmild: candidate=${round(roundedTier3Candidate, 2)}U vs ordinary(preBoost)=${round(preBoostMicroBolus, 2)}U " +
                                 "(margin=${round(roundedTier3Candidate - preBoostMicroBolus, 2)}U, ${if (roundedTier3Candidate > preBoostMicroBolus) "WON" else "lost"}) " +
+                                "BMild=$bmildBasicCriteriaMet bg3=$bg3BasicCriteriaMet multipliedUsual=$includeMultipliedUsual " +
                                 "boostInsulinReq=${round(boostInsulinReq, 2)} baselineRatio=${round(baselineRatioCandidate, 2)} boostedUsualSmb=${round(boostedUsualSmbCandidate, 2)} " +
                                 "boostIobAllowance=${round(boostIobAllowance, 2)} boost_scale=${round(boost_scale, 2)}"
                         )

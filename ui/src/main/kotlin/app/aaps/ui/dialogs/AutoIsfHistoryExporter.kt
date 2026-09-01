@@ -1013,17 +1013,28 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  row saved partway through it, but a single 1-minute loop cycle runs a great many sequential
      *  automation checks -- long enough that the row's own save-time and a note fired later in that same
      *  logical cycle can genuinely land in different calendar minutes, which the exact-bucket check alone
-     *  can never catch from either side. 90s tolerance: wide enough to cover a slow cycle spilling across
-     *  one minute boundary, narrow enough to stay well under the gap to the row two cycles away. */
+     *  can never catch from either side.
+     *
+     *  Widened 2026-09-01 and restricted to true orphans: the original 90s window only covered a loop
+     *  cycle spilling across a minute boundary. Coded-location notes (HmEnt/HmLve and the other
+     *  arrival/exit tags) fire from a GPS callback, not the loop, so they can land well away from the
+     *  nearest AIV save -- real miss: both notes visible in Treatments, only HmLve on the AIV popup.
+     *  Fallback now only claims a note whose OWN calendar minute has no AIV row at all (otherwise the
+     *  previous "nearest row within 90s" rule could also pin a note onto the previous minute's row
+     *  when that save happened to be closer in wall-clock than this minute's). 10 min: wide enough for
+     *  a GPS/loop gap, still one row (nearest) per orphan. */
     fun carePortalNotesStr(timestamp: Long, notes: List<TE>, allRecords: List<AIV> = emptyList()): String {
         val minuteMs = TimeUnit.MINUTES.toMillis(1)
         val minuteStart = timestamp - (timestamp % minuteMs)
         val minuteEnd = minuteStart + minuteMs
         val exact = notes.filter { it.timestamp >= minuteStart && it.timestamp < minuteEnd }
-        val toleranceMs = TimeUnit.SECONDS.toMillis(90)
+        val minutesWithRows = if (allRecords.isEmpty()) emptySet() else
+            allRecords.mapTo(HashSet()) { it.timestamp - (it.timestamp % minuteMs) }
+        val orphanToleranceMs = TimeUnit.MINUTES.toMillis(10)
         val fallback = if (allRecords.isEmpty()) emptyList() else notes.filter { n ->
-            (n.timestamp < minuteStart || n.timestamp >= minuteEnd) &&
-                kotlin.math.abs(n.timestamp - timestamp) <= toleranceMs &&
+            val noteMinute = n.timestamp - (n.timestamp % minuteMs)
+            noteMinute !in minutesWithRows &&
+                kotlin.math.abs(n.timestamp - timestamp) <= orphanToleranceMs &&
                 allRecords.minByOrNull { kotlin.math.abs(it.timestamp - n.timestamp) }?.timestamp == timestamp
         }
         return (exact + fallback).asSequence()
