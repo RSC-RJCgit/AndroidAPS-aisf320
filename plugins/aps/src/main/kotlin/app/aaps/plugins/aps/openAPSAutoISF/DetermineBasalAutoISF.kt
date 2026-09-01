@@ -1571,10 +1571,13 @@ class DetermineBasalAutoISF @Inject constructor(
                     // ceiling, 10-min throttle, 2-hour quiet window, sub-7.5mmol guard, movement guard,
                     // cross-cooldown with bg3 -- a gate already relied on successfully, on real pumps,
                     // with no acceleration term of its own (see bmildBasicCriteriaMet()'s own doc
-                    // comment, OpenAPSAutoISFPlugin.kt). Tier 3 stays Virtual-only regardless (boostActive
-                    // below is unchanged), and still only STRENGTHENS whatever BolusGivenMild's own
-                    // setSmbDeliveryRatio ratio-boost already produced (preBoostMicroBolus below), never
-                    // replacing it -- see the max() comparison just below this gate.
+                    // comment, OpenAPSAutoISFPlugin.kt). Tier 3 runs wherever ApsAutoIsfUamBoostEnabled is
+                    // set (no pump-type gate any more -- boostActive is just that preference), and can only
+                    // ever RAISE the ordinary SMB, never lower it -- see the max() comparison just below
+                    // this gate. As of 2026-09-01 its candidate is computed INDEPENDENTLY of BolusGivenMild's
+                    // own setSmbDeliveryRatio boost (see the dropped boostedUsualSmbCandidate below), so the
+                    // final SMB is the LARGER of {BMild's boosted dose, Tier 3's own dose} rather than the
+                    // product of the two.
                     //
                     // The IOB/boost_scale/bg/boostIobAllowance checks remain: these guard the SIZE of the
                     // boost itself (don't oversize even when triggered), not whether a rise is genuine --
@@ -1614,14 +1617,17 @@ class DetermineBasalAutoISF @Inject constructor(
                         // deemed not relevant to Tier 3 here, so left back at its original always-on form
                         // rather than porting that whole separate feature just to make the check meaningful.
                         val baselineRatioCandidate = min(insulinReq / insulinDivisor, boost_max)
-                        // Tier 3 is Virtual-Pump-only assessment. Increase the ordinary SMB that was
-                        // already calculated above, so any live variable-ratio or BolusGiven/Mild ratio
-                        // increase is retained and then scaled by Tier 3 rather than being replaced by
-                        // the baseline Boost_InsulinReq percentage. The existing Tier 3 per-SMB and IOB
-                        // ceilings, followed by every shared downstream SMB protection, remain binding.
+                        // boostedUsualSmbCandidate (preBoostMicroBolus * boost_scale) was DROPPED from the
+                        // candidate set 2026-09-01: preBoostMicroBolus already carries BolusGivenMild's
+                        // +0.15 delivery-ratio boost, so scaling it again by boost_scale compounded the two
+                        // (BMild ~2x, then Tier 3 up to ~3x). Tier 3's candidate is now the two
+                        // BMild-ratio-independent terms only -- boost_scale*basal and insulinReq/insulinDivisor
+                        // -- and the max() vs preBoostMicroBolus just below still means the final SMB is the
+                        // larger of the two mechanisms, never their product. Still logged below for the
+                        // diagnostic so the compounded figure stays visible for comparison.
                         val boostedUsualSmbCandidate = min(preBoostMicroBolus * boost_scale, boost_max)
                         val tier3Candidate = min(
-                            max(boostInsulinReq, max(baselineRatioCandidate, boostedUsualSmbCandidate)),
+                            max(boostInsulinReq, baselineRatioCandidate),
                             boostIobAllowance
                         )
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
