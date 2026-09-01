@@ -1459,7 +1459,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val nextRevision = maxOf(dateUtil.now(), commandRevision + 1L, handledRevision + 1L)
         preferences.put(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt, nextRevision)
         preferences.put(LongKey.ApsAutoIsfAnyDeskLocalCommandAt, nextRevision)
-        aapsLogger.info(LTag.CORE, "ADesk local-test command queued for local Tasker dispatch")
+        aapsLogger.info(LTag.CORE, "ADesk local-test command queued for AAPS AnyDesk launch")
         rxBus.send(EventRefreshOverview("AnyDesk local trigger queued", true))
     }
 

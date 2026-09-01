@@ -122,6 +122,9 @@ object AutoIsfReplayAdapterMain {
             bg3BasicCriteriaMet = parameters.get("bg3BasicCriteriaMet")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean
                 ?: false,
+            newPodHighBgAnyTimeOk = parameters.get("newPodHighBgAnyTimeOk")
+                ?.takeIf { it.isJsonPrimitive }?.asBoolean
+                ?: false,
             acceIsfValue = parameters.doubleValue("acceIsfValue")
         )
     }

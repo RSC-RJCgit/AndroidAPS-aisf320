@@ -459,6 +459,10 @@ class DetermineBasalAutoISF @Inject constructor(
         // (no preBoostMicroBolus * boost_scale multiply) -- BMild's original compounded multiply is
         // restored only for the BMild-only path. Default false = "no bg3 signal supplied".
         bg3BasicCriteriaMet: Boolean = false,
+        // Added 2026-09-02: same new-pod + BG>9.0 bypass the plugin applies to BMild/bg3 day windows.
+        // When true, skip the 09:00-21:00 Tier 3 factor gate so a post-change high can still boost
+        // at any hour. Default false for tests/replay that don't pass it.
+        newPodHighBgAnyTimeOk: Boolean = false,
         // Added 2026-08-24: autoIsfValues.acceIsf from the PREVIOUS cycle (OpenAPSAutoISFPlugin.kt
         // computes it after this function returns, using this same cycle's data -- see that call site's
         // own comment for why a one-cycle-stale value is an acceptable tradeoff here). No longer used
@@ -1505,15 +1509,22 @@ class DetermineBasalAutoISF @Inject constructor(
                 // live-scaled by the current profile percentage, matching Boost-in-AAPS_3.4's own
                 // "profile.boost_scale * (profileSwitch / 100.0)".
                 val boostActive = profile.boostActive
-                // Tier 3 is intentionally daytime/evening only. Use the calculation's systemTime so
-                // replayed/historical calculations are evaluated in their own local-time window too,
-                // rather than against the wall clock at the moment the code happens to run.
-                // 09:00 is inclusive; 21:00 is exclusive (last eligible minute is 20:59).
+                // Tier 3 is intentionally daytime/evening only, except a brand-new pod (<2h) already
+                // over 9.0 mmol -- that bypass is computed in OpenAPSAutoISFPlugin (same helper as
+                // BMild/bg3 day windows) and passed in so replayed cycles keep the live decision.
+                // Use the calculation's systemTime so replayed/historical calculations are evaluated
+                // in their own local-time window too, rather than against the wall clock at the moment
+                // the code happens to run. 09:00 is inclusive; 21:00 is exclusive (last eligible
+                // minute is 20:59).
                 val tier3LocalHour = Instant.ofEpochMilli(systemTime).atZone(ZoneId.systemDefault()).hour
-                val tier3TimeAllowed = tier3LocalHour in 9 until 21
+                val tier3TimeAllowed = (tier3LocalHour in 9 until 21) || newPodHighBgAnyTimeOk
                 if (boostActive && !tier3TimeAllowed) {
                     consoleError.add("Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour $tier3LocalHour)")
                     rT.reason.append("Tier 3 blocked outside 09:00-21:00; ")
+                }
+                if (boostActive && newPodHighBgAnyTimeOk && tier3LocalHour !in 9 until 21) {
+                    consoleError.add("Tier 3 UAM Boost day window bypassed (pod <2h and BG > 9.0)")
+                    rT.reason.append("T3anyTime new-pod>9; ")
                 }
                 if (boostActive && tier3TimeAllowed) {
                     val boost_max = profile.boost_max

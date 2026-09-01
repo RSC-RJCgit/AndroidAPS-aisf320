@@ -12,6 +12,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAnyDeskLaunchRequested
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
@@ -127,10 +128,11 @@ class CodedLocationAutomations @Inject constructor(
             states[spec.id] = initial
             // A new installation/configured slot that is already occupied counts as an arrival. State
             // is persisted first so a process restart cannot repeat the notification.
-            if (inside && spec.arrivalNote.isNotBlank()) {
+            if (inside) {
                 initial.lastArrival = dateUtil.now()
                 persistStates()
-                send(spec, spec.arrivalNote, arriving = true)
+                if (spec.arrivalNote.isNotBlank()) send(spec, spec.arrivalNote, arriving = true)
+                requestAnyDesk("location ${spec.label} arrival")
             } else persistStates()
             return
         }
@@ -140,11 +142,6 @@ class CodedLocationAutomations @Inject constructor(
         if (nowInside == prior.inside) return
         prior.inside = nowInside
 
-        val note = if (nowInside) spec.arrivalNote else spec.exitNote
-        if (note.isBlank()) {
-            persistStates()
-            return
-        }
         val now = dateUtil.now()
         val lastRun = if (nowInside) prior.lastArrival else prior.lastExit
         if (lastRun != 0L && now - lastRun < spec.cooldownMinutes * 60_000L) {
@@ -153,7 +150,13 @@ class CodedLocationAutomations @Inject constructor(
         }
         if (nowInside) prior.lastArrival = now else prior.lastExit = now
         persistStates()
-        send(spec, note, nowInside)
+        val note = if (nowInside) spec.arrivalNote else spec.exitNote
+        if (note.isNotBlank()) send(spec, note, nowInside)
+        requestAnyDesk("location ${spec.label} ${if (nowInside) "arrival" else "exit"}")
+    }
+
+    private fun requestAnyDesk(reason: String) {
+        rxBus.send(EventAnyDeskLaunchRequested(reason))
     }
 
     private fun send(spec: Spec, note: String, arriving: Boolean) {

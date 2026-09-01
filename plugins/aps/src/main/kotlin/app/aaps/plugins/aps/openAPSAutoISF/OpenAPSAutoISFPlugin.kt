@@ -63,6 +63,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.rx.events.EventAnyDeskLaunchRequested
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
 import app.aaps.core.interfaces.rx.events.EventSteroidUserAction
@@ -346,6 +347,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             }) {
                 aapsLogger.error(LTag.APS, "Direct AutoISF settings control failed", it)
+            }
+        mjUserActionDisposable += rxBus
+            .toObservable(EventAnyDeskLaunchRequested::class.java)
+            .observeOn(Schedulers.io())
+            .subscribe({
+                if (config.AAPSCLIENT) {
+                    aapsLogger.info(LTag.APS, "AnyDesk launch skipped on AAPSCLIENT (${it.reason})")
+                } else {
+                    aapsLogger.info(LTag.APS, "AnyDesk launch requested (${it.reason})")
+                    launchAnyDeskDirect()
+                }
+            }) {
+                aapsLogger.error(LTag.APS, "AnyDesk launch from event failed", it)
             }
     }
 
@@ -1101,10 +1115,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // saved UA setting was unchanged. Hung-foreground recovery (su force-stop) is dropped for
     // the same reason: these phones are not rooted, and a kill that does land takes the listener
     // with it. NEW_TASK only so an already-running task/service is brought forward, not reset.
-    // Tasker's ACTION_TASK for AnyDesk2 still fires (backup). AdOn/AdMs = startActivity result
+    // Tasker backup (ACTION_TASK AnyDesk2 and RESTART_ANYDESK implicit broadcast) removed
+    // 2026-09-02: those tasks were also applying a kill. AdOn/AdMs = startActivity result
     // only, truncated to 5 chars on graph4 -- not "unattended is accepting connections".
     private fun launchAnyDeskDirect() {
-        sendTaskerRunTask("AnyDesk2")
         val pkg = resolveAnyDeskPackage()
         if (pkg == null) {
             aapsLogger.warn(LTag.APS, "AnyDesk direct restart failed: no installed AnyDesk package")
@@ -1132,31 +1146,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val pm = context.packageManager
         return listOf("com.anydesk.anydeskandroid", "com.anydesk.adcontrol.ad1")
             .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
-    }
-
-    // Official Tasker "run this named task" broadcast (TaskerIntent ACTION_TASK). Package-restricted
-    // so it can reach Tasker even when the user-created RESTART_ANYDESK profile is not registered.
-    // Requires Tasker Misc -> Allow External Access. Task name matches the existing AnyDesk2 task.
-    // Harmless no-op if Tasker is not installed. Play-store package is taskerm; ACTION historically
-    // also used the no-m package name, so both are sent.
-    private fun sendTaskerRunTask(taskName: String) {
-        val packages = listOf("net.dinglisch.android.taskerm", "net.dinglisch.android.tasker")
-        packages.forEach { taskerPkg ->
-            packages.forEach { actionPkg ->
-                try {
-                    context.sendBroadcast(
-                        Intent("$actionPkg.ACTION_TASK")
-                            .setPackage(taskerPkg)
-                            .setData("id:${System.nanoTime()}".toUri())
-                            .putExtra("version_number", "1.1")
-                            .putExtra("task_name", taskName)
-                            .putExtra("task_priority", 10)
-                    )
-                } catch (e: Exception) {
-                    aapsLogger.warn(LTag.APS, "Tasker ACTION_TASK to $taskerPkg failed: ${e.message}")
-                }
-            }
-        }
     }
 
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
@@ -1314,6 +1303,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // instruction, not independently re-tuned here.
     private fun hoursSinceCurrentPodChange(): Double? {
         return hoursSinceLastCannulaChange()
+    }
+
+    // Added 2026-09-02: BMild (08:30-02:00) and Tier 3 / bg3 day windows stay in force unless a
+    // brand-new pod (<2h) is already over 9.0 mmol. Post-change highs happen at any hour; the
+    // daytime gates were blocking both BMild's delivery factors and determine_basal's 09:00-21:00
+    // Tier 3 factor gate. Null pod age does not bypass (unknown != new).
+    private fun newPodHighBgAnyTimeOk(glucoseMgdl: Double): Boolean {
+        val podH = hoursSinceCurrentPodChange() ?: return false
+        return podH < 2.0 && glucoseMgdl > 162.2 /* 9.0 mmol */
     }
 
     // Hours since the last recorded sensor change, or null if none found. Matches TriggerSensorAge's
@@ -2215,7 +2213,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Window extended to 02:00 (was end of day/midnight) at explicit request 2026-08-29.
             // isTimeBetween handles the overnight wraparound itself (startMins > endMins), so this
             // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
-            return isTimeBetween(8, 30, 2, 0)
+            // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour -- the day window
+            // otherwise blocks a post-change high before 08:30 or after 02:00.
+            return (isTimeBetween(8, 30, 2, 0) || newPodHighBgAnyTimeOk(g))
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
@@ -2303,8 +2303,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Post-bolus/carb quiet window (was 120 min, or 30 min above 11.0 mmol) REMOVED 2026-09-01
             // at explicit request -- same as bmildBasicCriteriaMet. Rise-confirmation gates below are
             // unchanged; this only drops the timing veto after a manual bolus/carb entry.
+            // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour, same bypass as BMild.
             val profileName = profileFunction.getProfileName()
-            return isTimeBetween(8, 30, 0, 0)
+            return (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
@@ -2405,11 +2406,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
-        // this device's secondary-NS worker records that server revision, and this sends one
-        // implicit RESTART_ANYDESK broadcast per revision (kept for the existing Intent Received
-        // profile). The actual start is launchAnyDeskDirect(): bring AnyDesk to front without
-        // kill (preserves Unattended Access), plus Tasker's ACTION_TASK for AnyDesk2. Receipt
-        // notes do not claim a remote session is up.
+        // this device's secondary-NS worker records that server revision, and this launches AnyDesk
+        // once per revision via launchAnyDeskDirect() (bring to front, no kill, no Tasker).
+        // Receipt notes do not claim a remote session is up.
         run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
@@ -2432,12 +2431,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else
                     "AcNS$deviceRole secondary-NS receipt"
                 addCarePortalNote(receiptNote)
-                context.sendBroadcast(
-                    Intent("app.aaps.action.RESTART_ANYDESK")
-                        .putExtra("source", if (localTest) "AAPS local test" else "AAPS secondary NS Note")
-                        .putExtra("command", "ADesk")
-                        .putExtra("revision", commandRevision)
-                )
                 launchAnyDeskDirect()
                 aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             }
@@ -3552,9 +3545,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // button (see runBasalDirectAction()'s ANYDESK_RESTART branch in OverviewFragment.kt), which
         // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
         // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
-        // worker's next poll picks up the Note's revision. Still sends the existing RESTART_ANYDESK
-        // broadcast then launchAnyDeskDirect() (bring to front, no kill). AdOn/AdMs are startActivity
-        // only, not that Unattended Access is accepting connections.
+        // worker's next poll picks up the Note's revision. launchAnyDeskDirect() only (no Tasker,
+        // no RESTART_ANYDESK broadcast). AdOn/AdMs are startActivity only, not that Unattended
+        // Access is accepting connections.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             val deviceRole = when {
@@ -3564,12 +3557,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val receiptNote = "AcTT$deviceRole relay-TT receipt"
             addCarePortalNote(receiptNote)
-            context.sendBroadcast(
-                Intent("app.aaps.action.RESTART_ANYDESK")
-                    .putExtra("source", "AAPS relay TT")
-                    .putExtra("command", "AnyDeskRestartTT")
-                    .putExtra("revision", dateUtil.now())
-            )
             launchAnyDeskDirect()
             aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             markRun("AnyDeskRestartActionTT")
@@ -4731,13 +4718,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // BolusGivenMild's own OR-based gate), near-zero IOB (nothing already in the pipe), and genuine
         // SMB silence over a longer window (smbCount20Min() == 0, not the 5-min signal
         // deliverySuppressedMild uses -- that shorter window can just be a normal gap between doses).
-        // Restricted to 09:00-21:00 (narrower than BolusGivenMild's own 8:30-22:00) and, like it, no
-        // separate enable toggle -- shares ApsAutoIsfBoostAutomationsEnabled with its siblings, since
-        // this should fire rarely and a dedicated switch would be one more thing to remember to turn on.
+        // Restricted to 09:00-21:00 (narrower than BolusGivenMild's own 8:30-22:00) unless a new
+        // pod (<2h) is already over 9.0 mmol -- same any-hour bypass as BMild/Tier 3, 2026-09-02.
+        // Like BMild, no separate enable toggle -- shares ApsAutoIsfBoostAutomationsEnabled with its
+        // siblings, since this should fire rarely and a dedicated switch would be one more thing to
+        // remember to turn on.
         // Post-bolus/carb quiet window removed 2026-09-01 along with regular BolusGivenMild's.
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-            && isTimeBetween(9, 0, 21, 0)
+            && (isTimeBetween(9, 0, 21, 0) || newPodHighBgAnyTimeOk(glucoseStatus.glucose))
             && readyToRun("BolusGivenMildFailsafe", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -4791,7 +4780,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && isTimeBetween(8, 30, 0, 0)
+            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
                 // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
@@ -4801,7 +4790,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && isTimeBetween(8, 30, 0, 0)
+            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
@@ -4893,7 +4882,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mildRawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || mildRawDelta1 >= 4.5 * mildStackK
             val mildDeliverySuppressed = smbCount5Min() <= 1 && mildRawDelta5 >= 5.4 && mildRawDelta5 < 14.4 && mildRawDelta1 < 14.4
             val mildConfirmed = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
-                isTimeBetween(8, 30, 0, 0) &&
+                (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g)) &&
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
@@ -4975,7 +4964,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val persistentMinutes = if (startedAt > 0L) (dateUtil.now() - startedAt) / 60_000.0 else 0.0
             if (readyToRun("PersistentRiseRelease", 5) &&
                 preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
-                isTimeBetween(8, 30, 0, 0) &&
+                (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(glucoseStatus.glucose)) &&
                 holding && persistentMinutes >= 10.0 &&
                 profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
@@ -6803,6 +6792,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "recentLowBG" to replayRecentLowBG,
                 "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
                 "bg3BasicCriteriaMet" to replayBg3BasicCriteriaMet,
+                "newPodHighBgAnyTimeOk" to newPodHighBgAnyTimeOk(glucoseStatus.glucose),
                 "acceIsfValue" to replayAcceIsfValue
             ),
             "determine_state" to mapOf(
@@ -6888,6 +6878,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // automation's markRun, so a second query here would not see a just-consumed throttle as false.
             bmildBasicCriteriaMet = replayBmildBasicCriteriaMet,
             bg3BasicCriteriaMet = replayBg3BasicCriteriaMet,
+            newPodHighBgAnyTimeOk = newPodHighBgAnyTimeOk(glucoseStatus.glucose),
             // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
             // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
             // alone, never real dosing.
