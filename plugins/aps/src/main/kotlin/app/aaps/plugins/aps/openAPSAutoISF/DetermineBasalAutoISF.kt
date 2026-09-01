@@ -52,7 +52,7 @@ class DetermineBasalAutoISF @Inject constructor(
     // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-24:
     // now that Tier 3's entry triggers ARE bmildBasicCriteriaMet / bg3BasicCriteriaMet (see those gates'
     // own doc comments), Tier 3 can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild",
-    // 10) or BolusGiven bg3's readyToRun("BolusGivenBg3", 10) throttle allows -- an independent, redundant
+    // 5) or BolusGiven bg3's readyToRun("BolusGivenBg3", 5) throttle allows -- an independent, redundant
     // 10-min throttle here was no longer doing any real work of its own.
 
     // T3AcceISF observation-only shadow check (added 2026-08-24, removed 2026-08-27 per explicit
@@ -347,7 +347,7 @@ class DetermineBasalAutoISF @Inject constructor(
         steps15M: Int,
         steps5M: Int,
         smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
-        smbBoostRecent: Boolean = false,   // BolusGiven bg3 / BolusGivenMild fired within 30 min -> skip fast-rise caps
+        smbBoostRecent: Boolean = false,   // BolusGiven bg1/2/3 / BMild within 30 min, or COB>=9 -> skip fast-rise caps
         // Raw/AAPS-processed 1-min and raw 5-min deltas (mg/dL, already per-5-min-rate normalised), used
         // as extra AND confirmations on the fast-rise capping blocks' own Delta gate (entry point only —
         // not the nested severity tiers). Default 9999.0 = "no data supplied" -> the AND-term is trivially
@@ -2167,9 +2167,10 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // RECENT DELIVERY BOOST: SKIP ALL FAST-RISE CAPS
 // =====================================================
-                // If BolusGiven bg3 or BolusGivenMild fired within the last 30 min, restore the full
-                // uncapped SMB — an unexpectedly high spike now reverts more readily (the raw-delta-driven
-                // reversal logic), so the fast-rise reductions above aren't needed in that window.
+                // If BolusGiven (bg1/2/3) or BolusGivenMild fired within the last 30 min, or meal COB
+                // is still >= 9 g, restore the full uncapped SMB — an unexpectedly high spike now
+                // reverts more readily (the raw-delta-driven reversal logic), so the fast-rise
+                // reductions above aren't needed in that window.
                 // NB: microBolusFullUncapped was snapshotted AFTER the anti-stacking x0.9 trim, so that
                 // trim survives this restore — only the fast-rise caps are undone.
                 // (Earlier profile_percentage>100 variant of this bypass was removed by user choice.)

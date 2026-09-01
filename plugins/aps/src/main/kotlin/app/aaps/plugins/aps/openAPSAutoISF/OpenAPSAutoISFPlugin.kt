@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.icu.util.Calendar
@@ -1089,29 +1090,95 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return 1.0 + bgAcceleration * capWeight * acceWeight * fitShare
     }
 
-    // Direct-launch fallback for the AnyDesk restart pipeline, added 2026-08-18: Tasker (which owns
-    // the actual "kill AnyDesk, relaunch AnyDesk" work, see its own AnyDesk2 task) can itself be
-    // killed by background-execution restrictions on the live phone -- even with battery optimization
-    // off and "Run in Foreground" on, it's one more process the OS can reclaim, and the task's own
-    // Termux kill/relaunch step in the middle is a second such process. This fires straight from
-    // AAPS's own persistent loop context instead, no intermediate app required: an explicit launch
-    // Intent for AnyDesk's own package. FLAG_ACTIVITY_NEW_TASK is required to start an Activity from a
-    // non-Activity Context; starting an Activity from the background is otherwise restricted on
-    // Android 10+, but AAPS's own loop runs via a foreground service (the persistent loop
-    // notification), which is one of the recognized exemptions -- best-effort, not guaranteed on every
-    // OEM skin, but silently does nothing (no crash) if blocked, so it's safe to fire unconditionally
-    // alongside the Tasker broadcast rather than instead of it. Package name is AnyDesk's standard
-    // Google Play identifier -- confirm this matches what's actually installed on the live phone if
-    // this doesn't work (Settings -> Apps -> AnyDesk -> App info).
+    // AnyDesk restart owned by AAPS itself (2026-09-01). The List2 TT / ADesk-NS path already
+    // reached this phone (AcTT/AcNS receipt notes prove that). What used to fail next was Tasker:
+    // app.aaps.action.RESTART_ANYDESK is an implicit broadcast to a user-created Intent Received
+    // profile, which dies when Android reclaims Tasker, and Tasker's own Termux kill/relaunch is a
+    // second process the OS can also skip. Receipt notes never claimed Tasker ran.
+    //
+    // This does the restart from AAPS's own foreground-service loop context:
+    //  1. force-stop via su if the phone is rooted (the only in-app way to kill a hung *foreground*
+    //     AnyDesk host)
+    //  2. ActivityManager.killBackgroundProcesses otherwise
+    //  3. launch AnyDesk with CLEAR_TASK so a stale activity stack is not reused
+    //  4. also fire Tasker's official ACTION_TASK broadcast with an explicit package (more likely
+    //     to be delivered than the implicit RESTART_ANYDESK broadcast the call sites still send)
+    // Package names: Play-store AnyDesk, plus the AD1/host variant. Android 11+ needs the matching
+    // <queries> entries (shared/impl AndroidManifest). AdOn/AdMs CarePortal notes show which path
+    // actually resolved, truncated to 5 chars on graph4.
     private fun launchAnyDeskDirect() {
-        val anyDeskPackage = "com.anydesk.anydeskandroid"
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(anyDeskPackage)
-        if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        sendTaskerRunTask("AnyDesk2")
+        val pkg = resolveAnyDeskPackage()
+        if (pkg == null) {
+            aapsLogger.warn(LTag.APS, "AnyDesk direct restart failed: no installed AnyDesk package")
+            addCarePortalNote("AdMs")
+            return
+        }
+        tryForceStopAnyDesk(pkg)
+        try {
+            context.getSystemService(ActivityManager::class.java)?.killBackgroundProcesses(pkg)
+        } catch (e: Exception) {
+            aapsLogger.warn(LTag.APS, "AnyDesk killBackgroundProcesses failed for $pkg: ${e.message}")
+        }
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
+        if (launchIntent == null) {
+            aapsLogger.warn(LTag.APS, "AnyDesk launch intent missing for $pkg")
+            addCarePortalNote("AdMs")
+            return
+        }
+        launchIntent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
+        try {
             context.startActivity(launchIntent)
-            aapsLogger.info(LTag.APS, "AnyDesk launched directly by AAPS (no Tasker/Termux hop)")
-        } else {
-            aapsLogger.warn(LTag.APS, "AnyDesk direct launch failed: package $anyDeskPackage not found/resolvable")
+            aapsLogger.info(LTag.APS, "AnyDesk launched directly by AAPS ($pkg)")
+            addCarePortalNote("AdOn")
+        } catch (e: Exception) {
+            aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
+            addCarePortalNote("AdMs")
+        }
+    }
+
+    private fun resolveAnyDeskPackage(): String? {
+        val pm = context.packageManager
+        return listOf("com.anydesk.anydeskandroid", "com.anydesk.adcontrol.ad1")
+            .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
+    }
+
+    private fun tryForceStopAnyDesk(pkg: String) {
+        try {
+            val proc = ProcessBuilder("su", "-c", "am force-stop $pkg").start()
+            if (!proc.waitFor(400, TimeUnit.MILLISECONDS)) proc.destroy()
+        } catch (_: Exception) {
+            // Not rooted, or su not on PATH -- expected on the Z Flip. killBackgroundProcesses +
+            // CLEAR_TASK launch below still run.
+        }
+    }
+
+    // Official Tasker "run this named task" broadcast (TaskerIntent ACTION_TASK). Package-restricted
+    // so it can reach Tasker even when the user-created RESTART_ANYDESK profile is not registered.
+    // Requires Tasker Misc -> Allow External Access. Task name matches the existing AnyDesk2 task.
+    // Harmless no-op if Tasker is not installed. Play-store package is taskerm; ACTION historically
+    // also used the no-m package name, so both are sent.
+    private fun sendTaskerRunTask(taskName: String) {
+        val packages = listOf("net.dinglisch.android.taskerm", "net.dinglisch.android.tasker")
+        packages.forEach { taskerPkg ->
+            packages.forEach { actionPkg ->
+                try {
+                    context.sendBroadcast(
+                        Intent("$actionPkg.ACTION_TASK")
+                            .setPackage(taskerPkg)
+                            .setData("id:${System.nanoTime()}".toUri())
+                            .putExtra("version_number", "1.1")
+                            .putExtra("task_name", taskName)
+                            .putExtra("task_priority", 10)
+                    )
+                } catch (e: Exception) {
+                    aapsLogger.warn(LTag.APS, "Tasker ACTION_TASK to $taskerPkg failed: ${e.message}")
+                }
+            }
         }
     }
 
@@ -2128,7 +2195,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         fun bmildBasicCriteriaMet(): Boolean {
             if (!(profile_percentage == 100 && activeTtMgdl() == null
                     && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-                    && readyToRun("BolusGivenMild", 10))
+                    && readyToRun("BolusGivenMild", 5))
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -2179,9 +2246,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
                 // lastCarbMin don't see either automation's own SMB delivery, so without this a bg3 fire's
-                // IOB bump could sit inside mild's iobChange5 window and look like a fresh rise. 10 min
+                // IOB bump could sit inside mild's iobChange5 window and look like a fresh rise. 5 min
                 // matches bg3's own self-throttle.
-                && readyToRun("BolusGivenBg3", 10)
+                && readyToRun("BolusGivenBg3", 5)
                 // Movement guard: same reasoning as bg3's mirror check above.
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
                 // Sub-7.5mmol delivery-rate ceiling, added 2026-08-14 after two real hypos (4.4mmol and
@@ -2210,16 +2277,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // (it cancels/replaces the TT, switches profile, writes iobTH, etc.), but Tier 3 only needs the
         // rise confirmation -- a TT may already be active (BolusGiven's own 2-min 4.2mmol TT from this
         // same cycle, leftover BMild 5.0mmol TT, eating-soon, etc.) and that shouldn't block the dosing
-        // boost. readyToRun("BolusGivenBg3", 10) is included so the TT-independent path still has a
-        // 10-min cadence of its own: without it, a TT that blocks BolusGiven from markRun("BolusGiven")
+        // boost. readyToRun("BolusGivenBg3", 5) is included so the TT-independent path still has a
+        // 5-min cadence of its own: without it, a TT that blocks BolusGiven from markRun("BolusGiven")
         // would leave this returning true every cycle. The no-TT BolusGiven path already markRuns both
         // "BolusGiven" and "BolusGivenBg3" on a bg3 fire, so this extra check is a no-op there
         // (first fire: never-run = ready; subsequent: both keys consumed together).
         fun bg3BasicCriteriaMet(): Boolean {
             if (!(profile_percentage == 100
                     && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-                    && readyToRun("BolusGiven", 10)
-                    && readyToRun("BolusGivenBg3", 10))
+                    && readyToRun("BolusGiven", 5)
+                    && readyToRun("BolusGivenBg3", 5))
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -2271,10 +2338,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Cross-cooldown with mild: lastBolusMin/lastCarbMin only track manual boluses
                 // (BS.Type.NORMAL), never SMB -- without this, bg3's own IOB bump from a mild fire
                 // ~minutes ago could sit inside bg3's next 5-min iobChange5 window.
-                && readyToRun("BolusGivenMild", 10)
+                && readyToRun("BolusGivenMild", 5)
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
                 && recentSteps60Minutes < 300
-                && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
+                // longAvgDelta > 0.4 mmol is the smoothed-trend confirmation for the normal
+                // iobChange5/d path. The delivery-suppressed/raw path must NOT wait on it: 1 Sep 2026
+                // 15:31 meal had rawD5 1.22-2.28 and rawD1 2.5+ from 15:32 with zero SMBs, but LDelta
+                // did not clear 0.4 until 15:48 -- the whole steep part of the rise. deliverySuppressed
+                // already requires rawD5 AND rawD1 >= 0.8 mmol and smbCount5Min <= 1, which is stricter
+                // raw confirmation than LDelta and does not lag it.
+                && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
         }
 
         // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
@@ -2356,9 +2429,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
         // this device's secondary-NS worker records that server revision, and this sends one
-        // implicit broadcast per revision. Tasker's Intent Received profile owns the existing AnyDesk
-        // restart task. Do not target Tasker's package: its dynamically registered receiver requires
-        // an implicit broadcast. This path also runs on Virtual Pump for testing.
+        // implicit RESTART_ANYDESK broadcast per revision (kept for the existing Intent Received
+        // profile). The actual restart is launchAnyDeskDirect(): AAPS kill+relaunch, plus Tasker's
+        // official ACTION_TASK for AnyDesk2. Receipt notes do not claim AnyDesk opened.
         run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
@@ -2373,9 +2446,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     activePlugin.activePump is VirtualPump -> "V"
                     else -> "R"
                 }
-                // Receipt/dispatch Note only: this handler accepted the command and is about to send
-                // Tasker's broadcast. It does not claim that Tasker received it or AnyDesk opened.
-                // The first five graph characters preserve both route and receiving device role.
+                // Receipt/dispatch Note only: this handler accepted the command. AdOn/AdMs report
+                // whether AAPS itself resolved and launched AnyDesk. The first five graph characters
+                // preserve both route and receiving device role.
                 val receiptNote = if (localTest)
                     "AcLT$deviceRole local-test receipt"
                 else
@@ -2388,7 +2461,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         .putExtra("revision", commandRevision)
                 )
                 launchAnyDeskDirect()
-                aapsLogger.info(LTag.APS, "$receiptNote; command sent to Tasker")
+                aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             }
         }
 
@@ -3501,12 +3574,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // button (see runBasalDirectAction()'s ANYDESK_RESTART branch in OverviewFragment.kt), which
         // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
         // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
-        // worker's next poll picks up the Note's revision. Sends its own independent Tasker broadcast
-        // (not routed through ApsAutoIsfAnyDeskSecondaryCommandAt/...TaskerHandledAt -- that revision
-        // pair belongs to the Note channel only) using a TT-local revision so the two channels can
-        // never suppress each other; Tasker's restart task tolerates a double-trigger.
-        // Reaching this block is receipt of the TT trigger. The route/device-specific Note does not
-        // claim that Tasker received the broadcast or that AnyDesk completed.
+        // worker's next poll picks up the Note's revision. Still sends the existing RESTART_ANYDESK
+        // broadcast (independent of the Note-channel revision pair) then launchAnyDeskDirect().
+        // Reaching this block is receipt of the TT trigger. AdOn/AdMs report the AAPS launch result.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
             val deviceRole = when {
@@ -3523,7 +3593,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     .putExtra("revision", dateUtil.now())
             )
             launchAnyDeskDirect()
-            aapsLogger.info(LTag.APS, "$receiptNote; command sent to Tasker")
+            aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             markRun("AnyDeskRestartActionTT")
         }
 
@@ -4514,24 +4584,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 2-min window) anyway -- the TT had apparently already read as inactive by then, silently
         // defeating the exemption and erasing BMild's boost before it ever influenced a real dose.
         // Checking directly against BolusGiven/BolusGivenMild's own lastRunTimestamps entry (the same
-        // markRun() records used for their own 10-min readyToRun throttle) ties the exemption to the
+        // markRun() records used for their own 5-min readyToRun throttle) ties the exemption to the
         // actual event this guard is meant to protect, not a second subsystem's own timing. 3 minutes
         // (not the literal 2-min TT length) gives a small buffer against cycle-to-cycle timing slop --
-        // deliberately still far short of the 10-min readyToRun throttle those keys are otherwise used
+        // deliberately still far short of the 5-min readyToRun throttle those keys are otherwise used
         // for, so this can't accidentally exempt a stale, long-past firing.
+        // Meal COB >= 9 (same floor as BolusGiven bg1/bg2's postBolusGate): 1 Sep 2026 15:39
+        // HardStackDelOff cut the ratio 0.32 -> 0.14 four minutes after Giv-1, with COB 18.8 and
+        // delta 0.80 still rising. Rapid SMBs during an announced meal are absorption, not the
+        // zero-COB stacking bursts this guard was built for (27 Jul / 6-7 Aug).
         // No readyToRun throttle on this whole check — deliberately checked every iteration, same as
         // DelOff itself; the action is idempotent so re-checking every cycle is harmless.
         val recentOwnBoostFire = (lastRunTimestamps["BolusGiven"] ?: 0L) > dateUtil.now() - T.mins(3).msecs() ||
             (lastRunTimestamps["BolusGivenMild"] ?: 0L) > dateUtil.now() - T.mins(3).msecs()
+        val mealCobExempt = mealData.mealCOB >= 9.0
         if (!atHardStackTarget
             && smbStacking
-            && !recentOwnBoostFire) {
+            && !recentOwnBoostFire
+            && !mealCobExempt) {
             setSmbDeliveryRatio(hardStackTarget)
             addCarePortalNote("HardStackDelOff")
         }
 
         // --- BolusGiven71_0.70: post-bolus response — boosts iobTH to 71%, acce 0.70, 110% for 10 min ---
-        // 10-min throttle. Three trigger blocks; only outer precondition is profile=100% + no TT.
+        // 5-min throttle. Three trigger blocks; only outer precondition is profile=100% + no TT.
         // COB>=9 / acce>=0.20 / dura<acce are per-block (postBolusGate) for the manual-bolus branches
         // (bg1/bg2); the SMB-driven branch (bg3) does NOT require them.
         // ApsAutoIsfBoostAutomationsEnabled is the combined master switch for this WHOLE block (bg1/2/3)
@@ -4540,13 +4616,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Snapshot bg3 BEFORE this block's markRun: bg3BasicCriteriaMet() includes
         // readyToRun("BolusGiven"/"BolusGivenBg3"), so a second call after markRun would always be
         // false (same 2026-08-27 BMild bug). Also markRun("BolusGivenBg3") here so the TT-independent
-        // Tier 3 path still has a 10-min cadence when BolusGiven's own no-TT outer guard blocks the
+        // Tier 3 path still has a 5-min cadence when BolusGiven's own no-TT outer guard blocks the
         // action-set. BolusGiven's actions still require no TT; Tier 3 does not.
         bg3FiredThisCycle = bg3BasicCriteriaMet()
         if (bg3FiredThisCycle) markRun("BolusGivenBg3")
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-            && readyToRun("BolusGiven", 10)) {
+            && readyToRun("BolusGiven", 5)) {
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -4594,8 +4670,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (bg1 || bg2 || bg3) {
                 val bBlock = if (bg1) "1" else if (bg2) "2" else "3"
                 markRun("BolusGiven")
-                // Extra bg3-only marker (bg1/bg2 share the "BolusGiven" key): the fast-rise-caps bypass
-                // keys on "mild or bg3 fired within 30 min", and must NOT extend to bg1/bg2 fires.
+                // Extra bg3-only marker (bg1/bg2 share the "BolusGiven" key). The fast-rise-caps bypass
+                // now also keys on "BolusGiven" itself so Giv-1/Giv-2 skip FastRise the same way bg3
+                // and BMild already did (1 Sep 2026 15:35: Giv-1 fired, FastRise 750 still applied).
+                // BolusGivenBg3 remains the dedicated key for the TT-independent Tier 3 cadence.
                 if (bBlock == "3") markRun("BolusGivenBg3")
                 sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 cancelCurrentTempTarget()
@@ -4619,7 +4697,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // delivery-driven rise (much lower gates), WITHOUT boosting the profile — it holds the daytime
         // 5.0 target with a 2-min TT (which doubles as the timer for the delivery-ratio reset above) and
         // raises the SMB delivery ratio to the configurable mild-boost base. Leaves iobTH / acce / ppWeight / profile untouched.
-        // Own 10-min throttle, independent of bg1/2/3. rawDelta5 capped BELOW bg3's 0.8mmol threshold so
+        // Own 5-min throttle, independent of bg1/2/3. rawDelta5 capped BELOW bg3's 0.8mmol threshold so
         // the two are mutually exclusive (one delta value can't satisfy both), preventing a same-loop
         // double-fire (the no-TT precondition can't catch bg3's async-inserted TT within the same loop).
         // ApsAutoIsfBoostAutomationsEnabled: same combined master switch as BolusGiven bg1/2/3 above.
@@ -4635,7 +4713,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // written. The original comment here claimed calling it twice in the same cycle was safe because
         // the function itself is "a pure query" -- true of the function, but not of this block: markRun
         // ("BolusGivenMild") a few lines down consumes the exact throttle bmildBasicCriteriaMet()'s own
-        // first line (readyToRun("BolusGivenMild", 10)) checks. So the second call, later in this same
+        // first line (readyToRun("BolusGivenMild", 5)) checks. So the second call, later in this same
         // invoke() cycle feeding determine_basal(), saw the throttle as just-used and returned false --
         // every single cycle, unconditionally, regardless of BG. Confirmed via real 27 Aug device data:
         // zero "Tier3-vs-Bmild:" diagnostic lines logged all day despite BMild itself firing 6 times --
@@ -4682,7 +4760,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             && isTimeBetween(9, 0, 21, 0)
-            && readyToRun("BolusGivenMildFailsafe", 10)) {
+            && readyToRun("BolusGivenMildFailsafe", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -4694,8 +4772,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ld >= 3.6 /* 0.2 mmol longAvgDelta */
                 && iobNow <= 0.20
                 && smbCount20Min() == 0                  // genuine silence, not just a normal gap
-                && readyToRun("BolusGivenBg3", 10)        // cross-cooldown, same as BolusGivenMild
-                && readyToRun("BolusGivenMild", 10)       // and with BolusGivenMild itself
+                && readyToRun("BolusGivenBg3", 5)        // cross-cooldown, same as BolusGivenMild
+                && readyToRun("BolusGivenMild", 5)       // and with BolusGivenMild itself
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             if (fire) {
                 // Flat delivery boost, matching BolusGivenMild above (2026-08-31, was the same 3-way
@@ -4735,21 +4813,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
-            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 10) && isTimeBetween(8, 30, 0, 0)
+            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && isTimeBetween(8, 30, 0, 0)
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
                 // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
-                && readyToRun("BolusGivenMild", 10) && movementOk
-                && recentSteps60Minutes < 300 && glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */
+                && readyToRun("BolusGivenMild", 5) && movementOk
+                && recentSteps60Minutes < 300
+                && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
-            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 10) && isTimeBetween(8, 30, 0, 0)
+            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && isTimeBetween(8, 30, 0, 0)
                 && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
-                && readyToRun("BolusGivenBg3", 10) && movementOk
+                && readyToRun("BolusGivenBg3", 5) && movementOk
                 && !(g < 135.1 && iobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
             val mildDeliveryRatioWould = mildBase + 0.15   // flat, matches BolusGivenMild/Failsafe (2026-08-31)
@@ -4842,7 +4921,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
                 profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
-                readyToRun("BolusGivenBg3", 10) &&
+                readyToRun("BolusGivenBg3", 5) &&
                 recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200 &&
                 !(g < 135.1 && mildIobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
 
@@ -5743,11 +5822,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // branch) -- a braked cycle is rechecked every following minute rather than waiting out the
         // full 30, so the TT still fires promptly once the burst itself subsides.
         run {
-            // Identifies OUR specific TT (rather than any TT) so this doesn't cut short a TT some
-            // other automation or the user set for an unrelated reason -- direct value proximity
-            // (<4.3mmol/77.5mg/dL) against the 4.0mmol target this block itself uses, not the small-TT
-            // remote-control-code convention (activeTtNear) used elsewhere for List1/TT-code toggles.
-            val myTtActive = activeTtMgdl()?.let { it < 77.5 /* 4.3 mmol */ } == true
+            // Identifies OUR 4.0mmol brake TT only. Was `TT < 4.3mmol`, which also matched RecPod /
+            // BolusGiven's 4.2mmol TT (75.7). 1 Sep 2026 15:34-15:35: RecPod then Giv-1 started 4.2 TTs
+            // and this cut-short cancelled both the same minute (resumedRise is exactly the meal-rise
+            // those boosts exist to treat), then DelOff restored the ratio. Also requires THIS brake
+            // to have markRun within 6 min (the 5-min TT plus one cycle of slop) so a leftover 4.0
+            // from anything else is not treated as ours. Direct mg/dL compare, not activeTtNear --
+            // that helper also matches pending List2 TT-codes.
+            val myTtActive = !readyToRun("HighEveNightBrake", 6) &&
+                activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
 
             if (myTtActive) {
                 // Continuous monitoring while the TT is live: cut it short the moment either signal
@@ -5826,7 +5909,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // insulin that's already addressing the same high -- the night version doesn't need this since
         // unannounced overnight boluses are comparatively rare.
         run {
-            val myTtActive = activeTtMgdl()?.let { it < 77.5 /* 4.3 mmol */ } == true
+            // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
+            // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
+            // time-of-day on the old cut-short) not HiBrkDayCut, but this daytime sibling had the
+            // same <4.3mmol match and would have done the same on a later cycle.
+            val myTtActive = !readyToRun("HighDaytimeBrake", 6) &&
+                activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
 
             if (myTtActive) {
                 // Cut-short bar doubled to 1.0U while our own boost is active -- see
@@ -6665,11 +6753,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // when explicitly enabled, copied into the read-only replay trace below. This avoids a trace
         // query a few milliseconds later seeing a different database/automation state.
         val replaySmbInt5Sec = smbInterval5Sec()
-        val replaySmbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30))
+        val replaySmbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30)
+            || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
             && (rawDelta1Raw ?: -9999.0) >= 1.8
             && (rawDelta5Raw ?: -9999.0) >= 1.8
             && glucoseStatus.longAvgDelta > -1.8
-            && iobData.iob < 0.33 * oapsProfile.max_iob
+            && (iobData.iob < 0.33 * oapsProfile.max_iob || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
         val replayRawDelta5Mgdl = smbDelta5Raw ?: 9999.0
         val replayImmediateRawDelta5Mgdl = rawDelta5Raw ?: 9999.0
         val replayRawDelta1Mgdl = smbDelta1Raw ?: 9999.0
@@ -6766,9 +6855,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps15M = steps15,
             steps5M = steps5,
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
-            // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg3 or BolusGivenMild)
-            // fired within the last 30 min: an unexpectedly high spike now reverts more readily (the
-            // raw-delta-driven reversals), so the caps' conservatism isn't needed during that window.
+            // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3 or BolusGivenMild)
+            // fired within the last 30 min, or while meal COB is still >= 9 g: an unexpectedly high spike
+            // now reverts more readily (the raw-delta-driven reversals), so the caps' conservatism isn't
+            // needed during that window.
             // readyToRun() is a pure timestamp check (no mutation); true-when-never-run, so !ready =
             // "fired within the last 30 min".
             // Self-gating on the RAW deltas: the bypass only takes effect while both the 1-min and 5-min
@@ -6783,7 +6873,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // still warranted, not when it should be waived. 0.33 * max_iob (not a flat unit count) sits
             // above typical daytime IOB but below the ~3.3-3.6U peaks actually observed during genuine
             // sustained rises, so the bypass stays available through those, only cutting out right at the
-            // observed high-IOB tail.
+            // observed high-IOB tail. Waived when BolusGiven itself just fired or meal COB >= 9: 1 Sep
+            // 2026 15:31 meal put IOB at 3.3U from the announced bolus before any SMB, which is exactly
+            // when Giv-1 needed the bypass (FastRise 750 still applied at 15:35).
             smbBoostRecent = replaySmbBoostRecent,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.

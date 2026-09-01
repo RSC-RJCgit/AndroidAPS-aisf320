@@ -7,6 +7,6 @@ package app.aaps.plugins.aps.openAPSAutoISF
  * controller source changes, regenerate the values before producing a replay-capable APK.
  */
 internal object AutoIsfReplaySourceIdentity {
-    const val DETERMINE_BASAL_SHA256 = "f3560d347f6ab46dacdf056c04fdc634b35735af5ec91218594d03b9a32239c0"
-    const val OPENAPS_PLUGIN_SHA256 = "bfa324bf43f90212a87196f0c68a99dcf2c46eb36a5cfd8c90b5fce352e287ae"
+    const val DETERMINE_BASAL_SHA256 = "50b8c110f69a1bc43da21c6e44479f53a7c3c419336f4fe33eac231c8885b577"
+    const val OPENAPS_PLUGIN_SHA256 = "8a5dad84b060cfe3971a184d524a676b5c5e2d04b64ad72ee504192642870a3d"
 }
