@@ -5987,16 +5987,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // with the 4-hour 03:00-07:00 window, this means at most ONE step per morning, not a same-morning
         // multi-step escalation.
         //
-        // Ladders (mildest -> most escalated), spec'd 2026-08-30:
-        //   Standard: [base Standard, Standard105, Standard110] -- base IS the ladder's own floor.
-        //   Low:      [Low70, Low80, Low90] -- base "Low" is deliberately OUTSIDE this ladder entirely
-        //             (it's "the original Low selected", not a tier), so it's never a step target.
-        // High steps UP one rung, Normal steps DOWN one rung, independently per role. Already-at-the-
-        // floor + Normal, or already-at-the-ceiling + High, is a no-op (re-writes the same value). Current
-        // position "off ladder" (matches none of a role's known tier profiles -- e.g. Low still on base
-        // "Low", or Standard on some unrelated manually-picked profile): High enters at the ladder's floor
-        // (rung 0); Normal leaves that role untouched entirely (nothing to de-escalate from an unknown
-        // position -- see ladderStepIndex()'s own doc comment).
+        // Ladders (mildest -> most escalated), spec'd 2026-08-30, lock-step 2026-09-02:
+        //   Standard: [Standard100, Standard105, Standard110] -- Standard100 IS the floor rung.
+        //   Low:      [Low70, Low80, Low90] -- Low70 is the matching floor. Base "Low" (the live role
+        //             preference) is not a rung; it is what this block WRITES after resolving a rung
+        //             to a true local profile name.
+        // High/Normal still fire both roles in the same cycle. Until 2026-09-02 each ladder stepped
+        // from its OWN index, so a 100/80 start became 105/90 (Standard +1, Low +1 from a higher
+        // rung). Now they share one rung: High uses min(std,low) then +1, Normal uses max then -1,
+        // so both always land on the same pair -- 100+70, 105+80, or 110+90. Off-ladder counts as
+        // rung 0 for the min/max; both off + High enters the floor (not 105/80); both off + Normal
+        // is a no-op. Ceiling + High / floor + Normal re-writes the same pair.
         //
         // Each rung is resolved via resolveTieredProfileName() (added 2026-08-30 alongside the
         // Standard105/110, Low70/80/90 tier preferences) -- a rung silently falls back to its own base
@@ -6018,31 +6019,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val standardLadder = listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
                 val lowLadder = listOf(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLow90ProfileName)
                 val stepUp = highMatch // false for normalMatch (stepping down); meaningless if neither matched
-                val newLow = when {
-                    highMatch || normalMatch -> {
-                        val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfLowProfileName), lowLadder)
-                        val newIndex = ladderStepIndex(currentIndex, lowLadder.size, stepUp)
-                        if (newIndex == -1) null else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
+                val stdIdx = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
+                val lowIdx = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfLowProfileName), lowLadder)
+                val newIndex = when {
+                    !(highMatch || normalMatch) -> -1
+                    stdIdx < 0 && lowIdx < 0 -> if (stepUp) 0 else -1
+                    else -> {
+                        val stdAligned = if (stdIdx < 0) 0 else stdIdx
+                        val lowAligned = if (lowIdx < 0) 0 else lowIdx
+                        val shared = if (stepUp) minOf(stdAligned, lowAligned) else maxOf(stdAligned, lowAligned)
+                        ladderStepIndex(shared, standardLadder.size, stepUp)
                     }
-                    else -> null
                 }
-                val newStandard = when {
-                    highMatch || normalMatch -> {
-                        val currentIndex = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
-                        val newIndex = ladderStepIndex(currentIndex, standardLadder.size, stepUp)
-                        // Resolve tier -> Standard100 anchor -> (added 2026-08-31) the live Standard role
-                        // as a last resort, then null if STILL blank. Before this, an unconfigured
-                        // Standard100 on a device that never opened the "Select coded profiles" picker
-                        // (e.g. the real loop phone, roles set via plain Preferences) made this resolve to
-                        // "" -- which is not null, so the guard below passed and the empty string was
-                        // written straight over a perfectly good Standard role every qualifying morning.
-                        if (newIndex == -1) null
-                        else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
-                            .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
-                            .takeIf { it.isNotBlank() }
-                    }
-                    else -> null
-                }
+                val newLow = if (newIndex < 0) null
+                else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
+                // Resolve Standard rung -> Standard100 anchor -> (added 2026-08-31) the live Standard
+                // role as a last resort. An unconfigured Standard100 used to resolve to "" and wipe
+                // the live Standard role.
+                val newStandard = if (newIndex < 0) null
+                else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
+                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+                    .takeIf { it.isNotBlank() }
                 if (!newLow.isNullOrBlank() && !newStandard.isNullOrBlank()) {
                     val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                     val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
