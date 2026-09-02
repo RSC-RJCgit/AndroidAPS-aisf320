@@ -6,13 +6,16 @@ import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.InputStream
 
-// List2 Shizuku installer for the newest pump APK under /sdcard/AAPS333 (2026-09-02).
+// List2 Shizuku installer (2026-09-02). Always the same file, no picking among AAPS333
+// backups: /sdcard/AAPS333/newest/aapsNewestAPK.apk (that folder should otherwise be empty).
 // Uses Shizuku's hidden newProcess to run `pm install -r` as the shell user so there is no
-// system Install sheet. Client is skipped by the caller. Skips *aapsclient* and *wear* names
-// so a Client/Wear build sitting in extra/ is not applied to Live.
+// system Install sheet. Client is skipped by the caller.
 internal object ShizukuAaps333Installer {
 
     const val REQUEST_CODE = 75401
+    const val RELATIVE_DIR = "AAPS333/newest"
+    const val FIXED_NAME = "aapsNewestAPK.apk"
+    const val FIXED_NAME_NO_EXT = "aapsNewestAPK"
 
     fun shizukuRunning(): Boolean = try {
         Shizuku.pingBinder()
@@ -28,29 +31,25 @@ internal object ShizukuAaps333Installer {
     }
 
     fun newestPumpApk(): File? {
-        val roots = listOf(
-            File("/sdcard/AAPS333"),
-            File("/storage/emulated/0/AAPS333"),
-            File(Environment.getExternalStorageDirectory(), "AAPS333")
+        val dirs = listOf(
+            File("/sdcard/$RELATIVE_DIR"),
+            File("/storage/emulated/0/$RELATIVE_DIR"),
+            File(Environment.getExternalStorageDirectory(), RELATIVE_DIR)
         )
         val seen = HashSet<String>()
-        val apks = ArrayList<File>()
-        for (root in roots) {
-            if (!root.isDirectory) continue
+        for (dir in dirs) {
             val canonical = try {
-                root.canonicalPath
+                dir.canonicalPath
             } catch (_: Exception) {
-                root.absolutePath
+                dir.absolutePath
             }
             if (!seen.add(canonical)) continue
-            root.walkTopDown().forEach { file ->
-                if (!file.isFile || !file.name.endsWith(".apk", ignoreCase = true)) return@forEach
-                val n = file.name.lowercase()
-                if (n.contains("aapsclient") || n.contains("wear")) return@forEach
-                apks.add(file)
-            }
+            val withExt = File(dir, FIXED_NAME)
+            if (withExt.isFile) return withExt
+            val noExt = File(dir, FIXED_NAME_NO_EXT)
+            if (noExt.isFile) return noExt
         }
-        return apks.maxByOrNull { it.lastModified() }
+        return null
     }
 
     fun install(apk: File): Pair<Boolean, String> {
