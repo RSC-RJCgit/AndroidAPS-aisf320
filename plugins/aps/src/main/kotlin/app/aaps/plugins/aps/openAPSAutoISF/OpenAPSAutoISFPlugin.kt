@@ -1395,14 +1395,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             } catch (_: InterruptedException) {
             }
         }
-        if (!ShizukuAaps333Installer.shizukuRunning()) {
+        // Brief retries: binder can arrive a beat after Shizuku UI shows "running".
+        var shizukuUp = ShizukuAaps333Installer.shizukuRunning()
+        if (!shizukuUp) {
+            repeat(4) {
+                try {
+                    Thread.sleep(400L)
+                } catch (_: InterruptedException) {
+                }
+                shizukuUp = ShizukuAaps333Installer.shizukuRunning()
+                if (shizukuUp) return@repeat
+            }
+        }
+        if (!shizukuUp) {
             addCarePortalNote("ApkSz")
             val newest = ShizukuAaps333Installer.newestPumpApk()
             sendSms(
-                "Shizuku APK install: Shizuku is not running " +
+                "Shizuku APK install: binder not connected " +
                     "(aapsStage=$stagedByAaps newest=${newest?.absolutePath ?: "missing"}; " +
                     "Tasker '$TASKER_INSTALL_NEWEST_TASK' sent status=$taskerStatus). " +
-                    "Tasker only stages — start Shizuku to install."
+                    "Needs ShizukuProvider in APK + server running; Settings allow alone is not enough."
             )
             return
         }

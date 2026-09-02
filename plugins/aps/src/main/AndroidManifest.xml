@@ -10,4 +10,15 @@
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
+    <!-- Also declared on app; kept here so the aps module documents the Shizuku binder entry. -->
+    <application>
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+
 </manifest>
