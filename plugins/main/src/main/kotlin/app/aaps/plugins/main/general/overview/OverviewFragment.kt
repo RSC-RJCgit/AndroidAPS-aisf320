@@ -1359,7 +1359,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
         // a route/device-specific AcLTx Note when it accepts that queued trigger.
-        ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180)
+        ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180),
+        // 2026-09-02: newest non-Client APK under /sdcard/AAPS333 via Shizuku pm install -r.
+        // Live runs immediately (EventAutoIsfDirectTtCode 5.200). Client relays TT 5.200.
+        INSTALL_AAPS333_SHIZUKU("Install newest AAPS333 APK (Shizuku)", 5.200)
     }
 
     // Local display-only graph settings for the three raw/noise-derived UKF comparison lines (UKF1 =
@@ -1543,7 +1546,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.STEROID_BUTTON_TOGGLE,
                 BasalDirectAction.TIER3_BOOST_TOGGLE,
                 BasalDirectAction.UKF1_DOSING_TOGGLE,
-                BasalDirectAction.LOCATION_SMS_TOGGLE ->
+                BasalDirectAction.LOCATION_SMS_TOGGLE,
+                BasalDirectAction.INSTALL_AAPS333_SHIZUKU ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
                 // Unreachable here -- the early-return guards above (action == ANYDESK_RESTART /
@@ -1592,6 +1596,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
+        if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
+            return if (config.AAPSCLIENT)
+                "Relay TT 5.200 to Live: install the newest non-Client APK under /sdcard/AAPS333 via Shizuku (pm install -r). No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
+            else
+                "Install the newest non-Client APK under /sdcard/AAPS333 via Shizuku (pm install -r). No system Install sheet if Shizuku is running and AAPS is granted. This AAPS process will usually restart. First use may show Shizuku's allow-AAPS prompt."
+        }
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
             val question = rh.gs(R.string.run_question, action.label)
             return basalDirectActionCurrentValue(action)?.let { "$it\n\n$question" } ?: question

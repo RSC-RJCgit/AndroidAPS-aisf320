@@ -6,6 +6,7 @@
         <package android:name="com.anydesk.adcontrol.ad1" />
         <package android:name="net.dinglisch.android.taskerm" />
         <package android:name="net.dinglisch.android.tasker" />
+        <package android:name="moe.shizuku.privileged.api" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
         </intent>

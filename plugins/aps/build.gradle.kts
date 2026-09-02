@@ -38,6 +38,10 @@ dependencies {
     api(libs.org.slf4j.api)
 
     ksp(libs.com.google.dagger.android.processor)
+
+    // List2 "Install newest AAPS333 APK" -- Shizuku shell pm install -r, no system Install sheet.
+    implementation(libs.rikka.shizuku.api)
+    implementation(libs.rikka.shizuku.provider)
 }
 
 // Read-only JVM process used by tools/oref-digital-twin. It executes the production

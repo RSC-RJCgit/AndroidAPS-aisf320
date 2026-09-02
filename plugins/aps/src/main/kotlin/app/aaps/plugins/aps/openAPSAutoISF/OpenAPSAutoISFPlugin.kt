@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAutoISF
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.icu.util.Calendar
 import android.util.Base64
 import androidx.collection.LongSparseArray
@@ -116,6 +117,7 @@ import com.google.gson.Gson
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import io.reactivex.rxjava3.schedulers.Schedulers
+import rikka.shizuku.Shizuku
 import org.json.JSONObject
 import java.time.LocalDateTime
 import java.util.Locale
@@ -266,6 +268,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val mjUserActionDisposable = CompositeDisposable()
     @Volatile private var pendingDirectTtCode: Double? = null
     @Volatile private var directTtCodeMatchActive = false
+    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode != ShizukuAaps333Installer.REQUEST_CODE) return@OnRequestPermissionResultListener
+        if (grantResult == PackageManager.PERMISSION_GRANTED) installNewestAaps333Apk("shizuku-granted")
+        else {
+            addCarePortalNote("ApkNg")
+            sendSms("Shizuku APK install: permission denied")
+        }
+    }
 
     // create array for key AutoISF results with defaults
     var autoIsfValues = AIV(
@@ -340,6 +350,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("Loc${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.200) <= 0.0000001) {
+                        // Shizuku APK install must start from the List 2 click, not wait for invoke().
+                        // Client still uses the 5.200 relay TT consumed in ShizukuApkInstallTT below.
+                        installNewestAaps333Apk("list2-direct")
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -361,9 +375,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }) {
                 aapsLogger.error(LTag.APS, "AnyDesk launch from event failed", it)
             }
+        try {
+            Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        } catch (e: Throwable) {
+            aapsLogger.warn(LTag.APS, "Shizuku permission listener not attached: ${e.message}")
+        }
     }
 
     override fun onStop() {
+        try {
+            Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        } catch (_: Throwable) {
+        }
         mjUserActionDisposable.clear()
         super.onStop()
     }
@@ -1148,6 +1171,55 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
     }
 
+    // List2 / 5.200: newest non-Client APK under /sdcard/AAPS333 via Shizuku pm install -r.
+    // No system Install sheet while Shizuku is running and AAPS is granted. Replacing this
+    // running APK usually kills the process after ApkGo is written; ApkOk only lands if the
+    // process survives (failed install, or a different package). Client never installs.
+    private fun installNewestAaps333Apk(reason: String) {
+        if (config.AAPSCLIENT) {
+            aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
+            return
+        }
+        if (!ShizukuAaps333Installer.shizukuRunning()) {
+            addCarePortalNote("ApkSz")
+            sendSms("Shizuku APK install: Shizuku is not running")
+            return
+        }
+        if (!ShizukuAaps333Installer.hasPermission()) {
+            addCarePortalNote("ApkNg")
+            sendSms("Shizuku APK install: grant AAPS in the Shizuku prompt, then retry List2")
+            try {
+                ShizukuAaps333Installer.requestPermission()
+            } catch (e: Exception) {
+                aapsLogger.warn(LTag.APS, "Shizuku.requestPermission failed: ${e.message}")
+            }
+            return
+        }
+        val apk = ShizukuAaps333Installer.newestPumpApk()
+        if (apk == null) {
+            addCarePortalNote("ApkNf")
+            sendSms("Shizuku APK install: no non-Client APK under /sdcard/AAPS333")
+            return
+        }
+        addCarePortalNote("ApkGo")
+        sendSms("Shizuku APK install starting: ${apk.name} ($reason)")
+        try {
+            val (ok, detail) = ShizukuAaps333Installer.install(apk)
+            aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.absolutePath}: $detail")
+            if (ok) {
+                addCarePortalNote("ApkOk")
+                sendSms("Shizuku APK install Success: ${apk.name}")
+            } else {
+                addCarePortalNote("ApkMs")
+                sendSms("Shizuku APK install failed: $detail")
+            }
+        } catch (e: Exception) {
+            addCarePortalNote("ApkMs")
+            sendSms("Shizuku APK install exception: ${e.message}")
+            aapsLogger.warn(LTag.APS, "Shizuku APK install failed", e)
+        }
+    }
+
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
     // delta5 + COB/12. Changed 2026-08-17 to match HP1's own formula shape exactly (0.25 weights, COB
     // always protective/additive, no gated -COBt/12 risk penalty) -- real-world feedback that HP2/HP3's
@@ -1878,6 +1950,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "Tier3BoostToggleTT" -> 5.194
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
+        "ShizukuApkInstallTT" -> 5.200
         else -> null
     }
 
@@ -3560,6 +3633,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             launchAnyDeskDirect()
             aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             markRun("AnyDeskRestartActionTT")
+        }
+
+        // --- ShizukuApkInstallTT: List2 "Install newest AAPS333 APK (Shizuku)". Live List2 fires
+        // immediately via EventAutoIsfDirectTtCode 5.200; Client relays this 5.200 TT. 5-min
+        // throttle so a double-tap cannot start two pm installs.
+        if (readyToRun("ShizukuApkInstallTT", 5) && activeTtNear(5.200, 0.0001)) {
+            cancelCurrentTempTarget()
+            installNewestAaps333Apk("list2-tt")
+            markRun("ShizukuApkInstallTT")
         }
 
         if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
