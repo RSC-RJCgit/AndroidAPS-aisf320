@@ -759,9 +759,64 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return true
     }
 
+    // MorningRoleSwap ladder keys (Standard100/105/110 and Low70/80/90). Shared by band helpers
+    // and the MorningRoleSwap block so "which rung am I on" stays consistent.
+    private val standardRoleLadder = listOf(
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName
+    )
+    private val lowRoleLadder = listOf(
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    // Tier band for SMB/MildBoost coupling (2026-09-03): 0 = TierA (rung 0), 1 = TierB or TierC
+    // (rung >= 1). B and C share one band so A→B and A→C nudge once; B↔C does not stack.
+    private fun roleTierBandForIndex(index: Int): Int = if (index <= 0) 0 else 1
+
+    // Highest configured Standard/Low ladder rung currently live (off-ladder counts as 0 / TierA).
+    private fun sharedRoleLadderIndex(
+        standardName: String = preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+        lowName: String = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+    ): Int {
+        val stdIdx = ladderIndexOf(standardName, standardRoleLadder)
+        val lowIdx = ladderIndexOf(lowName, lowRoleLadder)
+        if (stdIdx < 0 && lowIdx < 0) return 0
+        val stdAligned = if (stdIdx < 0) 0 else stdIdx
+        val lowAligned = if (lowIdx < 0) 0 else lowIdx
+        return maxOf(stdAligned, lowAligned)
+    }
+
+    // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) to role-tier
+    // band changes. Called from every auto that restores to TierA or escalates to TierB/C. No-op when
+    // the band does not change (same pair rewrite, or B↔C).
+    private fun applyRoleTierDeliveryNudge(previousBand: Int, newBand: Int) {
+        if (previousBand == newBand) return
+        val smb = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+        val mild = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+        if (previousBand == 0 && newBand == 1) {
+            val newSmb = (smb + 0.01).coerceAtMost(0.5)
+            val newMild = (mild + 0.25).coerceAtMost(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
+            aapsLogger.info(LTag.APS, "RoleTierDelivery: elevate A→B/C smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
+            addCarePortalNote(compactSettingNote("SM", newMild, 2, omitLeadingZero = true))
+        } else if (previousBand == 1 && newBand == 0) {
+            val newSmb = (smb - 0.01).coerceAtLeast(0.1)
+            val newMild = (mild - 0.25).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
+            aapsLogger.info(LTag.APS, "RoleTierDelivery: restore B/C→A smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
+            addCarePortalNote(compactSettingNote("SM", newMild, 2, omitLeadingZero = true))
+        }
+    }
+
     // Hard reset both MorningRoleSwap ladders to rung 0 (StandardTierA / LowTierA) and switch the
     // running profile if it was the previous live Standard or Low. Shared by AlarmHypoRoleRevert
-    // and LowBgTierAReset. Returns true if a role actually changed.
+    // and LowBgTierAReset. Also reverses the TierB/C SMB/MildBoost nudge when leaving an elevated
+    // band. Returns true if a role actually changed.
     private fun resetStandardAndLowTiersToA(reason: String, note: String, throttleKey: String, throttleMinutes: Int): Boolean {
         val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
         val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
@@ -771,11 +826,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (targetLow.isBlank() || targetStandard.isBlank()) return false
         if (currentLow == targetLow && currentStandard == targetStandard) return false
         if (!readyToRun(throttleKey, throttleMinutes)) return false
+        val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow))
         val currentProfileName = profileFunction.getProfileName()
         preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
         preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
         if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
         else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
+        applyRoleTierDeliveryNudge(previousBand, 0)
         sendSms("$reason: Low=$targetLow Standard=$targetStandard")
         addCarePortalNote(note)
         markRun(throttleKey)
@@ -6308,6 +6365,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // so both always land on the same pair -- 100+70, 105+80, or 110+90. Off-ladder counts as
         // rung 0 for the min/max; both off + High enters the floor (not 105/80); both off + Normal
         // is a no-op. Ceiling + High / floor + Normal re-writes the same pair.
+        // 2026-09-03: when the live roles actually change band, also nudge
+        // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) via
+        // applyRoleTierDeliveryNudge — TierA ↔ (TierB|TierC) once, never stacked on B↔C.
+        // Same nudge is applied inside resetStandardAndLowTiersToA (HypoRevert / TierARst).
         //
         // Each rung is resolved via resolveTieredProfileName() (added 2026-08-30 alongside the
         // Standard105/110, Low70/80/90 tier preferences) -- a rung silently falls back to its own base
@@ -6325,12 +6386,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Standard100 (the stable canonical anchor -- see its own doc comment in StringKey.kt),
                 // not the mutable ApsAutoIsfStandardProfileName, is the ladder's floor rung: the ladder
                 // itself needs a fixed identity for "rung 0" that doesn't move just because the active
-                // role has been escalated.
-                val standardLadder = listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
-                val lowLadder = listOf(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLow80ProfileName, StringKey.ApsAutoIsfLow90ProfileName)
+                // role has been escalated. Ladders live in standardRoleLadder / lowRoleLadder.
                 val stepUp = highMatch // false for normalMatch (stepping down); meaningless if neither matched
-                val stdIdx = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName), standardLadder)
-                val lowIdx = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfLowProfileName), lowLadder)
+                val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(previousStandard, previousLow))
+                val stdIdx = ladderIndexOf(previousStandard, standardRoleLadder)
+                val lowIdx = ladderIndexOf(previousLow, lowRoleLadder)
                 val newIndex = when {
                     !(highMatch || normalMatch) -> -1
                     stdIdx < 0 && lowIdx < 0 -> if (stepUp) 0 else -1
@@ -6338,26 +6400,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         val stdAligned = if (stdIdx < 0) 0 else stdIdx
                         val lowAligned = if (lowIdx < 0) 0 else lowIdx
                         val shared = if (stepUp) minOf(stdAligned, lowAligned) else maxOf(stdAligned, lowAligned)
-                        ladderStepIndex(shared, standardLadder.size, stepUp)
+                        ladderStepIndex(shared, standardRoleLadder.size, stepUp)
                     }
                 }
                 val newLow = if (newIndex < 0) null
-                else resolveTieredProfileName(lowLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
+                else resolveTieredProfileName(lowRoleLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
                 // Resolve Standard rung -> Standard100 anchor -> (added 2026-08-31) the live Standard
                 // role as a last resort. An unconfigured Standard100 used to resolve to "" and wipe
                 // the live Standard role.
                 val newStandard = if (newIndex < 0) null
-                else resolveTieredProfileName(standardLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
+                else resolveTieredProfileName(standardRoleLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
                     .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
                     .takeIf { it.isNotBlank() }
                 if (!newLow.isNullOrBlank() && !newStandard.isNullOrBlank()) {
-                    val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
-                    val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                     val currentProfileName = profileFunction.getProfileName()
                     preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
                     preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
                     if (currentProfileName == previousLow) switchProfileIfNeeded(newLow)
                     else if (currentProfileName == previousStandard) switchProfileIfNeeded(newStandard)
+                    // 2026-09-03: couple SMB baseline / MildBoost to TierA ↔ TierB/C band (not per rung).
+                    if (previousLow != newLow || previousStandard != newStandard) {
+                        applyRoleTierDeliveryNudge(previousBand, roleTierBandForIndex(newIndex))
+                    }
                     val tag = if (highMatch) "RolesHi" else "RolesNorm"
                     sendSms("MorningRoleSwap $tag: Low=$newLow Standard=$newStandard (HP=${round(hp!!, 1)})")
                     addCarePortalNote(tag)
