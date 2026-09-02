@@ -39,9 +39,10 @@ dependencies {
 
     ksp(libs.com.google.dagger.android.processor)
 
-    // List2 "Install newest AAPS333 APK" -- Shizuku shell pm install -r, no system Install sheet.
-    implementation(libs.rikka.shizuku.api)
-    implementation(libs.rikka.shizuku.provider)
+    // List2 "Install aapsNewestAPK" -- Shizuku shell pm install -r, no system Install sheet.
+    // Direct coordinates so this module does not wait on a regenerated version-catalog accessor.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
 
 // Read-only JVM process used by tools/oref-digital-twin. It executes the production

@@ -173,8 +173,6 @@ androidx-annotation = { group = "androidx.annotation", name = "annotation", vers
 androidx-junit = { group = "androidx.test.ext", name = "junit", version = "1.3.0" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version = "1.4.1" }
 net-openid-appauth = { group = "net.openid", name = "appauth", version = "0.11.1" }
-rikka-shizuku-api = { group = "dev.rikka.shizuku", name = "api", version = "13.1.5" }
-rikka-shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version = "13.1.5" }
 
 # Compose
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }

@@ -1198,7 +1198,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val apk = ShizukuAaps333Installer.newestPumpApk()
         if (apk == null) {
             addCarePortalNote("ApkNf")
-            sendSms("Shizuku APK install: no non-Client APK under /sdcard/AAPS333")
+            sendSms("Shizuku APK install: missing /sdcard/AAPS333/newest/aapsNewestAPK.apk")
             return
         }
         addCarePortalNote("ApkGo")
