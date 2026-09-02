@@ -196,9 +196,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // lastRunTimestamps/lastTier3AcceIsfObservationTimestamp elsewhere in this file, just for a
     // condition rather than a throttle.
     private var cobSustainedSinceTimestamp: Long = 0L
-    // LowBgTierAReset: first cycle glucose (loop or UKF1) was < 4.0 mmol. 0L = not currently below.
-    private var loopBgBelow4Since: Long = 0L
-    private var ukf1BgBelow4Since: Long = 0L
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
@@ -785,6 +782,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return true
     }
 
+    // LowBgTierAReset lookback: true if [series] (oldest-first timestamp→mg/dL) contains a continuous
+    // stretch of at least [sustainedMinutes] entirely below [maxMgdl], with no StepsCount sample in
+    // that same wall-clock window having steps60min > [maxSteps60]. Gaps wider than [maxGapMinutes]
+    // break a streak (missing data is never "sustained low").
+    private fun sustainedLowEpisodeWithoutHighSteps(
+        series: List<Pair<Long, Double>>,
+        steps: List<SC>,
+        sustainedMinutes: Int,
+        maxMgdl: Double,
+        maxSteps60: Int,
+        maxGapMinutes: Int = 5
+    ): Boolean {
+        if (series.size < 2) return false
+        val needMs = T.mins(sustainedMinutes.toLong()).msecs()
+        val maxGapMs = T.mins(maxGapMinutes.toLong()).msecs()
+        var streakStart = -1L
+        var prevTs = -1L
+        fun streakQualifies(endTs: Long): Boolean {
+            if (streakStart < 0L || endTs - streakStart < needMs) return false
+            return steps.none { it.timestamp in streakStart..endTs && it.steps60min > maxSteps60 }
+        }
+        for ((ts, mgdl) in series) {
+            if (prevTs >= 0L && ts - prevTs > maxGapMs) {
+                if (streakQualifies(prevTs)) return true
+                streakStart = -1L
+            }
+            if (mgdl < maxMgdl) {
+                if (streakStart < 0L) streakStart = ts
+            } else {
+                if (streakQualifies(prevTs)) return true
+                streakStart = -1L
+            }
+            prevTs = ts
+        }
+        return prevTs >= 0L && streakQualifies(prevTs)
+    }
+
     // Added 2026-08-23. Classifies the CURRENTLY RUNNING profile against all eight coded roles (Standard/
     // Low plus the six Steroid tiers) in one place, with explicit defaults for a profile that matches
     // none of them -- e.g. a profile picked manually that was never assigned to any role, or one of these
@@ -1200,27 +1234,55 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     // Exact Tasker task name on Virtual (and expected on Live): no spaces. Case-sensitive.
+    // That task only stages (shell copy to AAPS333/AAPS3 newest/) — it does not pm-install.
+    // Install still needs Shizuku (or a Tasker action you add yourself).
     // Tasker → prefs → Allow External Access must be on or ACTION_TASK is ignored.
     private val TASKER_INSTALL_NEWEST_TASK = "StageAapsNewestApk"
 
-    private fun sendTaskerRunTask(taskName: String) {
-        val extras = android.os.Bundle().apply {
-            putString("task_name", taskName)
-            putInt("version_number", 1)
-        }
-        for (pkg in listOf("net.dinglisch.android.taskerm", "net.dinglisch.android.tasker")) {
-            try {
-                val intent = Intent("net.dinglisch.android.tasker.ACTION_TASK").apply {
-                    setPackage(pkg)
-                    putExtras(extras)
-                    addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+    // Matches TaskerIntent.java: version_number is the string "1.1", plus a random id: data URI.
+    // Official send does not setPackage; we also send package-targeted copies for Android 11+ delivery.
+    private fun taskerExternalStatus(): String {
+        val perm = context.checkSelfPermission("net.dinglisch.android.tasker.PERMISSION_RUN_TASKS") ==
+            PackageManager.PERMISSION_GRANTED
+        if (!perm) return "NoPermission"
+        return try {
+            val uri = android.net.Uri.parse("content://net.dinglisch.android.tasker/prefs")
+            context.contentResolver.query(uri, arrayOf("enabled", "ext_access"), null, null, null)?.use { c ->
+                if (!c.moveToFirst()) return@use "NoPrefs"
+                val enabled = c.getString(0).equals("true", ignoreCase = true)
+                val ext = c.getString(1).equals("true", ignoreCase = true)
+                when {
+                    !enabled -> "NotEnabled"
+                    !ext -> "AccessBlocked"
+                    else -> "OK"
                 }
-                context.sendBroadcast(intent)
-                aapsLogger.info(LTag.APS, "Tasker ACTION_TASK sent to $pkg task_name='$taskName'")
+            } ?: "NoPrefs"
+        } catch (e: Exception) {
+            "PrefsErr:${e.message}"
+        }
+    }
+
+    private fun sendTaskerRunTask(taskName: String): String {
+        val status = taskerExternalStatus()
+        val intent = Intent("net.dinglisch.android.tasker.ACTION_TASK").apply {
+            data = android.net.Uri.parse("id:${System.nanoTime()}")
+            putExtra("version_number", "1.1")
+            putExtra("task_name", taskName)
+            addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        }
+        // Implicit (official TaskerIntent path), then market + direct-purchase packages.
+        val targets = listOf(null, "net.dinglisch.android.taskerm", "net.dinglisch.android.tasker")
+        for (pkg in targets) {
+            try {
+                val copy = Intent(intent)
+                if (pkg != null) copy.setPackage(pkg)
+                context.sendBroadcast(copy)
+                aapsLogger.info(LTag.APS, "Tasker ACTION_TASK sent pkg=${pkg ?: "implicit"} task='$taskName' status=$status")
             } catch (e: Exception) {
-                aapsLogger.warn(LTag.APS, "Tasker ACTION_TASK to $pkg failed: ${e.message}")
+                aapsLogger.warn(LTag.APS, "Tasker ACTION_TASK pkg=$pkg failed: ${e.message}")
             }
         }
+        return status
     }
 
     private fun resolveAnyDeskPackage(): String? {
@@ -1264,11 +1326,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
             return
         }
-        if (!stageNewestAaps333Apk(reason)) return
-        sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
+        // AAPS Java File I/O often cannot see /sdcard/AAPS333/ApkDownload without
+        // MANAGE_EXTERNAL_STORAGE; Tasker's Run Shell can. Always fire Tasker even when
+        // AAPS stage fails, then re-check newest/ before giving up.
+        val stagedByAaps = stageNewestAaps333Apk(reason)
+        val taskerStatus = sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
+        if (!stagedByAaps) {
+            // Brief wait for Tasker shell copy into newest/.
+            try {
+                Thread.sleep(2500L)
+            } catch (_: InterruptedException) {
+            }
+        }
         if (!ShizukuAaps333Installer.shizukuRunning()) {
             addCarePortalNote("ApkSz")
-            sendSms("Shizuku APK install: Shizuku is not running (file is staged; Tasker '$TASKER_INSTALL_NEWEST_TASK' sent)")
+            val newest = ShizukuAaps333Installer.newestPumpApk()
+            sendSms(
+                "Shizuku APK install: Shizuku is not running " +
+                    "(aapsStage=$stagedByAaps newest=${newest?.absolutePath ?: "missing"}; " +
+                    "Tasker '$TASKER_INSTALL_NEWEST_TASK' sent status=$taskerStatus). " +
+                    "Tasker only stages — start Shizuku to install."
+            )
             return
         }
         if (!ShizukuAaps333Installer.hasPermission()) {
@@ -1284,7 +1362,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val apk = ShizukuAaps333Installer.newestPumpApk()
         if (apk == null) {
             addCarePortalNote("ApkNf")
-            sendSms("Shizuku APK install: missing aapsNewestAPK.apk under AAPS3/newest or AAPS333/newest")
+            sendSms(
+                "Shizuku APK install: missing aapsNewestAPK.apk under AAPS3/newest or AAPS333/newest " +
+                    "(aapsStage=$stagedByAaps Tasker status=$taskerStatus; " +
+                    "AAPS may lack All files access to ApkDownload)"
+            )
             return
         }
         addCarePortalNote("ApkGo")
@@ -6257,35 +6339,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- LowBgTierAReset: 2026-09-02. Loop BGL < 4.0 mmol for >10 min OR UKF1 BGL < 4.0 mmol
-        // for >10 min -> hard-reset both MorningRoleSwap ladders to TierA (Standard100 / Low70),
-        // same write as AlarmHypoRoleRevert but without needing an AlarmHypo/MJ state. Latches
-        // reset the moment that signal is >= 4.0 again. No-op if both live roles are already A.
+        // --- LowBgTierAReset: 2026-09-02. Lookback (not live latch): if in the last 12 hours there
+        // was a continuous stretch of >10 min with loop BGL < 4.0 OR UKF1 BGL < 4.0, and during that
+        // stretch no StepsCount sample had steps60 > 1000, hard-reset both ladders to TierA.
+        // Fires even after BG has recovered; no-op if already on A. Scan throttled to 5 min (episode
+        // stays visible for up to 12h); action throttle stays 30 min inside resetStandardAndLowTiersToA.
         run {
+            if (!readyToRun("LowBgTierAResetScan", 5)) return@run
+            markRun("LowBgTierAResetScan")
             val now = dateUtil.now()
+            val from = now - T.hours(12).msecs()
             val below4 = 72.1 /* 4.0 mmol */
-            if (glucoseStatus.glucose < below4) {
-                if (loopBgBelow4Since == 0L) loopBgBelow4Since = now
-            } else {
-                loopBgBelow4Since = 0L
-            }
-            val ukfG = ukfRawMetrics().glucose
-            if (ukfG != null && ukfG < below4) {
-                if (ukf1BgBelow4Since == 0L) ukf1BgBelow4Since = now
-            } else {
-                ukf1BgBelow4Since = 0L
-            }
-            val tenMin = T.mins(10).msecs()
-            val loopSustained = loopBgBelow4Since != 0L && now - loopBgBelow4Since >= tenMin
-            val ukf1Sustained = ukf1BgBelow4Since != 0L && now - ukf1BgBelow4Since >= tenMin
-            if (loopSustained || ukf1Sustained) {
+            val steps = persistenceLayer.getStepsCountFromTimeToTime(from, now)
+            val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
+                .map { it.timestamp to it.value }
+            val ukf1Series = ukf1RecentHistory(12 * 60L).asReversed()
+            val loopHit = sustainedLowEpisodeWithoutHighSteps(loopSeries, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000)
+            val ukf1Hit = sustainedLowEpisodeWithoutHighSteps(ukf1Series, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000)
+            if (loopHit || ukf1Hit) {
                 val via = when {
-                    loopSustained && ukf1Sustained -> "loop+UKF1"
-                    ukf1Sustained -> "UKF1"
+                    loopHit && ukf1Hit -> "loop+UKF1"
+                    ukf1Hit -> "UKF1"
                     else -> "loop"
                 }
                 resetStandardAndLowTiersToA(
-                    reason = "LowBgTierAReset (<4.0mmol >10min via $via)",
+                    reason = "LowBgTierAReset (<4.0mmol >10min in 12h, steps60<=1000, via $via)",
                     note = "TierARst",
                     throttleKey = "LowBgTierAReset",
                     throttleMinutes = 30
