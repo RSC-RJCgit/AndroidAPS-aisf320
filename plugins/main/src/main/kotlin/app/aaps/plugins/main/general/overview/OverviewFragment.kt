@@ -1368,35 +1368,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         INSTALL_AAPS333_SHIZUKU("Install newest AAPS333 APK (Shizuku)", 5.200)
     }
 
-    // Local display-only graph settings for the three raw/noise-derived UKF comparison lines (UKF1 =
-    // rawBgSmoothedSeries, UKF2 = libreSpecialPreUkfSeries, UKF3 = libreSpecialFromUkf1Series -- see
-    // PrepareBgDataWorker.kt). Appended to double-tap list2 (basal rate icon area, see
-    // showBasalDirectActionListDialog() below), not list1 (IOB icon, showTtCodesListDialog()) -- moved
-    // here per explicit request. Never relayed via TT the way BasalDirectAction's mmol codes are -- reads/writes
-    // BooleanKey preferences directly on whichever device the double-tap happens on, since graph
-    // rendering is inherently per-device. calibKey null (UKF2) means that line's underlying value is
-    // already calibrated upstream and has no real toggle to offer -- shown as a disabled, checked box
-    // instead of omitted, so all three popups keep the same two-checkbox shape.
-    // syncedLiveKey removed 2026-08-16 (UKF3426 branch): it used to write FslUseUkfLibreSpecialSmoothing
-    // (a real, standalone dosing-engine-selection preference -- LibreSpecial vs UKFset1) whenever this
-    // entry's "Graph on" box was checked, as a workaround for the UKF2 graph history going stale
-    // whenever UKFset1 was the live engine -- checking a display checkbox silently switched what was
-    // dosing you. That root cause is now fixed directly (smoothLibreSpecialRealtime() is called
-    // unconditionally in both live branches of XdripSourcePlugin.kt/NsIncomingDataProcessor.kt, not
-    // gated on this preference), so "Graph on" is purely a display toggle again for all three entries,
-    // same as UKF1/UKF3 always were. FslUseUkfLibreSpecialSmoothing itself is unchanged/untouched here.
+    // Local display-only graph settings. UKF2/UKF3 graph toggles removed 2026-09-02 -- those
+    // comparison lines were stopped 2026-08-27 (too smooth / lag risk); List2 only offers UKF1
+    // plus Graph5. Never relayed via TT -- reads/writes BooleanKey preferences on whichever
+    // device the double-tap happens on.
     private data class GraphToggleEntry(
         val label: String, val showKey: BooleanKey, val calibKey: BooleanKey?, val calibLabel: String
     )
 
     // Order matters: appended after every BasalDirectAction entry (including ANYDESK_RESTART when
-    // present), so UKF3 is always the last row in the combined list regardless of build type.
+    // present), so Graph5 is always the last row in the combined list regardless of build type.
     private val graphToggleEntries = listOf(
         GraphToggleEntry("Graph: UKF1 raw-smoothed", BooleanKey.ShowUkf1Graph, BooleanKey.Ukf1ApplyLibreCalibration, "Use libre slope & offset"),
-        GraphToggleEntry(
-            "Graph: UKF2 LibreSpecial+UKF", BooleanKey.ShowUkf2Graph, null, "Use libre slope & offset (always on -- already calibrated upstream)"
-        ),
-        GraphToggleEntry("Graph: UKF3 LibreSpecial-from-UKF1", BooleanKey.ShowUkf3Graph, BooleanKey.Ukf3ApplyLibreCalibration, "Use libre slope & offset"),
         // Second checkbox here is repurposed (not calibration): ON = hide insulin activity + all 3
         // carb-related series, BGL/basal/annotation rows stay. Independent of the other entries above.
         GraphToggleEntry("Graph: Graph5 panel", BooleanKey.ApsAutoIsfShowGraph5, BooleanKey.ApsAutoIsfGraph5BglOnly, "BGL only (hide IA/carbs x3)")
@@ -1565,10 +1548,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     }
 
     // Entry point for double-tap list2 (basal rate icon area): BasalDirectAction's real actions,
-    // followed by the 3 GraphToggleEntry rows appended at the end (UKF3 last -- see graphToggleEntries'
-    // doc comment). Extracted out of basalGestureDetector.onDoubleTap so that cancelling an INNER
-    // confirmation/popup can re-show this same list instead of dismissing out to the plain Overview
-    // screen behind it -- same pattern/rationale as showTtCodesListDialog() on list1 (IOB icon area).
+    // followed by GraphToggleEntry rows appended at the end (Graph5 last -- see graphToggleEntries).
+    // Extracted out of basalGestureDetector.onDoubleTap so that cancelling an INNER confirmation/popup
+    // can re-show this same list instead of dismissing out to the plain Overview screen behind it --
+    // same pattern/rationale as showTtCodesListDialog() on list1 (IOB icon area).
     // OKDialog.showConfirmation's 5-arg (title, message, ok, cancel) overload is used instead of the
     // simpler 3-arg one specifically so a cancel callback can be supplied.
     // Added 2026-08-23: BasalDirectAction never had a "current value" shown before confirming, unlike
@@ -2326,9 +2309,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
         ),
         TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" })
-        // Graph toggle entries (UKF1/UKF2/UKF3) live in list2 (basal rate icon,
-        // BasalDirectAction/showBasalDirectActionListDialog() below), not list1 (this one, IOB icon)
-        // -- moved there per explicit request. See GraphToggleEntry's doc comment.
+        // Graph toggle entries (UKF1 + Graph5 only; UKF2/UKF3 removed 2026-09-02) live in list2
+        // (basal rate icon), not list1 (this one, IOB icon).
     )
 
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
@@ -2848,8 +2830,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
             graph5Data.addBgParabola(true, 1.0)
             graph5Data.addRawBg(false)
-            // Graph5-only version: shows UKF1/2/3 comparison lines regardless of List2's own
-            // ShowUkf1Graph/ShowUkf2Graph/ShowUkf3Graph toggles -- see GraphData.addRawBgSmoothedGraph5().
+            // Graph5-only UKF1 (UKF2/UKF3 graph lines stopped 2026-09-02).
             graph5Data.addRawBgSmoothedGraph5(false)
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column

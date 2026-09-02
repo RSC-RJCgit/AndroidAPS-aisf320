@@ -177,7 +177,11 @@ class AutoIsfHistoryExporter @Inject constructor(
         // computed/logged more than once per cycle, and only the FINAL one after the post-cap
         // recompute and the late "cleared" override reflects what dosing actually used).
         "targetBgOffset", "offsetSoZeroSMB",
-        "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes"
+        "LowBG", "S5", "S15", "S30", "S60", "S180", "MJ", "Notes",
+        // Appended 2026-09-02 after Notes so existing column indices stay put. Loop-style parabola
+        // on this phone's UKF1 series (ukf1Acce / hypothetical ukf1AcceISF), parsed from RT.reason
+        // -- comparison-only, not the dosing acce/acceISF columns above.
+        "ukf1Acce", "ukf1AcceISF"
     )
 
     /** One record's export fields, in the same order as [exportHeaders], shared by both the CSV
@@ -248,7 +252,9 @@ class AutoIsfHistoryExporter @Inject constructor(
             stepsValue(sc, r.timestamp, apsResults, 60)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "",
             mjStateStr(r.timestamp, carePortalNotes),
-            carePortalNotesStr(r.timestamp, carePortalNotes, allRecords)
+            carePortalNotesStr(r.timestamp, carePortalNotes, allRecords),
+            ukf1AcceStr(r.timestamp, apsResults),
+            ukf1AcceIsfStr(r.timestamp, apsResults)
         )
     }
 
@@ -707,6 +713,25 @@ class AutoIsfHistoryExporter @Inject constructor(
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
         val value = deltaAcclRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return df1.format(value)
+    }
+
+    private val ukf1AcceRegex = Regex("""ukf1Acce:\s*(-?[0-9.]+)""")
+    private val ukf1AcceIsfRegex = Regex("""ukf1AcceISF:\s*(-?[0-9.]+)""")
+
+    /** Comparison-only UKF1 parabola acceleration from RT.reason (Live+Virtual, 2026-09-02). */
+    fun ukf1AcceStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val value = ukf1AcceRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return df2.format(value)
+    }
+
+    /** Hypothetical acce_ISF if UKF1's own parabola had driven autoISF()'s formula. */
+    fun ukf1AcceIsfStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val value = ukf1AcceIsfRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return df2.format(value)
     }
 
     /** Same shape as deltaAcceStr's formula (100 * (fast - slow) / |slow|), but built from UKF-domain

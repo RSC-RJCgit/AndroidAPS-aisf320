@@ -126,19 +126,15 @@ enum class BooleanKey(
     // its returned value is currently not assigned to the live BG.
     FslUseUkfSmoothing("fsl_use_ukf_smoothing", false, defaultedBySM = true),
     FslUseUkfLibreSpecialSmoothing("fsl_use_ukf_libre_special_smoothing", false, defaultedBySM = true),
-    // Per-line show/hide + calibration toggles for the three raw/noise-derived graph comparison lines
-    // (UKF1 = rawBgSmoothedSeries, UKF2 = libreSpecialPreUkfSeries, UKF3 = libreSpecialFromUkf1Series
-    // -- see PrepareBgDataWorker.kt). Deliberately separate from OverviewMenus.CharType.RAW_BG_SMOOTHED
-    // (the main chart-selection-panel checkbox) and from FslUseUkfLibreSpecialSmoothing (the live FSL
-    // pipeline mode) -- these are local display-only settings reachable via OverviewFragment's IOB
-    // double-tap list 2 (showTtCodesListDialog()), not relayed via TT the way dosing settings are.
-    // Defaults preserve each line's pre-existing behavior: UKF1 previously never calibrated, UKF3
-    // previously always did; UKF2 has no calibration toggle (its value comes from a persisted history
-    // of already-calibrated live-pipeline results, not a raw value recomputed at display time).
+    // Per-line show/hide + calibration for the UKF1 graph comparison line
+    // (rawBgSmoothedSeries -- see PrepareBgDataWorker.kt). Deliberately separate from
+    // OverviewMenus.CharType.RAW_BG_SMOOTHED (the main chart-selection-panel checkbox).
+    // Local display-only, List2, not relayed via TT. UKF2/UKF3 graph keys remain so old
+    // preference files still load, but drawing those lines stopped 2026-09-02.
     ShowUkf1Graph("show_ukf1_graph", true, defaultedBySM = true),
     Ukf1ApplyLibreCalibration("ukf1_apply_libre_calibration", false, defaultedBySM = true),
-    ShowUkf2Graph("show_ukf2_graph", true, defaultedBySM = true),
-    ShowUkf3Graph("show_ukf3_graph", true, defaultedBySM = true),
+    ShowUkf2Graph("show_ukf2_graph", false, defaultedBySM = true),
+    ShowUkf3Graph("show_ukf3_graph", false, defaultedBySM = true),
     Ukf3ApplyLibreCalibration("ukf3_apply_libre_calibration", true, defaultedBySM = true),
     FslCalibrationTrigger("calibration_stops_SMB", false, defaultedBySM = true),
     FslCalibrationEnd("calibration_end", false, defaultedBySM = true),

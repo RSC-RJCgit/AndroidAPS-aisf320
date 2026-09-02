@@ -184,6 +184,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Feeds tier3AcceIsfObservedThisCycle only (observation-only, no dosing) -- see that flag's own doc
     // comment in DetermineBasalAutoISF.kt.
     private var lastAcceIsf: Double = 1.0
+    // Comparison-only UKF1 parabola / hypothetical acce_ISF from the last invoke() cycle. Written
+    // into RT.reason so Live AIV/UKFcheck can see it; does not feed dosing. See the Live+Virtual
+    // Ukf1DeltaMetrics block in invoke().
+    private var lastUkf1BgAcceleration: Double = 0.0
+    private var lastUkf1AcceIsf: Double = 1.0
     // Added 2026-08-28: timestamp latch for EveningIobCeiling/NightIobCeiling's COB-sustained
     // relaxation (see those blocks' own doc comments). 0L = "not currently sustained". Set once
     // when mealCOB first crosses the sustained-COB threshold, left alone while it stays above
@@ -6729,36 +6734,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("sbClr")
         }
 
-        // Gate added 2026-08-18: this whole comparison section (DropDetected/AccelSignDisagreement/
-        // LibreVsSet1Race/the per-type *MetricsLog blocks) is investigation tooling for the aapsVirtual
-        // device only -- see this branch's own standing policy. On a real pump it was still computing
-        // all types' shadow histories/deltas/accelerations every 1-5min for no benefit (nothing
-        // reads the results outside this diagnostic logging), real CPU/battery cost on a device that
-        // actually needs it. `!config.AAPSCLIENT` added same day: VirtualPump alone isn't enough --
-        // VirtualPumpPlugin.kt has its own config.AAPSCLIENT-specific branches (reservoir/serial
-        // handling), confirming Client also runs with VirtualPump as its own (inert, mirror-only)
-        // pump selection. Without this second check, this block would ALSO run on Client -- exactly
-        // the device this gate exists to exclude, not just real-pump builds generally.
+        // UKFset1/LibreSpecial shadow comparison stays Virtual-only (2026-08-18): those types read
+        // persisted shadow histories every cycle, real CPU/battery cost, nothing on a pump phone
+        // consumes the result. `!config.AAPSCLIENT` is required because Client also selects
+        // VirtualPump as its inert mirror driver.
         //
-        // UKF2 and UKF3 removed 2026-08-27 (real observation, this branch): both variants' graphs ran
-        // way smoother/flatter than the loop's own main line, way too smoothed-out to plausibly beat
-        // it at early detection, and being doubly-calculated (each is itself a smoothing pass over
-        // already-smoothed UKF output -- see their own ukf2RecentHistory/ukf3RecentHistory source
-        // data) made them a likely LAG risk on top of that, not just a wash. UKF1 stayed despite its
-        // own known problem (matching Raw's own glitches too closely -- see the FastRise-tuning
-        // discussion this session) because it's still the one variant with plausible early-detection
-        // upside; UKFset1 and LibreSpecial (the live production pair) were never in question. Their
-        // helper functions (ukf2DeltaMetrics/ukf2AccelerationMetrics/ukf3DeltaMetrics/
-        // ukf3AccelerationMetrics, ukf2RecentHistory/ukf3RecentHistory) are left in place rather than
-        // deleted -- unused-but-harmless, and cheap to revive if UKF2/UKF3 ever warrant a second look.
+        // UKF2 and UKF3 metrics removed 2026-08-27 (real observation, this branch): both variants'
+        // graphs ran way smoother/flatter than the loop's own main line, way too smoothed-out to
+        // plausibly beat it at early detection, and being doubly-calculated (each is itself a
+        // smoothing pass over already-smoothed UKF output -- see their own ukf2RecentHistory/
+        // ukf3RecentHistory source data) made them a likely LAG risk on top of that, not just a
+        // wash. Helper functions left in place rather than deleted -- unused-but-harmless.
+        //
+        // UKF1 comparison lifted onto Live 2026-09-02: same helpers (ukf1RecentHistory /
+        // ukf1AccelerationMetrics / hypotheticalAcceIsf) Virtual already used. UKF1 is stateless
+        // (smoothForDisplay over this phone's raw/noise window) and is the one remaining comparison
+        // type. Still Client-excluded. Does NOT enable ApsAutoIsfUseUkf1ForDosing -- that toggle
+        // stays Virtual-only and off-by-default.
         if (activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) {
-
-            // TEMP diagnostic 2026-08-16 (UKF3426 branch): loop's own ground-truth drop-crossing timestamp,
-            // logged EVERY cycle (not gated by the 5-min throttle the per-type blocks below use) so its
-            // timing precision isn't artificially coarsened to 5 minutes -- it's the reference point every
-            // other type's "lead/lag vs first" text is measured against, and glucoseStatus.delta is already
-            // computed at zero extra cost.
-            logDropDetection("Loop", glucoseStatus.delta)
 
             // TEMP diagnostic 2026-08-15 (UKF3426 branch): sanity-check UKFset1's own delta5/delta15/
             // delta30 and bgAcceleration/deltaPl/deltaPn against the loop's actual values -- proof-of-
@@ -6768,13 +6761,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // (those are AutoISF-specific, not on the base GlucoseStatus type -- same cast the existing
             // determine_basal() call site already does), so cast once here for the comparison.
             //
-            // acceIsf= added 2026-08-27: what the real acce_ISF adaptation (autoISF(), ~6812-6838 below)
-            // would compute if this variant's own accel/corrSqu had driven it, via hypotheticalAcceIsf()
-            // -- see that function's own doc comment for the formula and its one known simplification.
-            // Compared against lastAcceIsf, the loop's own real value from the previous cycle (this
-            // cycle's real acce_ISF isn't computed yet at this point in invoke() -- autoISF() runs
-            // later -- so lastAcceIsf is the freshest real value actually available here; same pattern
-            // replayAcceIsfValue below already relies on).
+            // acceIsf= added 2026-08-27: what the real acce_ISF adaptation (autoISF()) would compute if
+            // this variant's own accel/corrSqu had driven it, via hypotheticalAcceIsf() -- see that
+            // function's own doc comment for the formula and its one known simplification.
             if (readyToRun("UkfSet1DeltaMetricsLog", 5)) {
                 val ukfSet1Deltas = ukfSet1DeltaMetrics()
                 val ukfSet1Accel = ukfSet1AccelerationMetrics()
@@ -6815,26 +6804,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 logLibreSpecialVsUkfSet1Race("LibreSpecial", libreSpecialDeltas.delta)
                 markRun("LibreSpecialShadowMetricsLog")
             }
+        }
 
-            // TEMP diagnostic 2026-08-16 (UKF3426 branch): UKF1 -- fully stateless/batch, no shadow-
-            // persistence problem like the live pair above, just a fresh recompute each call over a
-            // bounded raw-reading window. Same shape as the two logs above, own separate line/throttle
-            // key. acceIsf= added 2026-08-27, see UkfSet1DeltaMetricsLog's own comment above.
+        if (!config.AAPSCLIENT) {
+            // Loop drop-crossing every cycle so UKF1's DropDetected lead/lag has a same-phone
+            // reference on Live as well as Virtual (was inside the Virtual-only gate above).
+            logDropDetection("Loop", glucoseStatus.delta)
+            val ukf1Deltas = ukf1DeltaMetrics()
+            val ukf1Accel = ukf1AccelerationMetrics()
+            val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
+            lastUkf1BgAcceleration = ukf1Accel.bgAcceleration
+            lastUkf1AcceIsf = hypotheticalAcceIsf(ukf1Accel.bgAcceleration, ukf1Accel.corrSqu, glucoseStatus.glucose, target_bg)
+            logDropDetection("UKF1", ukf1Deltas.delta)
             if (readyToRun("Ukf1DeltaMetricsLog", 5)) {
-                val ukf1Deltas = ukf1DeltaMetrics()
-                val ukf1Accel = ukf1AccelerationMetrics()
-                val loopStatus = glucoseStatus as? GlucoseStatusAutoIsf
-                val ukf1AcceIsf = hypotheticalAcceIsf(ukf1Accel.bgAcceleration, ukf1Accel.corrSqu, glucoseStatus.glucose, target_bg)
                 aapsLogger.debug(
                     LTag.APS,
                     "Ukf1DeltaMetrics: delta5=${round(ukf1Deltas.delta, 2)} delta15=${round(ukf1Deltas.shortAvgDelta, 2)} delta30=${round(ukf1Deltas.longAvgDelta, 2)} " +
                         "accel=${round(ukf1Accel.bgAcceleration, 3)} deltaPl=${round(ukf1Accel.deltaPl, 2)} deltaPn=${round(ukf1Accel.deltaPn, 2)} window=${round(ukf1Accel.windowMinutes, 1)}min corrSqu=${round(ukf1Accel.corrSqu, 3)} " +
-                        "acceIsf=${round(ukf1AcceIsf, 3)} " +
+                        "acceIsf=${round(lastUkf1AcceIsf, 3)} " +
                         "(loop: delta5=${round(glucoseStatus.delta, 2)} delta15=${round(glucoseStatus.shortAvgDelta, 2)} delta30=${round(glucoseStatus.longAvgDelta, 2)} " +
                         "accel=${loopStatus?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopStatus?.let { round(it.deltaPl, 2) } ?: "--"} deltaPn=${loopStatus?.let { round(it.deltaPn, 2) } ?: "--"} acceIsf=${round(lastAcceIsf, 3)})"
                 )
                 logAccelSignDisagreement("UKF1", ukf1Accel.bgAcceleration, loopStatus?.bgAcceleration)
-                logDropDetection("UKF1", ukf1Deltas.delta)
                 markRun("Ukf1DeltaMetricsLog")
             }
         }
@@ -7084,6 +7075,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // and AcceIsfWeight lines above -- reason text survives the NS round-trip and is already
                 // regex-parsed on client builds, so no DB column or migration is needed for it.
                 rt.reason.append("LowBGrecent: ${if (checkAutomationState("LowBG", "50recent")) "Y" else "N"} ;")
+                // Comparison-only UKF1 parabola / hypothetical acce_ISF (Live+Virtual, not Client).
+                // Same no-DB-migration pattern as LowBGrecent / AcceIsfWeight. Does not feed dosing.
+                if (!config.AAPSCLIENT) {
+                    rt.reason.append("ukf1Acce: ${round(lastUkf1BgAcceleration, 3)} ;")
+                    rt.reason.append("ukf1AcceISF: ${round(lastUkf1AcceIsf, 3)} ;")
+                }
             }
         }
         disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValues).subscribe()

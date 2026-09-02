@@ -448,8 +448,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             }
             graph5Data.addBgParabola(true, 1.0)
             graph5Data.addRawBg(false)
-            // Graph5-only version: shows UKF1/2/3 comparison lines regardless of List2's own
-            // ShowUkf1Graph/ShowUkf2Graph/ShowUkf3Graph toggles -- see GraphData.addRawBgSmoothedGraph5().
+            // Graph5-only UKF1 (UKF2/UKF3 graph lines stopped 2026-09-02).
             graph5Data.addRawBgSmoothedGraph5(false)
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             graph5Data.addTargetOffsetDuTAnnotation()

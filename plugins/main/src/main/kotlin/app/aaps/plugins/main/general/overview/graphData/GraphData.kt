@@ -274,10 +274,8 @@ class GraphData @Inject constructor(
         addSeries(overviewData.libreSpecialFromUkf1Series as LineGraphSeries<*>)
     }
 
-    // Graph5-only counterpart of addRawBgSmoothed() above: always shows all three UKF comparison lines
-    // regardless of ShowUkf1Graph / ShowUkf2Graph+FslUseUkfLibreSpecialSmoothing / ShowUkf3Graph, matching
-    // graph5's "independent of graph 0's own toggles" design elsewhere. See OverviewData.kt's
-    // rawBgSmoothedSeriesGraph5 doc comment for why this doesn't duplicate any expensive computation.
+    // Graph5-only counterpart of addRawBgSmoothed() above: UKF1 only (UKF2/UKF3 lines stopped
+    // 2026-09-02). Still independent of graph 0's ShowUkf1Graph toggle.
     fun addRawBgSmoothedGraph5(useForScale: Boolean) {
         if (useForScale) {
             minY = 0.0

@@ -221,31 +221,11 @@ class PrepareBgDataWorker(
         data.overviewData.rawBgSmoothedSeriesGraph5 =
             if (ukf1Points.isNotEmpty()) ukf1LineSeries() else LineGraphSeries<DataPoint>()
 
-        // UKF2 comparison trace: the actual post-refinement value smoothLibreSpecialRealtime() returned
-        // on each cycle -- i.e. exactly what became the real dosing BGL while UKFset2 was live, not the
-        // pre-refinement libreSpecial stage this used to show (see libreSpecialPostUkfHistory's own doc
-        // comment). Kept separate from UKFraw (light-blue dashed) and final AAPS BG points.
-        // Reads the already-persisted history -- cheap (SharedPreferences read/parse), NOT the expensive
-        // RTS smoothing pass itself (that only ever runs during live BG ingestion, gated purely by
-        // FslUseUkfLibreSpecialSmoothing there -- unrelated to graph-drawing). Computed unconditionally so
-        // graph5's always-on copy below doesn't need a second read.
-        val ukf2Points = ukfSmoothing.libreSpecialPostUkfHistory(fromTime, toTime)
-            .map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
-        fun ukf2LineSeries() = LineGraphSeries(ukf2Points.toTypedArray()).also {
-            it.setCustomPaint(Paint().also { paint ->
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4f
-                paint.color = android.graphics.Color.parseColor("#66BB6A")
-            })
-        }
-        data.overviewData.libreSpecialPreUkfSeries =
-            if (ukf2Points.isNotEmpty() && preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) && preferences.get(BooleanKey.ShowUkf2Graph))
-                ukf2LineSeries()
-            else LineGraphSeries<DataPoint>()
-        // Graph5-only: same points, always shown regardless of the toggle pair above -- see
-        // OverviewData.kt's libreSpecialPreUkfSeriesGraph5 doc comment.
-        data.overviewData.libreSpecialPreUkfSeriesGraph5 =
-            if (ukf2Points.isNotEmpty()) ukf2LineSeries() else LineGraphSeries<DataPoint>()
+        // UKF2/UKF3 graph lines stopped 2026-09-02 (comparison metrics already removed 2026-08-27).
+        // Series properties stay so GraphData.addRawBgSmoothed() / addRawBgSmoothedGraph5() still
+        // add something; they are empty. ukf3RawMgdl below is still computed for the HP3 annotation.
+        data.overviewData.libreSpecialPreUkfSeries = LineGraphSeries<DataPoint>()
+        data.overviewData.libreSpecialPreUkfSeriesGraph5 = LineGraphSeries<DataPoint>()
 
         // UKF3's own raw-mgdl smoothed values (oldest-first): the LibreSpecial EMA formula (same math as
         // NsIncomingDataProcessor.kt's live fsl_exp1 branch, kept in sync by hand) run fresh against UKF1's
@@ -253,9 +233,8 @@ class PrepareBgDataWorker(
         // vars, NOT DoubleKey.FslLastSmooth/LongKey.FslSmoothLastTimeRaw -- same never-touch-persisted-state
         // principle as rawBgSmoothedSeries/libreSpecialPreUkfSeries above, recomputed from scratch every
         // call so multiple graph refreshes can't corrupt the live pipeline's own EMA state.
-        // Computed UNCONDITIONALLY (independent of ShowUkf3Graph, which only gates the graph line below) so
-        // HP3 (see the targetOffsetDuT block further down) can use it as its base-glucose/delta5 source even
-        // when the UKF3 graph line itself is hidden.
+        // Computed UNCONDITIONALLY so HP3 (see the targetOffsetDuT block further down) can use it as
+        // its base-glucose/delta5 source even though the UKF3 graph line itself is no longer drawn.
         val ukf3ApplyCalibration = preferences.get(BooleanKey.Ukf3ApplyLibreCalibration)
         val ukf3Slope = preferences.get(DoubleKey.FslCalSlope)
         val ukf3Offset = preferences.get(DoubleKey.FslCalOffset)
@@ -276,28 +255,9 @@ class PrepareBgDataWorker(
             }
         } else emptyList()
 
-        // UKF3 graph line (display-only, opposite composition order from UKF2): gated purely on
-        // ShowUkf3Graph -- always computed above regardless of live UKF toggle state, only drawn here.
-        val ukf3Points = ukf3RawMgdl.map { (timestamp, mgdl) -> DataPoint(timestamp.toDouble(), profileUtil.fromMgdlToUnits(mgdl)) }
-        fun ukf3LineSeries() = LineGraphSeries(ukf3Points.toTypedArray()).also {
-            it.setCustomPaint(Paint().also { paint ->
-                paint.style = Paint.Style.STROKE
-                // Same weight/dash pattern as UKF1's line (strokeWidth 6f, 6f/4f dashes) -- the
-                // original 4f/2f-3f combo was too fine to read against the other lines. Still a
-                // dashed (not solid) style and a darker green (#2E7D32 vs UKF2's #66BB6A) so it stays
-                // visually distinct from UKF1 (light blue) and UKF2 (solid green) if all three show
-                // together.
-                paint.strokeWidth = 6f
-                paint.pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
-                paint.color = android.graphics.Color.parseColor("#2E7D32") // Material Green 800
-            })
-        }
-        data.overviewData.libreSpecialFromUkf1Series =
-            if (ukf3Points.isNotEmpty() && preferences.get(BooleanKey.ShowUkf3Graph)) ukf3LineSeries() else LineGraphSeries<DataPoint>()
-        // Graph5-only: same points, always shown regardless of ShowUkf3Graph -- see OverviewData.kt's
-        // libreSpecialFromUkf1SeriesGraph5 doc comment.
-        data.overviewData.libreSpecialFromUkf1SeriesGraph5 =
-            if (ukf3Points.isNotEmpty()) ukf3LineSeries() else LineGraphSeries<DataPoint>()
+        // UKF3 graph line stopped 2026-09-02. Series left empty; ukf3RawMgdl above still feeds HP3.
+        data.overviewData.libreSpecialFromUkf1Series = LineGraphSeries<DataPoint>()
+        data.overviewData.libreSpecialFromUkf1SeriesGraph5 = LineGraphSeries<DataPoint>()
 
         // Live "L=<noisy bgl> A1=<aaps 1-min delta> L1=<libre 1-min delta> A5=<aaps 5-min delta>
         // L5=<libre 5-min delta>" annotation at the current reading.
