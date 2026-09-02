@@ -2273,12 +2273,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // entirely; the UPPER cap (< 14.4*stackK, keeping mild out of bg3's territory) still always
             // applies, so mutual exclusivity with bg3 is preserved either way.
             val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            // Delivery-suppressed bypass — same reasoning as bg3's mirror above: raw-only (no `d`,
-            // which lags behind suppressed delivery itself), direct numbers (not stackK-scaled, since
-            // stackK is provably always 1.0 whenever smbCount5Min() <= 1). Keeps mild's own lower floor
-            // (5.4mg/dL/0.30mmol, matching the main fire condition's lowered threshold above) and upper
-            // cap (<14.4) so it still can't overlap bg3's territory.
-            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
+            // Delivery-suppressed OR (smbCount5Min() <= 1 + raw rise, no iobChange5) removed 2026-09-02
+            // after Client 13:07 BMild|UamBst 1.20U at BGL 5.9 with IOBd5 only 0.12: that path treated
+            // a 5-min SMB gap (normal, and here the near-target zero-SMB hold) as "already need a
+            // boosted SMB", then handed it to Tier 3. BMild is IOB-already-rising only. True silence
+            // (20 min, BG > 6.5, all three deltas) stays BolusGivenMildFailsafe, which does not fire
+            // Tier 3.
             // Post-bolus/carb quiet window (was 120 min, or 30 min above 11.0 mmol) REMOVED 2026-09-01
             // at explicit request: BMild / Tier 3 / BolusGiven bg3 must still be able to fire on a
             // confirmed rise even when a recent manual bolus or carb entry would previously have
@@ -2289,7 +2289,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour -- the day window
             // otherwise blocks a post-change high before 08:30 or after 02:00.
             return (isTimeBetween(8, 30, 2, 0) || newPodHighBgAnyTimeOk(g))
-                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */) || deliverySuppressedMild)
+                && iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
                 && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName)   // not on the MJ/night profile
@@ -4796,10 +4796,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- BolusGivenMildFailsafe: safety-net sibling of BolusGivenMild for when SMBs simply haven't
         // been delivering during a clearly-confirmed rise (sensor dropout, pod disconnect, etc.) -- not
         // a delivery-ratio tuning scenario, a "the loop isn't acting at all" one. Requires ALL of Delta,
-        // SDelta, and AAPS's own longAvgDelta to independently confirm the rise (stricter than
-        // BolusGivenMild's own OR-based gate), near-zero IOB (nothing already in the pipe), and genuine
-        // SMB silence over a longer window (smbCount20Min() == 0, not the 5-min signal
-        // deliverySuppressedMild uses -- that shorter window can just be a normal gap between doses).
+        // SDelta, and AAPS's own longAvgDelta to independently confirm the rise (stricter than BMild,
+        // which now requires iobChange5 + Delta only), near-zero IOB (nothing already in the pipe), and
+        // genuine SMB silence over 20 min (smbCount20Min() == 0). A 5-min gap is a normal loop hole and
+        // is not treated as silence (that used to be BMild's deliverySuppressed OR; removed 2026-09-02).
         // Restricted to 09:00-21:00 (narrower than BolusGivenMild's own 8:30-22:00) unless a new
         // pod (<2h) is already over 9.0 mmol -- same any-hour bypass as BMild/Tier 3, 2026-09-02.
         // Like BMild, no separate enable toggle -- shares ApsAutoIsfBoostAutomationsEnabled with its
@@ -4871,9 +4871,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes < 300
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            val deliverySuppressedMild = smbCount5Min() <= 1 && rawDelta5 >= 5.4 && rawDelta5 < 14.4 && rawDelta1 < 14.4
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
-                && ((iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK) || deliverySuppressedMild)
+                && iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK
                 && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
                 && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
@@ -4885,7 +4884,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=${round(stackK, 2)} ;;")
             consoleError.add("BoostDebug signals: g=${convert_bg(g)} d=${deltaForDisplay(d)} rawDelta5=${deltaForDisplay(rawDelta5)} rawDelta1=${deltaForDisplay(rawDelta1)} iobChange5=${round(iobChange5, 2)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${deltaForDisplay(glucoseStatus.longAvgDelta)} recentSteps60Minutes=$recentSteps60Minutes ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
-            consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliverySuppressed=$deliverySuppressedMild deliveryRatioWould=${round(mildDeliveryRatioWould, 2)} wouldFire=$mildWould ;;")
+            consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliveryRatioWould=${round(mildDeliveryRatioWould, 2)} wouldFire=$mildWould ;;")
         }
 
         // --- TT 5.7 reversal block: replaces TToff2/3/4/5 and HypoTTOff1 automations, plus

@@ -20,7 +20,10 @@ class AutoStartReceiver : DaggerBroadcastReceiver() {
 
     @VisibleForTesting
     fun processIntent(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED)
+        // BOOT_COMPLETED: reboot. MY_PACKAGE_REPLACED: APK update. KeepAlive cannot cover the
+        // update case — Android cancels that app's WorkManager jobs on replace, so nothing is
+        // left to fire until the process starts again. This is the same DummyService path boot uses.
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED)
             dummyServiceHelper.startService(context)
     }
 }

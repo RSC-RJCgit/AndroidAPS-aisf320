@@ -42,6 +42,16 @@ class AutoStartReceiverTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun `processIntent calls startService when intent action is ACTION_MY_PACKAGE_REPLACED`() {
+        val replacedIntent: Intent = mock()
+        whenever(replacedIntent.action).thenReturn(Intent.ACTION_MY_PACKAGE_REPLACED)
+
+        autoStartReceiver.processIntent(context, replacedIntent)
+
+        verify(dummyServiceHelper).startService(context)
+    }
+
+    @Test
     fun `processIntent does NOT call startService for a different intent action`() {
         // Arrange
         // Create an intent with a different, irrelevant action.
