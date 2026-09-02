@@ -1199,10 +1199,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
-    // Tasker task names are case-sensitive (ACTION_TASK extra task_name). List2 "Install newest"
-    // fires this exact string -- the Tasker task must match character-for-character, including
-    // the lowercase n in newest. Tasker → prefs → Allow External Access must be on.
-    private val TASKER_INSTALL_NEWEST_TASK = "Install newest"
+    // Exact Tasker task name on Virtual (and expected on Live): no spaces. Case-sensitive.
+    // Tasker → prefs → Allow External Access must be on or ACTION_TASK is ignored.
+    private val TASKER_INSTALL_NEWEST_TASK = "StageAapsNewestApk"
 
     private fun sendTaskerRunTask(taskName: String) {
         val extras = android.os.Bundle().apply {
@@ -1230,8 +1229,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
     }
 
-    // List2 / 5.202: copy newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep
-    // only the newest 20 archive APKs under AAPS333. No Shizuku. Client never stages.
+    // List2 / 5.202: copy newest pump APK to <AAPS3 or AAPS333>/newest/aapsNewestAPK.apk and keep
+    // only the newest 20 archive APKs in that same folder. No Shizuku. Client never stages.
     private fun stageNewestAaps333Apk(reason: String): Boolean {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "AAPS333 APK stage skipped on AAPSCLIENT ($reason)")
@@ -1285,7 +1284,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val apk = ShizukuAaps333Installer.newestPumpApk()
         if (apk == null) {
             addCarePortalNote("ApkNf")
-            sendSms("Shizuku APK install: missing /sdcard/AAPS333/newest/aapsNewestAPK.apk")
+            sendSms("Shizuku APK install: missing aapsNewestAPK.apk under AAPS3/newest or AAPS333/newest")
             return
         }
         addCarePortalNote("ApkGo")
@@ -2771,6 +2770,42 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         run {
             // LowRaw24Cal has priority while its temporary six-hour override is active.
             if (preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)) return@run
+            // Pod >80h or sensor >15 days: turn SensorAge auto off (same List2 5.156 switch).
+            // Rearm only after an auto-off, and only when BOTH have recovered (pod<80 AND
+            // sensor<=15). OR-rearm would flip-flop: off because pod>80, immediately on because
+            // sensor is still <=15. Manual List2 off does not set the latch, so it stays off.
+            val podHForAuto = hoursSinceCurrentPodChange()
+            val sensorDaysForAuto = hoursSinceLastSensorChange()?.div(24.0)
+            val podTooOld = podHForAuto != null && podHForAuto > 80.0
+            val sensorTooOld = sensorDaysForAuto != null && sensorDaysForAuto > 15.0
+            val podRecovered = podHForAuto != null && podHForAuto < 80.0
+            val sensorRecovered = sensorDaysForAuto != null && sensorDaysForAuto <= 15.0
+            if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) {
+                if (podTooOld || sensorTooOld) {
+                    preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, false)
+                    preferences.put(BooleanKey.ApsAutoIsfSensorAgeAutoOffLatched, true)
+                    if (readyToRun("SensorAgeAutoOff", 60)) {
+                        sendSms(
+                            "SensorAgeCode: OFF " +
+                                "(pod=${podHForAuto?.let { round(it, 1) } ?: "--"}h " +
+                                "sensorDays=${sensorDaysForAuto?.let { round(it, 2) } ?: "--"})"
+                        )
+                        addCarePortalNote("SaAutoOff")
+                        markRun("SensorAgeAutoOff")
+                    }
+                }
+            } else if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeAutoOffLatched) && podRecovered && sensorRecovered) {
+                preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, true)
+                preferences.put(BooleanKey.ApsAutoIsfSensorAgeAutoOffLatched, false)
+                if (readyToRun("SensorAgeAutoOn", 60)) {
+                    sendSms(
+                        "SensorAgeCode: ON " +
+                            "(pod=${round(podHForAuto!!, 1)}h sensorDays=${round(sensorDaysForAuto!!, 2)})"
+                    )
+                    addCarePortalNote("SaAutoOn")
+                    markRun("SensorAgeAutoOn")
+                }
+            }
             val sensorAgeCodeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             if (!sensorAgeCodeEnabled) {

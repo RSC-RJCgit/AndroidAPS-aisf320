@@ -1360,8 +1360,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
         // a route/device-specific AcLTx Note when it accepts that queued trigger.
         ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180),
-        // 2026-09-02: copy newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep
-        // the newest 20 archive APKs under AAPS333. No Shizuku. Virtual-safe (does not replace AAPS).
+        // 2026-09-02: copy newest pump APK to AAPS3 (Live) or AAPS333 (Virtual) newest/ and keep
+        // the newest 20 archive APKs in that folder. No Shizuku. Virtual-safe (does not replace AAPS).
         STAGE_AAPS333_NEWEST("Stage newest APK (keep 20)", 5.202),
         // 2026-09-02: stage first, then Shizuku pm install -r of that staged file.
         // Live runs immediately (EventAutoIsfDirectTtCode 5.200). Client relays TT 5.200.
@@ -1585,15 +1585,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
             return if (config.AAPSCLIENT)
-                "Relay TT 5.202 to Live: copy the newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and delete older AAPS333 APKs so 20 remain. Does not install. If a temporary target is active it will be replaced for 5 minutes."
+                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Copy the newest pump APK (AAPS333 or Download, skipping Client/Wear) to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs under AAPS333. Does not install or need Shizuku."
+                "Copy the newest pump APK (AAPS3 on Live, AAPS333 on Virtual, or Download; skipping Client/Wear) to that folder's newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs there. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             return if (config.AAPSCLIENT)
                 "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Stage the newest pump APK (keep 20), then install it via Shizuku (pm install -r). If Shizuku is not running the file is still staged (ApkSz). This AAPS process will usually restart after a successful install. First use may show Shizuku's allow-AAPS prompt."
+                "Stage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. This AAPS process will usually restart after a successful install."
         }
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
             val question = rh.gs(R.string.run_question, action.label)

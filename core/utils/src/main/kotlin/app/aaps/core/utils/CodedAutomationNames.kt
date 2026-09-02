@@ -34,7 +34,7 @@ object CodedAutomationNames {
         "PeakInsulinTimeUpTT", "Pod1", "Pod2", "PodChangeHighPP130", "PpWeightDownTT",
         "PpWeightHighDownTT", "PpWeightHighUpTT", "PpWeightRevertUnder8_5", "PpWeightUpTT",
         "PreSoakSensor24hrs", "PrepareSet50", "RecentPod", "RecentPodOff", "SemiTwilightAcce",
-        "SensorAgeCodeToggleTT", "SensorAgeToggleTT", "SensorS1hr", "SensorS2hr", "ShizukuApkInstallTT", "Shower12", "SkittlesHypoRisk",
+        "SensorAgeAutoOff", "SensorAgeAutoOn", "SensorAgeCodeToggleTT", "SensorAgeToggleTT", "SensorS1hr", "SensorS2hr", "ShizukuApkInstallTT", "Shower12", "SkittlesHypoRisk",
         "SmbDeliveryDownTT", "SmbDeliveryUpTT", "SmbOffsetDownTT", "SmbOffsetUpTT", "StageAaps333NewestTT", "StepsSteroidsOff",
         "T80Off3ok", "TT57Reversal", "Test3", "TodOffset0002DownTT", "TodOffset0002UpTT",
         "TodOffset0204DownTT", "TodOffset0204UpTT", "TodOffset0406DownTT", "TodOffset0406UpTT",

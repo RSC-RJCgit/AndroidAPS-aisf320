@@ -145,6 +145,9 @@ enum class BooleanKey(
     // intentionally separate from OldSensorAdjEnabled: switching execution off restores any active
     // slope/offset override and then skips sensor-age tracking/tier evaluation entirely.
     ApsAutoIsfSensorAgeCodeEnabled("autoisf_sensor_age_code_enabled", true, defaultedBySM = true),
+    // Set when SensorAge auto was turned off by pod>80h or sensor>15d, so it can re-arm once
+    // pod<80 AND sensor<=15. Manual List2 off does not set this, so a manual off stays off.
+    ApsAutoIsfSensorAgeAutoOffLatched("autoisf_sensor_age_auto_off_latched", false, defaultedBySM = true, exportable = false),
     // Internal-only: tracks whether OldSensorAdj currently has FslCalSlope/FslCalOffset overridden, so
     // it knows whether to snapshot (first activation) or restore (once the 11-15 day window or MJ
     // condition ends, or the toggle above is turned off). Not shown in any preference screen.
