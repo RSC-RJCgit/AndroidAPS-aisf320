@@ -196,6 +196,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // lastRunTimestamps/lastTier3AcceIsfObservationTimestamp elsewhere in this file, just for a
     // condition rather than a throttle.
     private var cobSustainedSinceTimestamp: Long = 0L
+    // LowBgTierAReset: first cycle glucose (loop or UKF1) was < 4.0 mmol. 0L = not currently below.
+    private var loopBgBelow4Since: Long = 0L
+    private var ukf1BgBelow4Since: Long = 0L
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
@@ -356,12 +359,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.200) <= 0.0000001) {
-                        // Shizuku APK install must start from the List 2 click, not wait for invoke().
+                        // Shizuku / Tasker install must not run on the List2 UI thread.
                         // Client still uses the 5.200 relay TT consumed in ShizukuApkInstallTT below.
-                        installNewestAaps333Apk("list2-direct")
+                        Schedulers.io().scheduleDirect { installNewestAaps333Apk("list2-direct") }
                     } else if (kotlin.math.abs(event.mmol - 5.202) <= 0.0000001) {
                         // Stage+prune only — Virtual can test copy/keep-20 without replacing AAPS.
-                        stageNewestAaps333Apk("list2-direct")
+                        Schedulers.io().scheduleDirect { stageNewestAaps333Apk("list2-direct") }
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -756,6 +759,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(roleKey, profileName)
         if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
             preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+        return true
+    }
+
+    // Hard reset both MorningRoleSwap ladders to rung 0 (StandardTierA / LowTierA) and switch the
+    // running profile if it was the previous live Standard or Low. Shared by AlarmHypoRoleRevert
+    // and LowBgTierAReset. Returns true if a role actually changed.
+    private fun resetStandardAndLowTiersToA(reason: String, note: String, throttleKey: String, throttleMinutes: Int): Boolean {
+        val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
+        val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+            .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        if (targetLow.isBlank() || targetStandard.isBlank()) return false
+        if (currentLow == targetLow && currentStandard == targetStandard) return false
+        if (!readyToRun(throttleKey, throttleMinutes)) return false
+        val currentProfileName = profileFunction.getProfileName()
+        preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
+        preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
+        if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
+        else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
+        sendSms("$reason: Low=$targetLow Standard=$targetStandard")
+        addCarePortalNote(note)
+        markRun(throttleKey)
         return true
     }
 
@@ -1173,6 +1199,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // Tasker task names are case-sensitive (ACTION_TASK extra task_name). List2 "Install newest"
+    // fires this exact string -- the Tasker task must match character-for-character, including
+    // the lowercase n in newest. Tasker → prefs → Allow External Access must be on.
+    private val TASKER_INSTALL_NEWEST_TASK = "Install newest"
+
+    private fun sendTaskerRunTask(taskName: String) {
+        val extras = android.os.Bundle().apply {
+            putString("task_name", taskName)
+            putInt("version_number", 1)
+        }
+        for (pkg in listOf("net.dinglisch.android.taskerm", "net.dinglisch.android.tasker")) {
+            try {
+                val intent = Intent("net.dinglisch.android.tasker.ACTION_TASK").apply {
+                    setPackage(pkg)
+                    putExtras(extras)
+                    addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+                }
+                context.sendBroadcast(intent)
+                aapsLogger.info(LTag.APS, "Tasker ACTION_TASK sent to $pkg task_name='$taskName'")
+            } catch (e: Exception) {
+                aapsLogger.warn(LTag.APS, "Tasker ACTION_TASK to $pkg failed: ${e.message}")
+            }
+        }
+    }
+
     private fun resolveAnyDeskPackage(): String? {
         val pm = context.packageManager
         return listOf("com.anydesk.anydeskandroid", "com.anydesk.adcontrol.ad1")
@@ -1215,9 +1266,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             return
         }
         if (!stageNewestAaps333Apk(reason)) return
+        sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
         if (!ShizukuAaps333Installer.shizukuRunning()) {
             addCarePortalNote("ApkSz")
-            sendSms("Shizuku APK install: Shizuku is not running (file is staged)")
+            sendSms("Shizuku APK install: Shizuku is not running (file is staged; Tasker '$TASKER_INSTALL_NEWEST_TASK' sent)")
             return
         }
         if (!ShizukuAaps333Installer.hasPermission()) {
@@ -6161,24 +6213,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // note every cycle while the alarm state persists.
         run {
             if (checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")) {
-                val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName)
-                val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
-                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
-                val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
-                val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-                // targetStandard.isNotBlank() guard added 2026-08-31: same empty-Standard100 hazard as
-                // MorningRoleSwap above -- never write an empty string over a real role.
-                if (targetLow.isNotBlank() && targetStandard.isNotBlank() &&
-                    (currentLow != targetLow || currentStandard != targetStandard) && readyToRun("AlarmHypoRoleRevert", 30)) {
-                    val currentProfileName = profileFunction.getProfileName()
-                    preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
-                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
-                    if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
-                    else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
-                    sendSms("AlarmHypoRoleRevert: Low=$targetLow Standard=$targetStandard (hypo alarm during active MJ)")
-                    addCarePortalNote("HypoRevert")
-                    markRun("AlarmHypoRoleRevert")
+                resetStandardAndLowTiersToA(
+                    reason = "AlarmHypoRoleRevert (hypo alarm during active MJ)",
+                    note = "HypoRevert",
+                    throttleKey = "AlarmHypoRoleRevert",
+                    throttleMinutes = 30
+                )
+            }
+        }
+
+        // --- LowBgTierAReset: 2026-09-02. Loop BGL < 4.0 mmol for >10 min OR UKF1 BGL < 4.0 mmol
+        // for >10 min -> hard-reset both MorningRoleSwap ladders to TierA (Standard100 / Low70),
+        // same write as AlarmHypoRoleRevert but without needing an AlarmHypo/MJ state. Latches
+        // reset the moment that signal is >= 4.0 again. No-op if both live roles are already A.
+        run {
+            val now = dateUtil.now()
+            val below4 = 72.1 /* 4.0 mmol */
+            if (glucoseStatus.glucose < below4) {
+                if (loopBgBelow4Since == 0L) loopBgBelow4Since = now
+            } else {
+                loopBgBelow4Since = 0L
+            }
+            val ukfG = ukfRawMetrics().glucose
+            if (ukfG != null && ukfG < below4) {
+                if (ukf1BgBelow4Since == 0L) ukf1BgBelow4Since = now
+            } else {
+                ukf1BgBelow4Since = 0L
+            }
+            val tenMin = T.mins(10).msecs()
+            val loopSustained = loopBgBelow4Since != 0L && now - loopBgBelow4Since >= tenMin
+            val ukf1Sustained = ukf1BgBelow4Since != 0L && now - ukf1BgBelow4Since >= tenMin
+            if (loopSustained || ukf1Sustained) {
+                val via = when {
+                    loopSustained && ukf1Sustained -> "loop+UKF1"
+                    ukf1Sustained -> "UKF1"
+                    else -> "loop"
                 }
+                resetStandardAndLowTiersToA(
+                    reason = "LowBgTierAReset (<4.0mmol >10min via $via)",
+                    note = "TierARst",
+                    throttleKey = "LowBgTierAReset",
+                    throttleMinutes = 30
+                )
             }
         }
 

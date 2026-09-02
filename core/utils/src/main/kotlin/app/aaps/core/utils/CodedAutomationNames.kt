@@ -28,7 +28,7 @@ object CodedAutomationNames {
         "HigherIsfRangeWeightDownTT", "HigherIsfRangeWeightUpTT", "LibreOffsetDownTT", "LibreOffsetUpTT",
         "LocationSmsToggleTT",
         "LibreUkf1ToggleTT", "LibreUkf2ToggleTT",
-        "LibreSlopeDownTT", "LibreSlopeUpTT", "MJ2old", "MJ3old", "MJ4", "MJ5", "MJoff",
+        "LibreSlopeDownTT", "LibreSlopeUpTT", "LowBgTierAReset", "MJ2old", "MJ3old", "MJ4", "MJ5", "MJoff",
         "MJrecentCurrProfAcce", "MildBoostDownTT", "MildBoostUpTT", "MoreMJ", "NightAcce",
         "Not50Recently", "OffHighProf", "OldPod2", "PP50Off", "PeakInsulinTimeDownTT",
         "PeakInsulinTimeUpTT", "Pod1", "Pod2", "PodChangeHighPP130", "PpWeightDownTT",
