@@ -66,10 +66,19 @@ internal object ShizukuAaps333Installer {
         return true to "src=${src.absolutePath} dest=${dest.absolutePath} bytes=${dest.length()} pruned=$pruned"
     }
 
+    // pm install cannot read /sdcard (FUSE) as system_server — Virtual 764 ApkMs:
+    // "System server has no access to read file context u:object_r:fuse:s0". Copy into
+    // /data/local/tmp via Shizuku shell first, then install from that path.
     fun install(apk: File): Pair<Boolean, String> {
-        val (code, text) = exec(arrayOf("pm", "install", "-r", "-d", "--user", "0", apk.absolutePath))
+        if (!apk.isFile || apk.length() <= 0L) return false to "missing ${apk.absolutePath}"
+        val tmp = "/data/local/tmp/$FIXED_NAME"
+        val (cpCode, cpText) = exec(arrayOf("cp", "-f", apk.absolutePath, tmp))
+        if (cpCode != 0) return false to "cp exit=$cpCode $cpText"
+        exec(arrayOf("chmod", "644", tmp))
+        val (code, text) = exec(arrayOf("pm", "install", "-r", "-d", "--user", "0", tmp))
+        exec(arrayOf("rm", "-f", tmp))
         val ok = code == 0 && text.contains("Success", ignoreCase = true)
-        return ok to "exit=$code $text"
+        return ok to "via=$tmp exit=$code $text"
     }
 
     private fun findNewestSourceApk(): File? {
