@@ -2892,16 +2892,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val oldSensorActive = preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive)
             if (!sensorAgeCodeEnabled) {
                 // Restore the explicit Libre baseline even if the active latch was lost on restart.
+                // 2026-09-03: defer that LS restore while BG is low (<6.0) or falling (delta or
+                // SDelta < 0). On 2 Sep Virtual restored baseline at 19:33 mid-descent into the
+                // evening hypo — jerking Libre slope/offset during a fall changes the dosing picture
+                // at the worst time. SaAutoOff / code-disable can still latch immediately; only the
+                // slope/offset write waits until BG is >=6 and not falling.
                 val baselineSlope = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
                 val baselineOffset = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
                 if (oldSensorActive ||
                     !fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), baselineSlope) ||
                     !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), baselineOffset)
                 ) {
-                    preferences.put(DoubleKey.FslCalSlope, baselineSlope)
-                    preferences.put(DoubleKey.FslCalOffset, baselineOffset)
-                    preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
-                    addCarePortalNote("SensorAgeCodeOff")
+                    val gNow = glucoseStatus.glucose
+                    val fallingOrLow = gNow < 108.1 /* 6.0 mmol */ ||
+                        glucoseStatus.delta < 0.0 ||
+                        glucoseStatus.shortAvgDelta < 0.0
+                    if (fallingOrLow) {
+                        aapsLogger.info(
+                            LTag.APS,
+                            "SensorAgeCodeOff LS restore deferred: g=${round(gNow / 18.016, 2)} " +
+                                "d=${round(glucoseStatus.delta / 18.016, 2)} " +
+                                "sd=${round(glucoseStatus.shortAvgDelta / 18.016, 2)}"
+                        )
+                    } else {
+                        preferences.put(DoubleKey.FslCalSlope, baselineSlope)
+                        preferences.put(DoubleKey.FslCalOffset, baselineOffset)
+                        preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
+                        addCarePortalNote("SensorAgeCodeOff")
+                    }
                 }
                 return@run
             }
@@ -4878,7 +4896,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Tier 3 path still has a 5-min cadence when BolusGiven's own no-TT outer guard blocks the
         // action-set. BolusGiven's actions still require no TT; Tier 3 does not.
         bg3FiredThisCycle = bg3BasicCriteriaMet()
-        if (bg3FiredThisCycle) markRun("BolusGivenBg3")
+        // 2026-09-03 after 2 Sep evening hypo (Live/Client nadir ~3.7 ~20:50): Giv-3 fired at 18:18
+        // with IOB already 2.29 U, then again at 19:08 (IOB 1.74) after BMild+UamBst at 17:37 — residual
+        // IOB then carried the fall. Suppress bg3 (Giv-3 action-set AND Tier 3 entry) when any of:
+        //   - another BolusGiven action within 60 min (5-min readyToRun alone was too short)
+        //   - IOB already >= 2.0 U (first Giv that day was already over-stacked)
+        //   - BMild/BMildFS within 60 min AND IOB >= 1.5 U (mild boost must not hand off into full Giv)
+        // bg1/bg2 (post-manual-bolus) keep the existing 5-min path; only the delivery-driven bg3 path
+        // is gated here. GivBlk note at most every 15 min so AIV shows the suppress without spam.
+        if (bg3FiredThisCycle) {
+            val iobNow = iobData.iob
+            val nowMs = dateUtil.now()
+            val recentGiv = (lastRunTimestamps["BolusGiven"] ?: 0L) > nowMs - T.mins(60).msecs()
+            val recentBMild = (lastRunTimestamps["BolusGivenMild"] ?: 0L) > nowMs - T.mins(60).msecs() ||
+                (lastRunTimestamps["BolusGivenMildFailsafe"] ?: 0L) > nowMs - T.mins(60).msecs()
+            val blockReason = when {
+                recentGiv -> "rearm60"
+                iobNow >= 2.0 -> "iob>=2"
+                recentBMild && iobNow >= 1.5 -> "bmild+iob"
+                else -> null
+            }
+            if (blockReason != null) {
+                aapsLogger.info(LTag.APS, "BolusGiven bg3 suppressed ($blockReason): iob=${round(iobNow, 2)}")
+                if (readyToRun("BolusGivenBg3BlockNote", 15)) {
+                    addCarePortalNote("GivBlk")
+                    markRun("BolusGivenBg3BlockNote")
+                }
+                bg3FiredThisCycle = false
+            } else {
+                markRun("BolusGivenBg3")
+            }
+        }
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             && readyToRun("BolusGiven", 5)) {

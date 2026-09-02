@@ -20,7 +20,7 @@ object CodedAutomationNames {
         "AcceWeightHighUpTT", "AcceWeightUpTT", "ActivityOff", "ActivityProf50", "ActivityTTReversal",
         "AlarmHypo1", "AlarmHypo2", "AutoIsfMaxLowDownTT", "AutoIsfMaxLowUpTT", "AutoIsfMaxNormalDownTT",
         "AutoIsfMaxNormalUpTT", "BasalUp", "Battery1pc", "BatteryOver1pc", "Bolus2", "BolusGiven",
-        "BolusGivenBg3", "BolusGivenMild", "BolusGivenMildFailsafe", "BoostToggleTT", "CarbsStopTT1",
+        "BolusGivenBg3", "BolusGivenBg3BlockNote", "BolusGivenMild", "BolusGivenMildFailsafe", "BoostToggleTT", "CarbsStopTT1",
         "CarbsStopTT57", "CarbsTHoff", "CleanGraphTT", "CloudLogsUploadTT", "ConnectPod",
         "DuraWeightDownTT", "DuraWeightUpTT", "EveningTH", "ExerciseLimitAcce",
         "ExportSettingsPodActivation", "Extra50", "GentleHypoRisk", "Graph2ToggleTT", "Graph5ToggleTT",
