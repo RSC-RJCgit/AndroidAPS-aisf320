@@ -144,7 +144,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
 
         context?.let { context ->
             binding.roleAssignSpinner.adapter =
-                ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, roleOptions.map { it.label })
+                ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, roleSelectorLabels())
             binding.roleAssignSpinner.setSelection(0)
         }
 
@@ -210,10 +210,12 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     // Role selector (replaces the old binary "set as Low" checkbox, 2026-08-31). Index 0 = no change;
     // indexes 1..7 map 1:1 to setRoleKeysInOrder AND to coded ProfileSwitch durations 51..57 min (see
     // the two receiver blocks in OpenAPSAutoISFPlugin.invoke()). Keep this order in lockstep with that
-    // list -- the duration code is (index + 50).
+    // list -- the duration code is (index + 50). Labels for the spinner are built in
+    // roleSelectorLabels() so the default line can say how to assign, and so the running profile's
+    // tier can be starred without changing this order or the confirmation's short names.
     private data class RoleOption(val label: String, val key: StringKey?)
     private val roleOptions = listOf(
-        RoleOption("(no role change)", null),
+        RoleOption("(no role change — use dropdown to assign a role)", null),
         RoleOption("Standard", StringKey.ApsAutoIsfStandardProfileName),
         RoleOption("Standard 105 tier", StringKey.ApsAutoIsfStandard105ProfileName),
         RoleOption("Standard 110 tier", StringKey.ApsAutoIsfStandard110ProfileName),
@@ -222,6 +224,67 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         RoleOption("Low 80 tier", StringKey.ApsAutoIsfLow80ProfileName),
         RoleOption("Low 90 tier", StringKey.ApsAutoIsfLow90ProfileName)
     )
+
+    private val standardTierKeys = setOf(
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName
+    )
+    private val lowTierKeys = setOf(
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    private fun rolePref(key: StringKey): String =
+        if (config.AAPSCLIENT) "" else preferences.get(key).trim()
+
+    // Stars the most specific role that currently holds the running original profile. A matching
+    // Standard105/110 or Low70/80/90 wins over its Standard/Low base so both don't light up when
+    // lock-step has pointed the live role at the same name as that rung. Client does not read local
+    // role prefs (those belong on Live); it falls back to a standalone number in the running name.
+    private fun activeRoleKeys(running: String): Set<StringKey> {
+        if (running.isBlank()) return emptySet()
+        val matched = mutableSetOf<StringKey>()
+        for (key in standardTierKeys + lowTierKeys) {
+            val assigned = rolePref(key)
+            if (assigned.isNotEmpty() && assigned == running) matched += key
+        }
+        if (matched.none { it in standardTierKeys }) {
+            val std100 = rolePref(StringKey.ApsAutoIsfStandard100ProfileName)
+            val std = rolePref(StringKey.ApsAutoIsfStandardProfileName)
+            if (std100 == running || std == running) matched += StringKey.ApsAutoIsfStandardProfileName
+        }
+        if (matched.none { it in lowTierKeys }) {
+            val low = rolePref(StringKey.ApsAutoIsfLowProfileName)
+            if (low == running) matched += StringKey.ApsAutoIsfLowProfileName
+        }
+        if (matched.isEmpty()) {
+            fun has(n: Int) = Regex("(?<!\\d)$n(?!\\d)").containsMatchIn(running)
+            when {
+                has(105) -> matched += StringKey.ApsAutoIsfStandard105ProfileName
+                has(110) -> matched += StringKey.ApsAutoIsfStandard110ProfileName
+                has(70)  -> matched += StringKey.ApsAutoIsfLow70ProfileName
+                has(80)  -> matched += StringKey.ApsAutoIsfLow80ProfileName
+                has(90)  -> matched += StringKey.ApsAutoIsfLow90ProfileName
+                has(100) -> matched += StringKey.ApsAutoIsfStandardProfileName
+            }
+        }
+        return matched
+    }
+
+    private fun roleSelectorLabels(): List<String> {
+        val running = profileFunction.getOriginalProfileName()
+        val active = activeRoleKeys(running)
+        return roleOptions.map { opt ->
+            if (opt.key == null) opt.label
+            else buildString {
+                append(opt.label)
+                val assigned = rolePref(opt.key)
+                if (assigned.isNotEmpty()) append(" ($assigned)")
+                if (opt.key in active) append(" *")
+            }
+        }
+    }
 
     // Backup channel to the loop phone: a "SetRole <prefKey>=<profile>" careportal Note, picked up via
     // the secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) and applied by OpenAPSAutoISFPlugin.

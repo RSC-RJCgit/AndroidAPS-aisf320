@@ -78,13 +78,17 @@
          switch through this dialog can re-assign one coded profile role to whatever was just picked.
          If the picked name itself carries a Steroid tier percentage (110/130/150/190/250) that Steroid
          role is re-assigned and the selector is moot. Otherwise the selector chooses which role (or
-         "(no role change)", the default - so a throwaway short switch no longer repoints Standard).
-         When the selection is a Standard/Low base or tier, the assignment is also relayed to the loop
-         phone: encoded as a coded ProfileSwitch duration (51-57 min at 100%, fast) and as a
-         "SetRole <prefKey>=<profile>" secondary-NS Note (slow backup). Both are idempotent.
+         "(no role change — use dropdown to assign a role)", the default - so a throwaway short
+         switch no longer repoints Standard). An asterisk marks the role that currently holds the
+         running profile (most specific matching tier, not also its base). Live also shows the
+         assigned profile name in parentheses. When the selection is a Standard/Low base or tier,
+         the assignment is also relayed to the loop phone: encoded as a coded ProfileSwitch duration
+         (51-57 min at 100%, fast) and as a "SetRole <prefKey>=<profile>" secondary-NS Note (slow
+         backup). Both are idempotent.
          set_as_low_role_checkbox is retained (unused) so the other-locale strings aren't orphaned. -->
     <string name="set_as_low_role_checkbox">Set as Low profile (unticked = Standard; ignored for Steroid-percent profiles)</string>
-    <string name="assign_coded_role_label">Assign this profile to coded role</string>
+    <string name="assign_coded_role_label">Assign this profile to a coded role</string>
+    <string name="assign_coded_role_hint">First item = switch only. Dropdown assigns a role. * = active tier</string>
 
     <!-- LoopDialog -->
     <string name="suspendloopfor1h">Suspend loop for 1h</string>

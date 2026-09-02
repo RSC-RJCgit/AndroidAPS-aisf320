@@ -77,6 +77,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="2dp"
+                android:text="@string/assign_coded_role_hint"
+                android:textAppearance="@style/TextAppearance.AppCompat.Small" />
+
         </LinearLayout>
 
         <LinearLayout
