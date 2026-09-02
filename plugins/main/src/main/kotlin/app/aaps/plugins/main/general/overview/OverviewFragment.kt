@@ -1360,7 +1360,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
         // a route/device-specific AcLTx Note when it accepts that queued trigger.
         ANYDESK_LOCAL_TEST("Send AnyDesk restart (local test)", 5.180),
-        // 2026-09-02: newest non-Client APK under /sdcard/AAPS333 via Shizuku pm install -r.
+        // 2026-09-02: copy newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep
+        // the newest 20 archive APKs under AAPS333. No Shizuku. Virtual-safe (does not replace AAPS).
+        STAGE_AAPS333_NEWEST("Stage newest APK (keep 20)", 5.202),
+        // 2026-09-02: stage first, then Shizuku pm install -r of that staged file.
         // Live runs immediately (EventAutoIsfDirectTtCode 5.200). Client relays TT 5.200.
         INSTALL_AAPS333_SHIZUKU("Install newest AAPS333 APK (Shizuku)", 5.200)
     }
@@ -1547,6 +1550,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.TIER3_BOOST_TOGGLE,
                 BasalDirectAction.UKF1_DOSING_TOGGLE,
                 BasalDirectAction.LOCATION_SMS_TOGGLE,
+                BasalDirectAction.STAGE_AAPS333_NEWEST,
                 BasalDirectAction.INSTALL_AAPS333_SHIZUKU ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
@@ -1596,11 +1600,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
+        if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
+            return if (config.AAPSCLIENT)
+                "Relay TT 5.202 to Live: copy the newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and delete older AAPS333 APKs so 20 remain. Does not install. If a temporary target is active it will be replaced for 5 minutes."
+            else
+                "Copy the newest pump APK (AAPS333 or Download, skipping Client/Wear) to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs under AAPS333. Does not install or need Shizuku."
+        }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             return if (config.AAPSCLIENT)
-                "Relay TT 5.200 to Live: install the newest non-Client APK under /sdcard/AAPS333 via Shizuku (pm install -r). No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
+                "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Install the newest non-Client APK under /sdcard/AAPS333 via Shizuku (pm install -r). No system Install sheet if Shizuku is running and AAPS is granted. This AAPS process will usually restart. First use may show Shizuku's allow-AAPS prompt."
+                "Stage the newest pump APK (keep 20), then install it via Shizuku (pm install -r). If Shizuku is not running the file is still staged (ApkSz). This AAPS process will usually restart after a successful install. First use may show Shizuku's allow-AAPS prompt."
         }
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
             val question = rh.gs(R.string.run_question, action.label)
@@ -2553,8 +2563,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return
         }
         val roleSpecs = listOf(
-            ProfileRoleSpec("Standard profile (stronger — used for corrections/highs):", StringKey.ApsAutoIsfStandardProfileName),
-            ProfileRoleSpec("Low profile (weaker — used to back off/reduce insulin):", StringKey.ApsAutoIsfLowProfileName),
+            ProfileRoleSpec("Standard profile (live role — attach any profile, not a %):", StringKey.ApsAutoIsfStandardProfileName),
+            ProfileRoleSpec("Low profile (live role — attach any profile, not a %):", StringKey.ApsAutoIsfLowProfileName),
             ProfileRoleSpec("Steroid 100% (off/baseline):", StringKey.ApsAutoIsfSteroid100ProfileName),
             ProfileRoleSpec("Steroid 110%:", StringKey.ApsAutoIsfSteroid110ProfileName),
             ProfileRoleSpec("Steroid 130%:", StringKey.ApsAutoIsfSteroid130ProfileName),
@@ -2563,11 +2573,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName),
             // Fine-grained tiers within the Standard/Low roles above (added 2026-08-30) -- see
             // resolveTieredProfileName()'s own doc comment for the fallback behavior these enable.
-            ProfileRoleSpec("Standard 105% tier (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
-            ProfileRoleSpec("Standard 110% tier (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
-            ProfileRoleSpec("Low 70% tier (optional):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
-            ProfileRoleSpec("Low 80% tier (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
-            ProfileRoleSpec("Low 90% tier (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
+            ProfileRoleSpec("StandardTierA (optional 100% anchor):", StringKey.ApsAutoIsfStandard100ProfileName, optional = true),
+            ProfileRoleSpec("StandardTierB (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
+            ProfileRoleSpec("StandardTierC (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
+            ProfileRoleSpec("LowTierA (optional):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
+            ProfileRoleSpec("LowTierB (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
+            ProfileRoleSpec("LowTierC (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
         )
         val relayOnly = config.AAPSCLIENT
         val notSetSentinel = if (relayOnly) "(leave unchanged — not sent to Live)" else "(not set -- falls back to Standard/Low)"

@@ -608,6 +608,10 @@ class AutoIsfHistoryExporter @Inject constructor(
     fun exactFastRiseStr(timestamp: Long, apsResults: List<APSResult>): String {
         val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        // Fast-rise *factor text is written BEFORE smbBoostRecent restores the uncapped SMB
+        // (DetermineBasalAutoISF.kt). If that restore ran, the cap did not affect delivery —
+        // the column must not still show 750/850/9 from the leftover phrase.
+        if (nearest.reason.contains("fast-rise caps skipped", ignoreCase = true)) return "--"
         val full = fastRiseFullRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull()
         if (full != null) return String.format(Locale.US, "%.3f", full).replace(".", "").trimStart('0').ifEmpty { "0" }
         val factor = fastRiseFactorRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"

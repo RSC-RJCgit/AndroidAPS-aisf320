@@ -115,8 +115,12 @@ class PrepareTreatmentsDataWorker(
             if (dp.data.type == BS.Type.SMB && apsResultsList.isNotEmpty()) {
                 val nearestResult = apsResultsList.minByOrNull { r -> kotlin.math.abs(r.date - dp.x.toLong()) }
                 if (nearestResult != null && kotlin.math.abs(nearestResult.date - dp.x.toLong()) < T.mins(15).msecs()) {
-                    val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
-                    if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
+                    // Same skip as AutoIsfHistoryExporter.exactFastRiseStr: reason still contains
+                    // "microBolus * 0.75" even when smbBoostRecent later undid that cap.
+                    if (!nearestResult.reason.contains("fast-rise caps skipped", ignoreCase = true)) {
+                        val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
+                        if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
+                    }
                 }
             }
             filteredTreatments.add(dp)

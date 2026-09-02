@@ -354,6 +354,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // Shizuku APK install must start from the List 2 click, not wait for invoke().
                         // Client still uses the 5.200 relay TT consumed in ShizukuApkInstallTT below.
                         installNewestAaps333Apk("list2-direct")
+                    } else if (kotlin.math.abs(event.mmol - 5.202) <= 0.0000001) {
+                        // Stage+prune only — Virtual can test copy/keep-20 without replacing AAPS.
+                        stageNewestAaps333Apk("list2-direct")
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -1171,7 +1174,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .firstOrNull { pm.getLaunchIntentForPackage(it) != null }
     }
 
-    // List2 / 5.200: newest non-Client APK under /sdcard/AAPS333 via Shizuku pm install -r.
+    // List2 / 5.202: copy newest pump APK to /sdcard/AAPS333/newest/aapsNewestAPK.apk and keep
+    // only the newest 20 archive APKs under AAPS333. No Shizuku. Client never stages.
+    private fun stageNewestAaps333Apk(reason: String): Boolean {
+        if (config.AAPSCLIENT) {
+            aapsLogger.info(LTag.APS, "AAPS333 APK stage skipped on AAPSCLIENT ($reason)")
+            return false
+        }
+        return try {
+            val (ok, detail) = ShizukuAaps333Installer.stageNewestAndPrune()
+            aapsLogger.info(LTag.APS, "AAPS333 APK stage ($reason): $detail")
+            if (ok) {
+                addCarePortalNote("ApkSt")
+                sendSms("AAPS333 APK staged: $detail")
+            } else {
+                addCarePortalNote("ApkNf")
+                sendSms("AAPS333 APK stage failed: $detail")
+            }
+            ok
+        } catch (e: Exception) {
+            addCarePortalNote("ApkNf")
+            sendSms("AAPS333 APK stage exception: ${e.message}")
+            aapsLogger.warn(LTag.APS, "AAPS333 APK stage failed", e)
+            false
+        }
+    }
+
+    // List2 / 5.200: stage first, then Shizuku pm install -r of that staged file.
     // No system Install sheet while Shizuku is running and AAPS is granted. Replacing this
     // running APK usually kills the process after ApkGo is written; ApkOk only lands if the
     // process survives (failed install, or a different package). Client never installs.
@@ -1180,9 +1209,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
             return
         }
+        if (!stageNewestAaps333Apk(reason)) return
         if (!ShizukuAaps333Installer.shizukuRunning()) {
             addCarePortalNote("ApkSz")
-            sendSms("Shizuku APK install: Shizuku is not running")
+            sendSms("Shizuku APK install: Shizuku is not running (file is staged)")
             return
         }
         if (!ShizukuAaps333Installer.hasPermission()) {
@@ -1951,6 +1981,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
         "ShizukuApkInstallTT" -> 5.200
+        "StageAaps333NewestTT" -> 5.202
         else -> null
     }
 
@@ -3642,6 +3673,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             installNewestAaps333Apk("list2-tt")
             markRun("ShizukuApkInstallTT")
+        }
+
+        // --- StageAaps333NewestTT: List2 "Stage newest APK (keep 20)". Copy + prune only.
+        if (readyToRun("StageAaps333NewestTT", 5) && activeTtNear(5.202, 0.0001)) {
+            cancelCurrentTempTarget()
+            stageNewestAaps333Apk("list2-tt")
+            markRun("StageAaps333NewestTT")
         }
 
         if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {

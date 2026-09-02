@@ -217,12 +217,12 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     private val roleOptions = listOf(
         RoleOption("(no role change — use dropdown to assign a role)", null),
         RoleOption("Standard", StringKey.ApsAutoIsfStandardProfileName),
-        RoleOption("Standard 105 tier", StringKey.ApsAutoIsfStandard105ProfileName),
-        RoleOption("Standard 110 tier", StringKey.ApsAutoIsfStandard110ProfileName),
+        RoleOption("StandardTierB", StringKey.ApsAutoIsfStandard105ProfileName),
+        RoleOption("StandardTierC", StringKey.ApsAutoIsfStandard110ProfileName),
         RoleOption("Low", StringKey.ApsAutoIsfLowProfileName),
-        RoleOption("Low 70 tier", StringKey.ApsAutoIsfLow70ProfileName),
-        RoleOption("Low 80 tier", StringKey.ApsAutoIsfLow80ProfileName),
-        RoleOption("Low 90 tier", StringKey.ApsAutoIsfLow90ProfileName)
+        RoleOption("LowTierA", StringKey.ApsAutoIsfLow70ProfileName),
+        RoleOption("LowTierB", StringKey.ApsAutoIsfLow80ProfileName),
+        RoleOption("LowTierC", StringKey.ApsAutoIsfLow90ProfileName)
     )
 
     private val standardTierKeys = setOf(
