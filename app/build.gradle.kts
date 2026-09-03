@@ -202,7 +202,10 @@ dependencies {
     testImplementation(project(":shared:tests"))
     androidTestImplementation(project(":shared:tests"))
     androidTestImplementation(libs.androidx.test.rules)
-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
+    // Exclude transitive org.json — Android already ships those classes (DuplicatePlatformClasses).
+    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
+        exclude(group = "org.json", module = "json")
+    }
 
     debugImplementation(libs.com.squareup.leakcanary.android)
 
