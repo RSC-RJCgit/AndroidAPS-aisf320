@@ -150,6 +150,13 @@ allprojects {
     }
 }
 
+// Android already ships org.json; jsonassert (test + androidTest) pulls it transitively and
+// Studio flags DuplicatePlatformClasses even when a single dependency exclude is set — the
+// test-app-dependencies plugin also adds jsonassert on testImplementation without an exclude.
+configurations.configureEach {
+    exclude(group = "org.json", module = "json")
+}
+
 dependencies {
     // in order to use internet"s versions you"d need to enable Jetifier again
     // https://github.com/nightscout/graphview.git
@@ -202,10 +209,8 @@ dependencies {
     testImplementation(project(":shared:tests"))
     androidTestImplementation(project(":shared:tests"))
     androidTestImplementation(libs.androidx.test.rules)
-    // Exclude transitive org.json — Android already ships those classes (DuplicatePlatformClasses).
-    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
-        exclude(group = "org.json", module = "json")
-    }
+    // org.json excluded globally above (configurations.configureEach) — needed for ReplayApsResultsTest.
+    androidTestImplementation(libs.org.skyscreamer.jsonassert)
 
     debugImplementation(libs.com.squareup.leakcanary.android)
 

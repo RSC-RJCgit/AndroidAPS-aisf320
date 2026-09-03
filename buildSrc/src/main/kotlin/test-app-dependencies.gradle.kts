@@ -14,7 +14,12 @@ dependencies {
     testImplementationFromCatalog("org-mockito-kotlin")
     testImplementationFromCatalog("joda-time")
     testImplementationFromCatalog("com-google-truth")
-    testImplementationFromCatalog("org-skyscreamer-jsonassert")
+    // Android platform already provides org.json — exclude so Studio/AGP do not flag
+    // DuplicatePlatformClasses on app modules that apply this plugin. Version matches
+    // libs.versions.toml org-skyscreamer-jsonassert.
+    testImplementation("org.skyscreamer:jsonassert:1.5.3") {
+        exclude(group = "org.json", module = "json")
+    }
 
     androidTestImplementationFromCatalog("androidx-espresso-core")
     androidTestImplementationFromCatalog("androidx-test-ext")
