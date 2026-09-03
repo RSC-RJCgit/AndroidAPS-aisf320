@@ -4663,8 +4663,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- Battery1%: when phone battery drops to <=1%, switch to the configured safety profile and alert ---
-        // Guard: profile=100% (precondition). State Profile must be PP130, C100, or AllOK (normal running states).
-        // Self-guarding: switching to Profile50 makes profile_percentage=50 next cycle, failing the precondition.
+        // State Profile must be PP130, C100, or AllOK (normal running states). Do not require a 100%
+        // profile: a temporary low/exercise profile must not suppress the critical 1% battery warning.
+        // Self-guarding: once the configured safety profile is active, this block no longer matches.
         // Live-pump-only: skip entirely on Virtual Pump (model() == GENERIC_AAPS is how this codebase
         // identifies it elsewhere, e.g. TriggerPumpBatteryLevelTest).
         // No cannula-age gate — that threshold (80h) was pod-specific and doesn't generalize to tubed
@@ -4674,8 +4675,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // no configurability -- the one coded profile role that wasn't a preference like Standard/Low,
         // and wasn't covered by ProfileRoleSanityCheck below until now. Now ApsAutoIsfSafetyProfileName,
         // defaulting to that same literal so existing installs see no behavior change.
-        if (readyToRun("Battery1pc", 20) && profile_percentage == 100
+        if (readyToRun("Battery1pc", 20)
             && (checkAutomationState("Profile", "PP130") || checkAutomationState("Profile", "C100") || checkAutomationState("Profile", "AllOK"))
+            && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel <= 1
             && activePlugin.activePump !is VirtualPump) {
             switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSafetyProfileName), 0)
