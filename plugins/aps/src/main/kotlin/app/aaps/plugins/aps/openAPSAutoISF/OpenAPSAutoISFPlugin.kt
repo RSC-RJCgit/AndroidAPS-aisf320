@@ -994,7 +994,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private data class UkfRawMetrics(
         val glucose: Double?,
         val delta1: Double?,
-        val delta5: Double?
+        val delta5: Double?,
+        // 15-min UKF-raw change, rate-normalised to mg/dL per 5 min -- same construction as AIV
+        // RawUKF15 (the SDelta analog on the UKF-raw channel). Null when the 15-min anchor is missing.
+        val delta15: Double? = null
     )
 
     private fun ukfRawMetrics(): UkfRawMetrics {
@@ -1015,7 +1018,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val fiveMinAgo = now - T.mins(5).msecs()
         val refIndex = readings.indices.minByOrNull { kotlin.math.abs(readings[it].timestamp - fiveMinAgo) }
         val ukfD5 = refIndex?.takeIf { it != 0 }?.let { ukfG - smoothed[it] }
-        return UkfRawMetrics(ukfG, ukfD1, ukfD5)
+        // Same 15-min / 3-min-anchor / per-5-min-rate convention as AutoIsfHistoryExporter.ukfDeltaMmol(..., 15).
+        val fifteenMinAgo = now - T.mins(15).msecs()
+        val ref15Index = readings.indices.minByOrNull { kotlin.math.abs(readings[it].timestamp - fifteenMinAgo) }
+        val ukfD15 = ref15Index?.takeIf { it != 0 }?.let { idx ->
+            val anchorTs = readings[idx].timestamp
+            if (kotlin.math.abs(anchorTs - fifteenMinAgo) > T.mins(3).msecs()) return@let null
+            val mins = (readings[0].timestamp - anchorTs) / 60_000.0
+            if (mins > 0.0) (ukfG - smoothed[idx]) / mins * 5.0 else null
+        }
+        return UkfRawMetrics(ukfG, ukfD1, ukfD5, ukfD15)
     }
 
     // UKF2's own always-current persisted history (ukf_librespecial_refined_history via
@@ -1788,6 +1800,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // active — that's where the 18.016-vs-18.0 gap can actually flip a match, unlike ordinary
     // glucose/delta thresholds where a ~0.1 mg/dL drift is inconsequential.
     private fun mmolToMgdl(mmol: Double): Double = mmol * Constants.MMOLL_TO_MGDL
+
+    // True while THIS fork's HiBrk 4.0 mmol TT is live: own markRun within 6 min (5-min TT plus one
+    // cycle of slop) and the active TT is 4.0, not RecPod/Giv 4.2. Shared by both HiBrk cut-shorts
+    // and the UamBst-on-HiBrk quiet-rise suppress so those three cannot drift apart.
+    private fun hiBrkOwnFourTtActive(): Boolean {
+        val ttIsFour = activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
+        if (!ttIsFour) return false
+        return !readyToRun("HighDaytimeBrake", 6) || !readyToRun("HighEveNightBrake", 6)
+    }
 
     // True when the currently active TT is within toleranceMmol of targetMmol. Centralizes the
     // "identify which manually-set TT is active" pattern (5.7/5.8mmol reversal, 6.8mmol Activity,
@@ -6208,8 +6229,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // to have markRun within 6 min (the 5-min TT plus one cycle of slop) so a leftover 4.0
             // from anything else is not treated as ours. Direct mg/dL compare, not activeTtNear --
             // that helper also matches pending List2 TT-codes.
-            val myTtActive = !readyToRun("HighEveNightBrake", 6) &&
-                activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
+            val myTtActive = hiBrkOwnFourTtActive() && !readyToRun("HighEveNightBrake", 6)
 
             if (myTtActive) {
                 // Continuous monitoring while the TT is live: cut it short the moment either signal
@@ -6295,8 +6315,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
             // time-of-day on the old cut-short) not HiBrkDayCut, but this daytime sibling had the
             // same <4.3mmol match and would have done the same on a later cycle.
-            val myTtActive = !readyToRun("HighDaytimeBrake", 6) &&
-                activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
+            val myTtActive = hiBrkOwnFourTtActive() && !readyToRun("HighDaytimeBrake", 6)
 
             if (myTtActive) {
                 // Cut-short bar doubled to 1.0U while our own boost is active -- see
@@ -7171,8 +7190,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Fixed 2026-08-27: reuse bmildFiredThisCycle (captured once, above the BolusGivenMild block)
         // instead of calling bmildBasicCriteriaMet() fresh here -- see that val's own doc comment for
         // why a second call in the same cycle always returned false.
-        val replayBmildBasicCriteriaMet = bmildFiredThisCycle
-        val replayBg3BasicCriteriaMet = bg3FiredThisCycle
+        // 2026-09-03 after Client 09:08 UamBst 1.10U under HiBrkDayMid's own 4.0 TT + SMBdel 0.24
+        // (BG 6.8, SDelta 0.06, RawUKF15 0.18); restored the same day after a later hypo. Block
+        // Tier 3 only while the rise is still modest -- BMild/bg3 action-sets are untouched.
+        // Missing UKF-raw 15-min (null) fails open so a sensor gap cannot itself suppress.
+        val hiBrkOwnTt = hiBrkOwnFourTtActive()
+        val hiBrkQuietBg = glucoseStatus.glucose < 135.1 /* 7.5 mmol */
+            && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol SDelta */
+        val ukfRawForUamBlock = if (hiBrkOwnTt && hiBrkQuietBg) ukfRawMetrics() else null
+        val hiBrkQuietUamBlock = hiBrkOwnTt && hiBrkQuietBg
+            && (ukfRawForUamBlock?.delta15?.let { it < 3.6 /* 0.2 mmol RawUKF15 */ } == true)
+        if (hiBrkQuietUamBlock && (bmildFiredThisCycle || bg3FiredThisCycle)) {
+            aapsLogger.info(
+                LTag.APS,
+                "UamBst suppressed (HiBrk 4.0 TT + quiet): g=${round(glucoseStatus.glucose / 18.016, 2)} " +
+                    "sd=${round(glucoseStatus.shortAvgDelta / 18.016, 2)} ukf15=${ukfRawForUamBlock.delta15?.let { round(it / 18.016, 2) }}"
+            )
+            if (readyToRun("UamBoostHiBrkBlockNote", 15)) {
+                addCarePortalNote("UamBlk")
+                markRun("UamBoostHiBrkBlockNote")
+            }
+        }
+        val replayBmildBasicCriteriaMet = bmildFiredThisCycle && !hiBrkQuietUamBlock
+        val replayBg3BasicCriteriaMet = bg3FiredThisCycle && !hiBrkQuietUamBlock
         val replayAcceIsfValue = lastAcceIsf
         val replayTraceInputs: Map<String, Any?> = if (preferences.get(BooleanKey.ApsAutoIsfReplayTraceEnabled)) mapOf(
             "glucose_status" to glucoseStatus,

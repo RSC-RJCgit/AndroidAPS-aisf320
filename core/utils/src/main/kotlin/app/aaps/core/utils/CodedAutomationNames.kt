@@ -40,7 +40,7 @@ object CodedAutomationNames {
         "TodOffset0204DownTT", "TodOffset0204UpTT", "TodOffset0406DownTT", "TodOffset0406UpTT",
         "TodOffset0609DownTT", "TodOffset0609UpTT", "TodOffset0912DownTT", "TodOffset0912UpTT",
         "TodOffset1218DownTT", "TodOffset1218UpTT", "TodOffset1822DownTT", "TodOffset1822UpTT",
-        "TodOffset2200DownTT", "TodOffset2200UpTT", "TwilightTH15Acce", "Usual2forTH",
+        "TodOffset2200DownTT", "TodOffset2200UpTT", "TwilightTH15Acce", "UamBoostHiBrkBlockNote", "Usual2forTH",
         "VirtualPseudoWizard", "WizardPctDownTT", "WizardPctUpTT", "iobTHDaytimeFloor"
     )
 
