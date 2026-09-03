@@ -4228,7 +4228,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
             sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
-            addCarePortalNote(compactSettingNote("BSc", newScale, 2))
+            addCarePortalNote(compactSettingNote("BS", newScale, 2))
             markRun("BoostScaleDownTT")
         }
 
@@ -4237,7 +4237,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
             sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
-            addCarePortalNote(compactSettingNote("BSc", newScale, 2))
+            addCarePortalNote(compactSettingNote("BS", newScale, 2))
             markRun("BoostScaleUpTT")
         }
 

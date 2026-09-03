@@ -219,6 +219,11 @@ dependencies {
     api(libs.com.uber.rxdogtag2.rxdogtag)
     // Remote config
     api(libs.com.google.firebase.config)
+
+    // Direct so app/AndroidManifest.xml can resolve rikka.shizuku.ShizukuProvider (IDE lint);
+    // same coordinates as plugins:aps. Runtime was already transitive via aps.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
 
 println("-------------------")
