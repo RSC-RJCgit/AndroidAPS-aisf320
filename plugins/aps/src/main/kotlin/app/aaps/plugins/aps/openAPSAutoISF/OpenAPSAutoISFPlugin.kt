@@ -357,8 +357,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
-                        // Client relays 5.204; this runs on the loop phone and writes that phone's
-                        // Build.MODEL. Client itself does not send location SMS.
+                        // Client List2 relays 5.204 here. This runs on the loop phone and writes that
+                        // phone's Build.MODEL. Location SMS still originate on this loop phone.
                         applyLocationSmsThisPhoneToggle()
                     } else if (kotlin.math.abs(event.mmol - 5.200) <= 0.0000001) {
                         // Shizuku / Tasker install must not run on the List2 UI thread.
@@ -1367,28 +1367,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // List2 / 5.202: copy newest pump APK to <AAPS3 or AAPS333>/newest/aapsNewestAPK.apk and keep
     // only the newest 20 archive APKs in that same folder. No Shizuku. Client never stages.
+    // AAPS Java File I/O often cannot see /sdcard/AAPS3(33)/ApkDownload without All-files access;
+    // Tasker's Run Shell can. Install (5.200) already fired Tasker after an AAPS miss — Stage
+    // used not to, so List2 "Stage newest" wrote ApkNf while "Install newest" still succeeded.
     private fun stageNewestAaps333Apk(reason: String): Boolean {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "AAPS333 APK stage skipped on AAPSCLIENT ($reason)")
             return false
         }
-        return try {
-            val (ok, detail) = ShizukuAaps333Installer.stageNewestAndPrune()
+        var ok = false
+        var detail = ""
+        try {
+            val result = ShizukuAaps333Installer.stageNewestAndPrune()
+            ok = result.first
+            detail = result.second
             aapsLogger.info(LTag.APS, "AAPS333 APK stage ($reason): $detail")
-            if (ok) {
-                addCarePortalNote("ApkSt")
-                sendSms("AAPS333 APK staged: $detail")
-            } else {
-                addCarePortalNote("ApkNf")
-                sendSms("AAPS333 APK stage failed: $detail")
-            }
-            ok
         } catch (e: Exception) {
-            addCarePortalNote("ApkNf")
-            sendSms("AAPS333 APK stage exception: ${e.message}")
+            detail = e.message ?: "exception"
             aapsLogger.warn(LTag.APS, "AAPS333 APK stage failed", e)
-            false
         }
+        if (!ok) {
+            val taskerStatus = sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
+            try {
+                Thread.sleep(2500L)
+            } catch (_: InterruptedException) {
+            }
+            val newest = ShizukuAaps333Installer.newestPumpApk()
+            if (newest != null) {
+                ok = true
+                detail = "Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus dest=${newest.absolutePath} bytes=${newest.length()}"
+                aapsLogger.info(LTag.APS, "AAPS333 APK stage via Tasker ($reason): $detail")
+            } else {
+                detail = "$detail; Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus newest=missing"
+            }
+        }
+        if (ok) {
+            addCarePortalNote("ApkSt")
+            sendSms("AAPS333 APK staged: $detail")
+        } else {
+            addCarePortalNote("ApkNf")
+            sendSms("AAPS333 APK stage failed: $detail")
+        }
+        return ok
     }
 
     // List2 / 5.200: stage first, then Shizuku pm install -r of that staged file.

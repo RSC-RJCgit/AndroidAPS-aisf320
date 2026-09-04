@@ -1604,15 +1604,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (action == BasalDirectAction.LOCATION_SMS_THIS_PHONE) {
             val current = basalDirectActionCurrentValue(action) ?: ""
             return if (config.AAPSCLIENT)
-                "$current\n\nRelay TT 5.204 to Live: turn ON or OFF whether the loop phone may send location SMS, CarePortal notes and AnyDesk. Stores Live's Android model on Live. Client does not send those messages."
+                "$current\n\nThis tap does reach Live (TT 5.204). Live turns sending ON or OFF and stores its own Android model — you do not type a model number. Client only relays the tap. The HmEnt/HmLve SMS, CarePortal notes and AnyDesk still come from Live, not from this Client phone."
             else
                 "$current\n\nTurn ON or OFF whether THIS loop phone may send location SMS, CarePortal notes and AnyDesk. ON stores this phone's Android model; OFF clears it so nobody sends."
         }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
             return if (config.AAPSCLIENT)
-                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If a temporary target is active it will be replaced for 5 minutes."
+                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Copy the newest pump APK (AAPS3 on Live, AAPS333 on Virtual, or Download; skipping Client/Wear) to that folder's newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs there. Does not install or need Shizuku."
+                "Copy the newest pump APK (AAPS3 on Live, AAPS333 on Virtual, or Download; skipping Client/Wear) to that folder's newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs there. If AAPS cannot see the folder, Tasker task StageAapsNewestApk copies instead. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             return if (config.AAPSCLIENT)
