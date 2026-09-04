@@ -2578,14 +2578,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             ProfileRoleSpec("Steroid 150%:", StringKey.ApsAutoIsfSteroid150ProfileName),
             ProfileRoleSpec("Steroid 190%:", StringKey.ApsAutoIsfSteroid190ProfileName),
             ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName),
-            // Fine-grained tiers within the Standard/Low roles above (added 2026-08-30) -- see
-            // resolveTieredProfileName()'s own doc comment for the fallback behavior these enable.
-            ProfileRoleSpec("StandardTierA (optional 100% anchor):", StringKey.ApsAutoIsfStandard100ProfileName, optional = true),
-            ProfileRoleSpec("StandardTierB (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
-            ProfileRoleSpec("StandardTierC (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
-            ProfileRoleSpec("LowTierA (optional):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
-            ProfileRoleSpec("LowTierB (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
-            ProfileRoleSpec("LowTierC (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
+            // MorningRoleSwap ladder slots (added 2026-08-30). Labels are Tiers A/B/C, not a fixed
+            // %. Internal keys still say 100/105/110 and 70/80/90; attach any true local profile.
+            ProfileRoleSpec("Standard Tier A (optional floor):", StringKey.ApsAutoIsfStandard100ProfileName, optional = true),
+            ProfileRoleSpec("Standard Tier B (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
+            ProfileRoleSpec("Standard Tier C (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
+            ProfileRoleSpec("Low Tier A (optional floor):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
+            ProfileRoleSpec("Low Tier B (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
+            ProfileRoleSpec("Low Tier C (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
         )
         val relayOnly = config.AAPSCLIENT
         val notSetSentinel = if (relayOnly) "(leave unchanged — not sent to Live)" else "(not set -- falls back to Standard/Low)"
@@ -2613,7 +2613,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 text = if (relayOnly)
                     "Client does not loop. Rows start unchanged and are not read from this phone. OK sends SetRole Notes to Live (slow NS path). Fast coded Profile Switch still carries one role at a time. Steroid rows are not sent from here."
                 else
-                    "Pick which of your profiles fill each role the AutoISF ported automations switch between."
+                    "Pick which of your profiles fill each role. Standard/Low Tiers A/B/C are ladder slots (paired A+A, B+B, C+C), not a fixed 70/80/90 or 100/105/110. Attach any true local profile name."
                 setPadding(0, 0, 0, 24)
             })
             roleSpecs.forEachIndexed { i, spec ->
