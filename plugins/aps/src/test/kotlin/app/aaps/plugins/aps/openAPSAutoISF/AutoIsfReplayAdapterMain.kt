@@ -103,6 +103,9 @@ object AutoIsfReplayAdapterMain {
             steps5M = parameters.intValue("steps5M"),
             smbInt5Sec = parameters.doubleValue("smbInt5Sec"),
             smbBoostRecent = parameters.booleanValue("smbBoostRecent"),
+            nightFrSkipActive = parameters.get("nightFrSkipActive")
+                ?.takeIf { it.isJsonPrimitive }?.asBoolean
+                ?: false,
             rawDelta5Mgdl = parameters.doubleValue("rawDelta5Mgdl"),
             immediateRawDelta5Mgdl = parameters.doubleValue("immediateRawDelta5Mgdl"),
             rawDelta1Mgdl = parameters.doubleValue("rawDelta1Mgdl"),

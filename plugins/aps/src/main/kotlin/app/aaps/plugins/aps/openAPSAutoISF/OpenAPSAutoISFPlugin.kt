@@ -4646,6 +4646,52 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- NightFrSkip: one-shot 1–2 cycle FastRise skip inside the 00:30-04:00 0.6U/10min cap ---
+        // 4 Sep 2026 03:40-04:02: BG 6.4→8.0 while FastRise 750 chopped Req 0.77-1.11 to 0.05 SMB every
+        // ~60s (~0.70U over 18 min). First SMBs at 03:40-03:42 were already ratio×Req (FastRise still
+        // "--"); the lag was the later chop, not a stuck Low profile (OffP-1 at 03:02 had expired ~03:32,
+        // basal 0.40→0.50). Daytime BMild would skip FastRise for 30 min AND raise the delivery ratio AND
+        // trigger Tier 3 -- more insulin, not the same total earlier. This block only restores the
+        // already-computed microBolus for this cycle plus the next (~2 min), then FastRise 750 resumes.
+        // The 00:30-04:00 0.6U/10min cap in determine_basal() still binds (placed AFTER the skip restore).
+        //
+        // Named Low profile is NOT a veto and this does NOT switch to Standard. FastRise skip is
+        // profile-independent; OvernightDuraRescue already owns a 60-min Standard lift for a plateaued
+        // high. Switching Standard here would re-arm OffP-1's !onLow gate (the 01:00/01:31/02:31/03:02
+        // re-apply pattern the same night) and change basal/ISF for 30-60 min -- a different, larger
+        // action than "give the InsReq FastRise just chopped". profile_percentage==100 still required
+        // so a genuine 50% hypo overlay stays protected.
+        //
+        // Gates are FastRise-750's own band (not BMild's IOBΔ5>0.40): while 0.05 SMBs are landing, IOBΔ5
+        // stays under BMild's floor by construction. Own key, no bmildFiredThisCycle, no Tier 3, no
+        // ratio/TT/ppWeight write. 60-min readyToRun is the one-shot; the 2-min skip window is the same
+        // key with readyToRun("NightFrSkip", 2) at the determine_basal() call site.
+        run {
+            if (!readyToRun("NightFrSkip", 60)) return@run
+            if (!(profile_percentage == 100 && activeTtMgdl() == null
+                    && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+                    && isTimeBetween(0, 30, 4, 0))) return@run
+            val g = glucoseStatus.glucose
+            val d = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val rawDelta5 = ukfRawMetrics().delta5 ?: -9999.0
+            val iobNow = iobData.iob
+            val fire = g > 117.0 /* 6.5 mmol */ && g <= 144.1 /* 8.0 mmol */
+                && d >= 4.5 /* 0.25 mmol -- FastRise mild-tier floor */
+                && sd >= 2.7 /* 0.15 mmol */
+                && rawDelta5 >= 4.5 /* 0.25 mmol */
+                && iobNow <= 1.0
+                && smbSum10Min() < 0.6
+                && !checkAutomationState("LowBG", "50recent")
+                && !mjActive()
+                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+            if (fire) {
+                markRun("NightFrSkip")
+                sendSms("NightFrSkip: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} iob=${round(iobNow, 2)}")
+                addCarePortalNote("NtFRSk")
+            }
+        }
+
         // --- OffHighProf: overnight BGL falling on non-standard profile → drop to acce 0.18 / iobTH 18% ---
         // Fires when NOT on the Low profile (i.e. on a named high/steroid profile), Steroids Off, no TT.
         // 30-min floor throttle matches the temporary low-profile duration and prevents another
@@ -7205,6 +7251,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && (rawDelta5Raw ?: -9999.0) >= 1.8
             && glucoseStatus.longAvgDelta > -1.8
             && (iobData.iob < 0.33 * oapsProfile.max_iob || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
+        // Same key as the fire throttle: markRun("NightFrSkip") makes readyToRun(2) false for ~2 min
+        // (this cycle + next) and readyToRun(60) false for the one-shot hour. Must NOT be folded into
+        // replaySmbBoostRecent -- that is a 30-min FastRise waiver.
+        val replayNightFrSkipActive = !readyToRun("NightFrSkip", 2)
         val replayRawDelta5Mgdl = smbDelta5Raw ?: 9999.0
         val replayImmediateRawDelta5Mgdl = rawDelta5Raw ?: 9999.0
         val replayRawDelta1Mgdl = smbDelta1Raw ?: 9999.0
@@ -7273,6 +7323,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "steps5M" to steps5,
                 "smbInt5Sec" to replaySmbInt5Sec,
                 "smbBoostRecent" to replaySmbBoostRecent,
+                "nightFrSkipActive" to replayNightFrSkipActive,
                 "rawDelta5Mgdl" to replayRawDelta5Mgdl,
                 "immediateRawDelta5Mgdl" to replayImmediateRawDelta5Mgdl,
                 "rawDelta1Mgdl" to replayRawDelta1Mgdl,
@@ -7345,6 +7396,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 2026 15:31 meal put IOB at 3.3U from the announced bolus before any SMB, which is exactly
             // when Giv-1 needed the bypass (FastRise 750 still applied at 15:35).
             smbBoostRecent = replaySmbBoostRecent,
+            nightFrSkipActive = replayNightFrSkipActive,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
             rawDelta5Mgdl = replayRawDelta5Mgdl,
