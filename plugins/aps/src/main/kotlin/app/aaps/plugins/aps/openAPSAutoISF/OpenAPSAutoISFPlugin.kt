@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAutoISF
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.content.pm.PackageManager
 import android.icu.util.Calendar
 import android.util.Base64
@@ -355,6 +356,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("Loc${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
+                        // Client relays 5.204; this runs on the loop phone and writes that phone's
+                        // Build.MODEL. Client itself does not send location SMS.
+                        applyLocationSmsThisPhoneToggle()
                     } else if (kotlin.math.abs(event.mmol - 5.200) <= 0.0000001) {
                         // Shizuku / Tasker install must not run on the List2 UI thread.
                         // Client still uses the 5.200 relay TT consumed in ShizukuApkInstallTT below.
@@ -1873,6 +1878,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
     private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)
 
+    // List 2 / 5.204: store this loop phone's Build.MODEL so only that device sends location SMS.
+    // Client relays the TT here and never writes its own model. Blank = nobody sends.
+    private fun applyLocationSmsThisPhoneToggle() {
+        val model = Build.MODEL.orEmpty().trim()
+        val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+        val nowOn = designated.isEmpty() || !designated.equals(model, ignoreCase = true)
+        preferences.put(StringKey.AutomationLocationSmsDeviceModel, if (nowOn) model else "")
+        sendSms("Location SMS this phone ($model): ${if (nowOn) "ON" else "OFF"}")
+        addCarePortalNote(if (nowOn) "LocPhOn" else "LocPhOff")
+        aapsLogger.info(LTag.APS, "Location SMS this-phone toggle: ${if (nowOn) "ON" else "OFF"} model=$model")
+        rxBus.send(EventRefreshOverview("Location SMS this-phone toggled", true))
+    }
+
     // Sends directly to the numbers configured in the given per-automation StringKey (semicolon-separated,
     // same format as SmsAllowedNumbers), IN ADDITION TO the general broadcast sendSms() already sent —
     // e.g. so a caregiver who is excluded from routine automation SMS (SmsBroadcastExcludeNumbers)
@@ -2208,6 +2226,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "Tier3BoostToggleTT" -> 5.194
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
+        "LocationSmsThisPhoneTT" -> 5.204
         "ShizukuApkInstallTT" -> 5.200
         "StageAaps333NewestTT" -> 5.202
         else -> null
@@ -4021,6 +4040,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Loc${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("Coded locations toggled", true))
             markRun("LocationSmsToggleTT")
+        }
+
+        // Client-relayed 5.204: allow/deny location SMS from this loop phone by storing its model.
+        if (readyToRun("LocationSmsThisPhoneTT", 2) && activeTtNear(5.204, 0.0001)) {
+            applyLocationSmsThisPhoneToggle()
+            cancelCurrentTempTarget()
+            markRun("LocationSmsThisPhoneTT")
         }
 
         // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
@@ -6023,11 +6049,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val podH = hoursSinceCurrentPodChange()
+            // 4 Sep 2026 13:41: RecPod fired 8 min after a meal bolus (IOB 0.94→3.43, COB 25)
+            // on a Δ 0.21 / IOB 3.57 knife-edge, then stacked 130% + 4.2 TT + high acce. A late
+            // pod-rise after food is still visible at 30+ min; this quiet window is SMB-excluded
+            // (NORMAL bolus only, same helper as Giv).
+            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             if (podH != null && (podH <= 6.0 || podH >= 48.0)
                 && d >= 3.6 /* 0.2 mmol */
                 && mealData.mealCOB >= 16.0
                 && iobData.iob <= 4.0
-                && g >= 108.0 /* 6.0 mmol */) {
+                && g >= 108.0 /* 6.0 mmol */
+                && lastBolusMin >= 30) {
                 startProfilePercentFor(130, 5)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
@@ -7475,6 +7507,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // List 2 exposes this non-AutoIsf preference too; mirror it so AAPSClient shows the pump's
         // real ON/OFF state before sending the 5.198 relay rather than its unrelated local value.
         lines.add("${BooleanKey.AutomationCodedLocationsEnabled.key} = ${preferences.get(BooleanKey.AutomationCodedLocationsEnabled)}")
+        lines.add("${StringKey.AutomationLocationSmsDeviceModel.key} = ${preferences.get(StringKey.AutomationLocationSmsDeviceModel)}")
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }

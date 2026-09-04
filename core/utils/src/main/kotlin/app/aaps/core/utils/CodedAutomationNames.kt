@@ -26,7 +26,7 @@ object CodedAutomationNames {
         "ExportSettingsPodActivation", "Extra50", "GentleHypoRisk", "Graph2ToggleTT", "Graph5ToggleTT",
         "High6PP", "High6PPoff", "HighNight00AM", "HighOldPod", "HighPP130Off",
         "HigherIsfRangeWeightDownTT", "HigherIsfRangeWeightUpTT", "LibreOffsetDownTT", "LibreOffsetUpTT",
-        "LocationSmsToggleTT",
+        "LocationSmsToggleTT", "LocationSmsThisPhoneTT",
         "LibreUkf1ToggleTT", "LibreUkf2ToggleTT",
         "LibreSlopeDownTT", "LibreSlopeUpTT", "LowBgTierAReset", "LowBgTierAResetScan", "MJ2old", "MJ3old", "MJ4", "MJ5", "MJoff",
         "MJrecentCurrProfAcce", "MildBoostDownTT", "MildBoostUpTT", "MoreMJ", "NightAcce",
