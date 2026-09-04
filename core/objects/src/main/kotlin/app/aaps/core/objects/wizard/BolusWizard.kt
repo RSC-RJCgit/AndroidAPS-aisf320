@@ -323,16 +323,10 @@ class BolusWizard @Inject constructor(
         // fat), independent of the immediate bolus and of the carb-split schedule below.
         ic = profile.getIc() * baseScale
         insulinFromCarbsOnly = carbs / ic
-        // Recent50 mechanism: halve ONLY the carbs-driven portion (not protein/fat, correction, BG,
-        // trend, or COB) when either the "LowBG"="50recent" automation state is set, or BG is under
-        // 5.0mmol and not rising (delta <= 0) -- same 50%-then-delayed-check philosophy as the existing
-        // active-profile-at-50% path below, but triggered independently of the profile itself. Guarded
-        // on activeProfileSwitchPct() != 50 so this can never stack with that other path (which already
-        // halves things via a doubled IC) -- without the guard, both conditions being true at once would
-        // silently quarter the dose instead of halving it.
-        carbsHalvedByRecent50 = (automationStateService.inState("LowBG", "50recent") ||
-            (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0)) &&
-            activeProfileSwitchPct() != 50
+        // Recent50 mechanism: see recent50ShouldReduceWizard(). Halves ONLY the carbs-driven portion
+        // (not protein/fat, correction, BG, trend, or COB). Same boolean later arms the delayed-bolus
+        // check; if it is false the wizard keeps full percent and IC.
+        carbsHalvedByRecent50 = recent50ShouldReduceWizard()
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
@@ -496,9 +490,7 @@ class BolusWizard @Inject constructor(
             activeProfileSwitchPct() >= 100 && calculatedTotalInsulin > maxBolusAllowed &&
             ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1
         val delayedProfilePctPreview = activeProfileSwitchPct()
-        val recent50TriggeredPreview = delayedProfilePctPreview != 50 &&
-            (automationStateService.inState("LowBG", "50recent") ||
-                (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0))
+        val recent50TriggeredPreview = recent50ShouldReduceWizard()
         val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
             preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
             (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoon)
@@ -850,9 +842,9 @@ class BolusWizard @Inject constructor(
                                         automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                                     }
                                     // Schedule the DELAYED BOLUS (not the equal-parts split bolus) when enabled and
-                                    // EITHER profile is 50%, OR the recent50 trigger fired above (LowBG=50recent
-                                    // state, or BG<5.0mmol and not rising) -- re-checked live here rather than
-                                    // carried via a stored flag, same as delayedProfilePct itself is re-derived
+                                    // EITHER profile is 50%, OR recent50ShouldReduceWizard() (LowBG=50recent /
+                                    // BG<5.0mmol, AND still falling — see that helper). Re-checked live here rather
+                                    // than carried via a stored flag, same as delayedProfilePct itself is re-derived
                                     // live rather than remembered from the calc step above. The SMB preference is
                                     // deliberately NOT a gate (that was the original spec's error): instead SMBs
                                     // are actively blocked below for the delayed-check window, so the delayed
@@ -866,9 +858,7 @@ class BolusWizard @Inject constructor(
                                     // because of exactly this — the adjacent EqualSplitBolus log line in the
                                     // same callback correctly read profilePct=50/type=EPS at the same instant).
                                     val delayedProfilePct = activeProfileSwitchPct()
-                                    val recent50Triggered = delayedProfilePct != 50 &&
-                                        (automationStateService.inState("LowBG", "50recent") ||
-                                            (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (glucoseStatus?.delta ?: 0.0) <= 0.0))
+                                    val recent50Triggered = recent50ShouldReduceWizard()
                                     // walkingSoon (see doCalc's own comment): a third, independent way to qualify
                                     // for this same delayed-check path. Its own 50% reduction happened via the
                                     // `percentage` override in doCalc, not via profile or carbs-only halving, so
@@ -1058,6 +1048,29 @@ class BolusWizard @Inject constructor(
                 listValues = listOf()
             ).blockingGet()
         }
+    }
+
+    // Recent50 delayed-bolus / carb-halving gate. Already associated (kept):
+    //   - not used when the running profile is already 50% (that path halves via doubled IC;
+    //     stacking both would quarter the meal)
+    //   - LowBG=50recent, OR wizard BG < 5.0 mmol with delta <= 0
+    //   - delayed-bolus master switch and (insulin or carbs) are applied by the callers
+    // Added 2026-09-04: also BGL < 6.5 mmol and Delta, SDelta, LDelta all < -0.1 mmol.
+    // Otherwise leftover 50recent after BG has recovered still delayed the meal and halved
+    // carbs; callers then keep full percent and IC.
+    private fun recent50ShouldReduceWizard(): Boolean {
+        if (activeProfileSwitchPct() == 50) return false
+        val gs = glucoseStatus
+        val recent50OrLowFlat = automationStateService.inState("LowBG", "50recent") ||
+            (bg > 0 && profileUtil.convertToMgdl(bg, profile.units) < 90.0 /* 5.0 mmol */ && (gs?.delta ?: 0.0) <= 0.0)
+        if (!recent50OrLowFlat) return false
+        if (gs == null) return false
+        val bgMgdl = if (bg > 0) profileUtil.convertToMgdl(bg, profile.units) else gs.glucose
+        val fallingMgdl = -0.1 * Constants.MMOLL_TO_MGDL
+        return bgMgdl < 6.5 * Constants.MMOLL_TO_MGDL &&
+            gs.delta < fallingMgdl &&
+            gs.shortAvgDelta < fallingMgdl &&
+            gs.longAvgDelta < fallingMgdl
     }
 
     // Returns the active profile switch percentage. EPS bakes percentage into rates (pct=100),
