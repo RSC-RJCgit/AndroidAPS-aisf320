@@ -3,6 +3,7 @@ package app.aaps.plugins.automation
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
+import android.os.Build
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -99,6 +100,16 @@ class CodedLocationAutomations @Inject constructor(
         reset()
     }
 
+    companion object {
+        fun currentPhoneModel(): String = Build.MODEL.orEmpty().trim()
+    }
+
+    fun thisPhoneSendsLocationNotifications(): Boolean {
+        val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+        if (designated.isEmpty()) return true
+        return designated.equals(currentPhoneModel(), ignoreCase = true)
+    }
+
     fun onLocation(location: Location) {
         if (!preferences.get(BooleanKey.AutomationCodedLocationsEnabled)) {
             reset()
@@ -131,8 +142,10 @@ class CodedLocationAutomations @Inject constructor(
             if (inside) {
                 initial.lastArrival = dateUtil.now()
                 persistStates()
-                if (spec.arrivalNote.isNotBlank()) send(spec, spec.arrivalNote, arriving = true)
-                requestAnyDesk("location ${spec.label} arrival")
+                if (thisPhoneSendsLocationNotifications()) {
+                    if (spec.arrivalNote.isNotBlank()) send(spec, spec.arrivalNote, arriving = true)
+                    requestAnyDesk("location ${spec.label} arrival")
+                }
             } else persistStates()
             return
         }
@@ -150,6 +163,7 @@ class CodedLocationAutomations @Inject constructor(
         }
         if (nowInside) prior.lastArrival = now else prior.lastExit = now
         persistStates()
+        if (!thisPhoneSendsLocationNotifications()) return
         val note = if (nowInside) spec.arrivalNote else spec.exitNote
         if (note.isNotBlank()) send(spec, note, nowInside)
         requestAnyDesk("location ${spec.label} ${if (nowInside) "arrival" else "exit"}")

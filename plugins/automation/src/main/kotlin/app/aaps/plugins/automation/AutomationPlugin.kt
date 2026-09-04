@@ -826,6 +826,7 @@ class AutomationPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutomationFuzzyEquals, summary = R.string.automation_fuzzy_equals_summary, title = R.string.automation_fuzzy_equals_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AutomationCodedLocationsEnabled, summary = R.string.coded_locations_enabled_summary, title = R.string.coded_locations_enabled_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationLocationSmsNumbers, dialogMessage = R.string.coded_location_numbers_summary, title = R.string.coded_location_numbers_title))
+            addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationLocationSmsDeviceModel, dialogMessage = R.string.coded_location_device_model_summary, title = R.string.coded_location_device_model_title))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport1, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_1))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport2, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_2))
             addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.AutomationAirport3, dialogMessage = R.string.coded_location_slot_summary, title = R.string.coded_airport_3))

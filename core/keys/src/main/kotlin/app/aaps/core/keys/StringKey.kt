@@ -43,6 +43,9 @@ enum class StringKey(
     // Format: label|@latitude,longitude OR postal address|radius metres|arrival note|exit note|cooldown minutes.
     // A dash disables an unused slot. Street-address slots are resolved by Android's geocoder and cached.
     AutomationLocationSmsNumbers("automation_location_sms_numbers", "+61411600285", dependency = BooleanKey.AutomationCodedLocationsEnabled),
+    // Build.MODEL of the phone allowed to send coded-location SMS / CarePortal notes / AnyDesk.
+    // Blank = no pin (every phone with locations enabled may notify). List2 and Settings write this.
+    AutomationLocationSmsDeviceModel("automation_location_sms_device_model", "", dependency = BooleanKey.AutomationCodedLocationsEnabled),
     AutomationAirport1("automation_airport_1", "Adelaide Airport|@-34.945000,138.530556|1500|AptAd||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
     AutomationAirport2("automation_airport_2", "Sydney Airport|@-33.946111,151.177222|1500|AptSy||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),
     AutomationAirport3("automation_airport_3", "Dubai International Airport|@25.252778,55.364444|2000|AptDb||90", dependency = BooleanKey.AutomationCodedLocationsEnabled),

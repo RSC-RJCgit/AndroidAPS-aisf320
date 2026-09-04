@@ -77,10 +77,6 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allSmbBoluses: List<BS> = emptyList()
     private var allCarePortalNotes: List<TE> = emptyList()
     private var allRawReadings: List<GV> = emptyList()
-    // UKF3 (LibreSpecial-from-UKF1) series for the whole loaded window, computed once alongside
-    // allRawReadings -- see AutoIsfHistoryExporter.computeUkf3RawMgdl()'s doc comment. Feeds the
-    // u3RBGL/RawU3_5/RawU3_15/HP3 cells below.
-    private var allUkf3RawMgdl: List<Pair<Long, Double>> = emptyList()
     private var smbOnly = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -115,7 +111,6 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allCarePortalNotes = autoIsfHistoryExporter.carePortalNotesFrom(sixHoursAgo)
         // Raw BG readings (noise = raw Libre) for the rΔ columns; 20-min lead-in for the oldest rows
         allRawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(sixHoursAgo - 20 * 60_000L, now, ascending = false)
-        allUkf3RawMgdl = autoIsfHistoryExporter.computeUkf3RawMgdl(allRawReadings)
 
         rebuildTable()
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
@@ -196,21 +191,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(df2.format(r.bgAcceleration),              colorGlucose),
                     Cell(autoIsfHistoryExporter.deltaAcceStr(r.timestamp, apsResults), colorGlucose),
                     Cell(autoIsfHistoryExporter.deltaAcceUkfStr(r, allRecords),        colorGlucose),
-                    Cell(autoIsfHistoryExporter.deltaAcceU3Str(r, allUkf3RawMgdl),     colorGlucose),
                     Cell(df2.format(r.delta / MGDL_TO_MMOL),        colorGlucose),
                     Cell(df2.format(r.shortAvgDelta / MGDL_TO_MMOL), colorGlucose),
                     Cell(df2.format(r.longAvgDelta / MGDL_TO_MMOL), colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawBglStr(r.timestamp, allRawReadings),       colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 1),  colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 5),  colorGlucose),
-                    Cell(autoIsfHistoryExporter.rawDeltaStr(r.timestamp, allRawReadings, 15), colorGlucose),
                     Cell(if (r.ukfRawBgl > 0.0) df1.format(r.ukfRawBgl / MGDL_TO_MMOL) else "--", colorGlucose),
                     Cell(autoIsfHistoryExporter.ukfDeltaStr(r, allRecords, 5),  colorGlucose),
                     Cell(autoIsfHistoryExporter.ukfDeltaStr(r, allRecords, 15), colorGlucose),
-                    Cell(autoIsfHistoryExporter.ukf3BglStr(r, allUkf3RawMgdl),        colorGlucose),
-                    Cell(autoIsfHistoryExporter.ukf3DeltaStr(r, allUkf3RawMgdl, 5),   colorGlucose),
-                    Cell(autoIsfHistoryExporter.ukf3DeltaStr(r, allUkf3RawMgdl, 15),  colorGlucose),
-                    Cell(autoIsfHistoryExporter.readingIntervalStr(r.timestamp, allRawReadings), colorGlucose),
                     Cell(insulinStr(r.insulinReq),                  colorInsulin),
                     Cell(insulinStr(r.tbrRate),                     colorInsulin),
                     Cell(insulinStr(r.iob),                         colorInsulin),
@@ -221,8 +207,6 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.carbAbsStr(r),      colorInsulin),
                     Cell(autoIsfHistoryExporter.hpStr(r, allRawReadings), colorInsulin),
                     Cell(autoIsfHistoryExporter.hp2Str(r, allRecords, cobTByTimestamp), colorInsulin),
-                    Cell(autoIsfHistoryExporter.hp3Str(r, allUkf3RawMgdl, cobTByTimestamp), colorInsulin),
-                    Cell(autoIsfHistoryExporter.lowBgRecentStr(r.timestamp, apsResults), colorInsulin),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 5)?.toString()   ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 15)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 30)?.toString()  ?: "--", colorHeader),
@@ -291,14 +275,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("SMB", colorInsulin, span = 4, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 3, bold = true),
-                // acce/dAcc/dAccUkf/dAccU3/Δ/SΔ/LΔ/rBGL/rΔ1/rΔ5/rΔ15/ukfRBGL/RawUKF5/RawUKF15/u3RBGL/
-                // RawU3_5/RawU3_15/Int5 = 18. Int5 (reading interval) is grouped here rather than with
-                // Insulin below -- it's a BG-signal-quality metric, not an insulin/carb one -- closing
-                // the gap this section-header row previously had (Int5 wasn't covered by either group).
-                Cell("BG", colorGlucose, span = 18, bold = true),
-                // COBt is included in this group with the other calculated insulin/carb context fields.
-                // Group is Req/TBR/IOB/IOBd5/Basal/COB/COBt/carbAbs/HP/HP2/HP3/LowBG.
-                Cell("Insulin", colorInsulin, span = 12, bold = true),
+                // acce/dAcc/dAccUkf/Δ/SΔ/LΔ/ukfRBGL/RawUKF5/RawUKF15 = 9.
+                // UKF3 (dAccU3/u3RBGL/RawU3_*), raw Libre (rBGL/rΔ*), Int5, HP3 and LowBG were
+                // dropped 2026-09-04 -- UKF3 graph is gone; UKF1 columns are the dosing signal.
+                Cell("BG", colorGlucose, span = 9, bold = true),
+                // Req/TBR/IOB/IOBd5/Basal/COB/COBt/carbAbs/HP/HP2 = 10.
+                Cell("Insulin", colorInsulin, span = 10, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
                 Cell("MJ", colorTime, bold = true),
                 Cell("Notes", colorTime, bold = true)
@@ -328,21 +310,12 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("acce",   colorGlucose, bold = true),
                 Cell("dAcc",     colorGlucose, bold = true),
                 Cell("dAccUkf",  colorGlucose, bold = true),
-                Cell("dAccU3",   colorGlucose, bold = true),
                 Cell("Δ",      colorGlucose, bold = true),
                 Cell("SΔ",     colorGlucose, bold = true),
                 Cell("LΔ",     colorGlucose, bold = true),
-                Cell("rBGL",   colorGlucose, bold = true),
-                Cell("rΔ1",    colorGlucose, bold = true),
-                Cell("rΔ5",    colorGlucose, bold = true),
-                Cell("rΔ15",   colorGlucose, bold = true),
                 Cell("ukfRBGL", colorGlucose, bold = true),
                 Cell("RawUKF5",  colorGlucose, bold = true),
                 Cell("RawUKF15", colorGlucose, bold = true),
-                Cell("u3RBGL",  colorGlucose, bold = true),
-                Cell("RawU3_5",  colorGlucose, bold = true),
-                Cell("RawU3_15", colorGlucose, bold = true),
-                Cell("Int5",   colorGlucose, bold = true),
                 Cell("Req",    colorInsulin, bold = true),
                 Cell("TBR",    colorInsulin, bold = true),
                 Cell("IOB",    colorInsulin, bold = true),
@@ -353,8 +326,6 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("carbAbs", colorInsulin, bold = true),
                 Cell("HP",     colorInsulin, bold = true),
                 Cell("HP2",    colorInsulin, bold = true),
-                Cell("HP3",    colorInsulin, bold = true),
-                Cell("LowBG",  colorInsulin, bold = true),
                 Cell("S5",     colorHeader, bold = true),
                 Cell("S15",    colorHeader, bold = true),
                 Cell("S30",    colorHeader, bold = true),

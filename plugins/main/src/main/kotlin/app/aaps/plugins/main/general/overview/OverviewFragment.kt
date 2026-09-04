@@ -11,6 +11,7 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.drawable.AnimationDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
@@ -1355,6 +1356,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Same preference as Settings -> Automation -> Coded location arrival/exit messages.
         // Local pump builds toggle immediately; AAPSClient relays 5.198 to the pump phone.
         LOCATION_SMS_TOGGLE("Location SMS + CarePortal notes on/off", 5.198),
+        // Pins Build.MODEL into AutomationLocationSmsDeviceModel on THIS phone only (no TT relay).
+        // Dummy 5.204 is unused; Client and Live both write the local/synced model string here.
+        LOCATION_SMS_THIS_PHONE("Location SMS from THIS phone (model)", 5.204),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
@@ -1453,6 +1457,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     }
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
+        if (action == BasalDirectAction.LOCATION_SMS_THIS_PHONE) {
+            toggleLocationSmsThisPhone()
+            return
+        }
         if (action == BasalDirectAction.ANYDESK_LOCAL_TEST) {
             saveAnyDeskRestartCommandNote(allowLocalTest = true) {
                 queueAnyDeskRestartLocalTest()
@@ -1543,8 +1551,44 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // fails to compile until handled.
                 BasalDirectAction.ANYDESK_RESTART -> Unit
                 BasalDirectAction.ANYDESK_LOCAL_TEST -> Unit
+                BasalDirectAction.LOCATION_SMS_THIS_PHONE -> Unit
             }
         }
+    }
+
+    private fun currentPhoneModel(): String = Build.MODEL.orEmpty().trim()
+
+    private fun thisPhoneIsLocationSmsDevice(): Boolean {
+        val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+        return designated.isNotEmpty() && designated.equals(currentPhoneModel(), ignoreCase = true)
+    }
+
+    // Local on every build, including Client. Writes Build.MODEL so NS-synced prefs still pick
+    // one physical phone; a boolean would flip on every device that syncs it.
+    private fun toggleLocationSmsThisPhone() {
+        val model = currentPhoneModel()
+        val nowOn = !thisPhoneIsLocationSmsDevice()
+        preferences.put(StringKey.AutomationLocationSmsDeviceModel, if (nowOn) model else "")
+        val note = if (nowOn) "LocPhOn" else "LocPhOff"
+        val therapyEvent = TE(
+            timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+            type = TE.Type.NOTE,
+            glucoseUnit = profileFunction.getUnits()
+        ).apply {
+            this.note = note
+            duration = TimeUnit.MINUTES.toMillis(1)
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = therapyEvent,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = "Location SMS this-phone ${if (nowOn) "ON" else "OFF"} ($model)",
+            listValues = listOf(ValueWithUnit.SimpleString(note))
+        ).subscribe(
+            { rxBus.send(EventRefreshOverview("Location SMS this-phone toggled", true)) },
+            { error -> aapsLogger.error(LTag.CORE, "Failed to save $note", error) }
+        )
+        rxBus.send(EventRefreshOverview("Location SMS this-phone toggled", true))
     }
 
     // Entry point for double-tap list2 (basal rate icon area): BasalDirectAction's real actions,
@@ -1570,6 +1614,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
         BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
+        BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
+            val model = currentPhoneModel().ifBlank { "(unknown model)" }
+            val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+            val pinned = if (designated.isEmpty()) "none (all phones)" else designated
+            "This phone $model: ${if (thisPhoneIsLocationSmsDevice()) "ON" else "OFF"}\nPinned model: $pinned"
+        }
         // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
         // ProfileSwitch treatments (normal sync), not a bespoke preference, so it's already correct on Client.
         BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,
@@ -1583,6 +1633,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
+        if (action == BasalDirectAction.LOCATION_SMS_THIS_PHONE) {
+            val model = currentPhoneModel().ifBlank { "(unknown model)" }
+            val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+            val pinned = if (designated.isEmpty()) "none (all phones may notify)" else designated
+            val state = if (thisPhoneIsLocationSmsDevice()) "ON" else "OFF"
+            return "Applies on this phone only (no relay TT). Uses Android model $model.\n\n" +
+                "This phone: $state\nPinned model: $pinned\n\n" +
+                "ON pins this model so only this phone sends location SMS, CarePortal notes and AnyDesk. " +
+                "OFF clears the pin (every phone may notify again)."
+        }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
             return if (config.AAPSCLIENT)
                 "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If a temporary target is active it will be replaced for 5 minutes."
