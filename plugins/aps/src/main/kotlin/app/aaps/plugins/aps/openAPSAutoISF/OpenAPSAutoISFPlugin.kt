@@ -2993,7 +2993,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // entirely, see that branch's own comment below. No readyToRun throttle — deliberately
         // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
+        //
+        // Last raw Libre >12.0 mmol — updated every cycle it is seen, BEFORE OldSensorAdj's
+        // SensorAge-off / LowRaw24 returns. Those returns used to skip this write, so Virtual
+        // (SensorAge off) never latched the same 17.5 Live recorded, and MoreMJ's 48h
+        // noRecentHigh OR-path then fired on Virtual only (5 Sep 06:00).
         run {
+            val rawGForOver12 = rawGlucoseMgdl()
+            if (rawGForOver12 != null && rawGForOver12 > 216.2 /* 12.0 mmol raw */) {
+                preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, dateUtil.now())
+            }
             // LowRaw24Cal has priority while its temporary six-hour override is active.
             if (preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)) return@run
             // Pod >80h or sensor >15 days: turn SensorAge auto off (same List2 5.156 switch).
@@ -3068,15 +3077,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 return@run
             }
 
-            // Track the last time raw Libre BGL was seen over 12.0mmol -- updated every cycle it's
-            // observed (not a "since it started" latch like OldPodHighSinceTs above; just "when did this
-            // last happen"). Gates OldSensorAdj below: the tier compensation is calibrated against
-            // genuine high-BGL Libre-vs-reference divergence, so if that hasn't actually been seen
-            // recently, the compensation is blocked and slope/offset revert to baseline instead.
-            val rawGForOver12 = rawGlucoseMgdl()
-            if (rawGForOver12 != null && rawGForOver12 > 216.2 /* 12.0 mmol raw */) {
-                preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, dateUtil.now())
-            }
+            // Latch is written at the top of this run (even when SensorAge is off). Read here
+            // for OldSensorAdj only: tier compensation needs a recent genuine high.
             val recentHighBglSeen = recentLibreOver12(24)
 
             // Missing sensor age is unknown, never day 0. A null age produces no tier below (other than
