@@ -6360,14 +6360,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // window, the resulting IOB rise is the intended effect, not evidence of a runaway
                 // burst layered on top of it. Comparing the boosted period against the un-boosted
                 // threshold meant every successful boost tripped its own abort almost immediately.
-                // resumedRise stays unchanged -- it reads glucose delta, not IOB, so it isn't
-                // contaminated by our own delivery and still correctly catches "this stopped being a
-                // plateau."
+                // Continuously enforce the same delta ranges used to enter this brake. Unlike IOB,
+                // these signals are not directly inflated by our own delivery, so leaving any of the
+                // plateau ranges means the reason for the TT no longer holds.
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
-                if (iobChange5 >= 1.0 || resumedRise) {
+                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */
+                    && glucoseStatus.shortAvgDelta < 1.8 /* < 0.1 mmol */
+                    && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
+                    && glucoseStatus.longAvgDelta >= -3.6 /* >= -0.2 mmol */
+                    && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
+                if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
-                    sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
+                    sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkCut")
                 }
             } else if (readyToRun("HighEveNightBrake", 30)
@@ -6439,10 +6443,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // HighEveNightBrake's own doc comment above (fixed 2026-08-30) for the full reasoning;
                 // this is where the actual self-cancelling pattern was first spotted in real data.
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                val resumedRise = glucoseStatus.delta >= 3.6 /* 0.2 mmol */ || glucoseStatus.shortAvgDelta >= 3.6 /* 0.2 mmol */
-                if (iobChange5 >= 1.0 || resumedRise) {
+                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */
+                    && glucoseStatus.shortAvgDelta < 1.8 /* < 0.1 mmol */
+                    && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
+                    && glucoseStatus.longAvgDelta >= -3.6 /* >= -0.2 mmol */
+                    && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
+                if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
-                    sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} resumedRise=$resumedRise)")
+                    sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkDayCut")
                 }
             } else if (readyToRun("HighDaytimeBrake", 30)
