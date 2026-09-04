@@ -2571,12 +2571,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // entirely; the UPPER cap (< 14.4*stackK, keeping mild out of bg3's territory) still always
             // applies, so mutual exclusivity with bg3 is preserved either way.
             val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            val lastBolusMinMild = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            // 4 Sep 2026 15:30-15:59: BGL 5.5→7.3 after the 13:34 meal, IOBd5 −0.11..+0.10 (leftover
+            // IOB decaying), RawUKF5 often 0.73-0.97 (bg3 band). BMild's IOB-rising + raw<0.80 split
+            // left nobody to fire; bg3 was GivBlk'd from a 15:11 delivery-suppressed Giv-3 at BGL 5.0.
+            // Meal-leftover path: COB>=4 or normal bolus <3h, BGL>=6.5, skip IOBΔ5 and the bg3 raw
+            // upper cap. 2 Sep 13:07 BMild|UamBst at BGL 5.9 / COB 0 / IOB 0.22 stays blocked.
+            val mealLeftoverRise = g >= 117.1 /* 6.5 mmol */
+                && (mealData.mealCOB >= 4.0 || lastBolusMinMild < 180)
+                && glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
+            val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
             // Delivery-suppressed OR (smbCount5Min() <= 1 + raw rise, no iobChange5) removed 2026-09-02
             // after Client 13:07 BMild|UamBst 1.20U at BGL 5.9 with IOBd5 only 0.12: that path treated
             // a 5-min SMB gap (normal, and here the near-target zero-SMB hold) as "already need a
-            // boosted SMB", then handed it to Tier 3. BMild is IOB-already-rising only. True silence
-            // (20 min, BG > 6.5, all three deltas) stays BolusGivenMildFailsafe, which does not fire
-            // Tier 3.
+            // boosted SMB", then handed it to Tier 3. BMild is IOB-already-rising only, except the
+            // meal-leftover path above. True silence (20 min, BG > 6.5, all three deltas) stays
+            // BolusGivenMildFailsafe, which does not fire Tier 3.
             // Post-bolus/carb quiet window (was 120 min, or 30 min above 11.0 mmol) REMOVED 2026-09-01
             // at explicit request: BMild / Tier 3 / BolusGiven bg3 must still be able to fire on a
             // confirmed rise even when a recent manual bolus or carb entry would previously have
@@ -2587,9 +2597,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour -- the day window
             // otherwise blocks a post-change high before 08:30 or after 02:00.
             return (isTimeBetween(8, 30, 2, 0) || newPodHighBgAnyTimeOk(g))
-                && iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
-                && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */ && rawDelta5 < 14.4 * stackK /* bg3 owns >= this */
-                && rawDelta1FloorOk && rawDelta1 < 14.4 * stackK /* same upper band as rawDelta5 */
+                && (iobRising || mealLeftoverRise) && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
+                && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */
+                && (mealLeftoverRise || rawDelta5 < 14.4 * stackK) /* bg3 owns >= 0.80 unless leftover-meal rise and bg3 did not fire */
+                && rawDelta1FloorOk && (mealLeftoverRise || rawDelta1 < 14.4 * stackK) /* same upper band as rawDelta5 */
                 && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName)   // not on the MJ/night profile
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
@@ -2665,9 +2676,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Delivery-suppressed bypass: if a fast-rise cap has throttled SMB to ~zero (0-1 delivered
             // in the last 5 min) while raw signals are unambiguously still confirming a rise, don't let
             // the resulting stalled/negative iobChange5 -- an artifact of the suppression itself --
-            // block the boost. Raw-only, no `d`. Direct numbers, not stackK-scaled: stackK is provably
-            // always 1.0 whenever smbCount5Min() <= 1.
+            // block the boost. Direct numbers, not stackK-scaled: stackK is provably always 1.0
+            // whenever smbCount5Min() <= 1.
+            // 4 Sep 15:11 Giv-3: BGL 5.0, Δ −0.08, rawD5 0.83, SMB 0, then 60-min GivBlk ate the
+            // real 15:30 rise. This path is for a FastRise-chopped climb (1 Sep 15:32 BGL 6.6+),
+            // not a raw bounce at target while the loop line is still falling.
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
+                && g >= 117.1 /* 6.5 mmol */ && d >= 0.0
             // Window extended 22:00 -> end of day (2026-08-14). Deliberately NOT extended into the
             // 00:00-06:00 overnight guard territory -- see isTimeBetween()'s own doc comment for why
             // endH=0/endM=0 here means "runs to end of day," not "wraps past midnight."
@@ -5305,6 +5320,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
+                && g >= 117.1 && d >= 0.0
             val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
@@ -5314,10 +5330,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes < 300
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
+            val mealLeftoverRise = g >= 117.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)
+                && glucoseStatus.shortAvgDelta >= 2.7
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
-                && iobChange5 > 0.40 * stackK * thresholdScale && d >= 5.4 * stackK
-                && rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK
-                && rawDelta1FloorOkMild && rawDelta1 < 14.4 * stackK
+                && (iobChange5 > 0.40 * stackK * thresholdScale || mealLeftoverRise) && d >= 5.4 * stackK
+                && rawDelta5 >= 5.4 * stackK && (mealLeftoverRise || rawDelta5 < 14.4 * stackK)
+                && rawDelta1FloorOkMild && (mealLeftoverRise || rawDelta1 < 14.4 * stackK)
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenBg3", 5) && movementOk
                 && !(g < 135.1 && iobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
