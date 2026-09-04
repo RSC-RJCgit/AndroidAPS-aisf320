@@ -42,6 +42,12 @@ interface ImportExportPrefs {
     fun uploadAivFilesToCloud(files: List<File>, trigger: String, onComplete: (() -> Unit)? = null)
 
     /**
+     * Newest pump APK under Google Drive folder AAPS (authorized token). Writes [dest].
+     * drive.file may not see APKs uploaded by DriveSync/PC.
+     */
+    fun downloadNewestDriveAapsApk(dest: File): Pair<Boolean, String>
+
+    /**
      * Store for selected file from UI
      */
     var selectedImportFile: PrefsFile?

@@ -143,6 +143,14 @@ internal object ShizukuAaps333Installer {
         return null
     }
 
+    fun driveFetchDest(): File {
+        val archiveName = listOf("AAPS333", "AAPS3").firstOrNull { name ->
+            archiveDirs(name).any { it.isDirectory }
+        } ?: "AAPS333"
+        val dir = File(archiveDirs(archiveName).first(), "ApkDownload")
+        return File(dir, "driveAapsNewest.apk")
+    }
+
     private fun searchRoots(): List<File> {
         val roots = ArrayList<File>()
         for (name in ARCHIVE_NAMES) roots.addAll(archiveDirs(name))

@@ -128,6 +128,7 @@ class ImportExportPrefsImpl @Inject constructor(
     private val activePlugin: ActivePlugin,
     private val configBuilder: ConfigBuilder,
     private val cloudStorageManager: CloudStorageManager,
+    private val googleDriveManager: app.aaps.plugins.configuration.maintenance.cloud.providers.googledrive.GoogleDriveManager,
     private val exportOptionsDialog: ExportOptionsDialog,
     private val importSourceDialog: ImportSourceDialog,
     private val maintenancePlugin: MaintenancePlugin
@@ -136,6 +137,9 @@ class ImportExportPrefsImpl @Inject constructor(
     override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
     override fun uploadAivFilesToCloud(files: List<File>, trigger: String, onComplete: (() -> Unit)?) =
         maintenancePlugin.uploadAivFilesToCloud(files, trigger, onComplete)
+
+    override fun downloadNewestDriveAapsApk(dest: File): Pair<Boolean, String> =
+        kotlinx.coroutines.runBlocking { googleDriveManager.downloadNewestPumpApkFromAapsFolder(dest) }
 
     companion object {
         /** Cloud preference files loaded from the active cloud provider for the import list. */

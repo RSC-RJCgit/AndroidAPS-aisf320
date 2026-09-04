@@ -1612,7 +1612,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return if (config.AAPSCLIENT)
                 "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Copy the newest pump APK (AAPS3 on Live, AAPS333 on Virtual, or Download; skipping Client/Wear) to that folder's newest/aapsNewestAPK.apk and keep only the newest 20 archive APKs there. If AAPS cannot see the folder, Tasker task StageAapsNewestApk copies instead. Does not install or need Shizuku."
+                "If Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 (including DriveSync's APKdownload folder) or Download to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             return if (config.AAPSCLIENT)

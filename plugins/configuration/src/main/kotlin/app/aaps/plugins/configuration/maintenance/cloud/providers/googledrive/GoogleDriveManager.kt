@@ -18,6 +18,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.net.ServerSocket
@@ -1185,6 +1186,78 @@ class GoogleDriveManager @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    // Newest pump APK under Drive/AAPS (and a few subfolders). Find-only — does not create AAPS.
+    // drive.file can only see files this app created or opened; PC/DriveSync uploads may be invisible.
+    private val pumpApkSkip = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
+
+    suspend fun downloadNewestPumpApkFromAapsFolder(dest: File): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        if (!hasValidRefreshToken()) return@withContext false to "Drive not authorised"
+        val aapsId = findFolderIdByName("AAPS", "root")
+            ?: return@withContext false to "Drive/AAPS folder not visible (drive.file)"
+        val found = ArrayList<Triple<String, String, String>>()
+        collectApksUnder(aapsId, found, depth = 0)
+        val pick = found.maxByOrNull { it.third }
+            ?: return@withContext false to "no pump apk visible under Drive/AAPS (listed 0)"
+        val parent = dest.parentFile
+        if (parent != null && !parent.isDirectory && !parent.mkdirs())
+            return@withContext false to "mkdir failed ${parent.absolutePath}"
+        val ok = streamDownload(pick.first, dest)
+        if (!ok || !dest.isFile || dest.length() <= 0L)
+            return@withContext false to "download failed ${pick.second}"
+        true to "drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
+    }
+
+    private suspend fun collectApksUnder(folderId: String, into: MutableList<Triple<String, String, String>>, depth: Int) {
+        if (depth > 3) return
+        val accessToken = getValidAccessToken() ?: return
+        var page: String? = null
+        repeat(8) {
+            val query = URLEncoder.encode("'$folderId' in parents and trashed=false", "UTF-8")
+            val url = StringBuilder("$DRIVE_API_URL/files?q=$query")
+                .append("&fields=files(id,name,modifiedTime,mimeType),nextPageToken")
+                .append("&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true")
+            if (!page.isNullOrEmpty()) url.append("&pageToken=").append(page)
+            val request = Request.Builder().url(url.toString()).header("Authorization", "Bearer $accessToken").build()
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            if (!response.isSuccessful) return
+            val json = JSONObject(body)
+            val arr = json.optJSONArray("files") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val f = arr.getJSONObject(i)
+                val name = f.optString("name")
+                val mime = f.optString("mimeType")
+                val id = f.optString("id")
+                if (mime == "application/vnd.google-apps.folder") {
+                    collectApksUnder(id, into, depth + 1)
+                    continue
+                }
+                if (!name.endsWith(".apk", ignoreCase = true)) continue
+                if (pumpApkSkip.containsMatchIn(name)) continue
+                into.add(Triple(id, name, f.optString("modifiedTime")))
+            }
+            page = json.optString("nextPageToken").ifBlank { null }
+            if (page == null) return
+        }
+    }
+
+    private suspend fun streamDownload(fileId: String, dest: File): Boolean {
+        val accessToken = getValidAccessToken() ?: return false
+        val request = Request.Builder()
+            .url("$DRIVE_API_URL/files/$fileId?alt=media")
+            .header("Authorization", "Bearer $accessToken")
+            .build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            aapsLogger.error(LTag.CORE, "$LOG_PREFIX APK_DOWNLOAD_FAIL id=$fileId code=${response.code}")
+            return false
+        }
+        dest.outputStream().use { out ->
+            response.body?.byteStream()?.use { it.copyTo(out) }
+        }
+        return dest.isFile && dest.length() > 0L
     }
 
     /**

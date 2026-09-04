@@ -1378,9 +1378,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var ok = false
         var detail = ""
         try {
+            val driveDest = ShizukuAaps333Installer.driveFetchDest()
+            val (driveOk, driveDetail) = importExportPrefs.downloadNewestDriveAapsApk(driveDest)
+            aapsLogger.info(LTag.APS, "Drive/AAPS apk fetch ($reason): ok=$driveOk $driveDetail")
+            // Local files come from DriveSync into AAPS3|AAPS333/APKdownload — already walked by
+            // stageNewestAndPrune. File manager does not place them under /sdcard/AAPS.
             val result = ShizukuAaps333Installer.stageNewestAndPrune()
             ok = result.first
-            detail = result.second
+            detail = if (driveOk) "$driveDetail; ${result.second}" else "${result.second}; Drive $driveDetail"
             aapsLogger.info(LTag.APS, "AAPS333 APK stage ($reason): $detail")
         } catch (e: Exception) {
             detail = e.message ?: "exception"
