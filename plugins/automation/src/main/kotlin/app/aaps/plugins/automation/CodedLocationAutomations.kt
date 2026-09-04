@@ -106,7 +106,7 @@ class CodedLocationAutomations @Inject constructor(
 
     fun thisPhoneSendsLocationNotifications(): Boolean {
         val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
-        if (designated.isEmpty()) return true
+        if (designated.isEmpty()) return false
         return designated.equals(currentPhoneModel(), ignoreCase = true)
     }
 

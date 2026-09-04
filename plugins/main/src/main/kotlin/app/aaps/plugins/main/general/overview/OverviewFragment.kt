@@ -1617,7 +1617,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
             val model = currentPhoneModel().ifBlank { "(unknown model)" }
             val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
-            val pinned = if (designated.isEmpty()) "none (all phones)" else designated
+            val pinned = if (designated.isEmpty()) "none (no phone sends)" else designated
             "This phone $model: ${if (thisPhoneIsLocationSmsDevice()) "ON" else "OFF"}\nPinned model: $pinned"
         }
         // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
@@ -1636,12 +1636,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (action == BasalDirectAction.LOCATION_SMS_THIS_PHONE) {
             val model = currentPhoneModel().ifBlank { "(unknown model)" }
             val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
-            val pinned = if (designated.isEmpty()) "none (all phones may notify)" else designated
+            val pinned = if (designated.isEmpty()) "none (no phone sends)" else designated
             val state = if (thisPhoneIsLocationSmsDevice()) "ON" else "OFF"
             return "Applies on this phone only (no relay TT). Uses Android model $model.\n\n" +
                 "This phone: $state\nPinned model: $pinned\n\n" +
                 "ON pins this model so only this phone sends location SMS, CarePortal notes and AnyDesk. " +
-                "OFF clears the pin (every phone may notify again)."
+                "Any other model does not notify. OFF clears the pin (nobody sends)."
         }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
             return if (config.AAPSCLIENT)

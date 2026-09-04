@@ -236,7 +236,7 @@
     <string name="coded_location_numbers_title">Extra location SMS recipients</string>
     <string name="coded_location_numbers_summary">Additional directed recipients, separated by semicolons. General SMS recipients are also notified.</string>
     <string name="coded_location_device_model_title">Location SMS from this phone (model)</string>
-    <string name="coded_location_device_model_summary">Android model of the one phone that should send location SMS, CarePortal notes and AnyDesk. Leave blank to allow every phone. List 2 can pin or unpin the current phone.</string>
+    <string name="coded_location_device_model_summary">Android model of the one phone that should send location SMS, CarePortal notes and AnyDesk. Blank means no phone sends those. A different model on another phone does not notify.</string>
     <string name="coded_location_slot_summary">Format: Name|@latitude,longitude or address|radius metres|arrival note|exit note|cooldown minutes. Use - to disable the slot.</string>
     <string name="coded_airport_1">Airport 1</string>
     <string name="coded_airport_2">Airport 2</string>
