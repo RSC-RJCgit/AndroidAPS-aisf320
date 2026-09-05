@@ -1205,9 +1205,18 @@ class GoogleDriveManager @Inject constructor(
         val parent = dest.parentFile
         if (parent != null && !parent.isDirectory && !parent.mkdirs())
             return@withContext false to "mkdir failed ${parent.absolutePath}"
+        val stamp = File(dest.path + ".stamp")
+        val already = dest.isFile && dest.length() >= MIN_PUMP_APK_BYTES &&
+            stamp.isFile && stamp.readText().trim() == pick.third
+        if (already)
+            return@withContext true to "already drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
         val ok = streamDownload(pick.first, dest)
         if (!ok || !dest.isFile || dest.length() < MIN_PUMP_APK_BYTES)
             return@withContext false to "download failed ${pick.second} bytes=${dest.length()}"
+        try {
+            stamp.writeText(pick.third)
+        } catch (_: Exception) {
+        }
         true to "drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
     }
 

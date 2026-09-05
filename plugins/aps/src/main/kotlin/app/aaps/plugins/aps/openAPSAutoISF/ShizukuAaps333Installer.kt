@@ -69,13 +69,16 @@ internal object ShizukuAaps333Installer {
         // so Tasker is not launched (5 Sep 08:13 Tasker overwrote a good 94MB file).
         if (isPlausiblePumpApk(dest) && dest.length() == src.length() && dest.lastModified() >= src.lastModified()) {
             val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
-            return true to "already newest dest=${dest.absolutePath} bytes=${dest.length()} src=${src.absolutePath} pruned=$pruned"
+            val detail = "already newest dest=${dest.absolutePath} bytes=${dest.length()} src=${src.absolutePath} pruned=$pruned"
+            writeWinnerRecord(destDir, src, dest, "already")
+            return true to detail
         }
         destDir.listFiles()?.forEach { it.delete() }
         src.copyTo(dest, overwrite = true)
         if (!isPlausiblePumpApk(dest))
             return false to "copy failed ${dest.absolutePath} bytes=${dest.length()}"
         val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
+        writeWinnerRecord(destDir, src, dest, "copied")
         return true to "src=${src.absolutePath} dest=${dest.absolutePath} bytes=${dest.length()} pruned=$pruned"
     }
 
@@ -164,6 +167,23 @@ internal object ShizukuAaps333Installer {
             p = p.parentFile
         }
         return null
+    }
+
+    // Last stage winner: <archive>/newest/winner.txt (src path, dest, bytes). SMS/log also
+    // carry src=; CarePortal ApkSt does not.
+    private fun writeWinnerRecord(destDir: File, src: File, dest: File, how: String) {
+        try {
+            File(destDir, "winner.txt").writeText(
+                "how=$how\n" +
+                    "src=${src.absolutePath}\n" +
+                    "srcBytes=${src.length()}\n" +
+                    "srcMtime=${src.lastModified()}\n" +
+                    "dest=${dest.absolutePath}\n" +
+                    "destBytes=${dest.length()}\n" +
+                    "destMtime=${dest.lastModified()}\n"
+            )
+        } catch (_: Exception) {
+        }
     }
 
     fun driveFetchDest(): File {

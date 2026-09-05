@@ -1392,7 +1392,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val taskerStatus: String
     )
 
-    private fun stageNewestAaps333Apk(reason: String): StageApkOutcome {
+    private fun stageNewestAaps333Apk(reason: String, notify: Boolean = true): StageApkOutcome {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "AAPS333 APK stage skipped on AAPSCLIENT ($reason)")
             return StageApkOutcome(ok = false, aapsCopy = false, detail = "client", taskerStatus = "skipped")
@@ -1442,12 +1442,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 detail = "$detail; Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus newest=missing"
             }
         }
-        if (ok) {
-            addCarePortalNote("ApkSt")
-            sendSms("AAPS333 APK staged: $detail")
-        } else {
-            addCarePortalNote("ApkNf")
-            sendSms("AAPS333 APK stage failed: $detail")
+        if (notify) {
+            if (ok) {
+                addCarePortalNote("ApkSt")
+                sendSms("AAPS333 APK staged: $detail")
+            } else {
+                addCarePortalNote("ApkNf")
+                sendSms("AAPS333 APK stage failed: $detail")
+            }
         }
         return StageApkOutcome(ok = ok, aapsCopy = aapsCopy, detail = detail, taskerStatus = taskerStatus)
     }
@@ -1458,14 +1460,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // process survives (failed install, or a different package). Relaunch is the Shizuku
     // sh -c after pm install (sleep 3; am start MainActivity), not Kotlin after install().
     // Client never installs.
-    private fun installNewestAaps333Apk(reason: String) {
+    private fun installNewestAaps333Apk(reason: String, alreadyStaged: StageApkOutcome? = null) {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
             return
         }
         // Stage already ran Tasker if AAPS copy missed. Do not fire Tasker again here —
         // that second call could overwrite a good newest/ APK (5 Sep 08:13).
-        val stage = stageNewestAaps333Apk(reason)
+        val stage = alreadyStaged ?: stageNewestAaps333Apk(reason)
         val stagedByAaps = stage.aapsCopy
         val taskerStatus = stage.taskerStatus
         // Brief retries: binder can arrive a beat after Shizuku UI shows "running".
@@ -1528,6 +1530,47 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("Shizuku APK install exception: ${e.message}")
             aapsLogger.warn(LTag.APS, "Shizuku APK install failed", e)
         }
+    }
+
+    // 15-min auto stage+install on Live and Virtual (not Client). Quiet stage so a matching
+    // versionName does not SMS every quarter-hour. versionCode in this tree is stuck at 1500,
+    // so the "is this new?" test is archive versionName vs the running APK. Same name = skip
+    // even if Drive refreshed mtime. Shizuku down = leave newest/ updated, try next interval.
+    private fun installedApkVersionName(): String? = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    } catch (_: Exception) {
+        null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun archiveApkVersionName(apk: java.io.File): String? =
+        context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)?.versionName
+
+    private fun tryAutoInstallNewerApk() {
+        if (config.AAPSCLIENT) return
+        val stage = stageNewestAaps333Apk("auto-15min", notify = false)
+        if (!stage.ok) {
+            aapsLogger.info(LTag.APS, "Auto APK stage miss: ${stage.detail}")
+            return
+        }
+        val apk = ShizukuAaps333Installer.newestPumpApk() ?: return
+        val incoming = archiveApkVersionName(apk)
+        val current = installedApkVersionName()
+        if (incoming.isNullOrBlank() || current.isNullOrBlank()) {
+            aapsLogger.info(LTag.APS, "Auto APK skip: missing versionName incoming=$incoming current=$current")
+            return
+        }
+        if (incoming == current) {
+            aapsLogger.debug(LTag.APS, "Auto APK up to date $current")
+            return
+        }
+        if (!ShizukuAaps333Installer.hasPermission()) {
+            aapsLogger.info(LTag.APS, "Auto APK newer $incoming vs $current; Shizuku not granted")
+            return
+        }
+        addCarePortalNote("ApkAuto")
+        sendSms("Auto APK $current -> $incoming; ${stage.detail}")
+        installNewestAaps333Apk("auto-15min", alreadyStaged = stage)
     }
 
     // Live HP2, matching AutoIsfHistoryExporter.hp2Str(): (BGL - IOB) + 0.25*SDelta + 0.25*UKF raw
@@ -4084,6 +4127,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             stageNewestAaps333Apk("list2-tt")
             markRun("StageAaps333NewestTT")
+        }
+
+        // Auto APK: 15 min (not 5). Drive list is cheap; a same-file reinstall is not.
+        // IO thread — Drive/copy must not sit on the loop. First cycle after process start
+        // is allowed (lastRun in-memory); versionName match then no-ops after a successful bounce.
+        if (readyToRun("AutoApkInstall", 15) && !config.AAPSCLIENT) {
+            markRun("AutoApkInstall")
+            Schedulers.io().scheduleDirect { tryAutoInstallNewerApk() }
         }
 
         if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
