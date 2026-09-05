@@ -5,6 +5,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.nssdk.exceptions.InvalidAccessTokenException
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
@@ -30,9 +31,16 @@ class LoadStatusWorker(
             rxBus.send(EventNSClientNewLog("◄ ERROR", error.localizedMessage))
             nsClientV3Plugin.lastOperationError = error.localizedMessage
             rxBus.send(EventNSClientUpdateGuiStatus())
+            val msg = error.localizedMessage ?: error.javaClass.simpleName
+            if (error is InvalidAccessTokenException ||
+                msg.contains("Invalid access token", ignoreCase = true)
+            ) {
+                nsClientV3Plugin.notifyPrimaryTokenFailure(msg)
+            }
             return Result.failure(workDataOf("Error" to error.localizedMessage))
         }
         nsClientV3Plugin.lastOperationError = null
+        nsClientV3Plugin.clearPrimaryTokenFailureNotify()
         rxBus.send(EventNSClientUpdateGuiStatus())
         return Result.success()
     }

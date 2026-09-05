@@ -25,16 +25,21 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAppExit
+import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventDeviceStatusChange
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.rx.events.EventNewHistoryData
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
@@ -55,6 +60,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -125,7 +131,8 @@ class NSClientV3Plugin @Inject constructor(
     private val nsClientSource: NSClientSource,
     private val storeDataForDb: StoreDataForDb,
     private val decimalFormatter: DecimalFormatter,
-    private val l: L
+    private val l: L,
+    private val activePlugin: ActivePlugin
 ) : NsClient, Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -258,6 +265,11 @@ class NSClientV3Plugin @Inject constructor(
                                ev.isChanged(BooleanKey.NsClientNotificationsFromAlarms.key) ||
                                ev.isChanged(BooleanKey.NsClientNotificationsFromAnnouncements.key)
                            ) {
+                               if (ev.isChanged(StringKey.NsClientAccessToken.key) ||
+                                   ev.isChanged(StringKey.NsClientUrl.key)
+                               ) {
+                                   clearPrimaryTokenFailureNotify()
+                               }
                                stopService()
                                nsAndroidClient = null
                                setClient()
@@ -789,6 +801,29 @@ class NSClientV3Plugin @Inject constructor(
             .then(OneTimeWorkRequest.Builder(LoadDeviceStatusWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(DataSyncWorker::class.java).build())
             .enqueue()
+    }
+
+    // Virtual 5 Sep: LoadStatus 401 every minute with no alert. Virtual-only (not Live, not
+    // Client). One URGENT notification per 24h while the primary token stays dead; cleared on a
+    // good status/WS subscribe or a token/URL edit.
+    fun notifyPrimaryTokenFailure(detail: String) {
+        if (config.AAPSCLIENT || activePlugin.activePump !is VirtualPump) return
+        val now = dateUtil.now()
+        val last = preferences.get(LongKey.NsClientTokenFailNotifiedAt)
+        if (last != 0L && now - last < T.days(1).msecs()) return
+        preferences.put(LongKey.NsClientTokenFailNotifiedAt, now)
+        rxBus.send(
+            EventNewNotification(
+                Notification(Notification.NSCLIENT_TOKEN_FAILED, "NS access token failed: $detail", Notification.URGENT)
+            )
+        )
+        rxBus.send(EventNSClientNewLog("◄ TOKEN", "notify (24h): $detail"))
+    }
+
+    fun clearPrimaryTokenFailureNotify() {
+        if (preferences.get(LongKey.NsClientTokenFailNotifiedAt) != 0L)
+            preferences.put(LongKey.NsClientTokenFailNotifiedAt, 0L)
+        rxBus.send(EventDismissNotification(Notification.NSCLIENT_TOKEN_FAILED))
     }
 
     private fun enqueueSecondaryBolusCarbsWork() {

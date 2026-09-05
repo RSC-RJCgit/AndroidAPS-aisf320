@@ -144,6 +144,8 @@ open class Notification {
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
         const val PERMISSION_STEPS = 95
+        // Primary NS v3 access token rejected (LoadStatus / WS auth). Throttled 24h in NSClientV3Plugin.
+        const val NSCLIENT_TOKEN_FAILED = 96
 
         const val USER_MESSAGE = 1000
 

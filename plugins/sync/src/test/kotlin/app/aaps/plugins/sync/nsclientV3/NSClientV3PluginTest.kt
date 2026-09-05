@@ -81,7 +81,7 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
             NSClientV3Plugin(
                 aapsLogger, rh, preferences, aapsSchedulers, rxBus, context, fabricPrivacy,
                 receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
-                nsClientSource, storeDataForDb, decimalFormatter, l
+                nsClientSource, storeDataForDb, decimalFormatter, l, activePlugin
             )
         sut.nsAndroidClient = nsAndroidClient
         sut.nsClientV3Service = nsClientV3Service

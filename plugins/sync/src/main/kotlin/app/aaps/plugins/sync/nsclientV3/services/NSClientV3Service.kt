@@ -167,6 +167,7 @@ class NSClientV3Service : DaggerService() {
                 val response = args[0] as JSONObject
                 wsConnected = if (response.optBoolean("success")) {
                     rxBus.send(EventNSClientNewLog("◄ WS", "Subscribed for: ${response.optString("collections")}"))
+                    nsClientV3Plugin.clearPrimaryTokenFailureNotify()
                     // during disconnection updated data is not received
                     // thus run non WS load to get missing data
                     nsClientV3Plugin.initialLoadFinished = false
@@ -174,6 +175,7 @@ class NSClientV3Service : DaggerService() {
                     true
                 } else {
                     rxBus.send(EventNSClientNewLog("◄ WS", "Auth failed"))
+                    nsClientV3Plugin.notifyPrimaryTokenFailure("WS auth failed")
                     false
                 }
                 rxBus.send(EventNSClientUpdateGuiStatus())

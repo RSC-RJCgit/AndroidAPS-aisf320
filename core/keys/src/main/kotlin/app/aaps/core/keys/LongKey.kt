@@ -27,6 +27,8 @@ enum class LongKey(
     // Server-modified cursor for the secondary-NS treatment downloader. Separate from the legacy
     // event-time cursor above so the first upgraded run performs a recovery scan for backdated entries.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0, defaultedBySM = true),
+    // Last time we raised NSCLIENT_TOKEN_FAILED (24h gate). 0 = never, or cleared after a good auth.
+    NsClientTokenFailNotifiedAt("nsclient_token_fail_notified_at", 0, defaultedBySM = true),
     SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
     DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
     // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for
