@@ -1834,6 +1834,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
     }
 
+    // BMild *outcome* set only — not its entry criteria. 2-min 5.0 TT is the DelOff timer
+    // (2 loops at 1-min cadence). Callers keep their own note / markRun / Tier-3 latch.
+    // Offset-zero only binds below 5.9; a HiBrk fire at BGL > 7.0 never hits it.
+    private fun applyBMildOutcomeFactors(gMgdl: Double) {
+        val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+        setSmbDeliveryRatio(mildBase + 0.15)
+        startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)
+        if (gMgdl < 106.2 /* 5.9 mmol */) {
+            preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
+        }
+        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+    }
+
     // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
     private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
 
@@ -5270,18 +5283,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // right when a rise was passing those marks -- a poorly-defined SMB-ratio change exactly when
             // it mattered. Now one value on every fire; retune the single number (or ApsAutoIsfMildBoostRatio
             // itself) later. A relative bump on the configurable base, not an absolute.
-            val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-            val deliveryRatio = mildBase + 0.15
-            setSmbDeliveryRatio(deliveryRatio)               // stronger SMBs; the no-TT reset restores baseline
-            startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)  // 2-min target/timer; leaves profile at 100%
-            // Below 5.9mmol, the separate "no COB + BG under target+offset -> zero SMB" gate in
-            // DetermineBasalAutoISF can still block SMB outright regardless of delivery ratio — zero
-            // the offset for this same 2-min window so the boost above isn't wasted. Not applied at/above
-            // 5.9mmol: there's more headroom above target there already, so the gate is less likely to bind.
-            if (g < 106.2 /* 5.9 mmol */) {
-                preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
-            }
-            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+            applyBMildOutcomeFactors(g)
             sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
             addCarePortalNote("BMild")
             markRun("BolusGivenMild")
@@ -5321,14 +5323,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fire) {
                 // Flat delivery boost, matching BolusGivenMild above (2026-08-31, was the same 3-way
                 // BGL-tiered when). One value on every fire.
-                val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-                val deliveryRatio = mildBase + 0.15
-                setSmbDeliveryRatio(deliveryRatio)
-                startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)
-                if (g < 106.2 /* 5.9 mmol */) {
-                    preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
-                }
-                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                applyBMildOutcomeFactors(g)
                 sendSms("BolusGivenMildFailsafe: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} IOB=${round(iobNow, 2)} (no SMB in 20min despite confirmed rise)")
                 addCarePortalNote("BMildFS")
                 markRun("BolusGivenMildFailsafe")
@@ -6363,7 +6358,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Deliberately routes through a temp target rather than raising iobTH% -- EveningIobCeiling and
         // NightIobCeiling above only ever touch iobTH%/acce weight, so a TT is the one lever that reaches
         // a genuine overnight high without reopening the stacking risk those two ceilings exist to
-        // prevent. Same 4.0mmol target HighOver6.0ok1 already uses.
+        // prevent. Same 4.0mmol target HighOver6.0ok1 already uses -- except when BGL is already over
+        // 7.0 at fire (5 Sep 2026): then the 4.0/x2/5min set is replaced by BMild's *outcome* factors
+        // only (5.0 TT @ 2 min = 2 loops, mildBase+0.15, ppWeight high). Entry gates stay HiBrk's.
+        // Night's own bar is >=9.0, so every night fire takes that BMild-outcome path. Does not
+        // markRun BMild or latch Tier 3. Mid-band 6.5-7.0 (daytime only) still uses 4.0/x1.5/5min.
         //
         // The brake: unlike every SMB-stacking guard elsewhere in this file (smbSum10Min()/
         // smbSum30Min(), HardStackDelOff), which look at insulin already DELIVERED, this looks at how
@@ -6433,19 +6432,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 if (iobChange5 < 0.5) {
-                    // Added 2026-08-29 at explicit request: on top of the lowered TT itself, double the
-                    // current SMB delivery ratio for this same 5-min window -- gives the brake actual
-                    // dosing teeth rather than relying solely on the lower target. Reuses the existing
-                    // global "no active TT" delivery-ratio reset (search "DelOff" a few hundred lines up)
-                    // to revert automatically once this TT ends, whether that's the natural 5-min expiry
-                    // or the early HiBrkCut branch above cancelling it -- no separate revert logic needed
-                    // here. Doubles whatever the ratio currently IS (not the configured baseline), since
-                    // another boost could already be active; clamped to the ratio's own configured max.
-                    val preBoostDeliveryRatio = smb_delivery_ratio
-                    val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
-                    setSmbDeliveryRatio(boostedDeliveryRatio)
-                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                    sendSms("HighEveNightBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
+                        // BMild outcomes only (not BMild criteria). Night bar is >=9.0, so this is
+                        // the only night path. DelOff restores after the 2-min 5.0 TT.
+                        val preBoostDeliveryRatio = smb_delivery_ratio
+                        applyBMildOutcomeFactors(glucoseStatus.glucose)
+                        sendSms("HighEveNightBrake: BMild factors@2 loops (BGL>7.0), SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    } else {
+                        // Added 2026-08-29 at explicit request: on top of the lowered TT itself, double the
+                        // current SMB delivery ratio for this same 5-min window -- gives the brake actual
+                        // dosing teeth rather than relying solely on the lower target. Reuses the existing
+                        // global "no active TT" delivery-ratio reset (search "DelOff" a few hundred lines up)
+                        // to revert automatically once this TT ends, whether that's the natural 5-min expiry
+                        // or the early HiBrkCut branch above cancelling it -- no separate revert logic needed
+                        // here. Doubles whatever the ratio currently IS (not the configured baseline), since
+                        // another boost could already be active; clamped to the ratio's own configured max.
+                        val preBoostDeliveryRatio = smb_delivery_ratio
+                        val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
+                        setSmbDeliveryRatio(boostedDeliveryRatio)
+                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                        sendSms("HighEveNightBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    }
                     addCarePortalNote("HiBrk")
                     markRun("HighEveNightBrake")
                 } else {
@@ -6512,6 +6519,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    the 22:00-02:00 stretch is the same clock window as the Jul/Aug stacking
                 //    incidents, so this stays the milder lever.
                 // Shared 30-min throttle: at most one brake (either band) per 30 min.
+                // When BGL > 7.0 at fire (high band always; mid band above 7.0), use BMild *outcome*
+                // factors for 2 loops instead of 4.0/x2-or-x1.5/5min. Mid 6.5-7.0 keeps the old set.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 val midBand = !highBand && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
                     && checkAutomationState("MJ", "NOMJremains")
@@ -6519,14 +6528,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (highBand || midBand) {
                     val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                     if (iobChange5 < 0.5) {
-                        // SMBdel boost (x2 high / x1.5 mid); relies on the global "DelOff" no-active-TT
-                        // reset to revert once this TT ends, early or on time.
-                        val boostFactor = if (highBand) 2.0 else 1.5
                         val preBoostDeliveryRatio = smb_delivery_ratio
-                        val boostedDeliveryRatio = (preBoostDeliveryRatio * boostFactor).coerceAtMost(smb_delivery_ratio_max)
-                        setSmbDeliveryRatio(boostedDeliveryRatio)
-                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                        sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)} (x$boostFactor), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                        if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
+                            applyBMildOutcomeFactors(glucoseStatus.glucose)
+                            sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: BMild factors@2 loops (BGL>7.0), SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                        } else {
+                            // SMBdel boost (x1.5 mid 6.5-7.0); relies on the global "DelOff" no-active-TT
+                            // reset to revert once this TT ends, early or on time.
+                            val boostFactor = 1.5
+                            val boostedDeliveryRatio = (preBoostDeliveryRatio * boostFactor).coerceAtMost(smb_delivery_ratio_max)
+                            setSmbDeliveryRatio(boostedDeliveryRatio)
+                            startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                            sendSms("HighDaytimeBrake [6.5]: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)} (x$boostFactor), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                        }
                         addCarePortalNote(if (highBand) "HiBrkDay" else "HiBrkDayMid")
                         markRun("HighDaytimeBrake")
                     } else {
