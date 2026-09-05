@@ -63,6 +63,7 @@ import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.min
 
 class WizardDialog : DaggerDialogFragment() {
 
@@ -112,6 +113,9 @@ class WizardDialog : DaggerDialogFragment() {
     // Walking Soon pre-tick: leave the box alone once the user has touched it this session.
     private var walkingSoonUserOverride = false
     private var applyingWalkingSoonDefault = false
+    // BGL<6.0 drops the this-bolus-only max-bolus stepper to 2.0U. Manual stepper change wins.
+    private var maxBolusLowBgUserOverride = false
+    private var applyingMaxBolusLowBgDefault = false
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -188,8 +192,9 @@ class WizardDialog : DaggerDialogFragment() {
             decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep), false, binding.okcancel.ok
         )
         binding.maxBolusOverrideInput.setOnValueChangedListener {
+            if (!applyingMaxBolusLowBgDefault) maxBolusLowBgUserOverride = true
             preferences.put(DoubleKey.SafetyMaxBolus, binding.maxBolusOverrideInput.value)
-            calculateInsulin()
+            if (!applyingMaxBolusLowBgDefault) calculateInsulin()
         }
 
         if (profileFunction.getUnits() == GlucoseUnit.MGDL) {
@@ -519,6 +524,22 @@ class WizardDialog : DaggerDialogFragment() {
         applyingWalkingSoonDefault = false
     }
 
+    // Temporary max-bolus stepper only. Preference is reverted in onDestroy. If the standing
+    // SafetyMaxBolus is already below 2.0, leave it — this only decreases. BGL>=6.0 restores
+    // the session snapshot unless the user has touched the stepper.
+    private fun applyMaxBolusLowBgDefault(bgInput: Double) {
+        if (maxBolusLowBgUserOverride || applyingMaxBolusLowBgDefault) return
+        val gs = glucoseStatusProvider.getGlucoseStatusData()
+        val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
+        else gs?.glucose ?: 999.0
+        val want = if (bgMgdl < 108.1 /* 6.0 mmol */) min(originalSafetyMaxBolus, 2.0) else originalSafetyMaxBolus
+        if (abs(binding.maxBolusOverrideInput.value - want) < 0.001) return
+        applyingMaxBolusLowBgDefault = true
+        binding.maxBolusOverrideInput.value = want
+        preferences.put(DoubleKey.SafetyMaxBolus, want)
+        applyingMaxBolusLowBgDefault = false
+    }
+
     @SuppressLint("SetTextI18n")
     private fun calculateInsulin() {
         val profileStore = activePlugin.activeProfileSource.profile ?: return // not initialized yet
@@ -539,6 +560,7 @@ class WizardDialog : DaggerDialogFragment() {
         val protein = SafeParse.stringToInt(binding.proteinInput.text)
         val fat = SafeParse.stringToInt(binding.fatInput.text)
         applyWalkingSoonDefault(carbs, protein, fat, bg)
+        applyMaxBolusLowBgDefault(bg)
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection
