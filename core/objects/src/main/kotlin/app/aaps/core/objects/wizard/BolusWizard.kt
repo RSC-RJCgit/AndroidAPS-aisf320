@@ -185,6 +185,12 @@ class BolusWizard @Inject constructor(
     var hpSafetyProjectedMmol: Double? = null
     var hpSafetyCobDoseRemoved: Double = 0.0
         private set
+    // Wizard rise boost (5 Sep 2026): calculator total ×1.33 when BGL > 8.0 mmol and
+    // Delta, SDelta, LDelta are all > 0.2 mmol.
+    var wizardRiseBoostApplied: Boolean = false
+        private set
+    var wizardRiseBoostOriginal: Double = 0.0
+        private set
     var calculatedCorrection: Double = 0.0
         private set
 
@@ -396,6 +402,7 @@ class BolusWizard @Inject constructor(
         val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
         val deltaMmol = (glucoseStatus?.delta ?: 0.0) * Constants.MGDL_TO_MMOLL
         val shortDeltaMmol = (glucoseStatus?.shortAvgDelta ?: 0.0) * Constants.MGDL_TO_MMOLL
+        val longDeltaMmol = (glucoseStatus?.longAvgDelta ?: 0.0) * Constants.MGDL_TO_MMOLL
         val projectedHp = if (bgMgdl > 0.0) {
             bgMgdl * Constants.MGDL_TO_MMOLL - currentPositiveIob - calculatedTotalInsulin +
                 0.25 * min(deltaMmol, 0.0) + 0.25 * min(shortDeltaMmol, 0.0)
@@ -416,6 +423,23 @@ class BolusWizard @Inject constructor(
                 "Wizard HP safety: ${hpSafetyOriginalDose}U -> ${hpSafetyAdjustedDose}U, " +
                     "projectedHP=$projectedHp, IOB=$currentPositiveIob, delta=$deltaMmol, " +
                     "shortDelta=$shortDeltaMmol, removedCOB=${hpSafetyCobDoseRemoved}U"
+            )
+        }
+
+        // After percentage and HP safety: ×1.33 on the number the calculator would otherwise deliver.
+        // Wizard BG (not a second CGM read) for the 8.0 bar; CGM deltas for the three rise gates.
+        // Protein/fat delayed doses are not in calculatedTotalInsulin and stay unscaled.
+        if (calculatedTotalInsulin > 0.0 &&
+            bgMgdl * Constants.MGDL_TO_MMOLL > 8.0 &&
+            deltaMmol > 0.2 && shortDeltaMmol > 0.2 && longDeltaMmol > 0.2
+        ) {
+            wizardRiseBoostOriginal = calculatedTotalInsulin
+            calculatedTotalInsulin *= 1.33
+            wizardRiseBoostApplied = true
+            aapsLogger.info(
+                LTag.CORE,
+                "Wizard rise boost x1.33: ${wizardRiseBoostOriginal}U -> ${calculatedTotalInsulin}U, " +
+                    "bg=${bgMgdl * Constants.MGDL_TO_MMOLL} d=$deltaMmol sd=$shortDeltaMmol ld=$longDeltaMmol"
             )
         }
 
@@ -530,7 +554,11 @@ class BolusWizard @Inject constructor(
                 "(projected HP ${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
                 "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U)"
         } else ""
-        val combinedNote = listOf(notes, alwaysNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
+        val riseBoostNote = if (wizardRiseBoostApplied) {
+            "Wz133 ${decimalFormatter.to2Decimal(wizardRiseBoostOriginal)}U -> " +
+                "${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U (x1.33, BGL>8 + D/SD/LD>0.2)"
+        } else ""
+        val combinedNote = listOf(notes, alwaysNote, splitNote, hpSafetyNote, riseBoostNote).filter { it.isNotEmpty() }.joinToString("\n")
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
@@ -623,6 +651,13 @@ class BolusWizard @Inject constructor(
                     "${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}; " +
                     "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U")
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
+            )
+        }
+        if (wizardRiseBoostApplied) {
+            actions.add(
+                ("Wz133: ${decimalFormatter.to2Decimal(wizardRiseBoostOriginal)}U x1.33 -> " +
+                    "${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U (BGL>8, D/SD/LD>0.2)")
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor)
             )
         }
         if (config.AAPSCLIENT && insulinAfterConstraints > 0)
@@ -755,6 +790,10 @@ class BolusWizard @Inject constructor(
                 "${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
                 "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U"
         }
+        if (wizardRiseBoostApplied) {
+            message += "\nWz133: ${decimalFormatter.to2Decimal(wizardRiseBoostOriginal)}U x1.33 -> " +
+                "${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U (BGL>8, D/SD/LD>0.2)"
+        }
         return message
     }
 
@@ -812,7 +851,9 @@ class BolusWizard @Inject constructor(
                     // elsewhere in this file (e.g. "Db30: 0U (IOB rose 0.45U)") -- previously this path's
                     // notes field was left as whatever the user typed (usually nothing), so a carbs-only
                     // record left no trail explaining that a Wizard calculation ran and concluded zero.
-                    notes = this@BolusWizard.notes + if (insulinAfterConstraints == 0.0) " Wizard: 0U calculated" else ""
+                    notes = this@BolusWizard.notes +
+                        (if (wizardRiseBoostApplied) " Wz133" else "") +
+                        if (insulinAfterConstraints == 0.0) " Wizard: 0U calculated" else ""
                     // Real delivery path (insulin and/or carbs to actually record/deliver). Protein/fat-only
                     // entries (insulin==0 && carbs==0) deliberately do NOT take this branch — see the
                     // else-if below for why.

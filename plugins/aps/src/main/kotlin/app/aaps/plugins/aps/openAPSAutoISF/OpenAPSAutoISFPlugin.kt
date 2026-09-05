@@ -6371,9 +6371,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // margin under the two incidents that motivated the ceilings above: 27 Jul's burst measured
         // ~0.7U/5min, 6-7 Aug's two bursts ~0.9-1.0U/5min. Below 0.5U/5min is ordinary single-SMB
         // cycling, not a burst.
-        // The 30-min floor only applies to an actual firing (markRun sits inside the brake-clear
-        // branch) -- a braked cycle is rechecked every following minute rather than waiting out the
-        // full 30, so the TT still fires promptly once the burst itself subsides.
+        // Fire throttle is 2 min (not 30): long enough that the async 2-min 5.0 TT is visible next
+        // loop so this cannot double-fire the same window; short enough that a still-plateaued
+        // dura climb can re-arm as soon as that TT/DelOff window ends. A braked (iobChange5) cycle
+        // is rechecked every following minute -- markRun only sits in the fire branch.
         run {
             // Identifies OUR 4.0mmol brake TT only. Was `TT < 4.3mmol`, which also matched RecPod /
             // BolusGiven's 4.2mmol TT (75.7). 1 Sep 2026 15:34-15:35: RecPod then Giv-1 started 4.2 TTs
@@ -6410,7 +6411,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkCut")
                 }
-            } else if (readyToRun("HighEveNightBrake", 30)
+            } else if (readyToRun("HighEveNightBrake", 2)
                 && isTimeBetween(22, 0, 6, 0)
                 // Raised 2026-08-29 from 135.1 (7.5mmol) to 162.2 (9.0mmol) at explicit request -- 7.5mmol
                 // was firing on real data at ~8.0-8.1mmol readings that felt too low a bar for this brake.
@@ -6469,12 +6470,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // x2 path), which left 6.5-9.0 plateaus untreated until morning. Mid is the gentler x1.5
         // lever for that gap, not a reopening of the night x2 bar. Stops at 02:00 so it does not
         // overlap OvernightDuraRescue (02:00-04:00) or the deepest NightIobCeiling hours; 02:00-06:00
-        // stays night-HiBrk-only (>=9.0). Same 5-min TT / 30-min throttle / cut-short / duraISF /
-        // flat-BG / no-bolus-60min gates; mid still also requires NOMJremains and LowBG != 50recent.
-        // The no-bolus-60min gate is the daytime-specific extra vs night HiBrk: daytime carries far
-        // more routine bolus activity, so without it a fresh dose's own IOB/delta signature could
-        // look enough like "genuinely plateaued high" to fire on top of insulin already addressing
-        // the same high. SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
+        // stays night-HiBrk-only (>=9.0). Same cut-short / duraISF / flat-BG gates; mid still also
+        // requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
+        // re-arm floor were removed 5 Sep 2026: a meal bolus was locking the whole 16:00-16:34
+        // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. Fire throttle
+        // is now 2 min (same as night) so a still-flat dura plateau can re-arm after the TT ends.
+        // SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
         run {
             // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
@@ -6497,7 +6498,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkDayCut")
                 }
-            } else if (readyToRun("HighDaytimeBrake", 30)
+            } else if (readyToRun("HighDaytimeBrake", 2)
                 && isTimeBetween(6, 0, 2, 0)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
@@ -6507,10 +6508,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
-                && (minutesSinceLastNormalBolus() ?: Int.MAX_VALUE) > 60
             ) {
                 // Two entry BGL bands, both with every gate above (flat-BG bands, duraISF-dominant,
-                // Steroids Off, no bolus 60 min, iobChange5 < 0.5):
+                // Steroids Off, iobChange5 < 0.5):
                 //  - high (>= 9.0 mmol, 06:00-22:00 only): original plateaued-high brake -- TT 4.0,
                 //    SMBdel x2. After 22:00 this is night HiBrk's job, not ours.
                 //  - mid  (>  6.5 mmol, 06:00-02:00): stubborn plateau brake, only when MJ is
@@ -6518,7 +6518,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    but gentler SMBdel x1.5 -- less headroom from 6.5 to 4.0 than from 9.0, and
                 //    the 22:00-02:00 stretch is the same clock window as the Jul/Aug stacking
                 //    incidents, so this stays the milder lever.
-                // Shared 30-min throttle: at most one brake (either band) per 30 min.
+                // Shared 2-min fire throttle (both bands); active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), use BMild *outcome*
                 // factors for 2 loops instead of 4.0/x2-or-x1.5/5min. Mid 6.5-7.0 keeps the old set.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */

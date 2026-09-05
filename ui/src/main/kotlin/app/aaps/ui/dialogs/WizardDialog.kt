@@ -627,8 +627,11 @@ class WizardDialog : DaggerDialogFragment() {
 
             if (wizard.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0.0) {
                 val insulinText =
-                    if (wizard.calculatedTotalInsulin > 0.0) rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
-                        .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor) else ""
+                    if (wizard.calculatedTotalInsulin > 0.0) {
+                        val units = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
+                            .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
+                        if (wizard.wizardRiseBoostApplied) "$units Wz133" else units
+                    } else ""
                 val carbsText = if (carbsAfterConstraint > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsAfterConstraint).formatColor(
                     context, rh, app.aaps.core.ui.R.attr
                         .carbsColor
