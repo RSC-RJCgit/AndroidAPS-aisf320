@@ -49,6 +49,8 @@ class GoogleDriveManager @Inject constructor(
         private const val DRIVE_API_URL = "https://www.googleapis.com/drive/v3"
         private const val UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3"
         private val LOG_PREFIX = CloudConstants.LOG_PREFIX
+        // Match ShizukuAaps333Installer.MIN_PUMP_APK_BYTES — do not import that object (module cycle).
+        private const val MIN_PUMP_APK_BYTES = 20L * 1024L * 1024L
         
         // SharedPreferences keys
         private const val PREF_GOOGLE_DRIVE_REFRESH_TOKEN = "google_drive_refresh_token"
@@ -1204,8 +1206,8 @@ class GoogleDriveManager @Inject constructor(
         if (parent != null && !parent.isDirectory && !parent.mkdirs())
             return@withContext false to "mkdir failed ${parent.absolutePath}"
         val ok = streamDownload(pick.first, dest)
-        if (!ok || !dest.isFile || dest.length() <= 0L)
-            return@withContext false to "download failed ${pick.second}"
+        if (!ok || !dest.isFile || dest.length() < MIN_PUMP_APK_BYTES)
+            return@withContext false to "download failed ${pick.second} bytes=${dest.length()}"
         true to "drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
     }
 
@@ -1254,10 +1256,29 @@ class GoogleDriveManager @Inject constructor(
             aapsLogger.error(LTag.CORE, "$LOG_PREFIX APK_DOWNLOAD_FAIL id=$fileId code=${response.code}")
             return false
         }
-        dest.outputStream().use { out ->
-            response.body?.byteStream()?.use { it.copyTo(out) }
+        // Write *.part so a mid-transfer throw cannot leave dest as the newest (and smallest)
+        // APK for stageNewestAndPrune / Tasker to pick. 5 Sep 08:13: dest was 1.8MB after a throw.
+        val part = File(dest.path + ".part")
+        try {
+            if (part.exists() && !part.delete()) return false
+            part.outputStream().use { out ->
+                response.body?.byteStream()?.use { it.copyTo(out) }
+            }
+            if (!part.isFile || part.length() < MIN_PUMP_APK_BYTES) {
+                part.delete()
+                return false
+            }
+            if (dest.exists() && !dest.delete()) return false
+            if (!part.renameTo(dest)) {
+                part.copyTo(dest, overwrite = true)
+                part.delete()
+            }
+            return dest.isFile && dest.length() >= MIN_PUMP_APK_BYTES
+        } catch (e: Exception) {
+            part.delete()
+            aapsLogger.error(LTag.CORE, "$LOG_PREFIX APK_DOWNLOAD_EXCEPTION dest=${dest.absolutePath}", e)
+            return false
         }
-        return dest.isFile && dest.length() > 0L
     }
 
     /**

@@ -102,6 +102,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     companion object {
         private const val MGDL_TO_MMOL = 18.0182
         const val WINDOW_HOURS = 6L
+        // AIV csv + txt + settings + UserEntries 30h txt. UKFcheck and combined are separate.
+        const val AIV_EXPORT_FILE_COUNT = 4
 
         // combined<Name>.txt covers a wider trailing window than the 6h table export so it reads as
         // one continuous history rather than needing several 6h exports stitched together.
@@ -119,10 +121,9 @@ class AutoIsfHistoryExporter @Inject constructor(
         private const val UKF_CHECK_ZIP_COUNT = 6
     }
 
-    /** Queries the last [WINDOW_HOURS] hours and writes the CSV + text + settings files, returning
-     *  them so callers with cloud access (e.g. KeepAliveWorker, in the app module — this ui-module
-     *  class has no CloudStorageManager dependency) can additionally upload them. Used by the
-     *  background worker; the dialog uses [writeExport] directly with data it has already loaded. */
+    /** Queries the last [WINDOW_HOURS] hours and writes the AIV csv/txt/settings plus UserEntries
+     *  30h TXT ([AIV_EXPORT_FILE_COUNT] files), returning them so callers with cloud access
+     *  (e.g. KeepAliveWorker) can upload the same set. The dialog uses [writeExport] directly. */
     fun exportLast6Hours(now: Long): List<File> {
         val from = now - TimeUnit.HOURS.toMillis(WINDOW_HOURS)
         val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
@@ -291,18 +292,10 @@ class AutoIsfHistoryExporter @Inject constructor(
             exportTableAsText(dir, stamp, rows)?.let { written.add(it) }
             exportSettingsText(dir, stamp)?.let { written.add(it) }
             exportUkfCheckText(stamp)
-            // Added 2026-08-18: UserEntries_30h_<Name>.txt was previously only refreshed by manually
-            // pressing "Export CSV" on the Maintenance screen -- it isn't part of any DB entity this
-            // function already reads, so it doesn't ride along "for free" the way exportUkfCheckText()
-            // does; this is a genuine separate trigger. Rides both paths this function already serves
-            // (automatic 6-hourly KeepAliveWorker export and the manual dialog-open export) via the
-            // same non-interactive WorkManager enqueue the button uses -- see
-            // ImportExportPrefs.exportUserEntriesCsvAuto's own doc comment. Deliberately NOT added to
-            // the returned `written` list: it's an async WorkManager job (no File available
-            // synchronously here to add), and that list's size is checked for `== 3` elsewhere (see
-            // exportUkfCheckText's own doc comment on why a 4th entry there would misreport as a
-            // failure) -- same reasoning applies here.
-            importExportPrefs.get().exportUserEntriesCsvAuto()
+            // Fourth AIV file: dated UserEntries 30h TXT, written synchronously so it rides the
+            // same local list and cloud upload as the AIV csv/txt/settings trio. UKFcheck stays
+            // out of `written` (its own UKCs note). Expected size is AIV_EXPORT_FILE_COUNT.
+            importExportPrefs.get().writeUserEntriesAivFile()?.let { written.add(it) }
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF CSV export failed", e)
         }
@@ -474,11 +467,9 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  something) and UKCf (a real failure -- UKCf can ONLY come from the catch block below, so it
      *  always means a genuine read/write exception, never "no findings").
      *
-     *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is checked
-     *  for `== 3` in two places (KeepAliveWorker.exportAutoIsfHistoryIfDue, MaintenancePlugin.sendLogs)
-     *  to decide the AVLs/AVLf CarePortal note and EXPORT_STATUS log line, and to gate the explicit AIV
-     *  cloud upload -- a 4th file would misreport every future automatic export as a false FAILURE.
-     *  Remove this whole function (and its call in writeExport()) once the UKF3426 comparison
+     *  Deliberately NOT added to writeExport()'s returned `written` list: that list's size is
+     *  AIV_EXPORT_FILE_COUNT (AIV trio + UserEntries 30h txt). UKFcheck has its own UKCs/UKCn/UKCf
+     *  notes. Remove this whole function (and its call in writeExport()) once the UKF3426 comparison
      *  investigation is done and the diagnostic logging in OpenAPSAutoISFPlugin is removed. */
     private fun exportUkfCheckText(stamp: String) {
         try {

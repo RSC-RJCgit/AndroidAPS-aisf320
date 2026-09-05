@@ -20,7 +20,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.TE
-import app.aaps.core.data.model.UE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
@@ -131,7 +130,8 @@ class ImportExportPrefsImpl @Inject constructor(
     private val googleDriveManager: app.aaps.plugins.configuration.maintenance.cloud.providers.googledrive.GoogleDriveManager,
     private val exportOptionsDialog: ExportOptionsDialog,
     private val importSourceDialog: ImportSourceDialog,
-    private val maintenancePlugin: MaintenancePlugin
+    private val maintenancePlugin: MaintenancePlugin,
+    private val userEntryPresentationHelper: UserEntryPresentationHelper
 ) : ImportExportPrefs {
 
     override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
@@ -1107,9 +1107,14 @@ class ImportExportPrefsImpl @Inject constructor(
         sendLogs(trigger = "MANUAL", alsoExportAiv = true)
     }
 
-    // See ImportExportPrefs.exportUserEntriesCsvAuto's own doc comment. Same unique work name
-    // ("export") and policy as the interactive version above -- deliberately shared, so an automatic
-    // firing and a manual button press close together dedupe via WorkManager rather than double-running.
+    override fun writeUserEntriesAivFile(): File? = try {
+        writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger).datedText
+    } catch (e: Exception) {
+        aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT writeUserEntriesAivFile failed", e)
+        null
+    }
+
+    // Leftover UserEntries-only enqueue. writeExport no longer calls this.
     override fun exportUserEntriesCsvAuto() {
         aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT exportUserEntriesCsvAuto called, enqueuing WorkManager")
         WorkManager.getInstance(context).enqueueUniqueWork(
@@ -1134,28 +1139,11 @@ class ImportExportPrefsImpl @Inject constructor(
         @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
         @Inject lateinit var preferences: Preferences
 
-        private data class UserEntriesExportFiles(
-            val datedText: File,
-            val currentText: File,
-            val datedCsv: File,
-            val currentCsv: File,
-            val patientName: String
-        )
-
         override suspend fun doWorkAndLog(): Result {
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT doWorkAndLog started")
 
-            val entries: List<UE> = try {
-                persistenceLayer.getUserEntryFilteredDataFromTime(MidnightTime.calc() - T.days(90).msecs()).blockingGet()
-            } catch (e: Exception) {
-                aapsLogger.error(LTag.CORE, "CSV_EXPORT Error reading user entries from database", e)
-                ToastUtils.longErrorToast(context, rh.gs(R.string.csv_upload_error) + ": Database read error")
-                return Result.failure(workDataOf("Error" to "Database read error: ${e.message}"))
-            }
-
-            aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT entries count=${entries.size}")
             val files = try {
-                exportUserEntriesFiles(entries)
+                writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger)
             } catch (e: Exception) {
                 aapsLogger.error(LTag.CORE, "CSV_EXPORT failed to create patient-scoped TXT/CSV copies", e)
                 ToastUtils.longErrorToast(context, "User entries TXT/CSV export failed")
@@ -1173,47 +1161,8 @@ class ImportExportPrefsImpl @Inject constructor(
             }
         }
 
-        /**
-         * Keeps User Entries beside the AIV export for this patient:
-         * dated 30-hour TXT + 90-day CSV in aapsLogs/<PatientName>, and stable undated copies in output/.
-         */
-        private fun exportUserEntriesFiles(userEntries: List<UE>): UserEntriesExportFiles {
-            val thirtyHourEntries = persistenceLayer
-                .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
-                .blockingGet()
-            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val patientDir = (if (patientName.isNotEmpty()) File(prefFileList.aapsLogsPath, patientName) else prefFileList.aapsLogsPath).apply {
-                if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
-            }
-            val outputDir = File(patientDir, "output").apply {
-                if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
-            }
-            val timestamp = org.joda.time.LocalDateTime.now()
-                .toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))
-            val nameSuffix = patientName.takeIf { it.isNotEmpty() }?.let { "_$it" } ?: ""
-            val files = UserEntriesExportFiles(
-                datedText = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt"),
-                currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt"),
-                datedCsv = File(patientDir, "UserEntries${nameSuffix}_$timestamp.csv"),
-                currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv"),
-                patientName = patientName
-            )
-            val textContents = userEntryPresentationHelper.userEntriesToCsv(thirtyHourEntries)
-            val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
-            files.datedText.writeText(textContents, Charsets.UTF_8)
-            files.currentText.writeText(textContents, Charsets.UTF_8)
-            files.datedCsv.writeText(csvContents, Charsets.UTF_8)
-            files.currentCsv.writeText(csvContents, Charsets.UTF_8)
-            aapsLogger.info(
-                LTag.CORE,
-                "${CloudConstants.LOG_PREFIX} CSV_EXPORT local AIV-folder copies saved: " +
-                    "txt=${files.datedText.absolutePath}; csv=${files.datedCsv.absolutePath}; output=${outputDir.absolutePath}"
-            )
-            return files
-        }
-
         /** Uploads the dated TXT and CSV to the same patient-scoped cloud folder as AIV. */
-        private suspend fun exportToCloud(files: UserEntriesExportFiles): Result {
+        private suspend fun exportToCloud(files: UserEntriesAivLocal): Result {
             try {
                 val provider = cloudStorageManager.getActiveProvider()
                 if (provider == null) {
@@ -1303,4 +1252,57 @@ class ImportExportPrefsImpl @Inject constructor(
             return ret
         }
     }
+}
+
+private data class UserEntriesAivLocal(
+    val datedText: File,
+    val currentText: File,
+    val datedCsv: File,
+    val currentCsv: File,
+    val patientName: String
+)
+
+/** Dated 30h TXT + 90-day CSV beside AIV, plus stable output/ copies. Shared by writeExport and CsvExportWorker. */
+private fun writeUserEntriesAivLocal(
+    persistenceLayer: PersistenceLayer,
+    preferences: Preferences,
+    prefFileList: FileListProvider,
+    userEntryPresentationHelper: UserEntryPresentationHelper,
+    aapsLogger: AAPSLogger
+): UserEntriesAivLocal {
+    val userEntries = persistenceLayer
+        .getUserEntryFilteredDataFromTime(MidnightTime.calc() - T.days(90).msecs())
+        .blockingGet()
+    val thirtyHourEntries = persistenceLayer
+        .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
+        .blockingGet()
+    val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+    val patientDir = (if (patientName.isNotEmpty()) File(prefFileList.aapsLogsPath, patientName) else prefFileList.aapsLogsPath).apply {
+        if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
+    }
+    val outputDir = File(patientDir, "output").apply {
+        if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
+    }
+    val timestamp = org.joda.time.LocalDateTime.now()
+        .toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))
+    val nameSuffix = patientName.takeIf { it.isNotEmpty() }?.let { "_$it" } ?: ""
+    val files = UserEntriesAivLocal(
+        datedText = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt"),
+        currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt"),
+        datedCsv = File(patientDir, "UserEntries${nameSuffix}_$timestamp.csv"),
+        currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv"),
+        patientName = patientName
+    )
+    val textContents = userEntryPresentationHelper.userEntriesToCsv(thirtyHourEntries)
+    val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
+    files.datedText.writeText(textContents, Charsets.UTF_8)
+    files.currentText.writeText(textContents, Charsets.UTF_8)
+    files.datedCsv.writeText(csvContents, Charsets.UTF_8)
+    files.currentCsv.writeText(csvContents, Charsets.UTF_8)
+    aapsLogger.info(
+        LTag.CORE,
+        "${CloudConstants.LOG_PREFIX} CSV_EXPORT local AIV-folder copies saved: " +
+            "txt=${files.datedText.absolutePath}; csv=${files.datedCsv.absolutePath}; output=${outputDir.absolutePath}"
+    )
+    return files
 }

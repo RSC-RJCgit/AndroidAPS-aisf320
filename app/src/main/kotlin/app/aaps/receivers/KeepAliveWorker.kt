@@ -163,7 +163,7 @@ class KeepAliveWorker(
         return Result.success()
     }
 
-    // Automatic AutoISF history export (CSV + text + settings) every 6 hours, so the files land in
+    // Automatic AutoISF history export (CSV + text + settings + UserEntries 30h) every 6 hours, so the files land in
     // aapsLogs alongside the rolling log files without needing to open the history dialog. Same
     // same 6-hour throttle as the cloud log export above. Also uploads the same files to cloud storage
     // (CloudConstants.CLOUD_PATH_AIV — same "/AAPS/export/<name>" convention as logs/preferences),
@@ -178,15 +178,16 @@ class KeepAliveWorker(
             val now = dateUtil.now()
             val writtenFiles = autoIsfHistoryExporter.exportLast6Hours(now)
             autoIsfHistoryExporter.buildCombinedExport(now)
-            if (writtenFiles.size == 3)
+            val expect = AutoIsfHistoryExporter.AIV_EXPORT_FILE_COUNT
+            if (writtenFiles.size == expect)
                 aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
             else
-                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
+                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/$expect")
             ExportScriptDebugStatus.add(
-                if (writtenFiles.size == 3) "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=3"
-                else "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
+                if (writtenFiles.size == expect) "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=SUCCESS files=$expect"
+                else "EXPORT_STATUS trigger=AUTOMATIC_6H component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/$expect"
             )
-            autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
+            autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == expect) "AVLs" else "AVLf")
             preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
             maintenancePlugin.uploadAivFilesToCloud(writtenFiles, "AUTOMATIC_6H", onCloudComplete)
         } else onCloudComplete?.invoke()

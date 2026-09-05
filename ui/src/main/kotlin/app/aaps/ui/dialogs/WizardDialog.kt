@@ -109,6 +109,9 @@ class WizardDialog : DaggerDialogFragment() {
     // has to be live in the preference itself — not just checked at confirm time — for the wizard's own
     // running total/split-bolus display to reflect it.
     private var originalSafetyMaxBolus = 0.0
+    // Walking Soon pre-tick: leave the box alone once the user has touched it this session.
+    private var walkingSoonUserOverride = false
+    private var applyingWalkingSoonDefault = false
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -257,12 +260,15 @@ class WizardDialog : DaggerDialogFragment() {
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
         binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
 
-        // "Walking soon" pre-tick default: changed 2026-08-29 at explicit request from a step-count/delta
-        // heuristic (quiet or already-active recent steps, not currently rising fast) to a plain current-BG
-        // check -- ticked when BG is already on the lower side (under 6.0mmol), off otherwise. User can
-        // still untick/tick manually regardless of this default.
-        val currentBgMgdl = glucoseStatusProvider.getGlucoseStatusData()?.glucose ?: 999.0
-        binding.walkingSoonCheckbox.isChecked = currentBgMgdl < 108.1 /* 6.0 mmol */
+        // Walking Soon default: some movement (steps60>100) AND BGL<6.0, not rising fast.
+        // Sitting still never pre-ticks. Manual tick covers "walking soon" while quiet.
+        // Re-applied from calculateInsulin when carbs/BG change, unless the user touched the box.
+        applyWalkingSoonDefault(
+            carbs = (savedInstanceState?.getDouble("carbs_input") ?: carbsPassedIntoWizard).toInt(),
+            protein = savedInstanceState?.getDouble("protein_input")?.toInt() ?: 0,
+            fat = savedInstanceState?.getDouble("fat_input")?.toInt() ?: 0,
+            bgInput = savedInstanceState?.getDouble("bg_input") ?: 0.0
+        )
         // ok button
         binding.okcancel.ok.setOnClickListener {
             if (okClicked) {
@@ -299,7 +305,10 @@ class WizardDialog : DaggerDialogFragment() {
         binding.iobCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
         binding.bgTrendCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
         binding.sbCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
-        binding.walkingSoonCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
+        binding.walkingSoonCheckbox.setOnCheckedChangeListener { _, _ ->
+            if (!applyingWalkingSoonDefault) walkingSoonUserOverride = true
+            calculateInsulin()
+        }
 
         val showCalc = preferences.get(BooleanKey.WizardCalculationVisible)
         binding.delimiter.visibility = showCalc.toVisibility()
@@ -484,6 +493,32 @@ class WizardDialog : DaggerDialogFragment() {
         }
     }
 
+    // steps60>100 = some movement (Usual2 / UsuIP band), not the 1000 sustained-walk cutoff.
+    // AND BGL<6.0 (29 Aug intention). Not rising fast. Quiet meals stay off. carbs/protein/fat
+    // unused here; kept so calculateInsulin can re-apply when those fields change. Manual
+    // tick/untick wins for the rest of the dialog.
+    @Suppress("UNUSED_PARAMETER")
+    private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean {
+        val recentSteps60 = persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - T.mins(60).msecs(), dateUtil.now())
+            .maxByOrNull { it.timestamp }?.steps60min ?: 0
+        val gs = glucoseStatusProvider.getGlucoseStatusData()
+        val notRisingFast = (gs?.delta ?: 0.0) <= 0.9 /* +0.05 mmol/5min */
+        val someMovement = recentSteps60 > 100
+        val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
+        else gs?.glucose ?: 999.0
+        val low = bgMgdl < 108.1 /* 6.0 mmol */
+        return someMovement && low && notRisingFast
+    }
+
+    private fun applyWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double) {
+        if (walkingSoonUserOverride || applyingWalkingSoonDefault) return
+        val want = computeWalkingSoonDefault(carbs, protein, fat, bgInput)
+        if (binding.walkingSoonCheckbox.isChecked == want) return
+        applyingWalkingSoonDefault = true
+        binding.walkingSoonCheckbox.isChecked = want
+        applyingWalkingSoonDefault = false
+    }
+
     @SuppressLint("SetTextI18n")
     private fun calculateInsulin() {
         val profileStore = activePlugin.activeProfileSource.profile ?: return // not initialized yet
@@ -503,6 +538,7 @@ class WizardDialog : DaggerDialogFragment() {
         val carbs = SafeParse.stringToInt(binding.carbsInput.text)
         val protein = SafeParse.stringToInt(binding.proteinInput.text)
         val fat = SafeParse.stringToInt(binding.fatInput.text)
+        applyWalkingSoonDefault(carbs, protein, fat, bg)
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection

@@ -17,6 +17,9 @@ internal object ShizukuAaps333Installer {
     const val FIXED_NAME = "aapsNewestAPK.apk"
     const val FIXED_NAME_NO_EXT = "aapsNewestAPK"
     const val KEEP_ARCHIVE = 20
+    // Full pump APKs here are ~90MB. A Drive mid-write leftover (5 Sep 08:13: 1.8MB) must
+    // not win findNewestSourceApk() or count as a Tasker stage success.
+    const val MIN_PUMP_APK_BYTES = 20L * 1024L * 1024L
 
     // Longer name first so path matching does not treat AAPS333 as AAPS3.
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
@@ -40,13 +43,16 @@ internal object ShizukuAaps333Installer {
         for (name in ARCHIVE_NAMES) {
             for (dir in newestDirs(name)) {
                 val withExt = File(dir, FIXED_NAME)
-                if (withExt.isFile) return withExt
+                if (isPlausiblePumpApk(withExt)) return withExt
                 val noExt = File(dir, FIXED_NAME_NO_EXT)
-                if (noExt.isFile) return noExt
+                if (isPlausiblePumpApk(noExt)) return noExt
             }
         }
         return null
     }
+
+    fun isPlausiblePumpApk(file: File): Boolean =
+        file.isFile && file.length() >= MIN_PUMP_APK_BYTES
 
     // Copy newest matching APK into that phone's archive/newest/aapsNewestAPK.apk and prune
     // older APKs in that same archive. Download is a search root only — not pruned.
@@ -57,11 +63,17 @@ internal object ShizukuAaps333Installer {
         val destDir = newestDirs(archiveName).first()
         if (!destDir.exists() && !destDir.mkdirs())
             return false to "mkdir failed ${destDir.absolutePath}"
-        destDir.listFiles()?.forEach { it.delete() }
         val dest = File(destDir, FIXED_NAME)
+        // Already have this APK in newest/ — do not wipe/recopy. Caller treats ok=true
+        // so Tasker is not launched (5 Sep 08:13 Tasker overwrote a good 94MB file).
+        if (isPlausiblePumpApk(dest) && dest.length() == src.length() && dest.lastModified() >= src.lastModified()) {
+            val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
+            return true to "already newest dest=${dest.absolutePath} bytes=${dest.length()} src=${src.absolutePath} pruned=$pruned"
+        }
+        destDir.listFiles()?.forEach { it.delete() }
         src.copyTo(dest, overwrite = true)
-        if (!dest.isFile || dest.length() <= 0L)
-            return false to "copy failed ${dest.absolutePath}"
+        if (!isPlausiblePumpApk(dest))
+            return false to "copy failed ${dest.absolutePath} bytes=${dest.length()}"
         val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
         return true to "src=${src.absolutePath} dest=${dest.absolutePath} bytes=${dest.length()} pruned=$pruned"
     }
@@ -70,7 +82,7 @@ internal object ShizukuAaps333Installer {
     // "System server has no access to read file context u:object_r:fuse:s0". Copy into
     // /data/local/tmp via Shizuku shell first, then install from that path.
     fun install(apk: File): Pair<Boolean, String> {
-        if (!apk.isFile || apk.length() <= 0L) return false to "missing ${apk.absolutePath}"
+        if (!isPlausiblePumpApk(apk)) return false to "missing or too small ${apk.absolutePath} bytes=${apk.length()}"
         val tmp = "/data/local/tmp/$FIXED_NAME"
         val (cpCode, cpText) = exec(arrayOf("cp", "-f", apk.absolutePath, tmp))
         if (cpCode != 0) return false to "cp exit=$cpCode $cpText"
@@ -119,9 +131,10 @@ internal object ShizukuAaps333Installer {
                 continue
             }
             val name = f.name
+            if (name.endsWith(".part", ignoreCase = true)) continue
             if (!name.endsWith(".apk", ignoreCase = true) && name != FIXED_NAME_NO_EXT) continue
             if (skipName.containsMatchIn(name)) continue
-            if (f.isFile && f.length() > 0L) into.add(f)
+            if (isPlausiblePumpApk(f)) into.add(f)
         }
     }
 

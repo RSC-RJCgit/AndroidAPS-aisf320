@@ -1370,29 +1370,50 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // AAPS Java File I/O often cannot see /sdcard/AAPS3(33)/ApkDownload without All-files access;
     // Tasker's Run Shell can. Install (5.200) already fired Tasker after an AAPS miss — Stage
     // used not to, so List2 "Stage newest" wrote ApkNf while "Install newest" still succeeded.
-    private fun stageNewestAaps333Apk(reason: String): Boolean {
+    private data class StageApkOutcome(
+        val ok: Boolean,
+        val aapsCopy: Boolean,
+        val detail: String,
+        val taskerStatus: String
+    )
+
+    private fun stageNewestAaps333Apk(reason: String): StageApkOutcome {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "AAPS333 APK stage skipped on AAPSCLIENT ($reason)")
-            return false
+            return StageApkOutcome(ok = false, aapsCopy = false, detail = "client", taskerStatus = "skipped")
         }
         var ok = false
+        var aapsCopy = false
         var detail = ""
+        var taskerStatus = "skipped"
+        var driveOk = false
+        var driveDetail = "Drive not attempted"
         try {
             val driveDest = ShizukuAaps333Installer.driveFetchDest()
-            val (driveOk, driveDetail) = importExportPrefs.downloadNewestDriveAapsApk(driveDest)
+            val fetched = importExportPrefs.downloadNewestDriveAapsApk(driveDest)
+            driveOk = fetched.first
+            driveDetail = fetched.second
             aapsLogger.info(LTag.APS, "Drive/AAPS apk fetch ($reason): ok=$driveOk $driveDetail")
-            // Local files come from DriveSync into AAPS3|AAPS333/APKdownload — already walked by
-            // stageNewestAndPrune. File manager does not place them under /sdcard/AAPS.
+        } catch (e: Exception) {
+            driveDetail = "Drive exception ${e.message}"
+            aapsLogger.warn(LTag.APS, "Drive/AAPS apk fetch failed ($reason)", e)
+        }
+        try {
+            // Always run local copy even if Drive threw — 5 Sep 08:13 skipped this and Tasker
+            // then staged a 1.8MB leftover. The complete APK was already under APKdownload.
             val result = ShizukuAaps333Installer.stageNewestAndPrune()
             ok = result.first
+            aapsCopy = ok
             detail = if (driveOk) "$driveDetail; ${result.second}" else "${result.second}; Drive $driveDetail"
             aapsLogger.info(LTag.APS, "AAPS333 APK stage ($reason): $detail")
         } catch (e: Exception) {
-            detail = e.message ?: "exception"
+            detail = "${e.message ?: "exception"}; Drive $driveDetail"
             aapsLogger.warn(LTag.APS, "AAPS333 APK stage failed", e)
         }
+        // Tasker only if AAPS did not already put a plausible APK in newest/. Install used to
+        // fire Tasker unconditionally and could overwrite that file (5 Sep 08:13, 1.8MB).
         if (!ok) {
-            val taskerStatus = sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
+            taskerStatus = sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
             try {
                 Thread.sleep(2500L)
             } catch (_: InterruptedException) {
@@ -1400,7 +1421,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newest = ShizukuAaps333Installer.newestPumpApk()
             if (newest != null) {
                 ok = true
-                detail = "Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus dest=${newest.absolutePath} bytes=${newest.length()}"
+                detail = "Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus dest=${newest.absolutePath} bytes=${newest.length()}; $detail"
                 aapsLogger.info(LTag.APS, "AAPS333 APK stage via Tasker ($reason): $detail")
             } else {
                 detail = "$detail; Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus newest=missing"
@@ -1413,7 +1434,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("ApkNf")
             sendSms("AAPS333 APK stage failed: $detail")
         }
-        return ok
+        return StageApkOutcome(ok = ok, aapsCopy = aapsCopy, detail = detail, taskerStatus = taskerStatus)
     }
 
     // List2 / 5.200: stage first, then Shizuku pm install -r of that staged file.
@@ -1425,18 +1446,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
             return
         }
-        // AAPS Java File I/O often cannot see /sdcard/AAPS333/ApkDownload without
-        // MANAGE_EXTERNAL_STORAGE; Tasker's Run Shell can. Always fire Tasker even when
-        // AAPS stage fails, then re-check newest/ before giving up.
-        val stagedByAaps = stageNewestAaps333Apk(reason)
-        val taskerStatus = sendTaskerRunTask(TASKER_INSTALL_NEWEST_TASK)
-        if (!stagedByAaps) {
-            // Brief wait for Tasker shell copy into newest/.
-            try {
-                Thread.sleep(2500L)
-            } catch (_: InterruptedException) {
-            }
-        }
+        // Stage already ran Tasker if AAPS copy missed. Do not fire Tasker again here —
+        // that second call could overwrite a good newest/ APK (5 Sep 08:13).
+        val stage = stageNewestAaps333Apk(reason)
+        val stagedByAaps = stage.aapsCopy
+        val taskerStatus = stage.taskerStatus
         // Brief retries: binder can arrive a beat after Shizuku UI shows "running".
         var shizukuUp = ShizukuAaps333Installer.shizukuRunning()
         if (!shizukuUp) {
@@ -1487,7 +1501,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.absolutePath}: $detail")
             if (ok) {
                 addCarePortalNote("ApkOk")
-                sendSms("Shizuku APK install Success: ${apk.name}")
+                sendSms("Shizuku APK install Success: ${apk.name} (aapsStage=$stagedByAaps Tasker status=$taskerStatus)")
             } else {
                 addCarePortalNote("ApkMs")
                 sendSms("Shizuku APK install failed: $detail")
@@ -2552,7 +2566,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // Switched 2026-08-30 at explicit request from the pure raw/noise channel (rawDelta5MinMgdl/
-            // rawDelta1MinMgdl -- still used elsewhere, e.g. bg3's own mirror check) to ukfRawMetrics(),
+            // rawDelta1MinMgdl -- Giv-3/bg3 now uses ukfRawMetrics too) to ukfRawMetrics(),
             // the same Kalman-filtered raw-channel helper HP2 (hypoPrediction2Mmol) already relies on
             // throughout this file's real, non-Virtual-gated automations. One call, both values, rather
             // than two independent raw queries. Note: this closes nothing against a SUSTAINED multi-minute
@@ -2655,8 +2669,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // Same UKF-smoothed raw channel as BMild / HP2 (ukfRawMetrics), not unsmoothed Libre .noise.
+            val ukfRawForBg3 = ukfRawMetrics()
+            val rawDelta5 = ukfRawForBg3.delta5 ?: -9999.0
+            val rawDelta1 = ukfRawForBg3.delta1 ?: -9999.0
             // While SMBs are stacking (avg gap <=70s over the last 5 min), raise the rise bar 10%
             // (x1.10) rather than blocking outright -- the boost can still fire on a strong enough rise.
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
@@ -2999,14 +3015,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         //
-        // Last raw Libre >12.0 mmol — updated every cycle it is seen, BEFORE OldSensorAdj's
-        // SensorAge-off / LowRaw24 returns. Those returns used to skip this write, so Virtual
-        // (SensorAge off) never latched the same 17.5 Live recorded, and MoreMJ's 48h
-        // noRecentHigh OR-path then fired on Virtual only (5 Sep 06:00).
+        // Last raw Libre >12.0 mmol — live write every cycle it is seen, BEFORE OldSensorAdj's
+        // SensorAge-off / LowRaw24 returns (those used to skip the write). If the live value is
+        // not high, a 48h retrospective scan of .noise can still set the latch (Virtual after 782
+        // with NS copies that include raw). MoreMJ's 48h OR-path needs this latch.
         run {
             val rawGForOver12 = rawGlucoseMgdl()
             if (rawGForOver12 != null && rawGForOver12 > 216.2 /* 12.0 mmol raw */) {
                 preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, dateUtil.now())
+            } else {
+                // Retrospective: if the live latch never wrote (SensorAge-off skip before 782,
+                // or NS copy with .noise but no current high), scan the last 48h of raw Libre
+                // and adopt the newest reading >12.0. Throttled to 30 min while still empty.
+                val existing = preferences.get(LongKey.ApsAutoIsfLibreOver12Ts)
+                val nowMs = dateUtil.now()
+                if ((existing == 0L || nowMs - existing > T.hours(48).msecs()) && readyToRun("LibreOver12Backfill", 30)) {
+                    val threshold = 12.0 * Constants.MMOLL_TO_MGDL
+                    val hit = persistenceLayer
+                        .getBgReadingsDataFromTimeToTime(nowMs - T.hours(48).msecs(), nowMs, ascending = false)
+                        .firstOrNull { it.noise != null && it.noise!! > threshold }
+                    if (hit != null) preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, hit.timestamp)
+                    markRun("LibreOver12Backfill")
+                }
             }
             // LowRaw24Cal has priority while its temporary six-hour override is active.
             if (preferences.get(BooleanKey.ApsAutoIsfLowRaw24OverrideActive)) return@run
@@ -5152,17 +5182,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val postBolusGate = cob >= 9
                 && preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) >= 0.20
                 && autoIsfValues.duraIsf < autoIsfValues.acceIsf
-            // Raw Libre deltas (both normalised to a per-5-min rate) — declared up here so bg1/bg2 can
-            // gate on them too, not just bg3.
-            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            // UKF-smoothed raw D1/D5 (same ukfRawMetrics as Giv-3 / BMild), so a single-sample
+            // Libre bounce cannot confirm Giv-1/2. Same magnitudes as each branch's AAPS delta.
+            val ukfRawForGiv = ukfRawMetrics()
+            val rawDelta5 = ukfRawForGiv.delta5 ?: -9999.0
+            val rawDelta1 = ukfRawForGiv.delta1 ?: -9999.0
             // Block 1: recent bolus (5–35 min), rising BGL, low steps, iobTH<71, steroids off.
-            // Raw-Libre confirmation added at the SAME magnitude as each branch's AAPS delta, so a
-            // smoothed-delta blip the sensor doesn't back up can't start the boost.
             val bgRise1 = g >= 108.1 && sd >= 3.6 && d >= 3.6   // >=6.0 mmol rising
-                && rawDelta5 >= 3.6 && rawDelta1 >= 3.6 /* 0.2 mmol raw confirmation */
+                && rawDelta5 >= 3.6 && rawDelta1 >= 3.6 /* 0.2 mmol UKFraw confirmation */
             val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
-                && rawDelta5 >= 7.2 && rawDelta1 >= 7.2 /* 0.4 mmol raw confirmation */
+                && rawDelta5 >= 7.2 && rawDelta1 >= 7.2 /* 0.4 mmol UKFraw confirmation */
             val profileName = profileFunction.getProfileName()
             val onNormalProfile = profileName == preferences.get(StringKey.ApsAutoIsfStandardProfileName) || profileName == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
@@ -5170,9 +5199,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (lastBolusMin <= 120 || cob >= 10)
                 && lastBolusMin >= 5 && lastBolusMin <= 35 && onNormalProfile && recentBolusDeltaCapOk
             // Block 2: high BGL (>=10 mmol), COB>=9, rising, bolus within 90 min, not MJ state.
-            // Same-magnitude raw-Libre confirmation as its AAPS delta (>0.2 mmol).
+            // Same-magnitude UKFraw confirmation as its AAPS delta (>0.2 mmol).
             val bg2 = postBolusGate && g >= 180.2 && lastBolusMin <= 90 && d > 3.6 && cob >= 9
-                && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol raw confirmation */ && recentBolusDeltaCapOk
+                && rawDelta5 > 3.6 && rawDelta1 > 3.6 /* 0.2 mmol UKFraw confirmation */ && recentBolusDeltaCapOk
                 && !checkAutomationState("MJ", "NOMJremains")
             // Block 3: delivery-driven rise with NO recent manual bolus/carbs. Inner rise criteria live
             // in bg3BasicCriteriaMet() (snapshotted above, before this block's markRun). Reuse that
@@ -5314,8 +5343,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         run {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val rawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val rawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            val ukfRawDbg = ukfRawMetrics()
+            val rawDelta5 = ukfRawDbg.delta5 ?: -9999.0
+            val rawDelta1 = ukfRawDbg.delta1 ?: -9999.0
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val thresholdScale = deliveryBaseline / 0.17
@@ -5382,11 +5412,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val off2 = g >= 108.1 /* 6.0 */ && d >= -4.50 /* -0.25 */ && sd >= -4.50
 
             // TToff3 — plateau-into-rise: same BGL/IOB/COB floor, but now requires an actual
-            // rise (was a flat ±0.10 band). Both the Libre raw 5-min delta and the AAPS delta
-            // must be ≥ +0.10 mmol, so a flat/falling low no longer reverses the TT — this is
-            // what breaks the Set50↔TToff flap at ~4.5–4.7.
+            // rise (was a flat ±0.10 band). Both UKFraw D5 and the AAPS delta must be ≥ +0.10
+            // mmol, so a flat/falling low no longer reverses the TT — this is what breaks the
+            // Set50↔TToff flap at ~4.5–4.7.
             val off3 = cob <= 4.0 && g >= 81.1 /* 4.5 */ && iob <= 0.8 &&
-                (rawDelta5MinMgdl() ?: -9999.0) >= 1.8 /* Libre 5-min ≥ +0.10 */ &&
+                (ukfRawMetrics().delta5 ?: -9999.0) >= 1.8 /* UKFraw D5 ≥ +0.10 */ &&
                 d >= 1.8 /* Delta ≥ +0.10 */
 
             // TToff4 — confident recovery: fast active rise, not exercising

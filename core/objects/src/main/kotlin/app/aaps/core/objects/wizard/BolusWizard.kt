@@ -222,8 +222,8 @@ class BolusWizard @Inject constructor(
     // usePercentage/totalPercentage/percentageCorrection, so the delayed-bolus fullRequired calculation
     // (see the walkingSoon branch in commonProcessing()'s success callback) can keep reading those
     // fields untouched and top up toward the user's own normal percentage rather than toward this
-    // override. See WizardDialog.kt for the pre-tick default (quiet OR already-active steps, BG not
-    // already rising fast).
+    // override. See WizardDialog.kt for the pre-tick default (steps60>100 AND BGL<6.0, not
+    // rising fast).
     var walkingSoon: Boolean = false
 
     fun doCalc(

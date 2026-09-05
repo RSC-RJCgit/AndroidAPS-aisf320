@@ -26,10 +26,16 @@ interface ImportExportPrefs {
     fun exportUserEntriesCsv(activity: FragmentActivity)
 
     /**
-     * Non-interactive UserEntries-only rider for [AutoIsfHistoryExporter.writeExport] (KeepAliveWorker
-     * and dialog-open export). Enqueues CsvExportWorker against the injected Context -- must stay
-     * UserEntries-only so it does not re-enter [sendLogs] from inside writeExport's AIV path.
-     * Added 2026-08-18 so UserEntries_30h_<Name>.txt stops going stale between manual exports.
+     * Writes UserEntries next to the AIV files (dated 30h TXT, 90-day CSV, plus output/ copies).
+     * Returns the dated 30h TXT so [AutoIsfHistoryExporter.writeExport] can treat it as the
+     * fourth AIV file and upload it on the same cloud path as the AIV trio.
+     */
+    fun writeUserEntriesAivFile(): File?
+
+    /**
+     * Leftover UserEntries-only WorkManager enqueue. writeExport no longer uses this -- it writes
+     * the fourth AIV file synchronously via [writeUserEntriesAivFile]. Kept for any remaining
+     * callers that only want UserEntries without the AIV trio.
      */
     fun exportUserEntriesCsvAuto()
     fun exportApsResult(algorithm: String?, input: JSONObject, output: JSONObject?)

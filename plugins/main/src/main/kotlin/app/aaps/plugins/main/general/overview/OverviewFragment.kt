@@ -2236,13 +2236,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // same as the Maintenance screen's own "Send logs" button. Fixed 2026-08-22 to mention that
             // AIV/settings export at all (previously silently omitted).
             //
-            // Fixed again 2026-08-23: still didn't mention UserEntries. Traced the real chain --
-            // sendLogs(alsoExportAiv=true) -> AutoIsfHistoryExporter.exportLast6Hours() -> (as well as
-            // the 3 AIV files) importExportPrefs.exportUserEntriesCsvAuto(), a separate async WorkManager
-            // job (CsvExportWorker) that writes its own dated+current UserEntries text/CSV files AND
-            // uploads them to cloud storage too (exportToCloud() inside that worker) -- a genuinely
-            // separate export+upload this action also triggers, not folded into the "AIV data" wording.
-            currentValue = { "Effect: exports+uploads AIV data, a UserEntries CSV/TXT export, and a settings-snapshot backup, then zips logs and sends everything to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
+            // UserEntries 30h TXT is the fourth AIV file (written synchronously in writeExport,
+            // uploaded with the AIV csv/txt/settings trio). Not a separate WorkManager upload.
+            currentValue = { "Effect: exports+uploads AIV data (csv/txt/settings + UserEntries 30h), then zips logs and sends everything to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
         ),
         TtCode.Single("Tog Graph5 (main clone) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
         // Stepped rather than two Single rows: the two codes are alternative values of one setting (the

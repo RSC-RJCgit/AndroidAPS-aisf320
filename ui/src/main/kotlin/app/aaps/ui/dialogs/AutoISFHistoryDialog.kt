@@ -123,15 +123,16 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             Executors.newSingleThreadExecutor().execute {
                 val writtenFiles = autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allCarePortalNotes, allRawReadings, now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
-                if (writtenFiles.size == 3)
+                val expect = AutoIsfHistoryExporter.AIV_EXPORT_FILE_COUNT
+                if (writtenFiles.size == expect)
                     aapsLogger.info(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=${writtenFiles.size}")
                 else
-                    aapsLogger.error(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3")
+                    aapsLogger.error(LTag.UI, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/$expect")
                 ExportScriptDebugStatus.add(
-                    if (writtenFiles.size == 3) "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=3"
-                    else "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/3"
+                    if (writtenFiles.size == expect) "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=SUCCESS files=$expect"
+                    else "EXPORT_STATUS trigger=ISF_LONG_PRESS component=AIV_LOCAL result=FAILURE files=${writtenFiles.size}/$expect"
                 )
-                autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == 3) "AVLs" else "AVLf")
+                autoIsfHistoryExporter.addExportCarePortalNote(if (writtenFiles.size == expect) "AVLs" else "AVLf")
                 importExportPrefs.uploadAivFilesToCloud(writtenFiles, "ISF_LONG_PRESS") {
                     importExportPrefs.sendLogs(trigger = "ISF_LONG_PRESS", alsoExportAiv = false)
                 }
