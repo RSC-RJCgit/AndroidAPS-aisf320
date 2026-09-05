@@ -29,6 +29,8 @@ import javax.inject.Inject
  * Downloads manual boluses and carbs from a secondary Nightscout site (e.g. main phone's NS).
  * Used when the follower phone sources BGL from a separate NS but needs bolus/carb history
  * from the main phone for accurate IOB/COB calculations.
+ * Enqueued on its own unique work name — not chained after primary LoadStatus — so a 401 on
+ * the follower's own NS (Virtual 5 Sep) cannot skip Live bolus/carbs/pod imports.
  * SMBs are always excluded from the secondary download.
  * Also imports device-lifecycle therapy events (sensor/site/insulin/pump-battery changes), since
  * those are set on the main phone (and land only on its NS) but the follower's cannula/sensor-age

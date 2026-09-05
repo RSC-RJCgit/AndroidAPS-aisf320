@@ -141,6 +141,8 @@ class NSClientV3Plugin @Inject constructor(
 
     @Suppress("PrivatePropertyName")
     private val JOB_NAME: String = this::class.java.simpleName
+    // Own unique work so a primary LoadStatus 401 (Virtual 5 Sep) cannot skip Live bolus/carbs/pod.
+    private val SECONDARY_JOB_NAME = "LoadSecondaryBolusCarbs"
 
     companion object {
 
@@ -222,6 +224,7 @@ class NSClientV3Plugin @Inject constructor(
             .subscribe({
                            stopService()
                            WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+                           WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventConnectivityOptionChanged::class.java)
@@ -308,6 +311,7 @@ class NSClientV3Plugin @Inject constructor(
                         refreshInterval = T.mins(1).msecs()
                     }
                 }
+            enqueueSecondaryBolusCarbsWork()
             if (!preferences.get(BooleanKey.NsClient3UseWs))
                 executeLoop("MAIN_LOOP", forceNew = true)
             else
@@ -744,6 +748,9 @@ class NSClientV3Plugin @Inject constructor(
     }
 
     internal fun executeLoop(origin: String, forceNew: Boolean) {
+        // Secondary uses its own URL/token. Do not wait on primary status (Virtual 5 Sep:
+        // night416 LoadStatus 401 blocked this worker all morning).
+        enqueueSecondaryBolusCarbsWork()
         if (preferences.get(BooleanKey.NsClient3UseWs) && initialLoadFinished) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             rxBus.send(EventNSClientNewLog("● RUN", "paused  $origin"))
@@ -777,12 +784,20 @@ class NSClientV3Plugin @Inject constructor(
             .then(OneTimeWorkRequest.Builder(LoadLastModificationWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadBgWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadTreatmentsWorker::class.java).build())
-            .then(OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadFoodsWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadProfileStoreWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(LoadDeviceStatusWorker::class.java).build())
             .then(OneTimeWorkRequest.Builder(DataSyncWorker::class.java).build())
             .enqueue()
+    }
+
+    private fun enqueueSecondaryBolusCarbsWork() {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            SECONDARY_JOB_NAME,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build()
+        )
     }
 
     fun endFullSync() {

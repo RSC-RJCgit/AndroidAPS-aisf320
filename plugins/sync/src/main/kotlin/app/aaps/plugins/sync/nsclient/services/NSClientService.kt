@@ -8,6 +8,7 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.SystemClock
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import app.aaps.core.data.time.T.Companion.mins
@@ -500,8 +501,11 @@ class NSClientService : DaggerService() {
                                     .setInputData(dataWorkerStorage.storeInputData(addedOrUpdatedTreatments))
                                     .build()
                             )
-                            WorkManager.getInstance(this)
-                                .enqueue(OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build())
+                            WorkManager.getInstance(this).enqueueUniqueWork(
+                                "LoadSecondaryBolusCarbs",
+                                ExistingWorkPolicy.KEEP,
+                                OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build()
+                            )
                         }
                     }
                     if (data.has("devicestatus")) {
