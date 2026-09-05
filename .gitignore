@@ -34,3 +34,14 @@ wear/pumpcontrol/*
 .claude/settings.local.json
 .claude/CLAUDE_COMMANDS.md
 .codex_doc_tools/
+/tmp_check_anchors.py
+/tmp_extract_update_xml.py
+/tmp_find_missed_anchors.py
+/tmp_inspect_manuals.py
+/tmp_inspect_manuals2.py
+/tmp_inspect_manuals3.py
+/tmp_inspect_plain_brief.py
+/tmp_patch_manuals.py
+/tmp_patch_manuals_fix.py
+/tmp_plain_body.py
+/tmp_verify_manual_notes.py

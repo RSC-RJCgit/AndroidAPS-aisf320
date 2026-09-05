@@ -5883,7 +5883,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // used to satisfy it, which is what stopped the block re-firing every 5 min for the rest of the
         // 00:00-08:00 window. Dropping the profile switch (see below) removes that latch with it.
         // A settings-based latch (acce == 0.50 && iobTH == 70) was tried instead and is WRONG here: it
-        // overlaps NightAcce (01:00-06:00), which deliberately writes acce 0.35 / iobTH 18 -- each block
+        // overlaps NightAcce (01:00-06:00), which deliberately writes acce 0.35 / iobTH 22 -- each block
         // would then falsify the other's latch and they would ping-pong those settings every 5 minutes
         // all night. 480 min means this can fire at most once per 00:00-08:00 window regardless of what
         // else rewrites those settings afterwards, which reproduces the old outcome exactly: MJrec applies
@@ -6260,7 +6260,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // therefore touches iobTH and nothing else.
         //
         // A true CEILING, not a setter: gated on iobThresholdPercent > the applicable cap so it only ever
-        // lowers. That means it cannot fight the overnight blocks that set iobTH far lower (NightAcce 18,
+        // lowers. That means it cannot fight the overnight blocks that set iobTH far lower (NightAcce 22,
         // TwilightTH15 15) by raising it back up. Window ends at midnight rather than running into the
         // small hours, specifically to avoid overlapping MJrec (00:00-08:00), which sets iobTH to 70 -- the
         // two would otherwise contradict each other every cycle in the 00:00-01:00 overlap.
@@ -6282,31 +6282,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- NightIobCeiling: caps iobTH at 18% (35% if a real meal's been sustaining COB for 45+
+        // --- NightIobCeiling: caps iobTH at 22% (35% if a real meal's been sustaining COB for 45+
         // min) from midnight to 06:00, independent of BGL ---
         // Companion to EveningIobCeiling above, same ceiling-not-setter shape (only ever lowers), but a
         // far tighter value because overnight there are no carbs to cover -- IOB that would be routine
-        // after a meal is dangerous at 03:00.
+        // after a meal is dangerous at 03:00. Zero-COB cap raised 18→22 on 6 Sep 2026 (explicit
+        // request). Latch is iobTH > nightCap, so writing 22 still self-latches (22 > 22 is false).
+        // NightAcce writes the same 22 when BGL <= 6.0 / COB=0 / 01:00-06:00 (latch >=23 || <=21).
+        // Same value, so they cannot ping-pong; this ceiling will not raise a tighter value (e.g.
+        // TwilightTH15's 15) back to 22.
         //
         // Motivated by the night of 6->7 Aug 2026, where BGL reached 3.5 and stayed there 04:00-05:30.
         // Two SMB bursts caused it: 23:10-23:18 (~1.50U, IOB 0.36 -> 2.00) and 01:08-01:15 (~1.30U, IOB
         // 1.43 -> 2.71), both at ~60s intervals with COB already decayed to 0 and BGL only 7.2-8.6.
-        // NightAcce covers 01:00-06:00 and sets iobTH to 18 already, but could not fire for either burst
+        // NightAcce covers 01:00-06:00 and sets iobTH (now 22) already, but could not fire for either burst
         // because it requires BGL <= 6.0mmol -- and BGL was 8.5. That BGL gate is the reason the overnight
         // protection was unreachable, which is why this block deliberately has NO BGL condition at all.
         // Starting at 00:00 rather than 01:00 also closes the midnight-to-01:00 gap.
         //
         // KNOWN CONFLICT, deliberate: HighNight00AM (01:00-05:45, 60-min throttle) sets iobTH to 51 to
-        // permit correcting a genuine overnight high, and this will pull it back to 18 (or 35, see below)
+        // permit correcting a genuine overnight high, and this will pull it back to 22 (or 35, see below)
         // within ~5 min. That is the intended precedence given the episode above -- an uncorrected
         // overnight high is the accepted cost of not repeating a sustained 3.5 -- but it does mean
         // HighNight00AM is now largely neutered between 01:00 and 05:45.
         //
         // Relaxed cap added 2026-08-28, per the "revisit if overnight highs start persisting" note this
-        // comment used to end on: 18 -> 35 only while cobSustainedRelax is true (see tracker above, shared
-        // with EveningIobCeiling). Still roughly half of EveningIobCeiling's own relaxed 60 -- overnight
+        // comment used to end on: 22 -> 35 only while cobSustainedRelax is true (see tracker above, shared
+        // with EveningIobCeiling). Still well under EveningIobCeiling's own relaxed 60 -- overnight
         // stays more conservative than evening even with a genuine meal in progress -- and the zero-COB
-        // case (the actual 6-7 Aug failure mode) is completely unchanged.
+        // case (the actual 6-7 Aug failure mode) is only the modest 18→22 lift, not a removal.
         // Caps BOTH iobTH and acce weight (0.35) -- the two settings NightAcce would have lowered
         // had it been able to fire. Checked against the 6->7 Aug data: SmbRatio sat at 0.14 and ppWt at
         // 0.08 all night, already their configured baselines (ApsAutoIsfSmbDeliveryBaseline /
@@ -6320,7 +6324,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Each cap is independent and only ever lowers, so neither can raise a value some other overnight
         // block has already set tighter (e.g. TwilightTH15Acce's iobTH 15).
         run {
-            val nightCap = if (cobSustainedRelax) 35 else 18
+            val nightCap = if (cobSustainedRelax) 35 else 22
             // Stand down while genuinely active. Usual2forTH70 block 3 (UsuIP-3) restores iobTH to 70 /
             // acce 0.50 from 05:01 whenever recentSteps60Minutes >= 100, and this block -- which has no
             // step awareness of its own -- was capping it straight back to 18 / 0.35 on the very same
@@ -6799,14 +6803,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Code port of "NightAcce_0.35TH18": overnight iobTH/acce reset to 18%/0.35 (plus a
-        // settings-export backup, reusing exportSettingsFor) when iobTH sits outside the 18% band,
-        // no carbs are active, and BGL is low. No live-pump gate: the original's Note field was empty.
+        // Code port of "NightAcce_0.35TH22": overnight iobTH/acce reset to 22%/0.35 (plus a
+        // settings-export backup, reusing exportSettingsFor) when iobTH sits outside the 22% band,
+        // no carbs are active, and BGL is low. Write + latch raised 18→22 on 6 Sep 2026 to match
+        // NightIobCeiling (NtCap). Latch MUST stay a ±1 band around whatever this writes -- leaving
+        // (>=19 || <=17) after writing 22 would re-arm every 5 min (22 >= 19). No live-pump gate:
+        // the original's Note field was empty.
         if (readyToRun("NightAcce", 5)) {
             val iobTH = iobThresholdPercent
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             if (isTimeBetween(1, 0, 6, 0)
-                && (iobTH >= 19 || iobTH <= 17)
+                && (iobTH >= 23 || iobTH <= 21)
                 && mealData.mealCOB <= 0.0
                 && activeTtMgdl() == null
                 && glucoseStatus.glucose <= 108.1 /* 6.0 mmol */
@@ -6815,16 +6822,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.35)
                 // Profile switch now HP2-GATED rather than unconditional -- same rationale and same
                 // fail-closed choice as EveningTH/MJrec above. No self-latch concern here, unlike MJrec:
-                // this block's own "(iobTH >= 19 || iobTH <= 17)" trigger already latches it (setting
-                // iobTH to 18 below falsifies that condition), so it applies once and stops regardless of
+                // this block's own "(iobTH >= 23 || iobTH <= 21)" trigger already latches it (setting
+                // iobTH to 22 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
                 val hpNight = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
                 if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 22)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
-                sendSms("NightAcce_0.35TH18 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("NightAcce_0.35TH22 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Night")
                 markRun("NightAcce")
             }
