@@ -3,6 +3,8 @@ package app.aaps.plugins.aps.openAPSAutoISF
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.content.pm.PackageManager
 import android.icu.util.Calendar
 import android.util.Base64
@@ -1274,15 +1276,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // profile, which dies when Android reclaims Tasker, and Tasker's own Termux kill/relaunch is a
     // second process the OS can also skip. Receipt notes never claimed Tasker ran.
     //
-    // Bring AnyDesk to the front from AAPS's own loop context. Do NOT kill or force-stop first:
-    // Unattended Access is a host *service*. 1 Sep 23:42 AdOn after killBackgroundProcesses +
-    // CLEAR_TASK matched "AAPS launched the UI" while the remote listener stayed down -- the
-    // saved UA setting was unchanged. Hung-foreground recovery (su force-stop) is dropped for
-    // the same reason: these phones are not rooted, and a kill that does land takes the listener
-    // with it. NEW_TASK only so an already-running task/service is brought forward, not reset.
-    // Tasker backup (ACTION_TASK AnyDesk2 and RESTART_ANYDESK implicit broadcast) removed
-    // 2026-09-02: those tasks were also applying a kill. AdOn/AdMs = startActivity result
-    // only, truncated to 5 chars on graph4 -- not "unattended is accepting connections".
+    // Bring AnyDesk to the front from AAPS's own loop context. Before launch, HOME-exit the
+    // current UI (AnyDesk leaves the foreground; its Unattended Access *service* stays).
+    // Do NOT kill or force-stop: 1 Sep 23:42 AdOn after killBackgroundProcesses + CLEAR_TASK
+    // matched "AAPS launched the UI" while the remote listener stayed down. Hung-foreground
+    // recovery (su force-stop) is dropped for the same reason. NEW_TASK only so an already-
+    // running task/service is brought forward, not reset. Tasker backup removed 2026-09-02
+    // (those tasks were also applying a kill). AdOn/AdMs = startActivity result only.
+    private val anyDeskLaunchHandler = Handler(Looper.getMainLooper())
+
     private fun launchAnyDeskDirect() {
         val pkg = resolveAnyDeskPackage()
         if (pkg == null) {
@@ -1298,13 +1300,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            context.startActivity(launchIntent)
-            aapsLogger.info(LTag.APS, "AnyDesk brought to front by AAPS without kill ($pkg)")
-            addCarePortalNote("AdOn")
+            val home = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(home)
+            aapsLogger.info(LTag.APS, "AnyDesk HOME-exit before relaunch ($pkg)")
         } catch (e: Exception) {
-            aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
-            addCarePortalNote("AdMs")
+            aapsLogger.warn(LTag.APS, "AnyDesk HOME-exit skipped: ${e.message}")
         }
+        anyDeskLaunchHandler.removeCallbacksAndMessages(null)
+        anyDeskLaunchHandler.postDelayed({
+            try {
+                context.startActivity(launchIntent)
+                aapsLogger.info(LTag.APS, "AnyDesk brought to front by AAPS after HOME-exit ($pkg)")
+                addCarePortalNote("AdOn")
+            } catch (e: Exception) {
+                aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
+                addCarePortalNote("AdMs")
+            }
+        }, 400)
     }
 
     // Exact Tasker task name on Virtual (and expected on Live): no spaces. Case-sensitive.
