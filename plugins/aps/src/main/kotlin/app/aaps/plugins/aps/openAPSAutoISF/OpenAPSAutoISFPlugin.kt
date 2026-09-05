@@ -1454,8 +1454,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // List2 / 5.200: stage first, then Shizuku pm install -r of that staged file.
     // No system Install sheet while Shizuku is running and AAPS is granted. Replacing this
-    // running APK usually kills the process after ApkGo is written; ApkOk only lands if the
-    // process survives (failed install, or a different package). Client never installs.
+    // running APK kills the process after ApkGo is written. ApkOk only lands if the
+    // process survives (failed install, or a different package). Relaunch is the Shizuku
+    // sh -c after pm install (sleep 3; am start MainActivity), not Kotlin after install().
+    // Client never installs.
     private fun installNewestAaps333Apk(reason: String) {
         if (config.AAPSCLIENT) {
             aapsLogger.info(LTag.APS, "Shizuku APK install skipped on AAPSCLIENT ($reason)")
@@ -1512,7 +1514,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         addCarePortalNote("ApkGo")
         sendSms("Shizuku APK install starting: ${apk.name} ($reason)")
         try {
-            val (ok, detail) = ShizukuAaps333Installer.install(apk)
+            val (ok, detail) = ShizukuAaps333Installer.install(apk, context.packageName)
             aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.absolutePath}: $detail")
             if (ok) {
                 addCarePortalNote("ApkOk")

@@ -1618,7 +1618,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return if (config.AAPSCLIENT)
                 "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
             else
-                "Stage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. This AAPS process will usually restart after a successful install."
+                "Stage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. A successful install kills this process; the same Shizuku shell then starts MainActivity again."
         }
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
             val question = rh.gs(R.string.run_question, action.label)

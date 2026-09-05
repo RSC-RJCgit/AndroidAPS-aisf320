@@ -25,6 +25,7 @@ internal object ShizukuAaps333Installer {
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
 
     private val skipName = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
+    private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
     fun shizukuRunning(): Boolean = try {
         Shizuku.pingBinder()
@@ -81,16 +82,25 @@ internal object ShizukuAaps333Installer {
     // pm install cannot read /sdcard (FUSE) as system_server — Virtual 764 ApkMs:
     // "System server has no access to read file context u:object_r:fuse:s0". Copy into
     // /data/local/tmp via Shizuku shell first, then install from that path.
-    fun install(apk: File): Pair<Boolean, String> {
+    //
+    // pm install -r of THIS package kills the AAPS process mid-call (Virtual 6 Sep 2026
+    // 01:32 ApkGo, no ApkOk, silent until 06:30). Kotlin after this exec never runs on
+    // success. The relaunch must live in the same Shizuku sh -c — that shell is not the
+    // AAPS process and keeps going after the kill. Failed install does not relaunch.
+    fun install(apk: File, packageName: String = "info.nightscout.androidaps"): Pair<Boolean, String> {
         if (!isPlausiblePumpApk(apk)) return false to "missing or too small ${apk.absolutePath} bytes=${apk.length()}"
+        if (!PACKAGE_NAME.matches(packageName)) return false to "bad packageName $packageName"
         val tmp = "/data/local/tmp/$FIXED_NAME"
         val (cpCode, cpText) = exec(arrayOf("cp", "-f", apk.absolutePath, tmp))
         if (cpCode != 0) return false to "cp exit=$cpCode $cpText"
         exec(arrayOf("chmod", "644", tmp))
-        val (code, text) = exec(arrayOf("pm", "install", "-r", "-d", "--user", "0", tmp))
-        exec(arrayOf("rm", "-f", tmp))
+        val script =
+            "pm install -r -d --user 0 '$tmp'; code=\$?; rm -f '$tmp'; " +
+                "if [ \$code -eq 0 ]; then sleep 3; " +
+                "am start --user 0 -n $packageName/app.aaps.MainActivity; fi; exit \$code"
+        val (code, text) = exec(arrayOf("sh", "-c", script))
         val ok = code == 0 && text.contains("Success", ignoreCase = true)
-        return ok to "via=$tmp exit=$code $text"
+        return ok to "via=$tmp relaunch=$packageName/app.aaps.MainActivity exit=$code $text"
     }
 
     private fun findNewestSourceApk(): File? {
