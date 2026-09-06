@@ -1829,6 +1829,12 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // SHOWER / TWILIGHT AM PROTECTION
 // =====================================================
+                // IOB ceiling was 0.075*max_iob (~0.71U at 9.5). 6 Sep 2026 08:26 Shwr12: 0.40U
+                // SMB in 3 min, then this hard-zeroed at IOB 0.68-0.79 while Req stayed 1.6-2.1
+                // and BGL 6.3→8.7. Same 0.71 wall on 30 Aug (IOB 0.89, SMB 0). Lift to 0.09
+                // (~0.86U, +0.14U) — still well under Shower12's 12% iobTH (~1.14U). Per-SMB
+                // 0.04 and the early-AM 0.8x gate at IOB>0.075 stay; those were not the bind.
+                val iobTHvirtualHARDshower = 0.09 * profile.max_iob
                 if (((nowHour >= 5) && (nowHour < 10)) &&
                     bg <= 8.0 * 18 &&
                     (Steps60M ?: 0) < 10 &&
@@ -1839,7 +1845,6 @@ class DetermineBasalAutoISF @Inject constructor(
                     iobThUser < 71 &&
                     rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
                 ) {
-                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
                     if (microBolus > 0.04 * profile.max_iob) {
                         microBolus = 0.04* profile.max_iob
@@ -1860,7 +1865,6 @@ class DetermineBasalAutoISF @Inject constructor(
                     iobThUser < 71 &&
                     rawDelta5Mgdl >= 0.35 * 18 && aapsDelta1Mgdl >= 0.35 * 18
                 ) {
-                    val iobTHvirtualHARDshower = 0.075 * profile.max_iob
                     val microBolus1 = microBolus
                     if (microBolus > 0.04 * profile.max_iob) {
                         microBolus = 0.04 * profile.max_iob
@@ -2125,10 +2129,10 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append("(Steps60M ?: 0) ${(Steps60M ?: 0)} ")
                             rT.reason.append("CHANGED SIZE 0.211 Twilight fast rise 0.211 microBolus = 0.2 * [etc]profile.max_iob ${round(microBolus, 2)} ")
                         }
-                        if (microBolus + IOB > 0.075 * profile.max_iob) {
-                            microBolus = 0.075 * profile.max_iob - IOB
-                            rT.reason.append("microBolus = 0.75 * profile.max_iob - IOB ; 0.75 * profile.max_iob ${round(0.075 * profile.max_iob, 2)} IOB ${round(IOB, 2)} ")
-                            rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov 0.75 * profile.max_iob microBolus = 0.75 * [etc ]profile.max_iob - IOB ${round(microBolus, 2)} ")
+                        if (microBolus + IOB > iobTHvirtualHARDshower) {
+                            microBolus = iobTHvirtualHARDshower - IOB
+                            rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; ${round(iobTHvirtualHARDshower, 2)} IOB ${round(IOB, 2)} ")
+                            rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov shower hard cap microBolus = ${round(microBolus, 2)} ")
                         }
                         rT.reason.append(" CHANGED SIZE SMB other hours ")
 // =====================================================
