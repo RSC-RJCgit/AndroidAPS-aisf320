@@ -203,7 +203,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
-    private var apkNewestFilenamePeeked = false
     @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var smsCommunicator: SmsCommunicator
     @Inject lateinit var receiverStatusStore: app.aaps.core.interfaces.receivers.ReceiverStatusStore
@@ -1569,7 +1568,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun rememberNewestApkNnnFromDisk() {
         val apk = ShizukuAaps333Installer.newestPumpApk() ?: Aaps333NewestApk.newestSourceApk() ?: return
-        rememberNewestApkNnn(apkFeatureNumber(archiveApkVersionName(apk)) ?: Aaps333NewestApk.featureNumber(apk.name))
+        rememberNewestApkNnn(
+            Aaps333NewestApk.featureNumberFromFile(apk)
+                ?: apkFeatureNumber(archiveApkVersionName(apk))
+        )
     }
 
     private fun tryAutoInstallNewerApk() {
@@ -7782,13 +7784,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // real ON/OFF state before sending the 5.198 relay rather than its unrelated local value.
         lines.add("${BooleanKey.AutomationCodedLocationsEnabled.key} = ${preferences.get(BooleanKey.AutomationCodedLocationsEnabled)}")
         lines.add("${StringKey.AutomationLocationSmsDeviceModel.key} = ${preferences.get(StringKey.AutomationLocationSmsDeviceModel)}")
-        // Do not parse the 90MB APK every cycle. Cache is filled by stage / auto-install / List2.
-        // If still 0, a filename peek is cheap (Drive's driveAapsNewest.apk has no NNN — wait for stage).
-        if (preferences.get(LongKey.ApsAutoIsfApkNewestNnn) <= 0L && !apkNewestFilenamePeeked) {
-            apkNewestFilenamePeeked = true
-            val src = Aaps333NewestApk.newestSourceApk() ?: Aaps333NewestApk.newestStagedApk()
-            rememberNewestApkNnn(src?.let { Aaps333NewestApk.featureNumber(it.name) })
-        }
+        // Names / sidecar / running floor only — never parse the 90MB APK or walk Download here.
+        val cache = preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }?.toInt()
+        val cheap = Aaps333NewestApk.cheapNewestNnn(context.packageManager, context.packageName, cache)
+        if (cheap != null && (cache == null || cheap > cache)) rememberNewestApkNnn(cheap)
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }

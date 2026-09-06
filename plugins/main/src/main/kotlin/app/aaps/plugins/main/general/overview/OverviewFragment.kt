@@ -1602,16 +1602,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (config.AAPSCLIENT) mirroredListSetting(key.key) { mirroredBoolean(it) }
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
-    // Filename NNN first (no 90MB parse on the UI thread). Cache next. Do not fall
-    // back to the running APK — that would label "Install newest — 801" when 801 is
-    // only this phone, not the archive.
+    // Names / sidecar / cache only. Never list Download or open the 90MB APK here —
+    // that is what paused Live (wait/close) and starved the Client snapshot.
     private fun list2NewestNnn(): Long? {
-        Aaps333NewestApk.newestFeatureNumberFromNames()?.toLong()?.let { return it }
-        val ctx = context
-        if (ctx != null) {
-            Aaps333NewestApk.newestFeatureNumber(ctx.packageManager)?.toLong()?.let { return it }
-        }
-        return preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }
+        val ctx = context ?: return preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }
+        val cache = preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }?.toInt()
+        return Aaps333NewestApk.cheapNewestNnn(ctx.packageManager, ctx.packageName, cache)?.toLong()
     }
 
     private fun newestApkSummaryForList2(): String {
@@ -1621,14 +1617,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             val running = Aaps333NewestApk.featureNumber(mirrored["configuration_version"])
             val age = mirroredSettingsAge()
             return when {
-                newest != null && running != null -> "Pump newest: $newest  (pump $running)$age"
-                newest != null -> "Pump newest: $newest$age"
-                else -> "Pump newest: unavailable$age"
+                mirrored.isEmpty() -> "Pump snapshot not received yet$age"
+                newest != null && running != null -> "Pump newest APK: $newest  (pump running $running)$age"
+                newest != null -> "Pump newest APK: $newest$age"
+                running != null -> "Pump newest APK: unknown  (pump running $running)$age"
+                else -> "Pump version not in snapshot$age"
             }
         }
         val ctx = context ?: return "Newest: unavailable"
+        val cache = preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }?.toInt()
         list2NewestNnn()?.let { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it) }
-        return Aaps333NewestApk.newestSummary(ctx.packageManager, ctx.packageName)
+        return Aaps333NewestApk.newestSummary(ctx.packageManager, ctx.packageName, cache)
     }
 
     private fun list2ActionLabel(action: BasalDirectAction): String {
@@ -1636,7 +1635,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return action.label
         }
         val newest = if (config.AAPSCLIENT) {
-            mirroredAutoIsfSettings()[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
+            val mirrored = mirroredAutoIsfSettings()
+            mirrored[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
+                ?: Aaps333NewestApk.featureNumber(mirrored["configuration_version"])?.toLong()
         } else {
             list2NewestNnn()?.also { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it) }
         }

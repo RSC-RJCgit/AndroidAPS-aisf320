@@ -9,6 +9,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.plugins.configuration.R
 import app.aaps.plugins.configuration.maintenance.cloud.CloudConstants
 import app.aaps.plugins.configuration.maintenance.cloud.events.EventCloudStorageStatusChanged
@@ -1208,8 +1209,10 @@ class GoogleDriveManager @Inject constructor(
         val stamp = File(dest.path + ".stamp")
         val already = dest.isFile && dest.length() >= MIN_PUMP_APK_BYTES &&
             stamp.isFile && stamp.readText().trim() == pick.third
-        if (already)
+        if (already) {
+            Aaps333NewestApk.writeSourceName(dest, pick.second)
             return@withContext true to "already drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
+        }
         val ok = streamDownload(pick.first, dest)
         if (!ok || !dest.isFile || dest.length() < MIN_PUMP_APK_BYTES)
             return@withContext false to "download failed ${pick.second} bytes=${dest.length()}"
@@ -1217,6 +1220,7 @@ class GoogleDriveManager @Inject constructor(
             stamp.writeText(pick.third)
         } catch (_: Exception) {
         }
+        Aaps333NewestApk.writeSourceName(dest, pick.second)
         true to "drive=${pick.second} dest=${dest.absolutePath} bytes=${dest.length()}"
     }
 

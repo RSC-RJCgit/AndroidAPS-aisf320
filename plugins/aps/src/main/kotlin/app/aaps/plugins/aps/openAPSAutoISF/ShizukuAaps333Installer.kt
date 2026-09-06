@@ -72,12 +72,14 @@ internal object ShizukuAaps333Installer {
             val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
             val detail = "already newest dest=${dest.absolutePath} bytes=${dest.length()} src=${src.absolutePath} pruned=$pruned"
             writeWinnerRecord(destDir, src, dest, "already")
+            Aaps333NewestApk.copySourceName(src, dest)
             return true to detail
         }
         destDir.listFiles()?.forEach { it.delete() }
         src.copyTo(dest, overwrite = true)
         if (!isPlausiblePumpApk(dest))
             return false to "copy failed ${dest.absolutePath} bytes=${dest.length()}"
+        Aaps333NewestApk.copySourceName(src, dest)
         val pruned = pruneArchive(archiveName, keep = KEEP_ARCHIVE, staged = dest)
         writeWinnerRecord(destDir, src, dest, "copied")
         return true to "src=${src.absolutePath} dest=${dest.absolutePath} bytes=${dest.length()} pruned=$pruned"

@@ -12,24 +12,45 @@ object Aaps333NewestApk {
     const val FIXED_NAME = "aapsNewestAPK.apk"
     const val FIXED_NAME_NO_EXT = "aapsNewestAPK"
     const val MIN_PUMP_APK_BYTES = 20L * 1024L * 1024L
+    const val SRC_NAME_SUFFIX = ".srcname"
 
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
+    private val DROP_NAMES = listOf("ApkDownload", "APKdownload", "apkdownload")
     private val skipName = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
     private val featureNumberRe = Regex("""aisf321UK_(\d+)""")
 
     fun featureNumber(text: String?): Int? =
         text?.let { featureNumberRe.find(it)?.groupValues?.get(1)?.toIntOrNull() }
+            ?.takeIf { it in 100..9999 }
+
+    fun writeSourceName(apk: File, sourceName: String) {
+        if (sourceName.isBlank()) return
+        try {
+            File(apk.path + SRC_NAME_SUFFIX).writeText(sourceName)
+        } catch (_: Exception) {
+        }
+    }
+
+    fun copySourceName(from: File, to: File) {
+        val side = File(from.path + SRC_NAME_SUFFIX)
+        val label = try {
+            if (side.isFile) side.readText() else from.absolutePath
+        } catch (_: Exception) {
+            from.absolutePath
+        }
+        writeSourceName(to, label)
+    }
+
+    fun featureNumberFromFile(apk: File): Int? = sourceNameNnn(apk)
 
     fun newestSourceApk(): File? {
         val seen = HashSet<String>()
         val found = ArrayList<File>()
-        for (root in searchRoots()) {
+        for (root in searchRoots(includeDownload = true)) {
             val canonical = canonicalOrAbs(root)
             if (!seen.add(canonical)) continue
             collectPumpApks(root, found, skipNewestCopy = true)
         }
-        // Live: listFiles on ApkDownload is often empty even with All-files; the Drive
-        // drop path still exists() and can be opened by exact name.
         for (f in probeKnownPumpApks()) {
             val canonical = canonicalOrAbs(f)
             if (seen.add(canonical)) found.add(f)
@@ -62,32 +83,44 @@ object Aaps333NewestApk {
         null
     }
 
-    // Highest aisf321UK_NNN in any visible pump APK filename. Used for List2 so a
-    // newer Drive drop named driveAapsNewest.apk (no NNN) cannot hide the archive number.
-    // Does not open the 90MB APK.
-    fun newestFeatureNumberFromNames(): Int? {
+    // Filename / sidecar / winner.txt only. Never opens the 90MB APK. Does not walk Download
+    // (Live's Download tree is huge and listFiles there is what paused AAPS for wait/close).
+    fun newestFeatureNumberFromNames(runningHint: Int? = null): Int? {
         val found = ArrayList<File>()
         val seen = HashSet<String>()
-        for (root in searchRoots()) {
+        for (root in searchRoots(includeDownload = false)) {
             val canonical = canonicalOrAbs(root)
             if (!seen.add(canonical)) continue
             collectPumpApks(root, found, skipNewestCopy = true)
         }
-        return found.mapNotNull { featureNumber(it.name) }.maxOrNull()
+        val fromList = found.mapNotNull { featureNumber(it.name) }
+        val fromProbe = probeKnownPumpApks().mapNotNull { sourceNameNnn(it) }
+        val fromWinner = nnnFromWinnerFiles()
+        val fromExact = runningHint?.let { probeVersionedAround(it) }.orEmpty()
+        return (fromList + fromProbe + fromWinner + fromExact).maxOrNull()
+    }
+
+    // UI / snapshot: names + cache + running floor when a source file is present.
+    // An old named 802 must not hide a newer driveAapsNewest that is already installed as 804.
+    fun cheapNewestNnn(pm: PackageManager, packageName: String, cache: Int?): Int? {
+        val running = runningFeatureNumber(pm, packageName)
+        val named = newestFeatureNumberFromNames(running)
+        val present = named != null || sourceFilePresent()
+        val floor = if (present) running else null
+        return listOfNotNull(named, cache?.takeIf { it in 100..9999 }, floor).maxOrNull()
     }
 
     fun newestFeatureNumber(pm: PackageManager): Int? {
-        newestFeatureNumberFromNames()?.let { return it }
-        val src = newestSourceApk() ?: newestStagedApk() ?: return null
-        return featureNumber(src.name) ?: featureNumber(versionName(pm, src))
+        newestFeatureNumberFromNames(runningFeatureNumber(pm, "info.nightscout.androidaps"))?.let { return it }
+        return newestFeatureNumberFromNames()
     }
 
     fun runningFeatureNumber(pm: PackageManager, packageName: String): Int? =
         featureNumber(runningVersionName(pm, packageName))
 
-    // List2 row / confirm: "Newest: 803  (this phone 801)"
-    fun newestSummary(pm: PackageManager, packageName: String): String {
-        val newest = newestFeatureNumber(pm)
+    // List2 row / confirm: "Newest: 804  (this phone 804)"
+    fun newestSummary(pm: PackageManager, packageName: String, cache: Int? = null): String {
+        val newest = cheapNewestNnn(pm, packageName, cache)
         val running = runningFeatureNumber(pm, packageName)
         return when {
             newest != null && running != null -> "Newest: $newest  (this phone $running)"
@@ -100,13 +133,62 @@ object Aaps333NewestApk {
     fun isPlausiblePumpApk(file: File): Boolean =
         file.isFile && file.length() >= MIN_PUMP_APK_BYTES
 
+    fun sourceFilePresent(): Boolean =
+        probeKnownPumpApks().isNotEmpty() || newestStagedApk() != null
+
+    private fun sourceNameNnn(apk: File): Int? {
+        featureNumber(apk.name)?.let { return it }
+        val sidecar = File(apk.path + SRC_NAME_SUFFIX)
+        if (!sidecar.isFile) return null
+        return try {
+            featureNumber(sidecar.readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun nnnFromWinnerFiles(): List<Int> {
+        val out = ArrayList<Int>()
+        for (name in ARCHIVE_NAMES) {
+            for (dir in newestDirs(name)) {
+                val winner = File(dir, "winner.txt")
+                if (!winner.isFile) continue
+                try {
+                    featureNumber(winner.readText())?.let { out.add(it) }
+                } catch (_: Exception) {
+                }
+            }
+        }
+        return out
+    }
+
+    // Exact names only — no listFiles. Live cannot list ApkDownload but exists() still works.
+    private fun probeVersionedAround(hint: Int): List<Int> {
+        val out = ArrayList<Int>()
+        val lo = (hint - 2).coerceAtLeast(100)
+        val hi = hint + 12
+        for (n in hi downTo lo) {
+            val names = listOf("aisf321UK_$n.apk")
+            for (archive in ARCHIVE_NAMES) {
+                for (dir in archiveDirs(archive)) {
+                    for (sub in DROP_NAMES) {
+                        val folder = File(dir, sub)
+                        for (name in names) {
+                            if (isPlausiblePumpApk(File(folder, name))) out.add(n)
+                        }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     // Exact paths Drive/Tasker write. Used when the parent folder does not list.
     private fun probeKnownPumpApks(): List<File> {
         val out = ArrayList<File>()
-        val dropNames = listOf("ApkDownload", "APKdownload", "apkdownload")
         for (name in ARCHIVE_NAMES) {
             for (dir in archiveDirs(name)) {
-                for (sub in dropNames) {
+                for (sub in DROP_NAMES) {
                     val drive = File(File(dir, sub), "driveAapsNewest.apk")
                     if (isPlausiblePumpApk(drive)) out.add(drive)
                 }
@@ -132,20 +214,20 @@ object Aaps333NewestApk {
         }
     }
 
-    private fun searchRoots(): List<File> {
+    private fun searchRoots(includeDownload: Boolean): List<File> {
         val roots = ArrayList<File>()
         for (name in ARCHIVE_NAMES) {
             val archives = archiveDirs(name)
             roots.addAll(archives)
-            // Drive / Tasker drop the versioned APK here — not in the phone Download folder.
             for (dir in archives) {
-                roots.add(File(dir, "ApkDownload"))
-                roots.add(File(dir, "APKdownload"))
+                for (sub in DROP_NAMES) roots.add(File(dir, sub))
             }
         }
-        roots.add(File("/sdcard/Download"))
-        roots.add(File("/storage/emulated/0/Download"))
-        roots.add(File(Environment.getExternalStorageDirectory(), "Download"))
+        if (includeDownload) {
+            roots.add(File("/sdcard/Download"))
+            roots.add(File("/storage/emulated/0/Download"))
+            roots.add(File(Environment.getExternalStorageDirectory(), "Download"))
+        }
         return roots
     }
 
