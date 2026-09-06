@@ -1607,6 +1607,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // only this phone, not the archive.
     private fun list2NewestNnn(): Long? {
         Aaps333NewestApk.newestFeatureNumberFromNames()?.toLong()?.let { return it }
+        val ctx = context
+        if (ctx != null) {
+            Aaps333NewestApk.newestFeatureNumber(ctx.packageManager)?.toLong()?.let { return it }
+        }
         return preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }
     }
 

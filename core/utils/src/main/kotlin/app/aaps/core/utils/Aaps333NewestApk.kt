@@ -28,6 +28,12 @@ object Aaps333NewestApk {
             if (!seen.add(canonical)) continue
             collectPumpApks(root, found, skipNewestCopy = true)
         }
+        // Live: listFiles on ApkDownload is often empty even with All-files; the Drive
+        // drop path still exists() and can be opened by exact name.
+        for (f in probeKnownPumpApks()) {
+            val canonical = canonicalOrAbs(f)
+            if (seen.add(canonical)) found.add(f)
+        }
         return found.maxByOrNull { it.lastModified() }
     }
 
@@ -81,7 +87,7 @@ object Aaps333NewestApk {
 
     // List2 row / confirm: "Newest: 803  (this phone 801)"
     fun newestSummary(pm: PackageManager, packageName: String): String {
-        val newest = newestFeatureNumberFromNames() ?: newestFeatureNumber(pm)
+        val newest = newestFeatureNumber(pm)
         val running = runningFeatureNumber(pm, packageName)
         return when {
             newest != null && running != null -> "Newest: $newest  (this phone $running)"
@@ -93,6 +99,21 @@ object Aaps333NewestApk {
 
     fun isPlausiblePumpApk(file: File): Boolean =
         file.isFile && file.length() >= MIN_PUMP_APK_BYTES
+
+    // Exact paths Drive/Tasker write. Used when the parent folder does not list.
+    private fun probeKnownPumpApks(): List<File> {
+        val out = ArrayList<File>()
+        val dropNames = listOf("ApkDownload", "APKdownload", "apkdownload")
+        for (name in ARCHIVE_NAMES) {
+            for (dir in archiveDirs(name)) {
+                for (sub in dropNames) {
+                    val drive = File(File(dir, sub), "driveAapsNewest.apk")
+                    if (isPlausiblePumpApk(drive)) out.add(drive)
+                }
+            }
+        }
+        return out
+    }
 
     private fun collectPumpApks(dir: File, into: MutableList<File>, skipNewestCopy: Boolean) {
         if (!dir.isDirectory) return
