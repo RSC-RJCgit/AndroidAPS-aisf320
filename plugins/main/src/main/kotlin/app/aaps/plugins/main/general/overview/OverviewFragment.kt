@@ -29,6 +29,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
+import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
@@ -1601,6 +1602,39 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (config.AAPSCLIENT) mirroredListSetting(key.key) { mirroredBoolean(it) }
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
+    private fun newestApkSummaryForList2(): String {
+        if (config.AAPSCLIENT) {
+            val mirrored = mirroredAutoIsfSettings()
+            val newest = mirrored[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
+            val running = Aaps333NewestApk.featureNumber(mirrored["configuration_version"])
+            val age = mirroredSettingsAge()
+            return when {
+                newest != null && running != null -> "Pump newest: $newest  (pump $running)$age"
+                newest != null -> "Pump newest: $newest$age"
+                else -> "Pump newest: unavailable$age"
+            }
+        }
+        val ctx = context ?: return "Newest: unavailable"
+        Aaps333NewestApk.newestFeatureNumber(ctx.packageManager)?.let {
+            preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it.toLong())
+        }
+        return Aaps333NewestApk.newestSummary(ctx.packageManager, ctx.packageName)
+    }
+
+    private fun list2ActionLabel(action: BasalDirectAction): String {
+        if (action != BasalDirectAction.INSTALL_AAPS333_SHIZUKU && action != BasalDirectAction.STAGE_AAPS333_NEWEST) {
+            return action.label
+        }
+        val newest = if (config.AAPSCLIENT) {
+            mirroredAutoIsfSettings()[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
+        } else {
+            val n = Aaps333NewestApk.newestFeatureNumber(context?.packageManager ?: return action.label)
+            n?.let { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
+            n?.toLong()
+        }
+        return if (newest != null) "${action.label} — $newest" else action.label
+    }
+
     private fun basalDirectActionConfirmation(action: BasalDirectAction): String {
         if (action == BasalDirectAction.LOCATION_SMS_THIS_PHONE) {
             val current = basalDirectActionCurrentValue(action) ?: ""
@@ -1610,16 +1644,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 "$current\n\nTurn ON or OFF whether THIS loop phone may send location SMS, CarePortal notes and AnyDesk. ON stores this phone's Android model; OFF clears it so nobody sends."
         }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
+            val newest = newestApkSummaryForList2()
             return if (config.AAPSCLIENT)
-                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
+                "$newest\n\nRelay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
-                "If Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 (including DriveSync's APKdownload folder) or Download to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
+                "$newest\n\nIf Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 (including DriveSync's APKdownload folder) or Download to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
+            val newest = newestApkSummaryForList2()
             return if (config.AAPSCLIENT)
-                "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
+                "$newest\n\nRelay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
-                "Stage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. A successful install kills this process; the same Shizuku shell then starts MainActivity again."
+                "$newest\n\nStage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. A successful install kills this process; the same Shizuku shell then starts MainActivity again."
         }
         if (action != BasalDirectAction.ANYDESK_RESTART || !config.AAPSCLIENT) {
             val question = rh.gs(R.string.run_question, action.label)
@@ -1640,7 +1676,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             val actionEntries = BasalDirectAction.values().filter {
                 it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
             }
-            val labels = actionEntries.map { it.label } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label }
+            val labels = actionEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label }
             val adapter = object : ArrayAdapter<String>(act, 0, labels) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                     val tv = convertView as? TextView ?: TextView(act).apply {

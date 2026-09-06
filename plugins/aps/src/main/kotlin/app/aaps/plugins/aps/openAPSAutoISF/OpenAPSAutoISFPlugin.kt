@@ -101,6 +101,7 @@ import app.aaps.core.objects.extensions.store
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
@@ -202,6 +203,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var steps180: Int = 0  // add this
     private var steps15: Int = 0  // add this
     private var steps5: Int = 0  // add this
+    private var apkNewestFilenamePeeked = false
     @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var smsCommunicator: SmsCommunicator
     @Inject lateinit var receiverStatusStore: app.aaps.core.interfaces.receivers.ReceiverStatusStore
@@ -1442,6 +1444,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 detail = "$detail; Tasker '$TASKER_INSTALL_NEWEST_TASK' status=$taskerStatus newest=missing"
             }
         }
+        if (ok) rememberNewestApkNnnFromDisk()
         if (notify) {
             if (ok) {
                 addCarePortalNote("ApkSt")
@@ -1515,7 +1518,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         preferences.put(LongKey.ApsAutoIsfApkAutoLastAt, dateUtil.now())
         addCarePortalNote("ApkGo")
-        sendSms("Shizuku APK install starting: ${apk.name} ($reason)")
+        val incomingN = apkFeatureNumber(archiveApkVersionName(apk))
+            ?: Aaps333NewestApk.featureNumber(apk.name)
+        rememberNewestApkNnn(incomingN)
+        val currentN = apkFeatureNumber(installedApkVersionName())
+        val nnn = when {
+            incomingN != null && currentN != null -> "aisf321UK_$incomingN (running $currentN)"
+            incomingN != null -> "aisf321UK_$incomingN"
+            else -> apk.name
+        }
+        sendSms("Shizuku APK install starting: $nnn ($reason)")
         try {
             val (ok, detail) = ShizukuAaps333Installer.install(apk, context.packageName)
             aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.absolutePath}: $detail")
@@ -1549,7 +1561,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // aisf321UK_797 → 797. Null if the name is not this tree's NNN form.
     private fun apkFeatureNumber(versionName: String?): Int? =
-        versionName?.let { Regex("""aisf321UK_(\d+)""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+        Aaps333NewestApk.featureNumber(versionName)
+
+    private fun rememberNewestApkNnn(n: Int?) {
+        if (n != null && n > 0) preferences.put(LongKey.ApsAutoIsfApkNewestNnn, n.toLong())
+    }
+
+    private fun rememberNewestApkNnnFromDisk() {
+        val apk = ShizukuAaps333Installer.newestPumpApk() ?: Aaps333NewestApk.newestSourceApk() ?: return
+        rememberNewestApkNnn(apkFeatureNumber(archiveApkVersionName(apk)) ?: Aaps333NewestApk.featureNumber(apk.name))
+    }
 
     private fun tryAutoInstallNewerApk() {
         if (config.AAPSCLIENT) return
@@ -1568,6 +1589,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val current = installedApkVersionName()
         val incomingN = apkFeatureNumber(incoming)
         val currentN = apkFeatureNumber(current)
+        rememberNewestApkNnn(incomingN)
         if (incomingN == null || currentN == null) {
             aapsLogger.info(LTag.APS, "Auto APK skip: no NNN incoming=$incoming current=$current")
             return
@@ -7760,6 +7782,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // real ON/OFF state before sending the 5.198 relay rather than its unrelated local value.
         lines.add("${BooleanKey.AutomationCodedLocationsEnabled.key} = ${preferences.get(BooleanKey.AutomationCodedLocationsEnabled)}")
         lines.add("${StringKey.AutomationLocationSmsDeviceModel.key} = ${preferences.get(StringKey.AutomationLocationSmsDeviceModel)}")
+        // Do not parse the 90MB APK every cycle. Cache is filled by stage / auto-install / List2.
+        // If still 0, a filename peek is cheap (Drive's driveAapsNewest.apk has no NNN — wait for stage).
+        if (preferences.get(LongKey.ApsAutoIsfApkNewestNnn) <= 0L && !apkNewestFilenamePeeked) {
+            apkNewestFilenamePeeked = true
+            val src = Aaps333NewestApk.newestSourceApk() ?: Aaps333NewestApk.newestStagedApk()
+            rememberNewestApkNnn(src?.let { Aaps333NewestApk.featureNumber(it.name) })
+        }
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }

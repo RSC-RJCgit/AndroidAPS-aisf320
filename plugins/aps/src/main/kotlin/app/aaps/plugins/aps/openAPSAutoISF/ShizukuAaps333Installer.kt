@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSAutoISF
 
 import android.content.pm.PackageManager
 import android.os.Environment
+import app.aaps.core.utils.Aaps333NewestApk
 import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.InputStream
@@ -106,16 +107,7 @@ internal object ShizukuAaps333Installer {
         return ok to "via=$tmp relaunch=$packageName/app.aaps.MainActivity exit=$code $text"
     }
 
-    private fun findNewestSourceApk(): File? {
-        val seen = HashSet<String>()
-        val found = ArrayList<File>()
-        for (root in searchRoots()) {
-            val canonical = canonicalOrAbs(root)
-            if (!seen.add(canonical)) continue
-            collectPumpApks(root, found, skipNewestCopy = true)
-        }
-        return found.maxByOrNull { it.lastModified() }
-    }
+    private fun findNewestSourceApk(): File? = Aaps333NewestApk.newestSourceApk()
 
     private fun pruneArchive(archiveName: String, keep: Int, staged: File): Int {
         val archive = ArrayList<File>()

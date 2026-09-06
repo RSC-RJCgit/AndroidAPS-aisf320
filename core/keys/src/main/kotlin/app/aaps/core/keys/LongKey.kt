@@ -66,6 +66,9 @@ enum class LongKey(
     // Last Shizuku APK install start (auto or List2). Survives process death so a bounce
     // cannot auto-install again for 45 min. 0 = never.
     ApsAutoIsfApkAutoLastAt("autoisf_apk_auto_last_at", 0, defaultedBySM = true),
+    // Newest pump-APK feature NNN seen on this loop phone (AAPS3 / AAPS333 / Download).
+    // Mirrored to Client in the AutoISF settings snapshot so List2 can show it. 0 = unknown.
+    ApsAutoIsfApkNewestNnn("autoisf_apk_newest_nnn", 0, defaultedBySM = true),
 
     // Cursors for the two channels that carry a coded-profile-ROLE assignment made in the
     // ProfileSwitchDialog on another device (notably the AAPSCLIENT follower, whose local
