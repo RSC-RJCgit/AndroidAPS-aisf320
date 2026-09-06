@@ -6,11 +6,13 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -111,6 +113,69 @@ class DelayedBolusWorker(
         ).blockingGet()
     }
 
+    // A delivered delayed dose is a new calculation made well after the original Wizard result.
+    // Persist it as a real BolusCalculatorResult so Treatments shows a separate "Calc" row whose
+    // details explain the live IOB/COB reduction and explicitly close the one-shot delayed sequence.
+    private fun addDeliveredCalcTreatment(
+        gs: GlucoseStatus,
+        delayedDose: Double,
+        fullRequired: Double,
+        originalDose: Double,
+        iobDelta: Double,
+        currentCob: Double,
+        originalCarbs: Double,
+        cobFraction: Double,
+        gapAfterIob: Double,
+        rawDose: Double,
+        multiplier: Double,
+        dbLabel: String
+    ) {
+        val profile = profileFunction.getProfile()
+        val multiplierPct = (multiplier * 100).toInt()
+        val note = "$dbLabel delayed bolus: ${Round.roundTo(delayedDose, 0.01)}U delivered\n" +
+            "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
+            "SD ${Round.roundTo(gs.shortAvgDelta / 18.0182, 0.01)}, LD ${Round.roundTo(gs.longAvgDelta / 18.0182, 0.01)} mmol/L\n" +
+            "Full required ${Round.roundTo(fullRequired, 0.01)}U - initial ${Round.roundTo(originalDose, 0.01)}U " +
+            "- IOB cover ${Round.roundTo(iobDelta, 0.01)}U = ${Round.roundTo(gapAfterIob, 0.01)}U\n" +
+            "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
+            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; late factor $multiplierPct%\n" +
+            "Delayed sequence complete; no residual pending"
+        persistenceLayer.insertOrUpdateBolusCalculatorResult(
+            BCR(
+                timestamp = dateUtil.now(),
+                targetBGLow = profile?.getTargetLowMgdl() ?: 0.0,
+                targetBGHigh = profile?.getTargetHighMgdl() ?: 0.0,
+                isf = profile?.getIsfMgdl("DelayedBolusWorker") ?: 0.0,
+                ic = profile?.getIc() ?: 0.0,
+                bolusIOB = iobDelta,
+                wasBolusIOBUsed = iobDelta > 0.0,
+                basalIOB = 0.0,
+                wasBasalIOBUsed = false,
+                glucoseValue = gs.glucose,
+                wasGlucoseUsed = true,
+                glucoseDifference = gs.delta,
+                glucoseInsulin = 0.0,
+                glucoseTrend = 0.0,
+                wasTrendUsed = false,
+                trendInsulin = 0.0,
+                cob = currentCob,
+                wasCOBUsed = originalCarbs > 0.0,
+                cobInsulin = 0.0,
+                carbs = originalCarbs,
+                wereCarbsUsed = originalCarbs > 0.0,
+                carbsInsulin = 0.0,
+                otherCorrection = delayedDose,
+                wasSuperbolusUsed = false,
+                superbolusInsulin = 0.0,
+                wasTempTargetUsed = false,
+                totalInsulin = delayedDose,
+                percentageCorrection = multiplierPct,
+                profileName = profileFunction.getProfileName(),
+                note = note
+            )
+        ).blockingGet()
+    }
+
     companion object {
         const val WORK_NAME = "DelayedBolusWork"
         const val KEY_ORIGINAL_DOSE = "originalDose"
@@ -122,7 +187,8 @@ class DelayedBolusWorker(
 
         private val DELAYED_BGL_MGDL   = 4.5  * 18.0182
         private val DELAYED_DELTA_MGDL = 0.1  * 18.0182
-        private val DELAYED_SD_MGDL    = 0.2  * 18.0182
+        private val DELAYED_SD_MGDL    = 0.15 * 18.0182
+        private val DELAYED_SD_BG_BYPASS_MGDL = 5.5 * 18.0182
         private val DELAYED_LD_MGDL    = 0.05 * 18.0182
         private val DELAYED_BGL_AGE_MS = T.mins(5).msecs()
 
@@ -180,7 +246,7 @@ class DelayedBolusWorker(
         val criteriaOk = gs != null &&
             gs.glucose > DELAYED_BGL_MGDL &&
             gs.delta > DELAYED_DELTA_MGDL &&
-            gs.shortAvgDelta > DELAYED_SD_MGDL &&
+            (gs.shortAvgDelta >= DELAYED_SD_MGDL || gs.glucose > DELAYED_SD_BG_BYPASS_MGDL) &&
             gs.longAvgDelta > DELAYED_LD_MGDL
         val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
 
@@ -228,6 +294,21 @@ class DelayedBolusWorker(
                     override fun run() {
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                        else
+                            addDeliveredCalcTreatment(
+                                gs = gs,
+                                delayedDose = delayedDose,
+                                fullRequired = fullRequired,
+                                originalDose = originalDose,
+                                iobDelta = iobDelta,
+                                currentCob = currentCob,
+                                originalCarbs = originalCarbs,
+                                cobFraction = cobFraction,
+                                gapAfterIob = gapAfterIob,
+                                rawDose = rawDose,
+                                multiplier = multiplier,
+                                dbLabel = dbLabel
+                            )
                     }
                 })
             }
