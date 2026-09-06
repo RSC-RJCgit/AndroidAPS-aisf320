@@ -6952,7 +6952,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // manually-set Activity TT, so without this marker ActivityProf50% could misread a brief
         // 5-minute post-bolus TT as an Activity session and trigger its 180-minute 50% profile drop.
         // Reuses the same Profile=Bolus state BolusGiven71_0.70 already sets for the same reason.
-        if (readyToRun("Bolus2", 20) && activeTtMgdl() == null) {
+        // DISABLED 2026-09-06 at explicit request. BolusGiven71 still sets Profile=Bolus for the
+        // Activity TT disambiguation; the clearer below still expires that marker after 15 min.
+        val bolus2Enabled = false
+        if (bolus2Enabled && readyToRun("Bolus2", 20) && activeTtMgdl() == null) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
