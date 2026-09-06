@@ -348,6 +348,10 @@ class DetermineBasalAutoISF @Inject constructor(
         steps5M: Int,
         smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
         smbBoostRecent: Boolean = false,   // BolusGiven bg1/2/3 / BMild within 30 min, or COB>=9 -> skip fast-rise caps
+        // True when UamBst marked within the last 20 min. The firing cycle itself still sees false
+        // (markRun is after determine_basal), so the first boosted SMB is unchanged. Default false
+        // preserves callers/tests.
+        uamBoostRecent: Boolean = false,
         // NightFrSkip: same FastRise restore as smbBoostRecent, but only 1–2 loop cycles (00:30-04:00).
         // The 0.6U/10min cap below still binds -- this must NOT be wired into smbBoostRecent's 30-min
         // window. Default false = unchanged callers/tests.
@@ -2194,13 +2198,21 @@ class DetermineBasalAutoISF @Inject constructor(
                 // NB: microBolusFullUncapped was snapshotted AFTER the anti-stacking x0.9 trim, so that
                 // trim survives this restore — only the fast-rise caps are undone.
                 // (Earlier profile_percentage>100 variant of this bypass was removed by user choice.)
-                if ((smbBoostRecent || nightFrSkipActive) && microBolus != microBolusFullUncapped) {
+                // 6 Sep 2026 12:16-12:30: BMild|UamBst 1.25U at IOB 0.71, then this restore left the
+                // 12:23-12:30 tail uncapped while IOB was already 1.91-2.49 and COB 0, and BG crashed
+                // 8.9→4.1. After a recent UamBst, once IOB is already high with no COB, keep the
+                // fast-rise caps — do not give the later SMBs the early-boost waiver.
+                val iobHighNoCob = IOB >= 0.18 * profile.max_iob && COB <= 0
+                val holdFastRiseAfterUamBst = uamBoostRecent && iobHighNoCob
+                if ((smbBoostRecent || nightFrSkipActive) && !holdFastRiseAfterUamBst && microBolus != microBolusFullUncapped) {
                     val skipWhy = when {
                         smbBoostRecent -> "BolusGiven/Mild boost within 30 min"
                         else -> "NightFrSkip 1-2 cycle"
                     }
                     rT.reason.append(" fast-rise caps skipped ($skipWhy): microBolus ${round(microBolus, 2)} -> ${round(microBolusFullUncapped, 2)} ")
                     microBolus = microBolusFullUncapped
+                } else if (holdFastRiseAfterUamBst && (smbBoostRecent || nightFrSkipActive)) {
+                    rT.reason.append(" fast-rise caps kept after UamBst (IOB ${round(IOB, 2)} COB ${round(COB, 1)}) ")
                 }
 // =====================================================
 // RECENT-LOW REBOUND GUARD
@@ -2251,8 +2263,15 @@ class DetermineBasalAutoISF @Inject constructor(
                         rawDelta5Mgdl >= 0.25 * 18 &&
                         aapsDelta1Mgdl >= 0.25 * 18
 
-                if (fastRiseNow && microBolus > 0.0) {
+                // Extra later-rise cut after a recent UamBst, or whenever IOB is already high with
+                // COB 0. 6 Sep 12:16 first shot (IOB 0.71) is left alone: uamBoostRecent is still
+                // false that cycle. 12:23+ (IOB 1.91, COB 0) is the bind — 0.18*max_iob ≈ 1.71U at
+                // 9.5. Does not stack a second multiplier on top of this same block's 1.5/1.9 taper.
+                val postUamBstLate = uamBoostRecent && !uamBoostEnhancedCandidateThisCycle
+                val laterRiseAfterBoost = postUamBstLate || iobHighNoCob
+                if ((fastRiseNow || postUamBstLate) && microBolus > 0.0) {
                     val lateFastRiseFactor = when {
+                        laterRiseAfterBoost -> 0.50
                         smbSum30Min >= 1.9 -> 0.50
                         smbSum30Min >= 1.5 -> 0.75
                         else -> 1.0
@@ -2260,7 +2279,11 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (lateFastRiseFactor < 1.0) {
                         val beforeLateFastRise = microBolus
                         microBolus *= lateFastRiseFactor
-                        rT.reason.append(" late FastRise SMB30 ${round(smbSum30Min, 2)}U: x${round(lateFastRiseFactor, 2)} ${round(beforeLateFastRise, 2)} -> ${round(microBolus, 2)} ")
+                        val why = if (laterRiseAfterBoost)
+                            "after UamBst/high-IOB IOB ${round(IOB, 2)}"
+                        else
+                            "SMB30 ${round(smbSum30Min, 2)}U"
+                        rT.reason.append(" late FastRise $why: x${round(lateFastRiseFactor, 2)} ${round(beforeLateFastRise, 2)} -> ${round(microBolus, 2)} ")
                     }
                 }
 

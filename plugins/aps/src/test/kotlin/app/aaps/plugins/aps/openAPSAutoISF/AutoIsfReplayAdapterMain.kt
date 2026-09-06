@@ -103,6 +103,9 @@ object AutoIsfReplayAdapterMain {
             steps5M = parameters.intValue("steps5M"),
             smbInt5Sec = parameters.doubleValue("smbInt5Sec"),
             smbBoostRecent = parameters.booleanValue("smbBoostRecent"),
+            uamBoostRecent = parameters.get("uamBoostRecent")
+                ?.takeIf { it.isJsonPrimitive }?.asBoolean
+                ?: false,
             nightFrSkipActive = parameters.get("nightFrSkipActive")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean
                 ?: false,

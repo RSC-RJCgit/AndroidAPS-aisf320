@@ -7428,6 +7428,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && (rawDelta5Raw ?: -9999.0) >= 1.8
             && glucoseStatus.longAvgDelta > -1.8
             && (iobData.iob < 0.33 * oapsProfile.max_iob || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
+        // UamBst mark is written after determine_basal, so the firing cycle still sees false.
+        // 20 min covers the 6 Sep 12:16→12:30 tail without lasting into the next meal.
+        val replayUamBoostRecent = !readyToRun("UamBst", 20)
         // Same key as the fire throttle: markRun("NightFrSkip") makes readyToRun(2) false for ~2 min
         // (this cycle + next) and readyToRun(60) false for the one-shot hour. Must NOT be folded into
         // replaySmbBoostRecent -- that is a 30-min FastRise waiver.
@@ -7500,6 +7503,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "steps5M" to steps5,
                 "smbInt5Sec" to replaySmbInt5Sec,
                 "smbBoostRecent" to replaySmbBoostRecent,
+                "uamBoostRecent" to replayUamBoostRecent,
                 "nightFrSkipActive" to replayNightFrSkipActive,
                 "rawDelta5Mgdl" to replayRawDelta5Mgdl,
                 "immediateRawDelta5Mgdl" to replayImmediateRawDelta5Mgdl,
@@ -7573,6 +7577,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 2026 15:31 meal put IOB at 3.3U from the announced bolus before any SMB, which is exactly
             // when Giv-1 needed the bypass (FastRise 750 still applied at 15:35).
             smbBoostRecent = replaySmbBoostRecent,
+            uamBoostRecent = replayUamBoostRecent,
             nightFrSkipActive = replayNightFrSkipActive,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.
@@ -7634,6 +7639,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U")
             addCarePortalNote("UamBst")
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
+            markRun("UamBst")
         }
         // T3AcceISF CarePortal note removed 2026-08-27 (block itself removed in DetermineBasalAutoISF.kt,
         // per explicit instruction -- no longer wanted).

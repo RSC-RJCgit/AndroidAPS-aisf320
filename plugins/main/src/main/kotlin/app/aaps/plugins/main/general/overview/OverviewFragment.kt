@@ -426,6 +426,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         handler.post { refreshAll() }
         updatePumpStatus()
         updateCalcProgress()
+        if (config.AAPSCLIENT) tryFlushPendingRelayTts()
 
         // Mod check color of exercise mode toggle icon
         if (preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)) {
@@ -1610,13 +1611,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
             return if (config.AAPSCLIENT)
-                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is active it will be replaced for 5 minutes."
+                "Relay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
                 "If Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 (including DriveSync's APKdownload folder) or Download to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             return if (config.AAPSCLIENT)
-                "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is active it will be replaced for 5 minutes."
+                "Relay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
                 "Stage the newest pump APK (keep 20), fire Tasker task StageAapsNewestApk, then Shizuku pm install -r if Shizuku is up. If Shizuku is not running the file is still staged (ApkSz) and Tasker still runs. A successful install kills this process; the same Shizuku shell then starts MainActivity again."
         }
@@ -2387,7 +2388,41 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             .show()
     }
 
+    // Client List1/List2 relay: if a real TT is already on, do not send the command TT now and do
+    // not cancel the existing one. Queue it and retry every 5 minutes until the current TT is gone.
+    // onPause clears this fragment's Handler, so onResume also flushes the same queue.
+    private data class PendingRelayTt(val mmol: Double, val origin: String)
+
+    companion object {
+        private val pendingRelayTts = ArrayDeque<PendingRelayTt>()
+    }
+
+    private val relayTtRetryRunnable = Runnable { tryFlushPendingRelayTts() }
+
     private fun setRelayTt(mmol: Double, origin: String) {
+        pendingRelayTts.addLast(PendingRelayTt(mmol, origin))
+        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
+            aapsLogger.info(LTag.CORE, "Client relay TT $mmol deferred 5 min; existing TT preserved ($origin)")
+            context?.let { ToastUtils.infoToast(it, "TT already on — will retry $mmol in 5 min (not cancelling)") }
+        }
+        tryFlushPendingRelayTts()
+    }
+
+    private fun tryFlushPendingRelayTts() {
+        handler.removeCallbacks(relayTtRetryRunnable)
+        if (pendingRelayTts.isEmpty()) return
+        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
+            handler.postDelayed(relayTtRetryRunnable, TimeUnit.MINUTES.toMillis(5))
+            return
+        }
+        val next = pendingRelayTts.removeFirst()
+        insertRelayTtNow(next.mmol, next.origin)
+        if (pendingRelayTts.isNotEmpty()) {
+            handler.postDelayed(relayTtRetryRunnable, TimeUnit.MINUTES.toMillis(5))
+        }
+    }
+
+    private fun insertRelayTtNow(mmol: Double, origin: String) {
         val mgdl = mmol * app.aaps.core.data.configuration.Constants.MMOLL_TO_MGDL
         val tt = TT(
             timestamp = dateUtil.now(),
