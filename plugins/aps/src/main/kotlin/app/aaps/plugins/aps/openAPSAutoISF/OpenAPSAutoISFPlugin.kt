@@ -2668,9 +2668,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 4 Sep 2026 15:30-15:59: BGL 5.5→7.3 after the 13:34 meal, IOBd5 −0.11..+0.10 (leftover
             // IOB decaying), RawUKF5 often 0.73-0.97 (bg3 band). BMild's IOB-rising + raw<0.80 split
             // left nobody to fire; bg3 was GivBlk'd from a 15:11 delivery-suppressed Giv-3 at BGL 5.0.
-            // Meal-leftover path: COB>=4 or normal bolus <3h, BGL>=6.5, skip IOBΔ5 and the bg3 raw
-            // upper cap. 2 Sep 13:07 BMild|UamBst at BGL 5.9 / COB 0 / IOB 0.22 stays blocked.
-            val mealLeftoverRise = g >= 117.1 /* 6.5 mmol */
+            // Meal-leftover path: COB>=4 or normal bolus <3h, BGL>=6.0 (was 6.5; 6 Sep 14:00 FastRise
+            // sat in the bg3 raw band from 5.0 with IOB not yet rising, and leftover could not unlock
+            // until 6.5). Skip IOBΔ5 and the bg3 raw upper cap. 2 Sep 13:07 BMild|UamBst at BGL 5.9 /
+            // COB 0 / IOB 0.22 stays blocked.
+            val mealLeftoverRise = g >= 108.1 /* 6.0 mmol */
                 && (mealData.mealCOB >= 4.0 || lastBolusMinMild < 180)
                 && glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
             val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
@@ -5431,7 +5433,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes < 300
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            val mealLeftoverRise = g >= 117.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)
+            val mealLeftoverRise = g >= 108.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)
                 && glucoseStatus.shortAvgDelta >= 2.7
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
                 && (iobChange5 > 0.40 * stackK * thresholdScale || mealLeftoverRise) && d >= 5.4 * stackK
