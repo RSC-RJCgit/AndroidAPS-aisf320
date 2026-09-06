@@ -2,11 +2,10 @@
 
 Personal fork of AndroidAPS, heavily customized around a hand-written "coded automations" layer
 inside the AutoISF plugin, plus custom overview/history graph panels. Work happens on branch
-`TDDautos3425`. Commit messages follow `aisf321UK_NNNdescription`. Bump
-`Versions.kt` as a routine part of the feature (same commit when asked) so the
-subject NNN and `aisf321UK_NNN` match. Do not make version-only `NNNnext`
-commits. After the unpushed `753next` version-only commit, this tree's next
-feature number is **754**.
+`TDDautos3425`. Commit messages follow `aisf321UK_NNNdescription`. **Do not
+bump `Versions.kt`** — the user sets NNN by hand. CI APK and Drive folder
+names already follow `Versions.appVersion`. Do not announce an NNN as if this
+session assigned it. Do not make version-only `NNNnext` commits.
 
 Real device/incident data for tuning decisions lives outside this repo at `C:\backup\AAPS`
 (`aiv_Regan\*.csv` exports, `aiv_Regan\output\combinedRegan.txt`, `ZFlip5_Logs1\AutoISF_dated_*`
