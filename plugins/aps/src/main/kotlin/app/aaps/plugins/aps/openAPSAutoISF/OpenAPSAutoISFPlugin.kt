@@ -1513,6 +1513,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             )
             return
         }
+        preferences.put(LongKey.ApsAutoIsfApkAutoLastAt, dateUtil.now())
         addCarePortalNote("ApkGo")
         sendSms("Shizuku APK install starting: ${apk.name} ($reason)")
         try {
@@ -1546,6 +1547,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun archiveApkVersionName(apk: java.io.File): String? =
         context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)?.versionName
 
+    // aisf321UK_797 → 797. Null if the name is not this tree's NNN form.
+    private fun apkFeatureNumber(versionName: String?): Int? =
+        versionName?.let { Regex("""aisf321UK_(\d+)""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+
     private fun tryAutoInstallNewerApk() {
         if (config.AAPSCLIENT) return
         val stage = stageNewestAaps333Apk("auto-15min", notify = false)
@@ -1553,19 +1558,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.info(LTag.APS, "Auto APK stage miss: ${stage.detail}")
             return
         }
+        val lastAt = preferences.get(LongKey.ApsAutoIsfApkAutoLastAt)
+        if (lastAt > 0L && dateUtil.now() - lastAt < 45L * 60_000L) {
+            aapsLogger.debug(LTag.APS, "Auto APK cooldown; last install ${dateUtil.now() - lastAt}ms ago")
+            return
+        }
         val apk = ShizukuAaps333Installer.newestPumpApk() ?: return
         val incoming = archiveApkVersionName(apk)
         val current = installedApkVersionName()
-        if (incoming.isNullOrBlank() || current.isNullOrBlank()) {
-            aapsLogger.info(LTag.APS, "Auto APK skip: missing versionName incoming=$incoming current=$current")
+        val incomingN = apkFeatureNumber(incoming)
+        val currentN = apkFeatureNumber(current)
+        if (incomingN == null || currentN == null) {
+            aapsLogger.info(LTag.APS, "Auto APK skip: no NNN incoming=$incoming current=$current")
             return
         }
-        if (incoming == current) {
-            aapsLogger.debug(LTag.APS, "Auto APK up to date $current")
+        if (incomingN <= currentN) {
+            aapsLogger.debug(LTag.APS, "Auto APK not newer $incomingN <= $currentN")
             return
         }
         if (!ShizukuAaps333Installer.hasPermission()) {
-            aapsLogger.info(LTag.APS, "Auto APK newer $incoming vs $current; Shizuku not granted")
+            aapsLogger.info(LTag.APS, "Auto APK $currentN -> $incomingN; Shizuku not granted")
             return
         }
         addCarePortalNote("ApkAuto")
@@ -4131,9 +4143,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("StageAaps333NewestTT")
         }
 
-        // Auto APK: 15 min (not 5). Drive list is cheap; a same-file reinstall is not.
-        // IO thread — Drive/copy must not sit on the loop. First cycle after process start
-        // is allowed (lastRun in-memory); versionName match then no-ops after a successful bounce.
+        // Every 15 min on Live and Virtual: stage newest/, then Shizuku-install only if the
+        // archive NNN is strictly higher than the running APK and no install started in the
+        // last 45 min (persisted — survives the pm-install kill). sh -c still relaunches.
         if (readyToRun("AutoApkInstall", 15) && !config.AAPSCLIENT) {
             markRun("AutoApkInstall")
             Schedulers.io().scheduleDirect { tryAutoInstallNewerApk() }

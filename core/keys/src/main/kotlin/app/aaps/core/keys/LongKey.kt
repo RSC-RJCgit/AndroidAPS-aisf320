@@ -63,6 +63,9 @@ enum class LongKey(
     // and yield while it's in the future. 0/past means no rescue active; no explicit clear needed, it just
     // stops mattering once passed.
     ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0, defaultedBySM = true),
+    // Last Shizuku APK install start (auto or List2). Survives process death so a bounce
+    // cannot auto-install again for 45 min. 0 = never.
+    ApsAutoIsfApkAutoLastAt("autoisf_apk_auto_last_at", 0, defaultedBySM = true),
 
     // Cursors for the two channels that carry a coded-profile-ROLE assignment made in the
     // ProfileSwitchDialog on another device (notably the AAPSCLIENT follower, whose local
