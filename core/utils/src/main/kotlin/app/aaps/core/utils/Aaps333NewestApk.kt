@@ -5,7 +5,7 @@ import android.os.Environment
 import java.io.File
 
 // Shared peek for List2 "Install newest" / "Stage newest" and the auto-install NNN test.
-// Same search roots as ShizukuAaps333Installer: AAPS3, AAPS333, Download; skip Client/Wear
+// Same search roots as ShizukuAaps333Installer: AAPS3, AAPS333, ApkDownload; skip Client/Wear
 // and the staged aapsNewestAPK copy when picking the source winner (mtime).
 object Aaps333NewestApk {
 
@@ -56,7 +56,22 @@ object Aaps333NewestApk {
         null
     }
 
+    // Highest aisf321UK_NNN in any visible pump APK filename. Used for List2 so a
+    // newer Drive drop named driveAapsNewest.apk (no NNN) cannot hide the archive number.
+    // Does not open the 90MB APK.
+    fun newestFeatureNumberFromNames(): Int? {
+        val found = ArrayList<File>()
+        val seen = HashSet<String>()
+        for (root in searchRoots()) {
+            val canonical = canonicalOrAbs(root)
+            if (!seen.add(canonical)) continue
+            collectPumpApks(root, found, skipNewestCopy = true)
+        }
+        return found.mapNotNull { featureNumber(it.name) }.maxOrNull()
+    }
+
     fun newestFeatureNumber(pm: PackageManager): Int? {
+        newestFeatureNumberFromNames()?.let { return it }
         val src = newestSourceApk() ?: newestStagedApk() ?: return null
         return featureNumber(src.name) ?: featureNumber(versionName(pm, src))
     }
@@ -66,12 +81,13 @@ object Aaps333NewestApk {
 
     // List2 row / confirm: "Newest: 803  (this phone 801)"
     fun newestSummary(pm: PackageManager, packageName: String): String {
-        val newest = newestFeatureNumber(pm)
+        val newest = newestFeatureNumberFromNames() ?: newestFeatureNumber(pm)
         val running = runningFeatureNumber(pm, packageName)
         return when {
             newest != null && running != null -> "Newest: $newest  (this phone $running)"
             newest != null -> "Newest: $newest"
-            else -> "Newest: not found under AAPS3 / AAPS333 / Download"
+            running != null -> "Newest: not found under AAPS3 / AAPS333 / ApkDownload  (this phone $running)"
+            else -> "Newest: not found under AAPS3 / AAPS333 / ApkDownload"
         }
     }
 
@@ -97,7 +113,15 @@ object Aaps333NewestApk {
 
     private fun searchRoots(): List<File> {
         val roots = ArrayList<File>()
-        for (name in ARCHIVE_NAMES) roots.addAll(archiveDirs(name))
+        for (name in ARCHIVE_NAMES) {
+            val archives = archiveDirs(name)
+            roots.addAll(archives)
+            // Drive / Tasker drop the versioned APK here — not in the phone Download folder.
+            for (dir in archives) {
+                roots.add(File(dir, "ApkDownload"))
+                roots.add(File(dir, "APKdownload"))
+            }
+        }
         roots.add(File("/sdcard/Download"))
         roots.add(File("/storage/emulated/0/Download"))
         roots.add(File(Environment.getExternalStorageDirectory(), "Download"))

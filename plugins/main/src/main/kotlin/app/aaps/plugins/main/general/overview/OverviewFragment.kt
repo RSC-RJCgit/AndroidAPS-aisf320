@@ -1602,6 +1602,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (config.AAPSCLIENT) mirroredListSetting(key.key) { mirroredBoolean(it) }
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
+    // Filename NNN first (no 90MB parse on the UI thread). Cache next. Do not fall
+    // back to the running APK — that would label "Install newest — 801" when 801 is
+    // only this phone, not the archive.
+    private fun list2NewestNnn(): Long? {
+        Aaps333NewestApk.newestFeatureNumberFromNames()?.toLong()?.let { return it }
+        return preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }
+    }
+
     private fun newestApkSummaryForList2(): String {
         if (config.AAPSCLIENT) {
             val mirrored = mirroredAutoIsfSettings()
@@ -1615,9 +1623,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
         }
         val ctx = context ?: return "Newest: unavailable"
-        Aaps333NewestApk.newestFeatureNumber(ctx.packageManager)?.let {
-            preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it.toLong())
-        }
+        list2NewestNnn()?.let { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it) }
         return Aaps333NewestApk.newestSummary(ctx.packageManager, ctx.packageName)
     }
 
@@ -1628,9 +1634,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val newest = if (config.AAPSCLIENT) {
             mirroredAutoIsfSettings()[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
         } else {
-            val n = Aaps333NewestApk.newestFeatureNumber(context?.packageManager ?: return action.label)
-            n?.let { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
-            n?.toLong()
+            list2NewestNnn()?.also { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it) }
         }
         return if (newest != null) "${action.label} — $newest" else action.label
     }
@@ -1648,7 +1652,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return if (config.AAPSCLIENT)
                 "$newest\n\nRelay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
-                "$newest\n\nIf Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 (including DriveSync's APKdownload folder) or Download to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
+                "$newest\n\nIf Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 / ApkDownload to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
             val newest = newestApkSummaryForList2()

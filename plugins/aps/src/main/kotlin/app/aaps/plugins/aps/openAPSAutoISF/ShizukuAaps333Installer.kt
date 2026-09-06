@@ -9,7 +9,7 @@ import java.io.InputStream
 
 // List2 APK staging + Shizuku install (2026-09-02).
 // Stage (no Shizuku): find the newest non-Client pump APK under this phone's archive folder
-// (Live: AAPS3, Virtual: AAPS333) or Download, copy it to <archive>/newest/aapsNewestAPK.apk,
+// (Live: AAPS3, Virtual: AAPS333, including ApkDownload) or leftover Download, copy it to <archive>/newest/aapsNewestAPK.apk,
 // and in that archive (except newest/) keep only the newest 20 APKs. Install still needs
 // Shizuku `pm install -r` of that staged file, or Tasker task StageAapsNewestApk.
 internal object ShizukuAaps333Installer {
@@ -60,7 +60,7 @@ internal object ShizukuAaps333Installer {
     // older APKs in that same archive. Download is a search root only — not pruned.
     fun stageNewestAndPrune(): Pair<Boolean, String> {
         val src = findNewestSourceApk()
-            ?: return false to "no pump apk under AAPS3, AAPS333, or Download"
+            ?: return false to "no pump apk under AAPS3, AAPS333, or ApkDownload"
         val archiveName = destArchiveName(src)
         val destDir = newestDirs(archiveName).first()
         if (!destDir.exists() && !destDir.mkdirs())
@@ -188,7 +188,14 @@ internal object ShizukuAaps333Installer {
 
     private fun searchRoots(): List<File> {
         val roots = ArrayList<File>()
-        for (name in ARCHIVE_NAMES) roots.addAll(archiveDirs(name))
+        for (name in ARCHIVE_NAMES) {
+            val archives = archiveDirs(name)
+            roots.addAll(archives)
+            for (dir in archives) {
+                roots.add(File(dir, "ApkDownload"))
+                roots.add(File(dir, "APKdownload"))
+            }
+        }
         roots.add(File("/sdcard/Download"))
         roots.add(File("/storage/emulated/0/Download"))
         roots.add(File(Environment.getExternalStorageDirectory(), "Download"))

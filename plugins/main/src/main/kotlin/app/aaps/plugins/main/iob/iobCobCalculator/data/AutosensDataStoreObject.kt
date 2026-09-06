@@ -124,15 +124,22 @@ class AutosensDataStoreObject : AutosensDataStore {
     // during recalculation autosensDataTable is cleared and not available
     // for providing COB, which is an serious issue in BolusWizard
     // So let save last value after every calculation and use it
-    // if autosensDataTable is not available
+    // if autosensDataTable is not available. Freshness uses dateUtil.now()
+    // (same 11-min window as the table itself). The old getter compared
+    // against wall-clock and discarded a just-saved cob, so mealCOB went
+    // to 0 whenever the table was empty.
     var storedLastAutosensResult: AutosensData? = null
-        get() = field?.let { if (it.time < System.currentTimeMillis() - 11 * 60 * 1000) it else null }
+
+    private fun storedLastIfFresh(dateUtil: DateUtil): AutosensData? {
+        val stored = storedLastAutosensResult ?: return null
+        return stored.takeIf { it.time >= dateUtil.now() - 11 * 60 * 1000 }
+    }
 
     override fun getLastAutosensData(reason: String, aapsLogger: AAPSLogger, dateUtil: DateUtil): AutosensData? {
         synchronized(dataLock) {
             if (autosensDataTable.size() < 1) {
                 aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA null: autosensDataTable empty ($reason)")
-                return storedLastAutosensResult
+                return storedLastIfFresh(dateUtil)
             }
             val data: AutosensData = try {
                 autosensDataTable.valueAt(autosensDataTable.size() - 1)
@@ -141,11 +148,11 @@ class AutosensDataStoreObject : AutosensDataStore {
                 // in this rare case better return null and do not block UI
                 // APS plugin should use getLastAutosensDataSynchronized where the blocking is not an issue
                 aapsLogger.error("AUTOSENSDATA null: Exception caught ($reason)")
-                return storedLastAutosensResult
+                return storedLastIfFresh(dateUtil)
             }
             return if (data.time < dateUtil.now() - 11 * 60 * 1000) {
                 aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA null: data is old ($reason) size()=${autosensDataTable.size()} lastData=${dateUtil.dateAndTimeAndSecondsString(data.time)}" }
-                storedLastAutosensResult
+                storedLastIfFresh(dateUtil)
             } else {
                 aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA ($reason) $data" }
                 storedLastAutosensResult = data

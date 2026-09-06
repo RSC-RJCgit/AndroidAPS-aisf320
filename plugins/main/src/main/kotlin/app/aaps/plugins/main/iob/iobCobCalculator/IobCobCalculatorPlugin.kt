@@ -357,20 +357,45 @@ class IobCobCalculatorPlugin @Inject constructor(
         val now = System.currentTimeMillis()
         val maxAbsorptionHours: Double = activePlugin.activeSensitivity.maxAbsorptionHours()
         val absorptionTimeAgo = now - (maxAbsorptionHours * T.hours(1).msecs()).toLong()
-        persistenceLayer.getCarbsFromTimeToTimeExpanded(absorptionTimeAgo + 1, now, true)
-            .forEach {
-                if (it.amount != 0.0) {
-                    result.carbs += it.amount
-                    if (it.timestamp > result.lastCarbTime) result.lastCarbTime = it.timestamp
-                }
+        val recentCarbs = persistenceLayer.getCarbsFromTimeToTimeExpanded(absorptionTimeAgo + 1, now, true)
+        recentCarbs.forEach {
+            if (it.amount != 0.0) {
+                result.carbs += it.amount
+                if (it.timestamp > result.lastCarbTime) result.lastCarbTime = it.timestamp
             }
+        }
         val autosensData = getLastAutosensDataWithWaitForCalculationFinish("getMealData()")
         if (autosensData != null) {
             result.mealCOB = autosensData.cob
             result.slopeFromMinDeviation = autosensData.slopeFromMinDeviation
             result.slopeFromMaxDeviation = autosensData.slopeFromMaxDeviation
             result.usedMinCarbsImpact = autosensData.usedMinCarbsImpact
+            // Same as getCobInfo: carbs newer than the last cob bucket are not in autosens.cob yet.
+            // Secondary-NS imports often land after that bucket already exists, so APS mealCOB
+            // stayed 0 while the carbs row was already in the DB (Virtual 6 Sep 20 g).
+            recentCarbs.forEach {
+                if (it.amount != 0.0 && it.timestamp > autosensData.time && it.timestamp <= now) {
+                    result.mealCOB += it.amount
+                }
+            }
+        } else {
+            recentCarbs.forEach {
+                if (it.amount != 0.0 && it.timestamp > now - T.mins(11).msecs() && it.timestamp <= now) {
+                    result.mealCOB += it.amount
+                }
+            }
         }
+        // Frozen 5-min bucket: the slot that should first include lastCarbTime has cob≈0, so the
+        // imported grams never entered the cob table. Count remaining entered carbs until absorption
+        // lookback drops them. Do not use a pre-carb bucket (time < lastCarbTime) — that would
+        // re-inflate COB after a meal that really did absorb.
+        if (result.lastCarbTime > 0L) {
+            val cobSoonAfterCarbs = ads.getAutosensDataAtTime(result.lastCarbTime + T.mins(5).msecs())
+            if (cobSoonAfterCarbs != null && cobSoonAfterCarbs.time >= result.lastCarbTime && cobSoonAfterCarbs.cob < 0.5 && result.carbs > 0.0) {
+                result.mealCOB = max(result.mealCOB, result.carbs)
+            }
+        }
+        result.mealCOB = max(result.mealCOB, 0.0)
         val lastBolus = persistenceLayer.getNewestBolus()
         result.lastBolusTime = lastBolus?.timestamp ?: 0L
         return result
