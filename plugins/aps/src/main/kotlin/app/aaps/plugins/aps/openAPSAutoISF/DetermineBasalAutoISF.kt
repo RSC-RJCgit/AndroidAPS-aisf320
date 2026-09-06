@@ -1656,10 +1656,16 @@ class DetermineBasalAutoISF @Inject constructor(
                         // own milder delivery-ratio boost (mildBase+0.03), and compounding that with
                         // boost_scale is the combination this split exists to avoid.
                         val includeMultipliedUsual = bmildBasicCriteriaMet && !bg3BasicCriteriaMet
-                        val tier3Uncapped = if (includeMultipliedUsual)
-                            max(boostInsulinReq, max(boostedUsualSmbCandidate, baselineRatioCandidate))
+                        // BMild-only: 1.2 × basal × scale (the usual ~1.15 floor at 0.40 U/h basal).
+                        // Does not change BMild's own SMBdel or ordinary SMB. bg3 keeps unscaled C.
+                        val basalScaleCandidate = if (includeMultipliedUsual)
+                            min(1.2 * boostInsulinReq, boost_max)
                         else
-                            max(boostInsulinReq, baselineRatioCandidate)
+                            boostInsulinReq
+                        val tier3Uncapped = if (includeMultipliedUsual)
+                            max(basalScaleCandidate, max(boostedUsualSmbCandidate, baselineRatioCandidate))
+                        else
+                            max(basalScaleCandidate, baselineRatioCandidate)
                         val tier3Candidate = min(tier3Uncapped, boostIobAllowance)
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
                         // Added 2026-08-25: unconditional diagnostic, logged every cycle this block runs
@@ -1674,7 +1680,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             "Tier3-vs-Bmild: candidate=${round(roundedTier3Candidate, 2)}U vs ordinary(preBoost)=${round(preBoostMicroBolus, 2)}U " +
                                 "(margin=${round(roundedTier3Candidate - preBoostMicroBolus, 2)}U, ${if (roundedTier3Candidate > preBoostMicroBolus) "WON" else "lost"}) " +
                                 "BMild=$bmildBasicCriteriaMet bg3=$bg3BasicCriteriaMet multipliedUsual=$includeMultipliedUsual " +
-                                "boostInsulinReq=${round(boostInsulinReq, 2)} baselineRatio=${round(baselineRatioCandidate, 2)} boostedUsualSmb=${round(boostedUsualSmbCandidate, 2)} " +
+                                "boostInsulinReq=${round(basalScaleCandidate, 2)} baselineRatio=${round(baselineRatioCandidate, 2)} boostedUsualSmb=${round(boostedUsualSmbCandidate, 2)} " +
                                 "boostIobAllowance=${round(boostIobAllowance, 2)} boost_scale=${round(boost_scale, 2)}"
                         )
                         if (roundedTier3Candidate > preBoostMicroBolus) {
