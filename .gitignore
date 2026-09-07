@@ -73,3 +73,5 @@ wear/pumpcontrol/*
 /tmp_find_careportal_dupes.py
 /tmp_fix_careportal_dupes.py
 /tmp_verify_careportal_1057.py
+/tmp_exchange_appx_d_1057.py
+/tmp_verify_appx_d_1131.py
