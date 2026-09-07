@@ -1602,8 +1602,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (config.AAPSCLIENT) mirroredListSetting(key.key) { mirroredBoolean(it) }
         else "Current: ${if (preferences.get(key)) "ON" else "OFF"}"
 
-    // Names / sidecar / cache only. Never list Download or open the 90MB APK here —
-    // that is what paused Live (wait/close) and starved the Client snapshot.
+    // Names / sidecar / cache only. Never listFiles (Download or ApkDownload) or open
+    // the 90MB APK here — that is what paused Live on List2 clicks and starved Client.
     private fun list2NewestNnn(): Long? {
         val ctx = context ?: return preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }
         val cache = preferences.get(LongKey.ApsAutoIsfApkNewestNnn).takeIf { it > 0L }?.toInt()

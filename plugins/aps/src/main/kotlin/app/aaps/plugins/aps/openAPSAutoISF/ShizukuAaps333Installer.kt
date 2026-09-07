@@ -166,9 +166,12 @@ internal object ShizukuAaps333Installer {
     // Last stage winner: <archive>/newest/winner.txt (src path, dest, bytes). SMS/log also
     // carry src=; CarePortal ApkSt does not.
     private fun writeWinnerRecord(destDir: File, src: File, dest: File, how: String) {
+        val nnn = Aaps333NewestApk.featureNumberFromFile(src)
+            ?: Aaps333NewestApk.nnnFromText(src.absolutePath)
         try {
             File(destDir, "winner.txt").writeText(
                 "how=$how\n" +
+                    (nnn?.let { "nnn=$it\n" } ?: "") +
                     "src=${src.absolutePath}\n" +
                     "srcBytes=${src.length()}\n" +
                     "srcMtime=${src.lastModified()}\n" +
@@ -178,6 +181,7 @@ internal object ShizukuAaps333Installer {
             )
         } catch (_: Exception) {
         }
+        if (nnn != null) Aaps333NewestApk.writeNewestNnn(destDir, nnn)
     }
 
     fun driveFetchDest(): File {
