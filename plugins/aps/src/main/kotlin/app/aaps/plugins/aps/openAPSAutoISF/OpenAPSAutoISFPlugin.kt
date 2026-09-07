@@ -6584,9 +6584,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // only covers >=9.0 (bar raised from 7.5 on 2026-08-29 because ~8.0-8.1 felt too low for the
         // x2 path), which left 6.5-9.0 plateaus untreated until morning. Mid is the gentler x1.5
         // lever for that gap, not a reopening of the night x2 bar. End pulled back 02:00→01:30 on
-        // 6 Sep 2026 (explicit request). Still clear of OvernightDuraRescue (02:00-04:00); 01:30-06:00
-        // stays night-HiBrk-only (>=9.0). Same cut-short / duraISF / flat-BG gates; mid still also
-        // requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
+        // 6 Sep 2026 (explicit request); mid-band START pulled 06:00→08:30 on 7 Sep 2026 (explicit
+        // request) after a 06:14 HiBrkDayMid fire on flat BG ~7.0 stacked IOB 0.3→1.1 and drove a
+        // 4.7 an hour later. Still clear of OvernightDuraRescue (02:00-04:00); 01:30-08:30 now stays
+        // HiBrk-only for the mid band -- HiBrk (>=9.0) covers 01:30-06:00, HiBrkDay's high band
+        // (>=9.0) covers 06:00-08:30, so genuine highs are still braked around the clock; only the
+        // 6.5-9.0 dawn plateau is left to the ordinary loop. Same cut-short / duraISF / flat-BG
+        // gates; mid still also requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
         // re-arm floor were removed 5 Sep 2026: a meal bolus was locking the whole 16:00-16:34
         // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. Fire throttle is
         // 10 min from 02:00-07:00 to prevent closely repeated early-morning boosts, otherwise 2 min so
@@ -6630,18 +6634,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Steroids Off, iobChange5 < 0.5):
                 //  - high (>= 9.0 mmol, 06:00-22:00 only): original plateaued-high brake -- TT 4.0,
                 //    SMBdel x2. After 22:00 this is night HiBrk's job, not ours.
-                //  - mid  (>  6.5 mmol, 06:00-01:30): stubborn plateau brake, only when MJ is
+                //  - mid  (>  6.5 mmol, 08:30-01:30): stubborn plateau brake, only when MJ is
                 //    clear (NOMJremains) and no recent hypo (LowBG != 50recent). Same 4.0mmol TT
                 //    but gentler SMBdel x1.5 -- less headroom from 6.5 to 4.0 than from 9.0, and
                 //    the 22:00-01:30 stretch is the same clock window as the Jul/Aug stacking
-                //    incidents, so this stays the milder lever. Explicit mid-band clock matches
-                //    the outer window so a later outer-window change cannot quietly reopen 01:30-02:00.
+                //    incidents, so this stays the milder lever. Explicit mid-band clock is set
+                //    independently of the outer window and is narrower on BOTH ends (08:30 start,
+                //    01:30 end) so an outer-window change cannot quietly reopen 01:30-02:00 or the
+                //    06:00-08:30 dawn slot.
                 // Both bands share the time-dependent 10-min early-morning / 2-min otherwise throttle;
                 // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
                 // replace x2/x1.5; TT stays 4.0@5min so HiBrkDayCut still binds. Mid 6.5-7.0 keeps x1.5.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
-                val midBand = !highBand && isTimeBetween(6, 0, 1, 30)
+                val midBand = !highBand && isTimeBetween(8, 30, 1, 30)
                     && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
                     && checkAutomationState("MJ", "NOMJremains")
                     && !checkAutomationState("LowBG", "50recent")

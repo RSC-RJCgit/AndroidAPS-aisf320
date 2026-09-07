@@ -50,3 +50,7 @@ wear/pumpcontrol/*
 /tmp_inspect_0122.py
 /tmp_inspect_desc.py
 /tmp_patch_manuals_0122_evening.py
+/tmp_extract_appendix_d.py
+/tmp_inspect_careportal_doc.py
+/tmp_fix_hibrk_g4.py
+/tmp_rebuild_careportal_shrink.py

@@ -513,9 +513,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         while (noteStack.getOrDefault(noteBucket, 0) >= 8) noteBucket++
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
-                        // Truncated to 5 characters for display only — the full note text is unaffected
-                        // in the database/NS, this only shortens what's drawn on the graph.
-                        val displayLabel = value.label.take(5)
+                        // ≤5 characters for display only — the full note text is unaffected
+                        // in the database/NS. HiBrk* family uses distinct tags (see Graph4NoteLabel).
+                        val displayLabel = Graph4NoteLabel.display(value.label)
+                        mPaint.color = value.color(graphView.context)
                         mPaint.strokeWidth = 0f
                         mPaint.textSize = (scaledTextSize * 0.5f).toFloat() // slightly smaller, was 0.6f
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))

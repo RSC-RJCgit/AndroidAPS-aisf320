@@ -18,6 +18,8 @@ class TherapyEventDataPoint(
 ) : DataPointWithLabelInterface {
 
     private var yValue = 0.0
+    var colorOverride: Int = 0
+    override val hasColorOverride: Boolean get() = colorOverride != 0
 
     override fun getX(): Double = data.timestamp.toDouble()
 
@@ -63,9 +65,11 @@ class TherapyEventDataPoint(
     // System-change events (pump/cannula/sensor) back to the original faded grey (therapyEvent_Default,
     // #808080) — reverted from the flat-white unification below for everything else.
     override fun color(context: Context?): Int =
-        when (data.type) {
-            TE.Type.CANNULA_CHANGE, TE.Type.INSULIN_CHANGE, TE.Type.SENSOR_CHANGE, TE.Type.PUMP_BATTERY_CHANGE ->
+        when {
+            data.type == TE.Type.CANNULA_CHANGE || data.type == TE.Type.INSULIN_CHANGE ||
+                data.type == TE.Type.SENSOR_CHANGE || data.type == TE.Type.PUMP_BATTERY_CHANGE ->
                 rh.gac(context, app.aaps.core.ui.R.attr.therapyEvent_Default)
+            colorOverride != 0 -> colorOverride
             else -> Color.WHITE
         }
 }

@@ -3,6 +3,7 @@ package app.aaps.workflow
 import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
@@ -194,6 +195,7 @@ class PrepareTreatmentsDataWorker(
             .forEach {
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
                 if (it.data.type == TE.Type.NOTE) {
+                    it.colorOverride = dominantIsfColorAt(aivList, it.x.toLong())
                     // Excludes the routine periodic export-status "success" notes (added 2026-08-30 at
                     // explicit request) -- see AutoIsfHistoryExporter.addExportCarePortalNote()'s own doc
                     // comment for the full tag set. These fire automatically every ~6h regardless of
@@ -341,4 +343,23 @@ class PrepareTreatmentsDataWorker(
 
     private fun <E : DataPointWithLabelInterface> List<E>.filterTimeframe(fromTime: Long, endTime: Long): List<E> =
         filter { it.x + it.duration >= fromTime && it.x <= endTime }
+
+    // Same winner as the BGL dots / SMB arrows: furthest of acce/bg/pp/dura from 1.0.
+    private fun dominantIsfColorAt(aivList: List<AIV>, timestamp: Long): Int {
+        if (aivList.isEmpty()) return 0
+        val nearest = aivList.minByOrNull { kotlin.math.abs(it.timestamp - timestamp) } ?: return 0
+        if (kotlin.math.abs(nearest.timestamp - timestamp) >= T.mins(15).msecs()) return 0
+        val acce = kotlin.math.abs(nearest.acceIsf - 1.0)
+        val bg = kotlin.math.abs(nearest.bgIsf - 1.0)
+        val pp = kotlin.math.abs(nearest.ppIsf - 1.0)
+        val dura = kotlin.math.abs(nearest.duraIsf - 1.0)
+        val maxDev = maxOf(acce, bg, pp, dura)
+        if (maxDev <= 0.01) return 0
+        return when {
+            acce >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.acceIsfColor)
+            bg >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.bgIsfColor)
+            pp >= maxDev -> rh.gac(null, app.aaps.core.ui.R.attr.ppIsfColor)
+            else -> rh.gac(null, app.aaps.core.ui.R.attr.duraIsfColor)
+        }
+    }
 }
