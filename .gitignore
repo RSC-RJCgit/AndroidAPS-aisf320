@@ -54,3 +54,7 @@ wear/pumpcontrol/*
 /tmp_inspect_careportal_doc.py
 /tmp_fix_hibrk_g4.py
 /tmp_rebuild_careportal_shrink.py
+/tmp_find_d_span2.py
+/tmp_inspect_appx_d.py
+/tmp_find_d_span.py
+/tmp_replace_manual_appx_d.py
