@@ -177,7 +177,7 @@ class FileListProviderImpl @Inject constructor(
         if (!aapsLogsPath.exists()) {
             aapsLogsPath.mkdirs()
         }
-        return resultPath
+        return aapsLogsPath
     }
 
     override fun newPreferenceFile(): DocumentFile? {

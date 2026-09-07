@@ -134,33 +134,44 @@ class MaintenancePlugin @Inject constructor(
             ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_no_source))
             return
         }
-        val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName())
-        if (zipFile == null) {
-            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
+        // Zip with a plain File under logsPath first. The old SAF temp createFile() path is what
+        // produced ZIP_CREATE / LOGF1 on Client after its 2026-08-09 reinstall killed AapsDirectoryUri,
+        // while local AIV File writes (and Virtual's still-valid grant) kept working.
+        val zipName = constructName()
+        val localDir = localLogsDir()
+        val localZip = File(localDir, zipName)
+        try {
+            zipLogsToFile(localZip, logs)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE", e)
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_CREATE")
             addCloudLogCarePortalNote(trigger, success = false)
             return
         }
-        aapsLogger.debug("zipFile: ${zipFile.name}")
-        val zip = zipLogs(zipFile, logs)
-        saveLogsLocally(zip, trigger)
+        aapsLogger.debug("zipFile: ${localZip.name}")
+        saveLogsLocally(localZip, trigger)
+        if (localZip.length() < 1024) {
+            addCloudLogCarePortalNote(trigger, success = false)
+            return
+        }
+
+        val safZip = copyZipToSaf(localZip, zipName)
 
         // Check export destination preference (master switch or individual setting)
-        if ((exportOptionsDialog.isLogCloudEnabled()) && 
+        if ((exportOptionsDialog.isLogCloudEnabled()) &&
             cloudStorageManager.isCloudStorageActive()) {
-            // Send to Cloud Drive
-            sendLogsToCloudDrive(zip, trigger)
+            sendLogsToCloudDrive(localZip, trigger, safZip)
         } else {
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=CLOUD_NOT_ENABLED"
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
             addCloudLogCarePortalNote(trigger, success = false)
-            // Send via email (default behavior)
-            val recipient = preferences.get(StringKey.MaintenanceEmail)
-            val attachmentUri = zip.uri
-            val emailIntent: Intent = this.sendMail(attachmentUri, recipient, "Log Export")
-            aapsLogger.debug("sending emailIntent")
-            context.startActivity(emailIntent)
+            if (safZip != null) {
+                val recipient = preferences.get(StringKey.MaintenanceEmail)
+                val emailIntent: Intent = this.sendMail(safZip.uri, recipient, "Log Export")
+                aapsLogger.debug("sending emailIntent")
+                context.startActivity(emailIntent)
+            }
         }
     }
 
@@ -171,41 +182,70 @@ class MaintenancePlugin @Inject constructor(
      *  cloud upload success/failure, since local save answers a different question (do we have a copy
      *  at all) than "did it reach the cloud".
      *
-     *  Deliberately plain File under Environment's public Documents path (fileListProvider.logsPath),
-     *  NOT the SAF-backed ensureTempDirExists()/AapsDirectoryUri route the zip itself and the cloud
-     *  upload use -- that grant does not survive an app reinstall or data clear, which is exactly the
-     *  failure mode that left Client's cloud log export silently dead after its reinstall (2026-08-09)
-     *  while its local AIV exports kept working the whole time via this same plain-File route.
+     *  Deliberately plain File under Environment's public Documents path (fileListProvider.logsPath).
+     *  sendLogs() now zips here first and uploads those bytes, because the SAF-backed
+     *  ensureTempDirExists()/AapsDirectoryUri grant does not survive an app reinstall or data clear --
+     *  the failure mode that left Client's cloud log export silently dead after its reinstall
+     *  (2026-08-09) while its local AIV exports kept working via this same plain-File route.
      *
      *  Scoped per patient (logs/<PatientName>/, matching the cloud path's logs_<PatientName> naming)
      *  so multiple devices exporting into a shared Google-Drive-synced Documents folder don't collide.
      *  Retention capped at localLogsKeepCount (28, ~1 week at the 6h automatic cadence) -- each zip is
      *  several MB to low tens of MB, so unlike the AIV text/CSV exports this would otherwise grow
      *  unbounded. */
-    private fun saveLogsLocally(zipFile: DocumentFile, trigger: String) {
+    private fun localLogsDir(): File {
+        val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+        return (if (patientName.isNotEmpty()) File(fileListProvider.logsPath, patientName) else fileListProvider.logsPath)
+            .also { it.mkdirs() }
+    }
+
+    private fun zipLogsToFile(zipFile: File, files: List<File>) {
+        val bufferSize = 2048
+        ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
+            val data = ByteArray(bufferSize)
+            for (file in files) {
+                FileInputStream(file).use { fileInputStream ->
+                    BufferedInputStream(fileInputStream, bufferSize).use { origin ->
+                        out.putNextEntry(ZipEntry(file.name))
+                        var count: Int
+                        while (origin.read(data, 0, bufferSize).also { count = it } != -1) {
+                            out.write(data, 0, count)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Optional SAF copy for the email fallback only. Must not be required for local save or Drive. */
+    private fun copyZipToSaf(localZip: File, zipName: String): DocumentFile? {
+        return try {
+            val dest = fileListProvider.ensureTempDirExists()?.createFile("application/zip", zipName) ?: return null
+            context.contentResolver.openOutputStream(dest.uri)?.use { it.write(localZip.readBytes()) }
+                ?: return null
+            dest
+        } catch (e: Exception) {
+            aapsLogger.debug(LTag.CORE, "SAF log-zip copy skipped: ${e.message}")
+            null
+        }
+    }
+
+    private fun saveLogsLocally(zipFile: File, trigger: String) {
         val localLogsKeepCount = 28
         try {
-            val bytes = context.contentResolver.openInputStream(zipFile.uri)?.use { it.readBytes() }
-            if (bytes == null) {
-                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
-                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_READ")
-                return
-            }
-            if (bytes.size < 1024) {
+            val bytes = zipFile.length()
+            if (bytes < 1024) {
                 aapsLogger.error(
                     LTag.CORE,
-                    "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
+                    "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=$bytes"
                 )
-                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=FAILURE reason=ZIP_UNDER_1KB bytes=$bytes")
                 return
             }
-            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val dir = (if (patientName.isNotEmpty()) File(fileListProvider.logsPath, patientName) else fileListProvider.logsPath)
-                .also { it.mkdirs() }
-            File(dir, zipFile.name ?: constructName()).writeBytes(bytes)
+            val dir = zipFile.parentFile ?: localLogsDir()
             aapsLogger.debug("Logs saved locally to ${dir.absolutePath}")
-            aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
-            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=${bytes.size}")
+            aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=$bytes")
+            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=LOG_LOCAL result=SUCCESS bytes=$bytes")
 
             val existing = dir.listFiles { _, name -> name.startsWith("AndroidAPS") && name.endsWith(".zip") } ?: return
             if (existing.size > localLogsKeepCount) {
@@ -416,99 +456,80 @@ class MaintenancePlugin @Inject constructor(
         return emailIntent
     }
 
-    private fun sendLogsToCloudDrive(zipFile: DocumentFile, trigger: String) {
+    private fun sendLogsToCloudDrive(zipFile: File, trigger: String, emailFallback: DocumentFile?) {
         try {
             aapsLogger.debug("Sending logs to cloud storage")
-            
-            // Read zip file contents
-            val inputStream = context.contentResolver.openInputStream(zipFile.uri)
-            val bytes = inputStream?.use { it.readBytes() }
-            
-            if (bytes != null) {
-                if (bytes.size < 1024) {
-                    aapsLogger.error(
-                        LTag.CORE,
-                        "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
-                    )
-                    ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
-                    addCloudLogCarePortalNote(trigger, success = false)
-                    ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb))
-                    return
-                }
-                // Upload to cloud storage
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val provider = cloudStorageManager.getActiveProvider()
-                        if (provider == null) {
-                            aapsLogger.error("No active cloud provider")
-                            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
-                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
-                            addCloudLogCarePortalNote(trigger, success = false)
-                            fallbackToEmailLogs(zipFile)
-                            return@launch
-                        }
-
-                        // Scope the logs folder per patient, e.g. "/AAPS/export/logs_<PatientName>".
-                        // Falls back to the plain CLOUD_PATH_LOGS when no patient name is configured.
-                        val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-                        val logsPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_LOGS}_$patientName" else CloudConstants.CLOUD_PATH_LOGS
-
-                        // First set selected folder, then try path upload
-                        provider.getOrCreateFolderPath(logsPath)?.let {
-                            provider.setSelectedFolderId(it)
-                        }
-
-                        // No "uploading..."/"success" toasts by user request — routine cloud export
-                        // progress isn't user-actionable. Failure toasts below are kept.
-                        var uploadedFileId = provider.uploadFileToPath(
-                            zipFile.name ?: "logs.zip",
-                            bytes,
-                            "application/zip",
-                            logsPath
-                        )
-                        if (uploadedFileId == null) {
-                            uploadedFileId = provider.uploadFile(zipFile.name ?: "logs.zip", bytes, "application/zip")
-                        }
-
-                        if (uploadedFileId != null) {
-                            aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
-                            aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
-                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
-                            addCloudLogCarePortalNote(trigger, success = true)
-                        } else {
-                            aapsLogger.error("Failed to upload logs to cloud storage")
-                            aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
-                            ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
-                            addCloudLogCarePortalNote(trigger, success = false)
-                            ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
-                            
-                            // Fallback to email
-                            fallbackToEmailLogs(zipFile)
-                        }
-                    } catch (e: Exception) {
-                        aapsLogger.error("Error uploading logs to cloud storage", e)
-                        aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION", e)
-                        ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
-                        addCloudLogCarePortalNote(trigger, success = false)
-                        ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
-                        
-                        // Fallback to email
-                        fallbackToEmailLogs(zipFile)
-                    }
-                }
-            } else {
-                aapsLogger.error("Failed to read zip file contents")
-                aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
-                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_READ")
+            val bytes = zipFile.readBytes()
+            if (bytes.size < 1024) {
+                aapsLogger.error(
+                    LTag.CORE,
+                    "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}"
+                )
+                ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=ZIP_UNDER_1KB bytes=${bytes.size}")
                 addCloudLogCarePortalNote(trigger, success = false)
-                fallbackToEmailLogs(zipFile)
+                ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb))
+                return
+            }
+            val zipName = zipFile.name.ifBlank { "logs.zip" }
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val provider = cloudStorageManager.getActiveProvider()
+                    if (provider == null) {
+                        aapsLogger.error("No active cloud provider")
+                        aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                        ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
+                        addCloudLogCarePortalNote(trigger, success = false)
+                        emailFallback?.let { fallbackToEmailLogs(it) }
+                        return@launch
+                    }
+
+                    // Scope the logs folder per patient, e.g. "/AAPS/export/logs_<PatientName>".
+                    // Falls back to the plain CLOUD_PATH_LOGS when no patient name is configured.
+                    val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+                    val logsPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_LOGS}_$patientName" else CloudConstants.CLOUD_PATH_LOGS
+
+                    provider.getOrCreateFolderPath(logsPath)?.let {
+                        provider.setSelectedFolderId(it)
+                    }
+
+                    var uploadedFileId = provider.uploadFileToPath(
+                        zipName,
+                        bytes,
+                        "application/zip",
+                        logsPath
+                    )
+                    if (uploadedFileId == null) {
+                        uploadedFileId = provider.uploadFile(zipName, bytes, "application/zip")
+                    }
+
+                    if (uploadedFileId != null) {
+                        aapsLogger.debug("Logs successfully uploaded to cloud storage: $uploadedFileId")
+                        aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
+                        ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=SUCCESS")
+                        addCloudLogCarePortalNote(trigger, success = true)
+                    } else {
+                        aapsLogger.error("Failed to upload logs to cloud storage")
+                        aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
+                        ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
+                        addCloudLogCarePortalNote(trigger, success = false)
+                        ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
+                        emailFallback?.let { fallbackToEmailLogs(it) }
+                    }
+                } catch (e: Exception) {
+                    aapsLogger.error("Error uploading logs to cloud storage", e)
+                    aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION", e)
+                    ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
+                    addCloudLogCarePortalNote(trigger, success = false)
+                    ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
+                    emailFallback?.let { fallbackToEmailLogs(it) }
+                }
             }
         } catch (e: Exception) {
             aapsLogger.error("Error preparing logs for cloud upload", e)
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
             addCloudLogCarePortalNote(trigger, success = false)
-            fallbackToEmailLogs(zipFile)
+            emailFallback?.let { fallbackToEmailLogs(it) }
         }
     }
 

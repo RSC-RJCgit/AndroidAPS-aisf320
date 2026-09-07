@@ -329,10 +329,10 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  output/ folder went completely unnoticed for 5 days (2026-08-12 to -17) as a result; see
      *  addExportCarePortalNote()'s own doc comment.
      *
-     *  Dated copy: also written to aapsLogs/<PatientName>datedAIV/combined<PatientName><yyyyMMdd>.txt
-     *  (fileListProvider.aapsLogsPath, NOT resolveExportDir()'s possibly-nested per-patient dir) --
-     *  same content, so a same-day rerun (dialog reopened, or the next KeepAliveWorker cycle) overwrites
-     *  that day's dated file rather than accumulating duplicates. */
+     *  Dated copies: written first next to the stable file in output/, then best-effort to
+     *  aapsLogs/<PatientName>datedAIV/combined<PatientName><yyyyMMdd>.txt. Same content, so a
+     *  same-day rerun overwrites that day's dated file rather than accumulating duplicates.
+     *  Failure of the datedAIV sibling does not flip ACEs to ACEf. */
     fun buildCombinedExport(now: Long) {
         try {
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
@@ -354,11 +354,23 @@ class AutoIsfHistoryExporter @Inject constructor(
             val outFile = File(outputDir, "combined$patientName.txt")
             outFile.writeText(text)
             aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${records.size} row(s)")
-
-            val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
-            val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
-            File(datedDir, "combined$patientName$dateStamp.txt").writeText(text)
             addExportCarePortalNote("ACEs")
+
+            // Dated copies are extra phone-side history. Prefer output/ (same folder as the stable
+            // combined file). The aapsLogs/<Name>datedAIV/ sibling is best-effort; a write failure
+            // there must not flip ACEs to ACEf after output/ already succeeded (Client 2026-09-08).
+            val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
+            try {
+                File(outputDir, "combined$patientName$dateStamp.txt").writeText(text)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "AutoISF dated combined output/ copy skipped: ${e.message}")
+            }
+            try {
+                val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
+                File(datedDir, "combined$patientName$dateStamp.txt").writeText(text)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "AutoISF dated combined sibling copy skipped: ${e.message}")
+            }
         } catch (e: Exception) {
             aapsLogger.error(LTag.UI, "AutoISF combined export failed", e)
             addExportCarePortalNote("ACEf")
@@ -429,8 +441,8 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  out of the live AndroidAPS.log plus the [UKF_CHECK_ZIP_COUNT] most-recently-rotated .log.zip
      *  archives, resolved via [LoggerUtils.findSourceLogFiles] rather than loggerUtils.logDirectory
      *  alone (unrelated to the write target below), and writes the matches as UKFcheck_$stamp.txt
-     *  (dated archive, in resolveExportDir()) plus UKFcheck_<PatientName>.txt (stable "current" copy,
-     *  resolveExportDir()/output/).
+     *  (dated archive) plus UKFcheck_<PatientName>.txt (stable "current" copy), both primarily in
+     *  resolveExportDir()/output/. A bare-dir dated copy is best-effort only.
      *
      *  Read-source fix (2026-08-19): a real device (aapsVirtual) showed 100% UKCf failures -- traced to
      *  hardcoding loggerUtils.logDirectory (public Documents/aapsLogs) as the only place searched for
@@ -485,27 +497,37 @@ class AutoIsfHistoryExporter @Inject constructor(
             // line's worth of the file in memory at a time, however large the file gets.
             val liveLog = sourceLogFiles.filter { it.name == "AndroidAPS.log" }.maxByOrNull { it.lastModified() }
             if (liveLog != null) {
-                liveLog.useLines { lines -> appendUkfCheckMatches(sb, "AndroidAPS.log (live, ${liveLog.parentFile?.name})", lines) }
+                try {
+                    liveLog.useLines { lines -> appendUkfCheckMatches(sb, "AndroidAPS.log (live, ${liveLog.parentFile?.name})", lines) }
+                } catch (e: Exception) {
+                    aapsLogger.debug(LTag.UI, "UKFcheck live log read skipped: ${e.message}")
+                    sb.append("===== AndroidAPS.log READ FAILED: ${e.message} =====\n\n")
+                }
             }
 
             val rotatedZips = sourceLogFiles.filter { it.name.endsWith(".log.zip") }
                 .sortedByDescending { it.lastModified() }
                 .take(UKF_CHECK_ZIP_COUNT)
             for (zip in rotatedZips) {
-                ZipInputStream(zip.inputStream()).use { zis ->
-                    var entry = zis.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory) {
-                            // Same fix/reasoning as the live-log read above -- readBytes() materialized
-                            // the whole entry at once; bufferedReader().lineSequence() streams it instead.
-                            // Not wrapped in .use{} deliberately: closing would close the underlying zis
-                            // too, ending the loop after the first entry -- the outer ZipInputStream(...)
-                            // .use{} block already owns closing zis once every entry is done.
-                            appendUkfCheckMatches(sb, zip.name, zis.bufferedReader().lineSequence())
+                try {
+                    ZipInputStream(zip.inputStream()).use { zis ->
+                        var entry = zis.nextEntry
+                        while (entry != null) {
+                            if (!entry.isDirectory) {
+                                // Same fix/reasoning as the live-log read above -- readBytes() materialized
+                                // the whole entry at once; bufferedReader().lineSequence() streams it instead.
+                                // Not wrapped in .use{} deliberately: closing would close the underlying zis
+                                // too, ending the loop after the first entry -- the outer ZipInputStream(...)
+                                // .use{} block already owns closing zis once every entry is done.
+                                appendUkfCheckMatches(sb, zip.name, zis.bufferedReader().lineSequence())
+                            }
+                            zis.closeEntry()
+                            entry = zis.nextEntry
                         }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
                     }
+                } catch (e: Exception) {
+                    aapsLogger.debug(LTag.UI, "UKFcheck zip ${zip.name} read skipped: ${e.message}")
+                    sb.append("===== ${zip.name} READ FAILED: ${e.message} =====\n\n")
                 }
             }
 
@@ -515,24 +537,26 @@ class AutoIsfHistoryExporter @Inject constructor(
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
             val stableName = if (patientName.isNotEmpty()) "UKFcheck_$patientName.txt" else "UKFcheck.txt"
 
-            // Primary: resolveExportDir() -- same folder ACEs/AVLs/combined<Name>.txt/
-            // AutoISF_settings_<Name>.txt already use successfully.
-            val primaryDir = resolveExportDir(patientName)
+            // Primary: resolveExportDir()/output/ -- the folder ACEs/combined<Name>.txt/
+            // AutoISF_settings_<Name>.txt already use successfully. The dated file used to land in
+            // the bare resolveExportDir() folder first; that is the EACCES path that produced UKCf
+            // even when output/ would have worked (Client 2026-09-08).
+            val primaryDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
             val file = File(primaryDir, "UKFcheck_$stamp.txt")
             file.writeText(text)
-
-            val stableFile = File(primaryDir, "output").also { it.mkdirs() }.let { File(it, stableName) }
+            val stableFile = File(primaryDir, stableName)
             stableFile.writeText(text)
 
             aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath} (foundMatches=$foundMatches)")
             addExportCarePortalNote(if (foundMatches) "UKCs" else "UKCn")
 
-            // Best-effort secondary: loggerUtils.logDirectory (Documents/aapsLogs) -- logback's own
-            // rolling-log destination, and reliable on most devices, but NOT universally (see the
-            // 2026-08-19 read-source fix above -- that same public path went silently stale on
-            // aapsVirtual for over a week). Kept as a second copy since it costs nothing extra when it
-            // works. Wrapped in its own try/catch, deliberately NOT allowed to downgrade the UKCs/UKCn
-            // success already recorded above if this specific copy fails.
+            // Best-effort extras: dated copy in the bare patient folder, plus loggerUtils.logDirectory.
+            // Neither may downgrade the UKCs/UKCn already recorded above.
+            try {
+                File(resolveExportDir(patientName), "UKFcheck_$stamp.txt").writeText(text)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "UKFcheck bare-dir dated copy skipped: ${e.message}")
+            }
             try {
                 val secondaryDir = File(loggerUtils.logDirectory)
                 File(secondaryDir, "UKFcheck_$stamp.txt").writeText(text)

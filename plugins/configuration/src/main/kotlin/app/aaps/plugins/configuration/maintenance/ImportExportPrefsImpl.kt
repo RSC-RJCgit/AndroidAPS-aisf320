@@ -1178,7 +1178,7 @@ class ImportExportPrefsImpl @Inject constructor(
                 aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT_CLOUD AIV folder=$aivPath id=$folderId")
                 folderId?.let { provider.setSelectedFolderId(it) }
 
-                val cloudFiles = listOf(files.datedText, files.datedCsv)
+                val cloudFiles = listOfNotNull(files.datedText, files.datedCsv)
                 var uploaded = 0
                 cloudFiles.forEach { file ->
                     val mimeType = if (file.extension.equals("csv", ignoreCase = true)) "text/csv" else "text/plain"
@@ -1257,12 +1257,15 @@ class ImportExportPrefsImpl @Inject constructor(
 private data class UserEntriesAivLocal(
     val datedText: File,
     val currentText: File,
-    val datedCsv: File,
-    val currentCsv: File,
+    val datedCsv: File?,
+    val currentCsv: File?,
     val patientName: String
 )
 
-/** Dated 30h TXT + 90-day CSV beside AIV, plus stable output/ copies. Shared by writeExport and CsvExportWorker. */
+/** Dated 30h TXT + 90-day CSV beside AIV, plus stable output/ copies. Shared by writeExport and CsvExportWorker.
+ *  The 30h TXT is the fourth AIV file (AVLs). It is written to output/ first -- the bare patient
+ *  folder is the EACCES path that left Client at 3/4 files (AVLf) on 2026-09-08 while csv/txt/settings
+ *  still uploaded. The 90-day CSV is extra and must not fail the 30h TXT. */
 private fun writeUserEntriesAivLocal(
     persistenceLayer: PersistenceLayer,
     preferences: Preferences,
@@ -1270,39 +1273,83 @@ private fun writeUserEntriesAivLocal(
     userEntryPresentationHelper: UserEntryPresentationHelper,
     aapsLogger: AAPSLogger
 ): UserEntriesAivLocal {
-    val userEntries = persistenceLayer
-        .getUserEntryFilteredDataFromTime(MidnightTime.calc() - T.days(90).msecs())
-        .blockingGet()
     val thirtyHourEntries = persistenceLayer
         .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
         .blockingGet()
     val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-    val patientDir = (if (patientName.isNotEmpty()) File(prefFileList.aapsLogsPath, patientName) else prefFileList.aapsLogsPath).apply {
-        if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
-    }
-    val outputDir = File(patientDir, "output").apply {
+    val aapsRoot = prefFileList.aapsLogsPath.apply { mkdirs() }
+    val patientDir = if (patientName.isNotEmpty()) File(aapsRoot, patientName) else aapsRoot
+    patientDir.mkdirs()
+    val outputParent = if (patientDir.isDirectory) patientDir else aapsRoot
+    val outputDir = File(outputParent, "output").apply {
         if (!exists() && !mkdirs()) throw IOException("Cannot create $absolutePath")
     }
     val timestamp = org.joda.time.LocalDateTime.now()
         .toString(org.joda.time.format.DateTimeFormat.forPattern("yyyy-MM-dd_HHmmss"))
     val nameSuffix = patientName.takeIf { it.isNotEmpty() }?.let { "_$it" } ?: ""
-    val files = UserEntriesAivLocal(
-        datedText = File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt"),
-        currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt"),
-        datedCsv = File(patientDir, "UserEntries${nameSuffix}_$timestamp.csv"),
-        currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv"),
-        patientName = patientName
-    )
     val textContents = userEntryPresentationHelper.userEntriesToCsv(thirtyHourEntries)
-    val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
-    files.datedText.writeText(textContents, Charsets.UTF_8)
-    files.currentText.writeText(textContents, Charsets.UTF_8)
-    files.datedCsv.writeText(csvContents, Charsets.UTF_8)
-    files.currentCsv.writeText(csvContents, Charsets.UTF_8)
+    val datedText = writeUtf8FirstWritable(
+        listOf(
+            File(outputDir, "UserEntries_30h${nameSuffix}_$timestamp.txt"),
+            File(patientDir, "UserEntries_30h${nameSuffix}_$timestamp.txt")
+        ),
+        textContents,
+        aapsLogger
+    )
+    if (datedText.parentFile != patientDir && patientDir.isDirectory) {
+        try {
+            File(patientDir, datedText.name).writeText(textContents, Charsets.UTF_8)
+        } catch (e: Exception) {
+            aapsLogger.debug(LTag.CORE, "${CloudConstants.LOG_PREFIX} UserEntries dated patient-dir copy skipped: ${e.message}")
+        }
+    }
+    val currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt")
+    currentText.writeText(textContents, Charsets.UTF_8)
+    var datedCsv: File? = null
+    var currentCsv: File? = null
+    try {
+        val userEntries = persistenceLayer
+            .getUserEntryFilteredDataFromTime(MidnightTime.calc() - T.days(90).msecs())
+            .blockingGet()
+        val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
+        datedCsv = writeUtf8FirstWritable(
+            listOf(
+                File(outputDir, "UserEntries${nameSuffix}_$timestamp.csv"),
+                File(patientDir, "UserEntries${nameSuffix}_$timestamp.csv")
+            ),
+            csvContents,
+            aapsLogger
+        )
+        currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv")
+        currentCsv.writeText(csvContents, Charsets.UTF_8)
+    } catch (e: Exception) {
+        aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT 90-day UserEntries CSV skipped", e)
+    }
     aapsLogger.info(
         LTag.CORE,
         "${CloudConstants.LOG_PREFIX} CSV_EXPORT local AIV-folder copies saved: " +
-            "txt=${files.datedText.absolutePath}; csv=${files.datedCsv.absolutePath}; output=${outputDir.absolutePath}"
+            "txt=${datedText.absolutePath}; csv=${datedCsv?.absolutePath}; output=${outputDir.absolutePath}"
     )
-    return files
+    return UserEntriesAivLocal(
+        datedText = datedText,
+        currentText = currentText,
+        datedCsv = datedCsv,
+        currentCsv = currentCsv,
+        patientName = patientName
+    )
+}
+
+private fun writeUtf8FirstWritable(candidates: List<File>, contents: String, aapsLogger: AAPSLogger): File {
+    var last: Exception? = null
+    for (file in candidates) {
+        try {
+            file.parentFile?.let { if (!it.exists() && !it.mkdirs()) throw IOException("Cannot create ${it.absolutePath}") }
+            file.writeText(contents, Charsets.UTF_8)
+            return file
+        } catch (e: Exception) {
+            last = e
+            aapsLogger.debug(LTag.CORE, "${CloudConstants.LOG_PREFIX} write skipped ${file.absolutePath}: ${e.message}")
+        }
+    }
+    throw last ?: IOException("no write candidates")
 }
