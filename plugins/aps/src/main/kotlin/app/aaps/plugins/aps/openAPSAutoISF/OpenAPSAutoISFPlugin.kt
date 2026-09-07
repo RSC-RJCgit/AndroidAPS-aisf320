@@ -1660,22 +1660,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return readings.all { it.value > minimumMgdl }
     }
 
-    // General sustained-BGL-in-range check over an arbitrary window, added 2026-08-30 for
-    // MorningRoleSwapHigh/Normal below. Same coverage-gap safety shape as allRecentBgAbove90Minutes just
-    // above (kept separate rather than generalizing that one -- its own 90-min/10-reading thresholds are
-    // specifically tuned for that shorter window and a different caller). Pass null for either bound to
-    // skip that side (e.g. minMgdl=null checks "all below maxMgdl" only). Fails closed (returns false) on
-    // any coverage gap or insufficient reading count -- a missing-data window can never be mistaken for
-    // "sustained in range". Reading-count floor and gap tolerance scale the same ~9-min/reading lenience
-    // allRecentBgAbove90Minutes uses (10 readings / 90 min).
+    // General sustained-BGL-in-range check over an arbitrary window, used by MorningRoleSwapHigh/Normal.
+    // A 10-minute maximum gap made an otherwise well-covered eight-hour window fail after one temporary
+    // sensor interruption (7 Sep 2026: about 86 minutes missing, but >80% of the window present). Accept
+    // at least 60% distinct one-minute sensor coverage instead, while still failing closed if the newest
+    // BG is stale, any single internal/leading gap exceeds two hours, or any observed value is outside
+    // the requested range. Minute buckets prevent duplicate/source-overlap rows inflating the percentage.
+    // Pass null for either bound to skip that side (e.g. minMgdl=null checks "all below maxMgdl" only).
     private fun allRecentBgInRange(hours: Int, minMgdl: Double?, maxMgdl: Double?): Boolean {
         val now = dateUtil.now()
         val windowMs = T.hours(hours.toLong()).msecs()
-        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - windowMs, now, ascending = true)
-        if (readings.size < (hours * 60 / 9)) return false
-        if (readings.first().timestamp > now - windowMs + T.mins(15).msecs()) return false
+        val windowStart = now - windowMs
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(windowStart, now, ascending = true)
+        if (readings.isEmpty()) return false
+        val coveredMinuteBuckets = readings.asSequence().map { it.timestamp / T.mins(1).msecs() }.distinct().count()
+        val requiredCoveredMinutes = (hours * 60 * 0.60).roundToInt()
+        if (coveredMinuteBuckets < requiredCoveredMinutes) return false
         if (readings.last().timestamp < now - T.mins(10).msecs()) return false
-        if (readings.zipWithNext().any { (a, b) -> b.timestamp - a.timestamp > T.mins(10).msecs() }) return false
+        if (readings.first().timestamp - windowStart > T.mins(120).msecs()) return false
+        if (readings.zipWithNext().any { (a, b) -> b.timestamp - a.timestamp > T.mins(120).msecs() }) return false
         return readings.all { (minMgdl == null || it.value > minMgdl) && (maxMgdl == null || it.value < maxMgdl) }
     }
 
@@ -6585,10 +6588,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // stays night-HiBrk-only (>=9.0). Same cut-short / duraISF / flat-BG gates; mid still also
         // requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
         // re-arm floor were removed 5 Sep 2026: a meal bolus was locking the whole 16:00-16:34
-        // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. Fire throttle
-        // is now 2 min (same as night) so a still-flat dura plateau can re-arm after the TT ends.
+        // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. Fire throttle is
+        // 10 min from 02:00-07:00 to prevent closely repeated early-morning boosts, otherwise 2 min so
+        // a genuinely persistent daytime/evening plateau can re-arm promptly after the 5-minute TT.
         // SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
         run {
+            val highDaytimeBrakeRearmMinutes = if (isTimeBetween(2, 0, 7, 0)) 10 else 2
             // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
             // time-of-day on the old cut-short) not HiBrkDayCut, but this daytime sibling had the
@@ -6610,7 +6615,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkDayCut")
                 }
-            } else if (readyToRun("HighDaytimeBrake", 2)
+            } else if (readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
                 && isTimeBetween(6, 0, 1, 30)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
@@ -6631,7 +6636,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    the 22:00-01:30 stretch is the same clock window as the Jul/Aug stacking
                 //    incidents, so this stays the milder lever. Explicit mid-band clock matches
                 //    the outer window so a later outer-window change cannot quietly reopen 01:30-02:00.
-                // Shared 2-min fire throttle (both bands); active TT still blocks overlap.
+                // Both bands share the time-dependent 10-min early-morning / 2-min otherwise throttle;
+                // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
                 // replace x2/x1.5; TT stays 4.0@5min so HiBrkDayCut still binds. Mid 6.5-7.0 keeps x1.5.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
