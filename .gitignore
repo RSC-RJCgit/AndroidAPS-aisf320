@@ -69,3 +69,7 @@ wear/pumpcontrol/*
 /tmp_brief_abbrev_appx_d.py
 /tmp_inspect_brief_appx_d.py
 /tmp_verify_brief_abbrev.py
+/tmp_dump_careportal_pairs.py
+/tmp_find_careportal_dupes.py
+/tmp_fix_careportal_dupes.py
+/tmp_verify_careportal_1057.py

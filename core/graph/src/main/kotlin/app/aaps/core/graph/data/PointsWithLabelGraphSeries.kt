@@ -514,7 +514,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val noteStackIndex = noteStack.getOrDefault(noteBucket, 0)
                         noteStack[noteBucket] = noteStackIndex + 1
                         // ≤5 characters for display only — the full note text is unaffected
-                        // in the database/NS. HiBrk* family uses distinct tags (see Graph4NoteLabel).
+                        // in the database/NS. Colliding families use distinct tags (Graph4NoteLabel).
                         val displayLabel = Graph4NoteLabel.display(value.label)
                         mPaint.color = value.color(graphView.context)
                         mPaint.strokeWidth = 0f
