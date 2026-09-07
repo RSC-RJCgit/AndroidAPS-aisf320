@@ -58,3 +58,14 @@ wear/pumpcontrol/*
 /tmp_inspect_appx_d.py
 /tmp_find_d_span.py
 /tmp_replace_manual_appx_d.py
+/tmp_fix_manual_links.py
+/tmp_inspect_toc_links.py
+/tmp_inspect_toc_links2.py
+/tmp_inspect_toc_links3.py
+/tmp_inspect_toc_links4.py
+/tmp_inspect_toc_links5.py
+/tmp_shrink_desc30.py
+/tmp_verify_link_fix.py
+/tmp_brief_abbrev_appx_d.py
+/tmp_inspect_brief_appx_d.py
+/tmp_verify_brief_abbrev.py
