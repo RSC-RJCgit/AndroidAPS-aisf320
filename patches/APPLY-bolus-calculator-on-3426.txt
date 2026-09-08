@@ -1,0 +1,17 @@
+Target: fresh 3.4.2.6 + AutoISF 3.2.1 (the AndroidAPS-3426 clone at
+3.4.2.6+aisf3.2.1). Paths match AAPS 3.4.x (app.aaps.*). This will not
+apply to AAPS 3.2.0.4 (info.nightscout.* layout).
+
+From the clone root:
+
+  git apply --check ..\AaAPS3422a320\patches\bolus-calculator-on-3426-aisf321.patch
+  git apply ..\AaAPS3422a320\patches\bolus-calculator-on-3426-aisf321.patch
+
+If the clone is elsewhere, pass the full path to the .patch file.
+
+After apply, turn on Overview preference "Enable delayed bolus" for the
+50%-profile / Walking soon top-up path. Split-bolus and protein/fat
+follow-ups are per-bolus checkboxes, not that preference.
+==========================
+Manual split-bolus progress and recalculation. Before each later part the code verifies that the user has not stopped follow-up dosing, no newer bolus/carbs entry has superseded the schedule, profile remains at least 100%, the pump is available, and superbolus is not active. It obtains fresh glucose. Missing data is retried after two minutes. BG below 6.0 mmol/L is unsafe; from 6.0 to below 8.0 mmol/L, a delta or short-average delta at or below -0.05 mmol/L is also unsafe. The first two consecutive unsafe checks defer by a full split interval; the third cancels the residual. The complete soft-retry window is limited to 60 minutes. Each part is reduced by any positive rise in live IOB since the preceding post-dose baseline and rounded to the pump step. A result at or below zero is skipped and retried at the next interval rather than increasing the dose. Success schedules the next residual; failure raises the normal delivery alarm. Cancellation and calculated-zero outcomes are written to treatment/history markers.
+===============

@@ -63,6 +63,7 @@ import android.os.Handler
 import android.os.Looper
 import java.util.Calendar
 import java.util.LinkedList
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -161,6 +162,7 @@ class BolusWizard @Inject constructor(
         private set
 
     private var accepted = false
+    private val followUpSchedulingStarted = AtomicBoolean(false)
 
     // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
     var manualSplitBolusEnabled: Boolean = false
@@ -992,6 +994,13 @@ class BolusWizard @Inject constructor(
     // directly, synchronously, for a protein/fat-only entry that never goes through commandQueue.bolus()
     // at all (see the call sites in commonProcessing()).
     private fun scheduleSplitProteinFatDoses() {
+        // A combined insulin/carbs entry can report success from both pump delivery and
+        // asynchronous carb persistence. Claim this confirmation once, before bumping the
+        // supersession token, so its second callback cannot cancel its own pending doses.
+        if (!followUpSchedulingStarted.compareAndSet(false, true)) {
+            aapsLogger.debug(LTag.CORE, "SplitBolus: duplicate scheduling callback ignored")
+            return
+        }
         val schedulingPct = activeProfileSwitchPct()
         // Superbolus (this wizard's own useSuperBolus above, OR any other still-active one) blocks
         // carb-split/protein/fat scheduling entirely — a superbolus already bakes in its own specific 2h
