@@ -49,3 +49,13 @@ C:\backup\AAPS\aapsLogs\Client
 
 can you show me code now for initial bolus, subsequent bolus , suppression, timing etc?
 =======================
+What to do in Android Studio (on AndroidAPS-master-boluscalc, not this fork)
+
+File → Sync Project with Gradle Files and wait until it finishes.
+If the errors stay, File → Invalidate Caches → Invalidate and Restart.
+Confirm the project root is C:\Users\arjay\StudioProjects\AndroidAPS-master-boluscalc (the Gradle wrapper / settings.gradle folder), not a parent StudioProjects folder and not this AaAPS3422a320 tree.
+Until that sync completes, a newly added layout such as dialog_quick_wizard_max_bolus.xml is especially likely to show this, because view binding (DialogQuickWizardMaxBolusBinding) does not exist until the Android plugin has processed res/layout.
+
+No XML edits are required for these errors. 
+
+]===================
