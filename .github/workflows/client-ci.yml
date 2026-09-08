@@ -1,40 +1,44 @@
-name: AAPS CI
-# Run title is the commit subject (aisf321UK_NNN…) on push; dispatch falls back to branch.
-# APK / Drive / artifact names use Versions.appVersion after checkout — not this run-name.
-run-name: ${{ github.event.head_commit.message || format('AAPS CI {0}', github.ref_name) }}
+name: Client CI
 
+# Chained after "AAPS CI" (aaps-ci.yml) finishes, rather than folded into that workflow, so
+# aaps-ci.yml itself stays completely untouched -- a working fallback to revert to if this one
+# needs changes. Builds both AAPSClient variants (aapsclientRelease, aapsclient2Release) and
+# uploads them to the same Google Drive AAPS/<version> folder the main workflow already uses.
+#
+# Chained off "AAPS CI" specifically (NOT "Branch CI", despite this file's own history -- see
+# below) because AAPS CI is the workflow that actually push-triggers on every commit (branches:
+# ['**'] in aaps-ci.yml) and is what builds/uploads the fullRelease APK you already get from a
+# normal `git push`. AAPS CI deliberately builds Client variants only on manual dispatch (2026-08-23
+# doc comment in that file) -- this is the automatic counterpart for that gap.
+#
+# Originally chained off "Branch CI" (branch-ci.yml) instead -- that file is a separate,
+# rarely-used, workflow_dispatch-only workflow. Chaining off it never fired automatically because
+# nothing ever automatically triggers Branch CI itself; discovered 2026-08-29 that aaps-ci.yml was
+# the real, already-automatic pipeline the whole time.
+#
+# IMPORTANT: workflow_run only fires for listener workflows registered on the repository's
+# DEFAULT branch on GitHub (a hard platform requirement, not something this file controls) -- if
+# this still never fires, check Settings -> Branches -> Default branch first before assuming the
+# workflow itself is broken.
 on:
-  workflow_dispatch:
-    inputs:
-      build_full:
-        description: 'Build full (main AAPS)'
-        type: boolean
-        default: true
-      build_aapsclient:
-        description: 'Build aapsclient'
-        type: boolean
-        default: false
-      build_aapsclient2:
-        description: 'Build aapsclient2'
-        type: boolean
-        default: true
-
-  push:
-    branches:
-      - '3.4.0.0+aisf3.2.0'
-      - '**aisf3.2.0'
-      - 'tdd-sensitivity-autosens-off'
-      - 'test-missed-bg-sms*'
-      - '**RJC**'
-      - '**'
-    paths-ignore:
-      - '.github/workflows/**'
+  workflow_run:
+    workflows: ["AAPS CI"]
+    types: [completed]
 
 jobs:
-  build:
-    name: Build AAPS
+  build-clients:
+    name: Build AAPSClient variants
+    # Only chain after a successful AAPS CI run on an allow-listed branch -- aaps-ci.yml's own push
+    # trigger matches basically every branch ('**'), so without this a build on some unrelated
+    # feature/PR branch would also kick off a Client build. rjc-boost added 2026-09-08 (Boost engine
+    # branch, wired to this same pipeline). NOTE: workflow_run listeners only fire from the copy of
+    # this file on the repo's DEFAULT branch (UKF3426) -- the allow-list there is what actually gates.
+    if: github.event.workflow_run.conclusion == 'success' && contains(fromJSON('["UKF3426", "rjc-boost"]'), github.event.workflow_run.head_branch)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        buildVariant: [aapsclientRelease, aapsclient2Release]
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         run: |
@@ -121,9 +125,6 @@ jobs:
           rm -f "$JARSIGNER_LOG" dummy.jar
           echo "✅ Keystore, alias, and key password are valid."
 
-          rm -f "$KEYTOOL_LOG"
-          echo "✅ Keystore and credentials validated."
-
       - name: Decode GDrive OAuth2 secrets
         run: |
           echo "🔐 Decoding GDRIVE_OAUTH2..."
@@ -157,92 +158,70 @@ jobs:
           echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> $GITHUB_ENV
           echo "✅ Access token obtained."
 
+      # Checks out the exact commit that Branch CI itself built, not whatever the default branch's
+      # HEAD happens to be at trigger time -- keeps the Client build genuinely matching the
+      # fullRelease run that triggered it.
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Load jdk versions
+        run: |
+          JAVA_VERSION=$(jq -r '.default' .github/jdk-map.json)
+          echo "JAVA_VERSION=$JAVA_VERSION" >> $GITHUB_ENV
+
+      - name: Set BUILD_VARIANT
+        run: |
+          BUILD_VARIANT="${{ matrix.buildVariant }}"
+          echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
+          VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
+          VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
+          echo "VARIANT_FLAVOR=$VARIANT_FLAVOR" >> $GITHUB_ENV
+          echo "VARIANT_TYPE=$VARIANT_TYPE" >> $GITHUB_ENV
+          VERSION_SUFFIX=""
+          if [[ "$VARIANT_FLAVOR" != "full" ]]; then VERSION_SUFFIX="$VARIANT_FLAVOR"; fi
+          if [[ "$VARIANT_TYPE" == "debug" ]]; then VERSION_SUFFIX="$VERSION_SUFFIX-debug"; fi
+          if [[ -n "$VERSION_SUFFIX" && "$VERSION_SUFFIX" != -* ]]; then VERSION_SUFFIX="-$VERSION_SUFFIX"; fi
+          echo "VERSION_SUFFIX=$VERSION_SUFFIX" >> $GITHUB_ENV
 
       - name: Extract VERSION
         run: |
-          VERSION=$(grep 'const val appVersion' buildSrc/src/main/kotlin/Versions.kt | awk -F '"' '{print $2}')
-          if [ -z "$VERSION" ]; then
-            echo "Failed to read Versions.appVersion"
-            exit 1
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+          if echo "$BRANCH_NAME" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            VERSION="$BRANCH_NAME"
+          else
+            VERSION=$(grep 'val appVersion' buildSrc/src/main/kotlin/Versions.kt | awk -F '"' '{print $2}')
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Using Versions.appVersion=$VERSION"
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          java-version: 21
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
           cache: gradle
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Clean Gradle cache
+      - name: Build APK
         run: |
-          echo "🧹 Cleaning Gradle cache to free disk space..."
-          ./gradlew clean --no-build-cache
-          echo "✅ Gradle cache cleaned"
+              ./gradlew :app:assemble${{ env.BUILD_VARIANT }} \
+              -Dorg.gradle.jvmargs="-Xmx8g -XX:+UseParallelGC -Xss1024m" \
+              -Dkotlin.daemon.jvm.options="-Xmx2g" \
+              -Dkotlin.compiler.execution.strategy="in-process" \
+              -Dorg.gradle.daemon=true \
+              -Dorg.gradle.workers.max=8 \
+              -Dorg.gradle.caching=true \
+              -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
+              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
-      - name: Build fullRelease APK
-        if: ${{ github.event_name == 'push' || inputs.build_full }}
+      - name: Rename APK with version
         run: |
-          ./gradlew :app:assembleFullRelease \
-          -Dorg.gradle.jvmargs="-Xmx8g" \
-          -Dkotlin.daemon.jvm.options="-Xmx3g" \
-          -Dkotlin.compiler.execution.strategy="in-process" \
-          -Dorg.gradle.daemon=true \
-          -Dorg.gradle.parallel=false \
-          -Dorg.gradle.workers.max=2 \
-          -Dorg.gradle.caching=true \
-          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
-          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-
-      - name: Build aapsclientRelease APK
-        if: ${{ inputs.build_aapsclient }}
-        run: |
-          ./gradlew :app:assembleAapsclientRelease \
-          -Dorg.gradle.jvmargs="-Xmx8g" \
-          -Dkotlin.daemon.jvm.options="-Xmx3g" \
-          -Dkotlin.compiler.execution.strategy="in-process" \
-          -Dorg.gradle.daemon=true \
-          -Dorg.gradle.parallel=false \
-          -Dorg.gradle.workers.max=2 \
-          -Dorg.gradle.caching=true \
-          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
-          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-
-      - name: Build aapsclient2Release APK
-        # Simplified 2026-08-23: was also unconditionally building on every push (matching fullRelease's
-        # own condition) -- per explicit request, push now builds full only; aapsclient/aapsclient2
-        # (Client2, the current additional flavor) stay manual-dispatch-only, same as pumpcontrol/wear
-        # already were (neither is built by this workflow at all).
-        if: ${{ inputs.build_aapsclient2 }}
-        run: |
-          ./gradlew :app:assembleAapsclient2Release \
-          -Dorg.gradle.jvmargs="-Xmx8g" \
-          -Dkotlin.daemon.jvm.options="-Xmx3g" \
-          -Dkotlin.compiler.execution.strategy="in-process" \
-          -Dorg.gradle.daemon=true \
-          -Dorg.gradle.parallel=false \
-          -Dorg.gradle.workers.max=2 \
-          -Dorg.gradle.caching=true \
-          -Pandroid.injected.signing.store.file="$RUNNER_TEMP/keystore/keystore.jks" \
-          -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-          -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-          -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-
-      - name: Rename APKs with version
-        run: |
-          [ -f app/build/outputs/apk/full/release/*.apk ] && mv app/build/outputs/apk/full/release/*.apk aaps-${{ env.VERSION }}.apk || true
-          [ -f app/build/outputs/apk/aapsclient/release/*.apk ] && mv app/build/outputs/apk/aapsclient/release/*.apk aaps-${{ env.VERSION }}-aapsclient.apk || true
-          [ -f app/build/outputs/apk/aapsclient2/release/*.apk ] && mv app/build/outputs/apk/aapsclient2/release/*.apk aaps-${{ env.VERSION }}-aapsclient2.apk || true
+          mv app/build/outputs/apk/${{ env.VARIANT_FLAVOR }}/${{ env.VARIANT_TYPE }}/*.apk aaps-${{ env.VERSION }}${{ env.VERSION_SUFFIX }}.apk
 
       - name: Upload APK to Google Drive
         run: |
@@ -267,13 +246,11 @@ jobs:
           fi
 
           echo "📁 Checking or creating version folder: $VERSION"
-          # Fixed 2026-08-29: VERSION always contains a literal "+" (e.g. "3.4.2.6+aisf321UK_718") and
-          # was being spliced into this URL unencoded -- an unencoded "+" in a query string decodes as a
-          # space on the server, so this lookup NEVER matched the real folder name and every run created
-          # its own duplicate "found nothing -> create" folder (confirmed: three separate folders, all
-          # named identically, one per job that uploaded that version). Only the VERSION substitution
-          # itself needs encoding -- the template's own literal "+" separators (meant to decode as the
-          # spaces in "name='X' and mimeType=...") are left untouched.
+          # Fixed 2026-08-29: see aaps-ci.yml's identical fix for the full explanation -- VERSION always
+          # contains a literal "+", which decodes as a space when spliced unencoded into this URL, so the
+          # lookup never matched an existing folder and every job created its own duplicate (confirmed:
+          # aapsclientRelease and aapsclient2Release each created a SEPARATE version folder here, on top
+          # of the one AAPS CI's own fullRelease upload had already created for the same version).
           ENCODED_VERSION=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$VERSION")
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -332,17 +309,6 @@ jobs:
             echo "✅ Uploaded: $NAME"
           }
 
-          [ -f "aaps-${{ env.VERSION }}.apk" ]           && upload_to_gdrive "aaps-${{ env.VERSION }}.apk"           "aaps-${{ env.VERSION }}.apk"           || true
-          [ -f "aaps-${{ env.VERSION }}-aapsclient.apk" ]  && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient.apk"  "aaps-${{ env.VERSION }}-aapsclient.apk"  || true
-          [ -f "aaps-${{ env.VERSION }}-aapsclient2.apk" ] && upload_to_gdrive "aaps-${{ env.VERSION }}-aapsclient2.apk" "aaps-${{ env.VERSION }}-aapsclient2.apk" || true
-          echo "🎉 All APKs successfully uploaded to Google Drive!"
+          upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
 
-      - name: Upload APKs as GitHub artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: aaps-${{ env.VERSION }}-all
-          path: |
-            aaps-${{ env.VERSION }}.apk
-            aaps-${{ env.VERSION }}-aapsclient.apk
-            aaps-${{ env.VERSION }}-aapsclient2.apk
-          retention-days: 30
+          echo "🎉 APK successfully uploaded to Google Drive!"
