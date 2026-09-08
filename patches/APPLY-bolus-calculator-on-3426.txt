@@ -59,3 +59,6 @@ Until that sync completes, a newly added layout such as dialog_quick_wizard_max_
 No XML edits are required for these errors. 
 
 ]===================
+1. can you put this repo on GitHub?
+2. can you make a new patch of just these changes from origin master?
+=============================
