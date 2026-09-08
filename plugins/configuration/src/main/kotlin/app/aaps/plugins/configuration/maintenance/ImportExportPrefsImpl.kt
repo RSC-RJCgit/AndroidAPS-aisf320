@@ -1304,7 +1304,11 @@ private fun writeUserEntriesAivLocal(
         }
     }
     val currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt")
-    currentText.writeText(textContents, Charsets.UTF_8)
+    try {
+        currentText.writeText(textContents, Charsets.UTF_8)
+    } catch (e: Exception) {
+        aapsLogger.debug(LTag.CORE, "${CloudConstants.LOG_PREFIX} UserEntries stable output/ copy skipped: ${e.message}")
+    }
     var datedCsv: File? = null
     var currentCsv: File? = null
     try {

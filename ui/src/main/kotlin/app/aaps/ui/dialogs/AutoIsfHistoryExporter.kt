@@ -329,41 +329,46 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  output/ folder went completely unnoticed for 5 days (2026-08-12 to -17) as a result; see
      *  addExportCarePortalNote()'s own doc comment.
      *
-     *  Dated copies: written first next to the stable file in output/, then best-effort to
-     *  aapsLogs/<PatientName>datedAIV/combined<PatientName><yyyyMMdd>.txt. Same content, so a
-     *  same-day rerun overwrites that day's dated file rather than accumulating duplicates.
-     *  Failure of the datedAIV sibling does not flip ACEs to ACEf. */
+     *  Writes a unique output/combined<Name>_<yyyyMMdd_HHmmss>.txt first and fires ACEs on that.
+     *  Overwriting the stable combined<Name>.txt, the same-day dated name, and the
+     *  aapsLogs/<Name>datedAIV/ sibling are best-effort -- a lock on the stable name must not
+     *  flip ACEs to ACEf (Client 2026-09-08). */
     fun buildCombinedExport(now: Long) {
         try {
             val patientName = preferences.get(StringKey.GeneralPatientName).trim()
-            val outputDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
-            writeStableSettings(outputDir, patientName, now)
-            val from = now - TimeUnit.HOURS.toMillis(COMBINED_WINDOW_HOURS)
-            val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
-            if (records.isEmpty()) return
-            val apsResults = persistenceLayer.getApsResults(from, now)
-            val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
-            val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
-            val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
-            val cobTByTimestamp = calculatedCobT(records)
-            val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
-            val ukf2RawMgdl = ukfSmoothing.libreSpecialPostUkfHistory(from, now)
-            val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp, ukf3RawMgdl, ukf2RawMgdl) }
-            val text = formatTableText(rows)
-
-            val outFile = File(outputDir, "combined$patientName.txt")
-            outFile.writeText(text)
-            aapsLogger.debug(LTag.UI, "AutoISF combined export rebuilt at ${outFile.absolutePath} from ${records.size} row(s)")
-            addExportCarePortalNote("ACEs")
-
-            // Dated copies are extra phone-side history. Prefer output/ (same folder as the stable
-            // combined file). The aapsLogs/<Name>datedAIV/ sibling is best-effort; a write failure
-            // there must not flip ACEs to ACEf after output/ already succeeded (Client 2026-09-08).
+            val outputDir = File(resolveExportDir(patientName), "output")
+            if (!outputDir.exists() && !outputDir.mkdirs()) {
+                throw java.io.IOException("Cannot create ${outputDir.absolutePath}")
+            }
+            try {
+                writeStableSettings(outputDir, patientName, now)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "AutoISF stable settings copy skipped: ${e.message}")
+            }
+            // Unique new filename first. Overwriting output/combined<Name>.txt is what failed on
+            // Client (Drive/sync lock or EACCES on the long-lived stable name) and produced ACEf
+            // even when a fresh dated write would have worked -- 2026-09-08, no combinedClient20260908.
+            val text = try {
+                combinedTableText(now, COMBINED_WINDOW_HOURS)
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.UI, "AutoISF ${COMBINED_WINDOW_HOURS}h combined build failed, retrying ${WINDOW_HOURS}h", e)
+                combinedTableText(now, WINDOW_HOURS)
+            } ?: return
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(now))
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
+            val stampedFile = File(outputDir, "combined${patientName}_$timeStamp.txt")
+            stampedFile.writeText(text)
+            aapsLogger.debug(LTag.UI, "AutoISF combined export written to ${stampedFile.absolutePath}")
+            addExportCarePortalNote("ACEs")
             try {
                 File(outputDir, "combined$patientName$dateStamp.txt").writeText(text)
             } catch (e: Exception) {
                 aapsLogger.debug(LTag.UI, "AutoISF dated combined output/ copy skipped: ${e.message}")
+            }
+            try {
+                File(outputDir, "combined$patientName.txt").writeText(text)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "AutoISF stable combined overwrite skipped: ${e.message}")
             }
             try {
                 val datedDir = File(fileListProvider.aapsLogsPath, "${patientName}datedAIV").also { it.mkdirs() }
@@ -375,6 +380,22 @@ class AutoIsfHistoryExporter @Inject constructor(
             aapsLogger.error(LTag.UI, "AutoISF combined export failed", e)
             addExportCarePortalNote("ACEf")
         }
+    }
+
+    /** Null when the window has no AIV rows (not a failure). */
+    private fun combinedTableText(now: Long, windowHours: Long): String? {
+        val from = now - TimeUnit.HOURS.toMillis(windowHours)
+        val records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp }
+        if (records.isEmpty()) return null
+        val apsResults = persistenceLayer.getApsResults(from, now)
+        val stepsCounts = persistenceLayer.getStepsCountFromTimeToTime(from, now)
+        val smbBoluses = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB }
+        val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
+        val cobTByTimestamp = calculatedCobT(records)
+        val ukf3RawMgdl = computeUkf3RawMgdl(rawReadings)
+        val ukf2RawMgdl = ukfSmoothing.libreSpecialPostUkfHistory(from, now)
+        val rows = records.map { exportFields(it, apsResults, stepsCounts, records, smbBoluses, carePortalNotesFrom(from), rawReadings, cobTByTimestamp, ukf3RawMgdl, ukf2RawMgdl) }
+        return formatTableText(rows)
     }
 
     /** Column-aligned plain-text rendering of [exportHeaders] + `rows`, columns padded to the widest
@@ -544,11 +565,15 @@ class AutoIsfHistoryExporter @Inject constructor(
             val primaryDir = File(resolveExportDir(patientName), "output").also { it.mkdirs() }
             val file = File(primaryDir, "UKFcheck_$stamp.txt")
             file.writeText(text)
-            val stableFile = File(primaryDir, stableName)
-            stableFile.writeText(text)
-
-            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} and ${stableFile.absolutePath} (foundMatches=$foundMatches)")
+            aapsLogger.debug(LTag.UI, "UKFcheck diagnostic extract written to ${file.absolutePath} (foundMatches=$foundMatches)")
             addExportCarePortalNote(if (foundMatches) "UKCs" else "UKCn")
+            // Stable UKFcheck_<Name>.txt overwrite is extra. A lock/EACCES here is what still
+            // produced UKCf on Client after the dated output/ file had already been written (09:39).
+            try {
+                File(primaryDir, stableName).writeText(text)
+            } catch (e: Exception) {
+                aapsLogger.debug(LTag.UI, "UKFcheck stable output/ copy skipped: ${e.message}")
+            }
 
             // Best-effort extras: dated copy in the bare patient folder, plus loggerUtils.logDirectory.
             // Neither may downgrade the UKCs/UKCn already recorded above.
