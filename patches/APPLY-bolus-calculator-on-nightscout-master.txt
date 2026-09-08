@@ -1,0 +1,17 @@
+Target: nightscout/AndroidAPS master (commit 598e2eb, merge of PR #5046 / dev3).
+This is not the 3426+aisf3.2.1 patch.
+
+From a clean clone of nightscout master:
+
+  git apply --check ..\AaAPS3422a320\patches\bolus-calculator-on-nightscout-master.patch
+  git apply ..\AaAPS3422a320\patches\bolus-calculator-on-nightscout-master.patch
+
+Includes:
+- Wizard / Quick Wizard max-bolus override (this bolus only)
+- Walking soon (50% now)
+- Split bolus every N min when over max (Overview: "Split bolus when over max")
+- Delayed bolus at 50% profile (Overview: "Enable delayed bolus")
+- Protein @2h / fat @3h follow-ups
+- SMB block during delayed window (SMB + AutoISF)
+- Duplicate insulin+carbs callback guard
+- App version string 3.4.2.6WizA001

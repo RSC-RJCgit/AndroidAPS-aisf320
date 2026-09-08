@@ -1509,7 +1509,20 @@ class DetermineBasalAutoISF @Inject constructor(
                 rT.reason.append(". ")
 
                 val lastBolusAge = (systemTime - iob_data.lastBolusTime) / 1000.0
-                val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
+                var SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0
+                // Overnight SMB-cadence floor (#3, added 2026-09-09 after the 8->9 Sep hypo, nadir 3.4
+                // at 01:43). The harmful burst fired ~9 SMBs in 10 min (~1/min) on a carb-free
+                // 6.3->7.3 wobble; profile.SMBInterval is 1, which at 1-min sensor cadence lets UAM
+                // stack every cycle. Between 22:00-04:00, while BG is under 8.0mmol, force at least a
+                // 3-min gap -- a rate limit that pairs with the cumulative 10-min amount cap below.
+                // Released at/above 8.0mmol because an overnight correction is then legitimate (cf.
+                // the 6->7 Aug 23:10 burst, which pushed BG to 8.9 and held 8.5-8.9 -- appropriate).
+                // Never SHORTENS an already-longer profile interval.
+                val nightSmbCadenceFloorWindow = nowMinsOfDay >= 1320 || nowMinsOfDay < 240   // 22:00 - 04:00
+                if (nightSmbCadenceFloorWindow && bg < 144.0 /* 8.0 mmol */ && SMBInterval < 180.0) {
+                    consoleError.add("Overnight SMB cadence floor: interval ${round(SMBInterval / 60.0, 1)}m -> 3.0m (22:00-04:00, BG ${round(bg, 0)} < 8.0mmol)")
+                    SMBInterval = 180.0
+                }
                 consoleError.add("naive_eventualBG ${convert_bg(naive_eventualBG)},${durationReq}m ${basalForDisplay(smbLowTempReq)}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: ${round(maxBolus, 2)}")
                 consoleError.add("offsetSoZeroSMB $offsetSoZeroSMB")
                 // Tier 3 "UAM Boost" -- all five parameters are now real profile-configurable settings
@@ -2348,27 +2361,51 @@ class DetermineBasalAutoISF @Inject constructor(
                 // dimension that separates them from routine dosing.
                 //
                 // Values are measured, not guessed: across recent exports the 10-min SMB total runs a
-                // median of 0.20U with the 90th percentile at 0.60U, while the two bursts were 1.50U and
-                // 1.10U. So the tight cap of 0.6U sits exactly at p90 -- it leaves ~90% of normal
-                // operation completely untouched and clips only the top decile. Outside the window it is
-                // 1.5U, a pure backstop just under the 1.95U maximum ever observed, since meals
-                // legitimately need more.
+                // median of 0.20U with the 90th percentile at 0.60U, while the reference bursts were
+                // 1.50U and 1.10U. So the tight cap of 0.6U sits exactly at p90 -- it leaves ~90% of
+                // normal operation completely untouched and clips only the top decile.
                 //
-                // Window is 00:30-04:00, NOT the 22:00-08:00 used by the stack trim's IOB gate. That is
-                // deliberate and narrower: of the two bursts on 6->7 Aug, only the 01:08 one was harmful.
-                // The 23:10 burst was appropriate -- BGL rose to 8.9 afterwards and held 8.5-8.9, so it
-                // was matching a real rise, and a cap covering it would have left the night higher for no
-                // benefit. A cumulative limiter cannot tell the two apart on size or rate (1.50U vs 1.10U,
-                // both ~60s apart); they differed only in the residual IOB underneath. Restricting the
-                // window to the hours when eating is implausible and a stack-on-residue is the likely
-                // explanation is the way to separate them.
+                // THREE tiers by clock, and the two tight ones apply ONLY while BG < 8.0mmol:
+                //   00:00-04:00  deep night      0.6U   (p90; eating is implausible, stack-on-residue
+                //                                        is the likely explanation for anything bigger)
+                //   22:00-00:00  evening shoulder 1.0U   (pre-midnight legit corrections still happen,
+                //                                        so looser than deep night, but eating is
+                //                                        winding down and -- since the switch to a
+                //                                        faster insulin -- a stack bites harder/sooner,
+                //                                        so tighter than the daytime backstop)
+                //   else / BG>=8 daytime          1.5U   (pure backstop just under the 1.95U maximum
+                //                                        ever observed; meals and genuine overnight
+                //                                        highs legitimately need more)
+                //
+                // Deep-night start moved 00:30 -> 00:00 after the 8->9 Sep 2026 hypo (Client/Virtual,
+                // nadir 3.4 at 01:43). That burst ran 00:19-00:29 -- it BEAT the old 00:30 start by
+                // 11 minutes, so the only cap in force during it was the 1.5U daytime backstop, which
+                // ~0.95U of carb-free SMB (COB had hit 0 at 00:06) never reached. It drove BG 7.6 ->
+                // 3.4 straight through target. At 00:00 start the 0.6U tier would have clipped it.
+                //
+                // Window is still NOT the 22:00-08:00 used by the stack trim's IOB gate. Of the two
+                // reference bursts on 6->7 Aug, only the 01:08 one was harmful; the 23:10 burst was
+                // appropriate (BGL rose to 8.9 afterwards and held 8.5-8.9). A cumulative limiter
+                // cannot tell those apart on size or rate (1.50U vs 1.10U, both ~60s apart) -- they
+                // differed only in the residual IOB underneath -- so the 1.0U evening tier is a
+                // compromise: it would have trimmed a 1.50U burst to 1.0U without zeroing a genuine
+                // pre-midnight correction.
                 //
                 // Placed LAST, after every other modifier including the smbBoostRecent restore, so nothing
                 // can bypass it -- a cumulative safety limit should outrank any single-cycle boost.
                 // Trims to the remaining allowance rather than zeroing outright, so a partial dose still
                 // goes out when only part of the budget is left.
-                val inDeepNightSmbWindow = nowMinsOfDay >= 30 && nowMinsOfDay < 240   // 00:30 - 04:00
-                val smbCap10Min = if (inDeepNightSmbWindow) 0.6 else 1.5
+                val inDeepNightSmbWindow = nowMinsOfDay < 240                          // 00:00 - 04:00
+                val inEveningShoulderSmbWindow = nowMinsOfDay >= 1320                   // 22:00 - 00:00
+                // Tight tiers apply only while BG < 8.0mmol -- above that an overnight correction is
+                // legitimate (the 6->7 Aug 23:10 burst ran BG to 8.9 and held), so fall back to the
+                // 1.5U daytime backstop. The 8->9 Sep burst was entirely 6.3->7.6, well under 8.0.
+                val bgBelowNightSmbCeiling = bg < 144.0 /* 8.0 mmol */
+                val smbCap10Min = when {
+                    inDeepNightSmbWindow       && bgBelowNightSmbCeiling -> 0.6
+                    inEveningShoulderSmbWindow && bgBelowNightSmbCeiling -> 1.0
+                    else                                                -> 1.5
+                }
                 val smbAllowanceLeft = smbCap10Min - smbSum10Min
                 if (microBolus > smbAllowanceLeft) {
                     val beforeCumCap = microBolus

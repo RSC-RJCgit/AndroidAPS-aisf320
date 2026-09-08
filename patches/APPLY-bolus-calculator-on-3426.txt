@@ -62,3 +62,14 @@ No XML edits are required for these errors.
 1. can you put this repo on GitHub?
 2. can you make a new patch of just these changes from origin master?
 =============================
+new upload
+cause of hypo?
+faster insulin this pod..
+change peak?
+decrease SMBdelivery and BMild boost?
+
+===============
+
+only use BMildDay in evening if bgl>8.0 and Deltas still high?[over 0.4?] [or was it BMild?]
+
+=================
