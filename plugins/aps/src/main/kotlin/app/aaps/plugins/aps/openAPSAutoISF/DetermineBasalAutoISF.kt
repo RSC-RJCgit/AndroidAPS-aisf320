@@ -64,11 +64,12 @@ class DetermineBasalAutoISF @Inject constructor(
     // replay/digital-twin trace schema (OpenAPSAutoISFPlugin.kt's replayAcceIsfValue) -- just unused
     // inside this function now.
 
-    // Added 2026-08-24: observation-only shadow check for the reference's fastCarbRebound/fastCarbScale
-    // logic (see tier3BoostReferenceComparison()'s own doc comment) -- recomputed here using the SAME
-    // inputs already in scope in the real (Bmild-triggered) dosing block, but only sets this flag; the
-    // fastCarbScale reduction itself is NOT applied to microBolus yet, per explicit instruction to add
-    // this as observation-only initially. Same no-I/O split as the flags above.
+    // Added 2026-08-24 as an observation-only shadow of the reference's fastCarbRebound/fastCarbScale
+    // logic (see tier3BoostReferenceComparison()'s own doc comment), recomputed in the real
+    // (BMild/bg3-triggered) dosing block from the SAME inputs already in scope. Level 1 activated
+    // 2026-09-08: the scale now actually reduces the Tier 3 SMB when Tier 3 raised it that cycle.
+    // This flag still also drives OpenAPSAutoISFPlugin.kt's CarePortal note. Same no-I/O split as
+    // the flags above.
     var tier3FastCarbReboundObservedThisCycle: Boolean = false
 
     private val consoleError = mutableListOf<String>()
@@ -1692,14 +1693,15 @@ class DetermineBasalAutoISF @Inject constructor(
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
                         }
-                        // Fast-carb rebound observation (2026-08-24), recomputed here since it's local to
-                        // tier3BoostReferenceComparison() and not otherwise available in this (real
-                        // dosing) block -- see that function's own doc comment for the original logic
-                        // this mirrors. Observation-only per explicit instruction: sets a flag for
-                        // OpenAPSAutoISFPlugin.kt to write a CarePortal note, does NOT scale microBolus
-                        // down yet (the commented-out block this replaced could never have worked as
-                        // written anyway -- fastCarbRebound/fastCarbScale are locals of the reference
-                        // function, not of this one).
+                        // Fast-carb rebound protection (ported 2026-08-24 from tier3BoostReferenceComparison(),
+                        // recomputed here since fastCarbRebound/fastCarbScale are locals of that function).
+                        // Was observation-only until Level 1 was activated 2026-09-08 at explicit request:
+                        // the scale now actually reduces the Tier 3 SMB. Applied ONLY when Tier 3 raised the
+                        // SMB this cycle (uamBoostEnhancedCandidateThisCycle) -- scaling an unchanged ordinary
+                        // SMB here would be a silent extra cut on a path Tier 3 never touched; the base/
+                        // FastRise SMB path is instead covered by the recent-low rebound guard further down
+                        // (search "recent-low rebound guard"). Still also sets the flag so OpenAPSAutoISFPlugin.kt
+                        // writes its CarePortal note.
                         val obsLowTriggered = recentLowBG < 100.0
                         val obsReversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
                             glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
@@ -1707,7 +1709,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         val obsFastCarbConditions = (obsLowTriggered || obsReversalTriggered) && meal_data.mealCOB == 0.0 && bg_acce > 0.90 * 18
                         if (obsFastCarbConditions && bg < 170.0) {
                             if (glucose_status.delta > 15 && bg > target_bg + 20) {
-                                consoleError.add("[Tier3FastCarb] conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 -- would treat as genuine spike, no rebound")
+                                consoleError.add("[Tier3FastCarb] conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 -- treating as genuine spike, no rebound")
                             } else {
                                 val obsFastCarbScale = if (bg < 120.0) 0.3 else 0.3 + 0.7 * (bg - 120.0) / 50.0
                                 tier3FastCarbReboundObservedThisCycle = true
@@ -1716,8 +1718,15 @@ class DetermineBasalAutoISF @Inject constructor(
                                     obsLowTriggered -> "low ${round(recentLowBG, 0)}"
                                     else -> "rev ${round(obsReversalScore, 0)}"
                                 }
-                                consoleError.add("[Tier3FastCarb] rebound detected ($obsTrigger, bg_acce ${round(bg_acce, 1)}): would scale SMB to ${round(obsFastCarbScale * 100, 0)}% -- observation only, no dosing effect")
-                                rT.reason.append("[Tier3FastCarb] rebound observed, no dosing effect; ")
+                                if (uamBoostEnhancedCandidateThisCycle && microBolus > 0.0) {
+                                    val preFastCarbSmb = microBolus
+                                    microBolus = Math.floor(microBolus * obsFastCarbScale * roundSMBTo) / roundSMBTo
+                                    consoleError.add("[Tier3FastCarb] rebound ($obsTrigger, bg_acce ${round(bg_acce, 1)}): Tier 3 SMB ${round(preFastCarbSmb, 2)} -> ${round(microBolus, 2)} (${round(obsFastCarbScale * 100, 0)}%)")
+                                    rT.reason.append("[Tier3FastCarb] rebound ($obsTrigger): Tier 3 SMB ${round(preFastCarbSmb, 2)} -> ${round(microBolus, 2)} (${round(obsFastCarbScale * 100, 0)}%); ")
+                                } else {
+                                    consoleError.add("[Tier3FastCarb] rebound detected ($obsTrigger, bg_acce ${round(bg_acce, 1)}): scale ${round(obsFastCarbScale * 100, 0)}% -- Tier 3 did not raise SMB this cycle, nothing to scale")
+                                    rT.reason.append("[Tier3FastCarb] rebound observed (Tier 3 not active this cycle); ")
+                                }
                             }
                         }
                     }
@@ -2223,9 +2232,11 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // RECENT-LOW REBOUND GUARD
 // =====================================================
-                // Halves the SMB when a low happened recently AND there is carb activity -- the signature
-                // of correcting a REBOUND rather than a fresh excursion. Motivated by a real overnight
-                // episode (28 Jul): BG fell 11.7 -> 5.6 on ~4.9U IOB, rescue carbs were taken, BG rebounded
+                // Halves the SMB when a low happened recently and the rise looks like a REBOUND rather
+                // than a fresh excursion. Two triggers (see the two branches below): the original needs
+                // a 50recent latch + carb activity (logged or deviation-based); the L2 branch needs no
+                // carbs at all, for the sensor-artifact case. Motivated by a real overnight episode
+                // (28 Jul): BG fell 11.7 -> 5.6 on ~4.9U IOB, rescue carbs were taken, BG rebounded
                 // to 9.6, ~2.3U was delivered against that rebound over 40 min, and BG then went to 3.8.
                 // At the moment of that dosing every signal looked benign -- BG 9.0-9.6 and rising, HP2 7.2
                 // -- so no BGL/HP2 threshold could have caught it. Only the CONTEXT (a low, then carbs, then
@@ -2245,12 +2256,33 @@ class DetermineBasalAutoISF @Inject constructor(
                 // (~0.6 measured off COB decay), so it distinguishes genuine carb action from baseline
                 // drift. Both that threshold and the 0.5 factor are first estimates -- the reason string
                 // logs COB, uci and the factor so they can be tuned against real fires.
-                if (recentLowActive && microBolus > 0.0) {
+                // L2 (2026-09-08): a second trigger with NO carb evidence, for the compression-low /
+                // sensor-artifact case. A brief artifact dip has no rescue carbs logged (so COB/uci are
+                // both zero) yet still trips a 50%TT and a counter-regulation rebound the loop then
+                // chases -- 6-8 Sep showed IOB stacking to 3+U catching a 4.0->8.9 rebound off a fake
+                // low. This branch needs: a genuinely low 60-min minimum (recentLowBG < 4.5mmol, not
+                // merely the 50recent latch which can linger), Boost's reversalScore > 30 (delta rising
+                // while longAvgDelta still reflects the fall), COB 0, and BG still in the recovery band
+                // (< 9.4mmol). Boost's velocity override releases it once the rise is a genuine spike
+                // (delta > 15mg/dL/5min AND already > target+20). Same 0.5 factor as the carb branch.
+                if (microBolus > 0.0) {
                     val uciGrams = if (csf > 0.0) uci / csf else 0.0
-                    if (COB > 0.0 || uciGrams >= 0.3) {
+                    val carbRebound = recentLowActive && (COB > 0.0 || uciGrams >= 0.3)
+                    val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
+                        glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
+                    val artifactRebound = COB == 0.0
+                        && recentLowBG < 81.1 /* 4.5 mmol */
+                        && reversalScore > 30.0
+                        && bg < 170.0 /* 9.4 mmol */
+                        && !(glucose_status.delta > 15 && bg > target_bg + 20)
+                    if (carbRebound || artifactRebound) {
                         val beforeLowGuard = microBolus
                         microBolus = microBolus * 0.5
-                        rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} (LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m) ")
+                        val why = if (carbRebound)
+                            "carb: LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
+                        else
+                            "artifact: recentLowBG=${round(recentLowBG, 0)}mg/dL rev=${round(reversalScore, 0)} COB=0"
+                        rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} ($why) ")
                     }
                 }
 // =====================================================
