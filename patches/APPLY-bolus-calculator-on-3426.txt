@@ -70,6 +70,26 @@ decrease SMBdelivery and BMild boost?
 
 ===============
 
-only use BMildDay in evening if bgl>8.0 and Deltas still high?[over 0.4?] [or was it BMild?]
+only use BMildDay in evening if bgl>8.0 and Deltas still high?[over 0.4?] [or was it BMild?] ; no
+
+C:\Users\arjay\StudioProjects\AaAPS3422a320\patches\bolus-calculator-on-nightscout-master.patch
+https://github.com/RSC-RJCgit/AndroidAPS-master-boluscalc
+
 
 =================
+val bgBelowNightSmbCeiling = bg < 144.0 /* 8.0 mmol */
+val smbCap10Min = when {
+    inDeepNightSmbWindow       && bgBelowNightSmbCeiling -> 0.6   // 00:00-04:00
+    inEveningShoulderSmbWindow && bgBelowNightSmbCeiling -> 1.0   // 22:00-00:00
+    else                                                -> 1.5   // daytime, or BG >= 8.0
+}
+On the BG < 8.0 gate — yes, this is the right call
+It's evidence-aligned, not a compromise:
+
+The 8→9 Sep burst ran entirely 6.3 → 7.6 — the tight caps + cadence floor all engage.
+The 6→7 Aug 23:10 burst (the one that was appropriate) pushed BG to 8.9 and held 8.5–8.9 — above 8.0 it now falls back to the 1.5 U backstop and isn't strangled.
+So the gate keeps a genuine overnight high correctable while clipping exactly the sub‑8 stacking that causes the hypos. The 1.5 U backstop still applies at all times as the hard ceiling.
+
+Working tree only — not built. #4 (HardStack escalation tuning) still open if you want it later, but it needs the fastrise‑percentile pass first.
+
+===================
