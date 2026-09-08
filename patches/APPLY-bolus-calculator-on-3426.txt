@@ -15,3 +15,37 @@ follow-ups are per-bolus checkboxes, not that preference.
 ==========================
 Manual split-bolus progress and recalculation. Before each later part the code verifies that the user has not stopped follow-up dosing, no newer bolus/carbs entry has superseded the schedule, profile remains at least 100%, the pump is available, and superbolus is not active. It obtains fresh glucose. Missing data is retried after two minutes. BG below 6.0 mmol/L is unsafe; from 6.0 to below 8.0 mmol/L, a delta or short-average delta at or below -0.05 mmol/L is also unsafe. The first two consecutive unsafe checks defer by a full split interval; the third cancels the residual. The complete soft-retry window is limited to 60 minutes. Each part is reduced by any positive rise in live IOB since the preceding post-dose baseline and rounded to the pump step. A result at or below zero is skipped and retried at the next interval rather than increasing the dose. Success schedules the next residual; failure raises the normal delivery alarm. Cancellation and calculated-zero outcomes are written to treatment/history markers.
 ===============
+
+Ran 4 commands
+
+Done. kmp (4.0.0-dev-b-kmp, from nightscout/AndroidAPS) is now on RSC-RJCgit/AndroidAPS-aisf320.
+
+Its branch-ci.yml is the same CI family as your fork — same secret names (KEYSTORE_BASE64/_PASSWORD, KEY_ALIAS/_PASSWORD, GDRIVE_OAUTH2), same Drive upload. Your repo secrets apply, nothing to re-enter.
+
+To build:
+
+gh workflow run branch-ci.yml --repo RSC-RJCgit/AndroidAPS-aisf320 --ref kmp -f buildVariant=fullRelease
+
+or Actions → Branch CI → Run workflow → Branch kmp, Variant fullRelease.
+
+Both branches now on your fork:
+
+Branch	What	CI
+rjc-boost	Boost v3.4.2.6-boost-v6 release	Branch CI ✓
+kmp	AAPS 4.0.0-dev-b-kmp (v4 / Kotlin-Multiplatform)	Branch CI ✓
+
+Caveats for kmp:
+
+CI uses .github/jdk-map.json .default for the JDK — the kmp branch sets that itself, runner handles it.
+It's a v4 dev branch — the CI build can fail for the same tooling reasons a local one might. A red run there ≠ your config, just upstream churn.
+Delete later with git push aisf :kmp / git push aisf :rjc-boost.
+
+Remotes in the AndroidAPS3 checkout: origin → nightscout, aisf → your fork. Local kmp tracks aisf/kmp now (not origin/kmp) — if you want to pull upstream v4 updates, git pull origin kmp explicitly.
+========================
+C:\backup\AAPS\aiv_Client
+C:\backup\AAPS\logs_Client
+C:\backup\AAPS\aapsLogs\Client
+============================
+
+can you show me code now for initial bolus, subsequent bolus , suppression, timing etc?
+=======================
