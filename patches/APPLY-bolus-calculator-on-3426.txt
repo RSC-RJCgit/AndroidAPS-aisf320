@@ -93,3 +93,15 @@ So the gate keeps a genuine overnight high correctable while clipping exactly th
 Working tree only — not built. #4 (HardStack escalation tuning) still open if you want it later, but it needs the fastrise‑percentile pass first.
 
 ===================
+Original patch applied cleanly on a fresh Tobias 3.4.2.6+aisf3.2.1 (a14b8c76). No rejects.
+
+GitHub: https://github.com/RSC-RJCgit/AndroidAPS-aisf-boluscalc
+
+C:\Users\arjay\StudioProjects\AaAPS3422a320\patches\bolus-calculator-on-aisf321-origin.patch
+
+=========================
+One compile hole (same as was added to nightscout master)
+Wizard split-when-over-max still references ApsAutoIsfSplitBolusEnabled / ApsAutoIsfSplitBolusInterval. Those keys exist on your personal fork, not on Tobias origin, so that row will not compile until those keys are added. Everything else above does not depend on them.
+
+===================
+

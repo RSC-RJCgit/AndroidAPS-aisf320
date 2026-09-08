@@ -1,0 +1,17 @@
+Target: Tobias AutoISF origin branch 3.4.2.6+aisf3.2.1
+(commit a14b8c76, https://github.com/T-o-b-i-a-s/AndroidAPS).
+
+From a clean clone of that branch:
+
+  git apply --check ..\AaAPS3422a320\patches\bolus-calculator-on-aisf321-origin.patch
+  git apply ..\AaAPS3422a320\patches\bolus-calculator-on-aisf321-origin.patch
+
+This is the original 3426+aisf3.2.1 bolus-calculator patch, regenerated
+from a fresh origin apply (WizA001). It is not the nightscout-master patch.
+
+After apply, Overview has two separate toggles:
+- "Enable delayed bolus" — 50% profile / Walking soon remainder
+- "Split bolus when over max" — wizard split-every-N-min row (off by default)
+
+GitHub: https://github.com/RSC-RJCgit/AndroidAPS-aisf-boluscalc
+Local:  C:\Users\arjay\StudioProjects\AndroidAPS-aisf-boluscalc
