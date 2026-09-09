@@ -382,8 +382,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .toObservable(EventAnyDeskLaunchRequested::class.java)
             .observeOn(Schedulers.io())
             .subscribe({
-                if (config.AAPSCLIENT) {
-                    aapsLogger.info(LTag.APS, "AnyDesk launch skipped on AAPSCLIENT (${it.reason})")
+                if (!isAnyDeskHostDevice()) {
+                    aapsLogger.info(LTag.APS, "AnyDesk launch skipped: not the AnyDesk host device (${it.reason})")
                 } else {
                     aapsLogger.info(LTag.APS, "AnyDesk launch requested (${it.reason})")
                     launchAnyDeskDirect()
@@ -1285,6 +1285,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // running task/service is brought forward, not reset. Tasker backup removed 2026-09-02
     // (those tasks were also applying a kill). AdOn/AdMs = startActivity result only.
     private val anyDeskLaunchHandler = Handler(Looper.getMainLooper())
+
+    // AnyDesk's Unattended Access session lives on ONE phone -- the real-pump loop phone (deviceRole
+    // "R"). Client (AAPSCLIENT) and Virtual (VirtualPump) receive the ADesk Note / 5.178 relay TT
+    // over NS the same as everyone else and used to each bounce their own AnyDesk (AcNSV/AcTTV +
+    // AdOn landing on the wrong devices, 2026-09-09). Both receiver channels still write their
+    // receipt Note on every device so the relay stays visible; only the host actually launches.
+    private fun isAnyDeskHostDevice(): Boolean =
+        !config.AAPSCLIENT && activePlugin.activePump !is VirtualPump
 
     private fun launchAnyDeskDirect() {
         val pkg = resolveAnyDeskPackage()
@@ -2953,8 +2961,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else
                     "AcNS$deviceRole secondary-NS receipt"
                 addCarePortalNote(receiptNote)
-                launchAnyDeskDirect()
-                aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+                if (isAnyDeskHostDevice()) {
+                    launchAnyDeskDirect()
+                    aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+                } else {
+                    aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+                }
             }
         }
 
@@ -4149,8 +4161,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val receiptNote = "AcTT$deviceRole relay-TT receipt"
             addCarePortalNote(receiptNote)
-            launchAnyDeskDirect()
-            aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+            if (isAnyDeskHostDevice()) {
+                launchAnyDeskDirect()
+                aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+            } else {
+                aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+            }
             markRun("AnyDeskRestartActionTT")
         }
 

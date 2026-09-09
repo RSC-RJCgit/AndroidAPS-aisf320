@@ -267,7 +267,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         val written = mutableListOf<File>()
         try {
             fileListProvider.ensureAapsLogsDirExists()
-            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val patientName = scopedExportName()
             val dir = resolveExportDir(patientName)
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
             val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
@@ -314,6 +314,18 @@ class AutoIsfHistoryExporter @Inject constructor(
             fileListProvider.aapsLogsPath
         }
 
+    /** GeneralPatientName with the phone model appended, so per-device export folders never collide
+     *  when two phones share a patient name ("Client" -> "Client_SMA366B" / "Client_SMS911B").
+     *  Model is sanitised to [A-Za-z0-9]. Empty name stays empty (unscoped fallback unchanged).
+     *  Added 2026-09-09 -- MaintenancePlugin (logs + Drive aiv_/logs_ folder paths) and
+     *  ImportExportPrefsImpl (UserEntries_30h AIV file) apply the same suffix so every export in a
+     *  batch lands in the same folder. */
+    private fun scopedExportName(): String =
+        preferences.get(StringKey.GeneralPatientName).trim().let { base ->
+            if (base.isEmpty()) base
+            else "${base}_${android.os.Build.MODEL.replace(Regex("[^A-Za-z0-9]"), "")}"
+        }
+
     /** Rebuilds "combined<PatientName>.txt" (or "combined.txt" unscoped) in resolveExportDir()'s own
      *  "output" subfolder, copies the newest settings export there under an undated stable filename,
      *  and writes a dated combined copy alongside it (see below) -- from a single fresh
@@ -335,7 +347,7 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  flip ACEs to ACEf (Client 2026-09-08). */
     fun buildCombinedExport(now: Long) {
         try {
-            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val patientName = scopedExportName()
             val outputDir = File(resolveExportDir(patientName), "output")
             if (!outputDir.exists() && !outputDir.mkdirs()) {
                 throw java.io.IOException("Cannot create ${outputDir.absolutePath}")
@@ -555,7 +567,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             val foundMatches = sb.isNotEmpty()
             val text = if (foundMatches) sb.toString()
                 else "No DropDetected[/AccelSignDisagreement[/LibreVsSet1Race[/Metrics: lines found in this window.\n"
-            val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+            val patientName = scopedExportName()
             val stableName = if (patientName.isNotEmpty()) "UKFcheck_$patientName.txt" else "UKFcheck.txt"
 
             // Primary: resolveExportDir()/output/ -- the folder ACEs/combined<Name>.txt/

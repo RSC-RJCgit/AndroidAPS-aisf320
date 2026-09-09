@@ -1276,7 +1276,12 @@ private fun writeUserEntriesAivLocal(
     val thirtyHourEntries = persistenceLayer
         .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
         .blockingGet()
-    val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+    // Model-scoped to match AutoIsfHistoryExporter.scopedExportName() / MaintenancePlugin so this
+    // 4th AIV file lands in the same aapsLogs\<name>_<model>\ folder as the csv/txt/settings trio.
+    val patientName = preferences.get(StringKey.GeneralPatientName).trim().let { base ->
+        if (base.isEmpty()) base
+        else "${base}_${android.os.Build.MODEL.replace(Regex("[^A-Za-z0-9]"), "")}"
+    }
     val aapsRoot = prefFileList.aapsLogsPath.apply { mkdirs() }
     val patientDir = if (patientName.isNotEmpty()) File(aapsRoot, patientName) else aapsRoot
     patientDir.mkdirs()

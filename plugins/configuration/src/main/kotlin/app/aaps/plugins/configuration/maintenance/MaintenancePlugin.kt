@@ -193,8 +193,18 @@ class MaintenancePlugin @Inject constructor(
      *  Retention capped at localLogsKeepCount (28, ~1 week at the 6h automatic cadence) -- each zip is
      *  several MB to low tens of MB, so unlike the AIV text/CSV exports this would otherwise grow
      *  unbounded. */
+    /** GeneralPatientName with the phone model appended so per-device export folders never collide
+     *  when two phones share a patient name. Sanitised to [A-Za-z0-9]; empty stays empty. Kept in
+     *  step with AutoIsfHistoryExporter.scopedExportName() and ImportExportPrefsImpl so the local
+     *  logs dir and the Drive aiv_/logs_ folder paths all use the same suffix (added 2026-09-09). */
+    private fun scopedExportName(): String =
+        preferences.get(StringKey.GeneralPatientName).trim().let { base ->
+            if (base.isEmpty()) base
+            else "${base}_${android.os.Build.MODEL.replace(Regex("[^A-Za-z0-9]"), "")}"
+        }
+
     private fun localLogsDir(): File {
-        val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+        val patientName = scopedExportName()
         return (if (patientName.isNotEmpty()) File(fileListProvider.logsPath, patientName) else fileListProvider.logsPath)
             .also { it.mkdirs() }
     }
@@ -334,7 +344,7 @@ class MaintenancePlugin @Inject constructor(
                     autoIsfHistoryExporter.addExportCarePortalNote("AVCf")
                     return@launch
                 }
-                val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+                val patientName = scopedExportName()
                 val aivPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_AIV}_$patientName" else CloudConstants.CLOUD_PATH_AIV
                 provider.getOrCreateFolderPath(aivPath)?.let { provider.setSelectedFolderId(it) }
                 var uploaded = 0
@@ -485,7 +495,7 @@ class MaintenancePlugin @Inject constructor(
 
                     // Scope the logs folder per patient, e.g. "/AAPS/export/logs_<PatientName>".
                     // Falls back to the plain CLOUD_PATH_LOGS when no patient name is configured.
-                    val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+                    val patientName = scopedExportName()
                     val logsPath = if (patientName.isNotEmpty()) "${CloudConstants.CLOUD_PATH_LOGS}_$patientName" else CloudConstants.CLOUD_PATH_LOGS
 
                     provider.getOrCreateFolderPath(logsPath)?.let {
