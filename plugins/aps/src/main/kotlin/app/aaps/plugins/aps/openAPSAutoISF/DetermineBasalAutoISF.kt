@@ -2246,9 +2246,10 @@ class DetermineBasalAutoISF @Inject constructor(
 // RECENT-LOW REBOUND GUARD
 // =====================================================
                 // Halves the SMB when a low happened recently and the rise looks like a REBOUND rather
-                // than a fresh excursion. Two triggers (see the two branches below): the original needs
-                // a 50recent latch + carb activity (logged or deviation-based); the L2 branch needs no
-                // carbs at all, for the sensor-artifact case. Motivated by a real overnight episode
+                // than a fresh excursion. Two triggers (see the two branches below): the carb branch
+                // needs a recent low (recentLowBG < 5.6mmol, 60-min min) + carb activity (logged or
+                // deviation-based); the L2 branch needs no carbs at all, for the sensor-artifact case.
+                // Motivated by a real overnight episode
                 // (28 Jul): BG fell 11.7 -> 5.6 on ~4.9U IOB, rescue carbs were taken, BG rebounded
                 // to 9.6, ~2.3U was delivered against that rebound over 40 min, and BG then went to 3.8.
                 // At the moment of that dosing every signal looked benign -- BG 9.0-9.6 and rising, HP2 7.2
@@ -2280,7 +2281,15 @@ class DetermineBasalAutoISF @Inject constructor(
                 // (delta > 15mg/dL/5min AND already > target+20). Same 0.5 factor as the carb branch.
                 if (microBolus > 0.0) {
                     val uciGrams = if (csf > 0.0) uci / csf else 0.0
-                    val carbRebound = recentLowActive && (COB > 0.0 || uciGrams >= 0.3)
+                    // 2026-09-09: was `recentLowActive` (checkAutomationState("LowBG","50recent")).
+                    // That latch is not a time window -- it clears only when the profile returns to
+                    // 100% with BG rising, so after the 8->9 Sep hypo it stayed armed ~7h (still
+                    // halving SMBs at 08:48 for a 9->8.5 descent). Boost's Fast-Carb Rebound Protection
+                    // never used a state; it keys off profile.recentLowBG. Match that: recentLowBG is
+                    // the 60-min BG minimum and < 100mg/dL is Boost's own lowTriggered bar (see line
+                    // ~278), so this self-clears ~60 min after BG recovers above 5.6mmol and still
+                    // catches the 28 Jul pattern (fell to 5.6, carbs, rebound).
+                    val carbRebound = recentLowBG < 100.0 /* 5.6 mmol, 60-min min */ && (COB > 0.0 || uciGrams >= 0.3)
                     val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
                         glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
                     val artifactRebound = COB == 0.0
@@ -2292,7 +2301,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         val beforeLowGuard = microBolus
                         microBolus = microBolus * 0.5
                         val why = if (carbRebound)
-                            "carb: LowBG=50recent, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
+                            "carb: recentLowBG=${round(recentLowBG, 0)}mg/dL, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
                         else
                             "artifact: recentLowBG=${round(recentLowBG, 0)}mg/dL rev=${round(reversalScore, 0)} COB=0"
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} ($why) ")
