@@ -1,4 +1,12 @@
+# AAPS
+* Check the wiki: https://wiki.aaps.app
+*  Everyone who’s been looping with AAPS needs to fill out the form after 3 days of looping  https://docs.google.com/forms/d/14KcMjlINPMJHVt28MDRupa4sz4DDIooI4SrW0P3HSN8/viewform?c=0&w=1
 # AndroidAPS with autoISF
+
+[![Support Server](https://img.shields.io/discord/629952586895851530.svg?label=Discord&logo=Discord&colorB=7289da&style=for-the-badge)](https://discord.gg/4fQUWHZ4Mw)
+📄 **[AutoISF Operations Manual — latest (Dropbox)](https://www.dropbox.com/scl/fi/jiizxlwq26cf0h9ezqvkh/Manual-dropbox-mydoc-Latest.docx?rlkey=dovfe1ylcwb6v6yfhptsc0i93&dl=0)**
+
+
 * For documentation about AndroidAPS without autoISF, check the wiki:
   https://androidaps.readthedocs.io
 * Everyone who’s been looping with AndroidAPS needs to fill out the form after 3 days of looping
