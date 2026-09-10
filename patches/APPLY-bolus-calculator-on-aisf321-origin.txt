@@ -8,8 +8,9 @@ From a clean clone of that branch:
 
 This is the 3426+aisf3.2.1 bolus-calculator patch, regenerated
 from a fresh origin apply (WizA001). Includes the 812 duplicate
-insulin+carbs callback guard so a second success cannot cancel
-its own pending split. It is not the nightscout-master patch.
+insulin+carbs callback guard, plus follow-up Treatments calc records
+(BCR + S0.00) and QuickWizard carbs-only / max-bolus-clamp fixes
+from aisf321UK_817. It is not the nightscout-master patch.
 
 After apply, Overview has two separate toggles:
 - "Enable delayed bolus" — 50% profile / Walking soon remainder
