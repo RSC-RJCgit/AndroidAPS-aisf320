@@ -23,7 +23,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
@@ -49,7 +48,6 @@ import app.aaps.ui.events.EventQuickWizardChange
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
-import kotlin.math.abs
 
 class QuickWizardListActivity : TranslatedDaggerAppCompatActivity(), OnStartDragListener {
 
@@ -133,21 +131,23 @@ class QuickWizardListActivity : TranslatedDaggerAppCompatActivity(), OnStartDrag
                     val actualBg = iobCobCalculator.ads.actualBg()
                     val profile = profileFunction.getProfile()
                     val profileName = profileFunction.getProfileName()
-                    val pump = activePlugin.activePump
                     val quickWizardEntry = quickWizard[position]
 
                     if (actualBg != null && profile != null) {
                         val wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
 
-                        if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
+                        if (wizard.calculatedTotalInsulin > 0.0 || quickWizardEntry.carbs() > 0.0) {
                             val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
-                            if (abs(wizard.insulinAfterConstraints - wizard.calculatedTotalInsulin) >= pump.pumpDescription.pumpType.determineCorrectBolusStepSize(wizard.insulinAfterConstraints) || carbsAfterConstraints != quickWizardEntry.carbs()) {
+                            // The shared confirmation explains insulin constraints and schedules splits.
+                            // Only invalid carbs block this entry; do not show a delivery error for a normal max-bolus clamp.
+                            if (carbsAfterConstraints != quickWizardEntry.carbs()) {
                                 OKDialog.show(
                                     it.context, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\n" + rh.gs(
                                         R.string
                                             .change_your_input
                                     )
                                 )
+                                return@setOnLongClickListener true
                             }
                             wizard.confirmAndExecute(it.context, quickWizardEntry)
                         }

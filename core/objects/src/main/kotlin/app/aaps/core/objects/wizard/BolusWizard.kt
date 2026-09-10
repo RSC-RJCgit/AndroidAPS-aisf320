@@ -1185,10 +1185,60 @@ class BolusWizard @Inject constructor(
     // at the call site, not instead of it — the cancel note (with its own reason) still marks that the
     // REMAINING residual/dose was dropped; this only additionally marks that THIS part's own calculated
     // amount was zero.
-    private fun insertZeroDoseTreatment(label: String, iobIncrease: Double) {
+    private fun insertZeroDoseTreatment(label: String, iobIncrease: Double, calculation: BCR) {
         val zeroNote = "$label: 0U (IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U)"
-        val zeroBolus = BS(timestamp = dateUtil.now(), amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
-        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroNote).blockingGet()
+        val zeroBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
+        val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
+        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, source, zeroNote).blockingGet()
+        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+                type = TE.Type.NOTE,
+                glucoseUnit = profileFunction.getUnits()
+            ).also {
+                it.note = "S0.00"
+                it.duration = T.mins(1).msecs()
+            },
+            action = Action.CAREPORTAL,
+            source = source,
+            note = calculation.note,
+            listValues = listOf()
+        ).blockingGet()
+    }
+
+    // A follow-up is an IOB-delta calculation, not a second calculation of the original meal.
+    // Keep its own timestamp/ID and expose the actual inputs in Treatments' calc details.
+    private fun followUpCalculation(
+        timestamp: Long, label: String, baseDose: Double, iobBaseline: Double,
+        liveIob: Double, dose: Double, detail: String
+    ): BCR {
+        val gs = glucoseStatusProvider.glucoseStatusData
+        val iobIncrease = max(0.0, liveIob - iobBaseline)
+        return BCR(
+            timestamp = timestamp,
+            targetBGLow = 0.0, targetBGHigh = 0.0,
+            isf = 0.0, ic = ic,
+            bolusIOB = iobIncrease, wasBolusIOBUsed = true,
+            basalIOB = 0.0, wasBasalIOBUsed = false,
+            glucoseValue = gs?.glucose ?: 0.0, wasGlucoseUsed = false,
+            glucoseDifference = 0.0, glucoseInsulin = 0.0,
+            glucoseTrend = 0.0, wasTrendUsed = false, trendInsulin = 0.0,
+            cob = 0.0, wasCOBUsed = false, cobInsulin = 0.0,
+            carbs = 0.0, wereCarbsUsed = false, carbsInsulin = 0.0,
+            otherCorrection = baseDose,
+            wasSuperbolusUsed = false, superbolusInsulin = 0.0,
+            wasTempTargetUsed = false, totalInsulin = dose,
+            percentageCorrection = 100, profileName = profileFunction.getProfileName(),
+            note = "$label (${if (quickWizard) "QuickWizard" else "WizardDialog"}): " +
+                "base ${decimalFormatter.to2Decimal(baseDose)}U, " +
+                "total IOB baseline ${decimalFormatter.to2Decimal(iobBaseline)}U, " +
+                "now ${decimalFormatter.to2Decimal(liveIob)}U, " +
+                "rise ${decimalFormatter.to2Decimal(iobIncrease)}U; " +
+                "calculated ${decimalFormatter.to2Decimal(dose)}U after residual cap/pump-step rounding. " +
+                "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
+                "Gate BG=${gs?.glucose}, delta=${gs?.delta}, short delta=${gs?.shortAvgDelta} mg/dL. " + detail
+        )
     }
 
     // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
@@ -1320,6 +1370,10 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
+                insertZeroDoseTreatment("Carb split", iobIncrease, followUpCalculation(
+                    dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
+                    "No insulin delivered. Remaining ${decimalFormatter.to2Decimal(remainingResidual)}U; retry in ${intervalMins}min."
+                ))
                 scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline)
                 return@postDelayed
             }
@@ -1327,14 +1381,20 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Reduced split bolus part"
+                val calculation = followUpCalculation(
+                    timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
+                    "Remaining before this request ${decimalFormatter.to2Decimal(remainingResidual)}U."
+                )
                 uel.log(
                     action = Action.BOLUS,
-                    source = Sources.WizardDialog,
+                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
                     note = notes,
                     listValues = listOf(ValueWithUnit.Insulin(thisDose))
                 )
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
+                        calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
+                        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                         else {
@@ -1410,7 +1470,9 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
-                insertZeroDoseTreatment("Delayed $label dose", iobIncrease)
+                insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
+                    dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
+                ))
                 cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
                 return@postDelayed
             }
@@ -1418,14 +1480,17 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "")
                 uel.log(
                     action = Action.BOLUS,
-                    source = Sources.WizardDialog,
+                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
                     note = notes,
                     listValues = listOf(ValueWithUnit.Insulin(thisDose))
                 )
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
+                        calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
+                        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                     }
