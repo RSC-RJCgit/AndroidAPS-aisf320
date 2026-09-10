@@ -172,7 +172,7 @@
                 android:id="@+id/walking_soon_checkbox"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Walking soon (50% now, rest later if needed)"
+                android:text="Walking soon (70% now if ticked, rest later if needed)"
                 android:textAppearance="?android:attr/textAppearanceSmall"
                 tools:ignore="HardcodedText" />
 

@@ -39,12 +39,10 @@ import kotlin.math.max
 /**
  * Delayed bolus (50%-profile wizard mechanism — NOT the equal-parts split bolus):
  * after a wizard bolus on the 50% profile, re-checks BG every 10 min from 10 through 80
- * minutes and delivers the remaining gap once glucose criteria confirm a rise — × 90% if
- * confirmed within 20 min, × 50% if confirmation only comes later (deliberately blunt:
- * fullRequired's IOB deduction is a frozen snapshot from the original wizard calculation,
- * not re-read live, so the later confirmation lands the less that deduction still reflects
- * actual current IOB — the reduced multiplier is a flat safety margin for that staleness,
- * not a recalculation).
+ * minutes and delivers the remaining gap once glucose criteria confirm a rise.
+ * Still moving now (S30>=200, S5 OR watch only): keep MOVING_PERCENT (70) of the
+ * remaining gap. Seated: deliver the full remaining gap toward standing wiz%.
+ * No elapsed-time 90/50 haircut.
  * Formerly named SplitBolusWorker; renamed to keep the two mechanisms unmistakable.
  *
  * Fixed 2026-08-26: this worker and the closed loop's own dosing (SMBs, temp basals) are two
@@ -70,7 +68,7 @@ import kotlin.math.max
  *    carbs gap shrinks with it, independent of anything IOB-side. 1.0 = essentially nothing
  *    absorbed yet, 0.0 = fully absorbed (no further dose warranted on carb grounds alone).
  * The two apply in sequence: iobDelta reduces the raw gap first, then cobFraction scales what's
- * left, before the existing 90%/50% time multiplier.
+ * left, then the live S30 seated/moving multiplier.
  */
 class DelayedBolusWorker(
     context: Context,
@@ -138,7 +136,8 @@ class DelayedBolusWorker(
             "Full required ${Round.roundTo(fullRequired, 0.01)}U - initial ${Round.roundTo(originalDose, 0.01)}U " +
             "- IOB cover ${Round.roundTo(iobDelta, 0.01)}U = ${Round.roundTo(gapAfterIob, 0.01)}U\n" +
             "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
-            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; late factor $multiplierPct%\n" +
+            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; " +
+            "${if (multiplier < 1.0) "still moving" else "seated"} $multiplierPct%\n" +
             "Delayed sequence complete; no residual pending"
         persistenceLayer.insertOrUpdateBolusCalculatorResult(
             BCR(
@@ -265,11 +264,10 @@ class DelayedBolusWorker(
 
             val gapAfterIob = (fullRequired - originalDose - iobDelta).coerceAtLeast(0.0)
             val rawDose = gapAfterIob * cobFraction
-            // Flat time-based cut, not a live recalculation (see class doc): confirmation within
-            // 20 min uses the normal 90%; later confirmation — where fullRequired's frozen IOB
-            // deduction has had longer to go stale — drops to a more conservative 50%.
             val elapsedMin = attempt * 10
-            val multiplier = if (elapsedMin > 20) 0.50 else 0.90
+            val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)
+            // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 70%.
+            val multiplier = if (movingNow) WizardActivitySteps.MOVING_PERCENT / 100.0 else 1.0
             val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
@@ -277,7 +275,7 @@ class DelayedBolusWorker(
                 unblockSmb("covered by IOB/COB check")
                 return Result.success()
             }
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} gap=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}%)")
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} gap=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {

@@ -442,7 +442,7 @@
                 android:layout_height="match_parent"
                 android:gravity="start|center_vertical"
                 android:lines="1"
-                android:text="Walking soon (50% now, rest later if needed)"
+                android:text="Walking soon (70% if S30 moving; seated uses standing %)"
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium"
                 tools:ignore="HardcodedText" />
 

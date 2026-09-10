@@ -226,13 +226,16 @@ class BolusWizard @Inject constructor(
     private var quickWizard: Boolean = true
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
-    // "Walking soon" checkbox: forces the immediate dose to 50%, independent of and without touching
-    // usePercentage/totalPercentage/percentageCorrection, so the delayed-bolus fullRequired calculation
-    // (see the walkingSoon branch in commonProcessing()'s success callback) can keep reading those
-    // fields untouched and top up toward the user's own normal percentage rather than toward this
-    // override. See WizardDialog.kt for the pre-tick default (steps60>100 AND BGL<6.0, not
-    // rising fast).
+    // "Walking soon" checkbox: cuts the immediate dose to MOVING_PERCENT (70), independent of and
+    // without touching usePercentage/totalPercentage/percentageCorrection, so delayed fullRequired
+    // still aims at standing wiz%. QuickWizard "always on" is gated on live S30 (S5 OR watch only)
+    // in QuickWizardEntry (seated = no cut). Dialog auto-tick is stillMovingNow AND BGL<6, not
+    // leftover S60. Manual dialog tick still covers "about to walk" while quiet, at 70% not 50%.
     var walkingSoon: Boolean = false
+    // True only when walkingSoon actually reduced the immediate % below standing wiz%.
+    // Delayed / Wz133 follow this, not the checkbox: a seated QuickWizard "always on"
+    // press must not SMB-block 85 min for a cut that never happened.
+    var walkingSoonCutApplied: Boolean = false
 
     fun doCalc(
         profile: Profile,
@@ -287,6 +290,7 @@ class BolusWizard @Inject constructor(
         this.totalPercentage = totalPercentage
         this.positiveIOBOnly = positiveIOBOnly
         this.walkingSoon = walkingSoon
+        this.walkingSoonCutApplied = false
 
         // QuickWizard/wizard correction: when the ACTIVE profile percentage is above 100%, calculate
         // the bolus on the 100% (base) profile instead of the boosted rates. The profile scales IC and
@@ -368,11 +372,11 @@ class BolusWizard @Inject constructor(
         // Total
         calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
 
-        // "Walking soon" override: force 50% for the immediate dose only. Deliberately does not touch
-        // usePercentage/totalPercentage/percentageCorrection themselves -- the delayed-bolus
-        // fullRequired calculation downstream reads those fields directly and needs them to still
-        // reflect the user's normal (non-overridden) percentage, not this one-off reduction.
-        val percentage = if (walkingSoon) 50.0 else (if (usePercentage) totalPercentage else percentageCorrection.toDouble())
+        // Walking soon: 70% now (or standing % if that is already lower). Does not touch
+        // usePercentage/totalPercentage/percentageCorrection — delayed fullRequired still uses those.
+        val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+        val percentage = WizardActivitySteps.walkingSoonImmediatePercent(walkingSoon, standingPct)
+        walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
 
         // Percentage adjustment
         totalBeforePercentageAdjustment = calculatedTotalInsulin
@@ -430,8 +434,10 @@ class BolusWizard @Inject constructor(
 
         // After percentage and HP safety: ×1.33 on the number the calculator would otherwise deliver.
         // Wizard BG (not a second CGM read) for the 8.0 bar; CGM deltas for the three rise gates.
+        // Not stacked on a walkingSoon cut (keep Wz133 as a high-rising option once seated).
         // Protein/fat delayed doses are not in calculatedTotalInsulin and stay unscaled.
         if (calculatedTotalInsulin > 0.0 &&
+            !walkingSoonCutApplied &&
             bgMgdl * Constants.MGDL_TO_MMOLL > 8.0 &&
             deltaMmol > 0.2 && shortDeltaMmol > 0.2 && longDeltaMmol > 0.2
         ) {
@@ -519,7 +525,7 @@ class BolusWizard @Inject constructor(
         val recent50TriggeredPreview = recent50ShouldReduceWizard()
         val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
             preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoon)
+            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied)
         val delayedLabel = if (!delayedWillFire) {
             "none"
         } else {
@@ -902,14 +908,11 @@ class BolusWizard @Inject constructor(
                                     // same callback correctly read profilePct=50/type=EPS at the same instant).
                                     val delayedProfilePct = activeProfileSwitchPct()
                                     val recent50Triggered = recent50ShouldReduceWizard()
-                                    // walkingSoon (see doCalc's own comment): a third, independent way to qualify
-                                    // for this same delayed-check path. Its own 50% reduction happened via the
-                                    // `percentage` override in doCalc, not via profile or carbs-only halving, so
-                                    // it needs no special-casing in fullRequired below -- percentageCorrection and
-                                    // ic are both already untouched/normal on this path.
+                                    // walkingSoonCutApplied: delayed only if the immediate % was actually
+                                    // reduced. Seated QuickWizard always-on must not arm this path.
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoon)
+                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied)
                                     ) {
                                         // FullRequired uses normal IC. On the profile-50% path, ic itself is
                                         // already halved by the profile switch, so normal IC = 2x ic. On the

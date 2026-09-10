@@ -7222,7 +7222,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val allBgHigh = allRecentBgAbove90Minutes(8.0 * GlucoseUnit.MMOLL_TO_MGDL)
             val duraActiveMinutes = recentAdaptationMinutes { it.duraIsf }
             val acceActiveMinutes = recentAdaptationMinutes { it.acceIsf }
-            val stepsOk = recentSteps60Minutes < 600 ||
+            val stepsOk = recentSteps60Minutes < 800 ||
                 (glucoseStatus.glucose > 11.0 * GlucoseUnit.MMOLL_TO_MGDL && recentSteps60Minutes < 1500)
             val adaptationDurationOk = duraActiveMinutes > 5.0 && acceActiveMinutes > 4.0
             val hp2HighBgBypass = hp != null && hp > 7.5 &&

@@ -2179,7 +2179,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
                 if (microBolus > ThresholForFastRise &&
                     ((Steps30M ?: 0) > 1500 ||
-                        (Steps60M ?: 0) > 600 ||
+                        (Steps60M ?: 0) > 800 ||
                         (Steps180M ?: 0) > 1500)
                 ) {
                     microBolus = microBolus * 0.70
@@ -2190,7 +2190,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
                 // User-requested additional trim on top of the fast-rise caps above. Tighter step
                 // thresholds than the HIGH STEPS block above (that one's a coarse catch-all at
-                // 1500/600/1500 over 30/60/180min) -- these are meant to catch smaller amounts of
+                // 1500/800/1500 over 30/60/180min) -- these are meant to catch smaller amounts of
                 // movement specifically while HP2 (hypo-prediction) says a real hypo risk is present.
                 // HP2 is calculated live by OpenAPSAutoISFPlugin with UKF delta and gated COBt,
                 // then passed here so this dosing cut uses exactly the checked history formula. "Daytime" deliberately NARROWER than isDaytime elsewhere in

@@ -49,6 +49,7 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.WizardActivitySteps
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -265,9 +266,9 @@ class WizardDialog : DaggerDialogFragment() {
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
         binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
 
-        // Walking Soon default: some movement (steps60>100) AND BGL<6.0, not rising fast.
-        // Sitting still never pre-ticks. Manual tick covers "walking soon" while quiet.
-        // Re-applied from calculateInsulin when carbs/BG change, unless the user touched the box.
+        // Walking Soon default: S30 moving (S5 OR watch only) AND BGL<6.0, not rising fast.
+        // Leftover S60 does not pre-tick (10 Sep plane meal). Manual tick still covers
+        // "about to walk" while quiet. Re-applied from calculateInsulin unless the user touched the box.
         applyWalkingSoonDefault(
             carbs = (savedInstanceState?.getDouble("carbs_input") ?: carbsPassedIntoWizard).toInt(),
             protein = savedInstanceState?.getDouble("protein_input")?.toInt() ?: 0,
@@ -498,21 +499,19 @@ class WizardDialog : DaggerDialogFragment() {
         }
     }
 
-    // steps60>100 = some movement (Usual2 / UsuIP band), not the 1000 sustained-walk cutoff.
-    // AND BGL<6.0 (29 Aug intention). Not rising fast. Quiet meals stay off. carbs/protein/fat
-    // unused here; kept so calculateInsulin can re-apply when those fields change. Manual
-    // tick/untick wins for the rest of the dialog.
+    // S30>=200 = moving (WizardActivitySteps; S5>=100 is OR watch-only). S15 unused. Leftover
+    // S60 never counts. AND BGL<6.0, not rising fast. Quiet / seated meals stay off.
+    // carbs/protein/fat unused here; kept so calculateInsulin can re-apply when those fields
+    // change. Manual tick/untick wins for the rest of the dialog.
     @Suppress("UNUSED_PARAMETER")
     private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean {
-        val recentSteps60 = persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - T.mins(60).msecs(), dateUtil.now())
-            .maxByOrNull { it.timestamp }?.steps60min ?: 0
         val gs = glucoseStatusProvider.getGlucoseStatusData()
         val notRisingFast = (gs?.delta ?: 0.0) <= 0.9 /* +0.05 mmol/5min */
-        val someMovement = recentSteps60 > 100
+        val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
         val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
         else gs?.glucose ?: 999.0
         val low = bgMgdl < 108.1 /* 6.0 mmol */
-        return someMovement && low && notRisingFast
+        return movingNow && low && notRisingFast
     }
 
     private fun applyWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double) {

@@ -168,7 +168,9 @@ class QuickWizardEntry @Inject constructor(
             carbTime(),
             quickWizard = true,
             positiveIOBOnly = uPositiveIOBOnly,
-            walkingSoon = useWalkingSoon() == YES
+            // "Always on" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.
+            walkingSoon = useWalkingSoon() == YES &&
+                WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
         // Split-bolus (carb-split-over-max-bolus) isn't a doCalc() parameter -- it only affects later
         // scheduling (splitProjectionNote()/scheduleSplitProteinFatDoses(), both called from
@@ -228,9 +230,8 @@ class QuickWizardEntry @Inject constructor(
 
     fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)
 
-    // "Walking soon" / manual split-bolus, added 2026-08-22 -- same two mechanisms WizardDialog exposes
-    // via its own checkboxes, now also settable per QuickWizard button. See doCalc() above for how each
-    // is threaded into the shared BolusWizard instance.
+    // "Walking soon" / manual split-bolus. Always-on is live S30 (S5 OR watch only), not a hard 50%.
+    // Seated press uses standing wiz%; moving now uses MOVING_PERCENT (70).
     fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", NO)
 
     fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)
