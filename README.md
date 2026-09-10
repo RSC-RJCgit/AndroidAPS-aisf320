@@ -1,4 +1,7 @@
 # AndroidAPS with autoISF
+
+📄 **[AutoISF Operations Manual — latest (Dropbox)](https://www.dropbox.com/scl/fi/jiizxlwq26cf0h9ezqvkh/Manual-dropbox-mydoc-Latest.docx?rlkey=dovfe1ylcwb6v6yfhptsc0i93&dl=0)**
+
 * For documentation about AndroidAPS without autoISF, check the wiki:
   https://androidaps.readthedocs.io
 * Everyone who’s been looping with AndroidAPS needs to fill out the form after 3 days of looping
