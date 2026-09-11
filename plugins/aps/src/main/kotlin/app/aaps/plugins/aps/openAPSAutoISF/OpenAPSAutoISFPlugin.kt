@@ -382,7 +382,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .toObservable(EventAnyDeskLaunchRequested::class.java)
             .observeOn(Schedulers.io())
             .subscribe({
-                if (!isAnyDeskHostDevice()) {
+                if (!isRealLoopPhone()) {
                     aapsLogger.info(LTag.APS, "AnyDesk launch skipped: not the AnyDesk host device (${it.reason})")
                 } else {
                     aapsLogger.info(LTag.APS, "AnyDesk launch requested (${it.reason})")
@@ -1286,12 +1286,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // (those tasks were also applying a kill). AdOn/AdMs = startActivity result only.
     private val anyDeskLaunchHandler = Handler(Looper.getMainLooper())
 
-    // AnyDesk's Unattended Access session lives on ONE phone -- the real-pump loop phone (deviceRole
-    // "R"). Client (AAPSCLIENT) and Virtual (VirtualPump) receive the ADesk Note / 5.178 relay TT
-    // over NS the same as everyone else and used to each bounce their own AnyDesk (AcNSV/AcTTV +
-    // AdOn landing on the wrong devices, 2026-09-09). Both receiver channels still write their
-    // receipt Note on every device so the relay stays visible; only the host actually launches.
-    private fun isAnyDeskHostDevice(): Boolean =
+    // True only on the real-pump loop phone (deviceRole "R") -- not Client (AAPSCLIENT) and not
+    // Virtual (VirtualPump). Originally added for AnyDesk: its Unattended Access session lives on
+    // ONE phone, but Client and Virtual received the ADesk Note / 5.178 relay TT over NS the same as
+    // everyone else and used to each bounce their own AnyDesk (AcNSV/AcTTV + AdOn landing on the
+    // wrong devices, 2026-09-09) before this gate was added. Both AnyDesk receiver channels still
+    // write their receipt Note on every device so the relay stays visible; only the host actually
+    // launches. Reused (2026-09-11) by the SetRole handlers below, which had the identical gap: both
+    // apply a role/profile assignment relayed over NS with no device check at all, despite each of
+    // their own doc comments saying "applies it on the loop phone" -- same class of bug as AnyDesk's,
+    // just never given the same fix when it was added on 2026-08-31.
+    private fun isRealLoopPhone(): Boolean =
         !config.AAPSCLIENT && activePlugin.activePump !is VirtualPump
 
     private fun launchAnyDeskDirect() {
@@ -2911,7 +2916,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // both are idempotent (preferences.put of the same value is a no-op). Cursor-tracked by Note
         // timestamp; each Note applied once, across restarts. Only the seven Standard/Low base+tier keys
         // are honoured, and only if <profile> exists in the active store (applySetRole checks).
+        // isRealLoopPhone() gate added 2026-09-11: this is meant to apply ONLY on the loop phone (per
+        // the comment above), but had no device check at all -- Client/Virtual would each apply the
+        // same relayed role assignment to themselves, the same gap AnyDesk's relay had before its own
+        // fix (see isRealLoopPhone()'s doc comment). The cursor still advances on non-loop-phone
+        // devices so they don't needlessly re-scan the same window every cycle; they just never apply.
         run {
+            if (!isRealLoopPhone()) return@run
             val handledAt = preferences.get(LongKey.ApsAutoIsfSetRoleNoteHandledAt)
             val searchFrom = if (handledAt > 0L) handledAt + 1L else dateUtil.now() - T.days(2).msecs()
             val notes = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, true)
@@ -2961,7 +2972,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else
                     "AcNS$deviceRole secondary-NS receipt"
                 addCarePortalNote(receiptNote)
-                if (isAnyDeskHostDevice()) {
+                if (isRealLoopPhone()) {
                     launchAnyDeskDirect()
                     aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
                 } else {
@@ -4161,7 +4172,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val receiptNote = "AcTT$deviceRole relay-TT receipt"
             addCarePortalNote(receiptNote)
-            if (isAnyDeskHostDevice()) {
+            if (isRealLoopPhone()) {
                 launchAnyDeskDirect()
                 aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
             } else {
