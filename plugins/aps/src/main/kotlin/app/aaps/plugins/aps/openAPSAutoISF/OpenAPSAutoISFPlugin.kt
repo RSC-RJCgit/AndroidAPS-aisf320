@@ -3465,10 +3465,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val insReqNow = lastCycleInsulinReq
             val lowInsulinReqDespiteHigh = insReqNow != null && insReqNow < 0.10 * oapsProfile.max_iob
             val boostActive = preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)
-            if (podOldBoost && highSustainedBoost && lowInsulinReqDespiteHigh && !boostActive) {
-                val boosted = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3
-                setSmbDeliveryRatio(boosted)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandard110ProfileName))
+            if (!boostActive && podOldBoost && highSustainedBoost && lowInsulinReqDespiteHigh) {
                 sendSms("OldPodInsReqBoost: cannula ${String.format("%.1f", cannulaHBoost ?: 0.0)}h insulinReq ${String.format("%.2f", insReqNow ?: 0.0)} -> SMB x1.3, TierC")
                 addCarePortalNote("OldPodBst")
                 preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, true)
@@ -3477,6 +3474,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("OldPodInsReqBoost off: BGL ${String.format("%.1f", gBoost / 18.016)}")
                 addCarePortalNote("OldPodBstOff")
                 preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, false)
+            }
+            // Re-assert every cycle while active, regardless of which branch above fired this cycle --
+            // several OTHER automations (Usual2forTH70, CarbsTHoff, various "restore baseline" recovery
+            // blocks) write the same ApsAutoIsfSmbDeliveryRatio/profile unconditionally on their own
+            // routine triggers, with no awareness of this latch, and would otherwise silently undo the
+            // boost without ever going through the revert check above -- the latch would still read
+            // true while the actual ratio quietly reverted underneath it. Re-reads the preference fresh
+            // (not the `boostActive` val captured above, which predates the branches) so a same-cycle
+            // activation is applied immediately rather than waiting a full extra cycle.
+            if (preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)) {
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandard110ProfileName))
             }
         }
 
@@ -7800,7 +7809,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             determineBasalResult.oapsProfileAutoIsf = oapsProfile
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
-            lastCycleInsulinReq = determineBasalResult.insulinReq
+            lastCycleInsulinReq = it.insulinReq   // raw RT, not the APSResult wrapper -- that doesn't expose insulinReq
             lastAPSRun = now
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
