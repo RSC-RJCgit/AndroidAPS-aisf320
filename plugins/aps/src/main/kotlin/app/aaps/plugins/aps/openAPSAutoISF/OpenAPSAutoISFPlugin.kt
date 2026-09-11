@@ -780,6 +780,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         StringKey.ApsAutoIsfLow90ProfileName
     )
 
+    // All role keys whose currently-assigned profile might correspond to a running profile: the two
+    // mutable base roles plus both fixed ladders. Used by roleKeyForProfileName() below.
+    private val allRoleKeys: List<StringKey> by lazy {
+        listOf(StringKey.ApsAutoIsfStandardProfileName, StringKey.ApsAutoIsfLowProfileName) + standardRoleLadder + lowRoleLadder
+    }
+
+    // Reverse lookup: which role (if any) currently has [name] as its assigned profile. Lets a
+    // temporary percentage reduction (startProfilePercentFor) remember WHICH ROLE it reduced, not
+    // just the profile name at that instant -- so applyCurrentProfileAt100() can re-resolve the
+    // role's CURRENT target when restoring instead of replaying a name that may since have been
+    // reassigned. (2026-09-11: root cause of "Profile110 keeps coming back after a role re-pick" --
+    // a 50%-for-360min reduction started before Standard was repointed away from Profile110 had that
+    // stale name frozen into its own DB record; restoring it later replayed the old name regardless
+    // of the fix, once per pre-fix reduction still in flight.) No match returns null, preserving the
+    // old behaviour exactly.
+    private fun roleKeyForProfileName(name: String): StringKey? {
+        if (name.isBlank()) return null
+        return allRoleKeys.firstOrNull { key -> preferences.get(key).let { it.isNotEmpty() && it == name } }
+    }
+
     // Tier band for SMB/MildBoost coupling (2026-09-03): 0 = TierA (rung 0), 1 = TierB or TierC
     // (rung >= 1). B and C share one band so A→B and A→C nudge once; B↔C does not stack.
     private fun roleTierBandForIndex(index: Int): Int = if (index <= 0) 0 else 1
@@ -927,7 +947,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // active, and createProfileSwitch can't resolve that name in the store — the 100% switch
         // then gets recorded but never takes effect, leaving the profile stuck at 50% (which made
         // PP50.Off re-fire endlessly). getOriginalProfileName() gives the undecorated base name.
-        val profileName = profileFunction.getOriginalProfileName()
+        //
+        // 2026-09-11: prefer re-resolving the ROLE the reduction was started against (stashed by
+        // startProfilePercentFor via ApsAutoIsfLastReductionRoleKey) over that frozen name, when
+        // possible. getOriginalProfileName() reads a name baked into the EffectiveProfileSwitch DB
+        // record at the moment the reduction STARTED; it does not update if the role gets re-picked
+        // to a different profile while the reduction is still running. Re-resolving the role live
+        // means a re-pick made mid-reduction is honoured when the reduction is later cancelled,
+        // instead of the cancellation silently reviving what the role used to mean. Consumed
+        // one-shot (read then cleared) to match this function's own single-shot restore semantics.
+        val lastRoleKeyName = preferences.get(StringKey.ApsAutoIsfLastReductionRoleKey)
+        preferences.put(StringKey.ApsAutoIsfLastReductionRoleKey, "")
+        val roleResolvedName = lastRoleKeyName.takeIf { it.isNotEmpty() }
+            ?.let { keyName -> allRoleKeys.firstOrNull { it.key == keyName } }
+            ?.let { preferences.get(it) }
+            ?.takeIf { it.isNotEmpty() && profileStore.getSpecificProfile(it) != null }
+        val profileName = roleResolvedName ?: profileFunction.getOriginalProfileName()
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = profileName,
@@ -954,6 +989,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // the customized/decorated name (e.g. "... (50%)") can't be resolved by createProfileSwitch.
     private fun startProfilePercentFor(percentage: Int, durationMinutes: Int, profileName: String = profileFunction.getOriginalProfileName()) {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
+        // Stash which role (if any) [profileName] currently belongs to, so applyCurrentProfileAt100()
+        // can re-resolve that role's CURRENT target when this reduction is later cancelled, rather
+        // than replaying this frozen name if the role gets re-picked in the meantime. Overwrites any
+        // previous value -- matches this function/applyCurrentProfileAt100's existing single-shot,
+        // non-stacking semantics (only ever one reduction considered "current" at a time).
+        preferences.put(StringKey.ApsAutoIsfLastReductionRoleKey, roleKeyForProfileName(profileName)?.key ?: "")
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = profileName,

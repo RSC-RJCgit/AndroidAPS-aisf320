@@ -216,10 +216,14 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     private data class RoleOption(val label: String, val key: StringKey?)
     private val roleOptions = listOf(
         RoleOption("(no role change — use dropdown to assign a role)", null),
-        RoleOption("Standard", StringKey.ApsAutoIsfStandardProfileName),
+        // Labels only (2026-09-11) -- "Standard"/"Low" renamed to "...Current" to make clear these are
+        // the mutable, currently-assigned role (overwritten by MorningRoleSwapHigh/Normal escalations),
+        // distinct from the fixed TierB/TierC rungs below. Display text only -- the underlying StringKey
+        // storage names (and AutoISF_settings_*.txt exports) are unchanged.
+        RoleOption("StandardCurrent", StringKey.ApsAutoIsfStandardProfileName),
         RoleOption("StandardTierB", StringKey.ApsAutoIsfStandard105ProfileName),
         RoleOption("StandardTierC", StringKey.ApsAutoIsfStandard110ProfileName),
-        RoleOption("Low", StringKey.ApsAutoIsfLowProfileName),
+        RoleOption("LowCurrent", StringKey.ApsAutoIsfLowProfileName),
         RoleOption("LowTierA", StringKey.ApsAutoIsfLow70ProfileName),
         RoleOption("LowTierB", StringKey.ApsAutoIsfLow80ProfileName),
         RoleOption("LowTierC", StringKey.ApsAutoIsfLow90ProfileName)

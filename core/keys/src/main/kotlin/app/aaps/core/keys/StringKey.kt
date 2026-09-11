@@ -116,6 +116,13 @@ enum class StringKey(
     ApsAutoIsfLow70ProfileName("autoisf_low70_profile_name", ""),
     ApsAutoIsfLow80ProfileName("autoisf_low80_profile_name", ""),
     ApsAutoIsfLow90ProfileName("autoisf_low90_profile_name", ""),
+    // Added 2026-09-11: holds the StringKey.key of whichever Standard/Low role (base or tier) matched
+    // the profile a temporary percentage reduction (startProfilePercentFor) was just started against --
+    // blank if none matched. Consumed (read then cleared) by applyCurrentProfileAt100() when the
+    // reduction is cancelled, so the restore can re-resolve that role's CURRENT target instead of
+    // replaying the frozen name a reduction started with, which goes stale the moment the role is
+    // re-picked to a different profile mid-reduction. Purely internal bookkeeping; never user-visible.
+    ApsAutoIsfLastReductionRoleKey("autoisf_last_reduction_role_key", ""),
     // Added 2026-08-27: Battery1pc/BatteryOver1pc (OpenAPSAutoISFPlugin.kt) previously hardcoded the
     // literal string "Current Profile50" for the low-battery safety-profile switch -- the one coded
     // profile role with no configurability or setup validation at all, unlike Standard/Low above.
