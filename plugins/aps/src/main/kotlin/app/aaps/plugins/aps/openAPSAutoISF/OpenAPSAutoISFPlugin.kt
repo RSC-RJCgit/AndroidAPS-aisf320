@@ -213,6 +213,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     override var lastAPSRun: Long = 0
     override val algorithm = APSResult.Algorithm.AUTO_ISF
     override var lastAPSResult: APSResult? = null
+    // Captured at the end of each cycle (see determine_basal()'s result handling below), for coded
+    // automations that run BEFORE determine_basal() this same cycle (everything above roughly line
+    // 7600) and so can only ever see LAST cycle's insulinReq, never the current one -- lastAPSResult
+    // itself is unusable for this because it gets nulled at the top of invoke() before those
+    // automations run. One cycle (~1 min) old is fine for anything gated on a sustained condition,
+    // e.g. OldPodInsReqBoost below. Null until the first successful determine_basal() call.
+    private var lastCycleInsulinReq: Double? = null
     private var consoleError = mutableListOf<String>()
     private var consoleLog = mutableListOf<String>()
     // Persists across loop cycles (plugin is a singleton) so the "dura_ISF IOB taper" Script Debug
@@ -3424,6 +3431,52 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, true)
             } else if (!podOld && notified) {
                 preferences.put(BooleanKey.ApsAutoIsfOldPodNotified, false)
+            }
+        }
+
+        // --- OldPodInsReqBoost (2026-09-12): modestly strengthens SMB delivery when a pod is old
+        // (>60h), BGL has been high for 2h+ (the SAME sustained-high episode as OldPod above --
+        // reads its ApsAutoIsfOldPodHighSinceTs rather than tracking a second, redundant timer), AND
+        // -- the discriminator OldPod2 lacked -- last cycle's insulinReq came back small despite that.
+        // Small insulinReq alongside a real, sustained high is the signature of a pod that has
+        // physically stopped delivering what it's being told to, rather than an ordinary high that
+        // just needs more insulin for an unrelated reason. OldPod2 (disabled, see its own comment
+        // further below) applied a flat 130% profile boost on age+BGL alone with no such
+        // discriminator and had to be pulled as "too strong" -- almost certainly because it fired on
+        // every old-pod high, not just genuine under-delivery. This starts deliberately conservative
+        // (1.3x SMB delivery ratio, not the 2x originally floated) pending real data on how often it
+        // actually fires and whether it is in fact catching genuine under-delivery. The insulinReq
+        // threshold (0.10 * max_iob) is a first estimate, not yet checked against real data -- revisit
+        // once this has fired for real. Reads lastCycleInsulinReq (see its own doc comment) since
+        // determine_basal() has not run yet this cycle.
+        //
+        // Reverts on BGL<8mmol AND (falling OR a fresh pod, cannula<6h) -- your original spec --
+        // independently of OldPod's own notify latch above: this needs to actually stop boosting, not
+        // just stop re-notifying, so it cannot share ApsAutoIsfOldPodNotified (which only clears on a
+        // genuinely new pod, not on recovery).
+        run {
+            val cannulaHBoost = hoursSinceCurrentPodChange()
+            val podOldBoost = cannulaHBoost != null && cannulaHBoost > 60.0
+            val podFreshBoost = cannulaHBoost != null && cannulaHBoost < 6.0
+            val gBoost = glucoseStatus.glucose
+            val dBoost = glucoseStatus.delta
+            val highSinceTsBoost = preferences.get(LongKey.ApsAutoIsfOldPodHighSinceTs)   // maintained by OldPod above, same episode
+            val highSustainedBoost = highSinceTsBoost != 0L && (dateUtil.now() - highSinceTsBoost) >= T.hours(2).msecs()
+            val insReqNow = lastCycleInsulinReq
+            val lowInsulinReqDespiteHigh = insReqNow != null && insReqNow < 0.10 * oapsProfile.max_iob
+            val boostActive = preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)
+            if (podOldBoost && highSustainedBoost && lowInsulinReqDespiteHigh && !boostActive) {
+                val boosted = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3
+                setSmbDeliveryRatio(boosted)
+                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandard110ProfileName))
+                sendSms("OldPodInsReqBoost: cannula ${String.format("%.1f", cannulaHBoost ?: 0.0)}h insulinReq ${String.format("%.2f", insReqNow ?: 0.0)} -> SMB x1.3, TierC")
+                addCarePortalNote("OldPodBst")
+                preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, true)
+            } else if (boostActive && gBoost < 144.1 /* 8.0 mmol */ && (dBoost < 0 || podFreshBoost)) {
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+                sendSms("OldPodInsReqBoost off: BGL ${String.format("%.1f", gBoost / 18.016)}")
+                addCarePortalNote("OldPodBstOff")
+                preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, false)
             }
         }
 
@@ -7747,6 +7800,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             determineBasalResult.oapsProfileAutoIsf = oapsProfile
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
+            lastCycleInsulinReq = determineBasalResult.insulinReq
             lastAPSRun = now
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())

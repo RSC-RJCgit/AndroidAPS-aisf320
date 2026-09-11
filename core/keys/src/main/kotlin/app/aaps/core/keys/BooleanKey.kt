@@ -164,6 +164,14 @@ enum class BooleanKey(
     // false once cannula age drops back under 60h (i.e. a new pod was actually inserted), re-arming it
     // for the next old pod. Not shown in any preference screen.
     ApsAutoIsfOldPodNotified("autoisf_old_pod_notified", false, defaultedBySM = true, exportable = false),
+    // Internal-only: "OldPodInsReqBoost" latch (2026-09-12) -- true once the SMB-delivery boost has
+    // been applied for the CURRENT pod (pod>60h + BGL>10.0mmol-for-2h+, same as OldPod above, PLUS
+    // last cycle's insulinReq reading unexpectedly low despite that -- see OldPodInsReqBoost's own
+    // comment). Distinct from ApsAutoIsfOldPodNotified: that one is a pure notification and never
+    // re-arms until a genuinely new pod; this one also clears on the dosing-side revert (BGL<8mmol
+    // and either falling or a fresh pod), since the boost itself needs to actually stop being applied,
+    // not just stop re-notifying. Not shown in any preference screen.
+    ApsAutoIsfOldPodInsReqBoostActive("autoisf_old_pod_insreq_boost_active", false, defaultedBySM = true, exportable = false),
     // Real-pump phone latch for its low-storage alert/SMS/NS Note. It prevents one set per APS cycle;
     // re-armed only after that phone's storage recovers above the hysteresis threshold.
     ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, defaultedBySM = true, exportable = false),
