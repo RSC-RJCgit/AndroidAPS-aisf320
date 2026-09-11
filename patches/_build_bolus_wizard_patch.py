@@ -17,6 +17,7 @@ FULL_COPY = [
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt",
     "ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt",
+    "ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt",
     "ui/src/main/res/layout/dialog_wizard.xml",
     "plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml",
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt",
@@ -360,6 +361,18 @@ def apply_surgical(staging: Path) -> None:
     }
 """,
         "OverviewFragment onClickQuickWizard",
+    )
+    t = must_replace(
+        t,
+        "wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0",
+        "wizard.calculatedTotalInsulin > 0.0 || quickWizardEntry.carbs() > 0.0",
+        "QuickWizard carbs-only execution",
+    )
+    t = must_replace(
+        t,
+        "if (wizard.calculatedTotalInsulin <= 0) binding.buttonsLayout.quickWizardButton.visibility",
+        "if (wizard.calculatedTotalInsulin <= 0 && quickWizardEntry.carbs() <= 0) binding.buttonsLayout.quickWizardButton.visibility",
+        "QuickWizard carbs-only visibility",
     )
     write(staging, p, t)
 

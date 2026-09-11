@@ -211,12 +211,30 @@ class MaintenancePlugin @Inject constructor(
 
     private fun zipLogsToFile(zipFile: File, files: List<File>) {
         val bufferSize = 2048
+        val usedEntryNames = mutableSetOf<String>()
         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
             val data = ByteArray(bufferSize)
             for (file in files) {
+                // findSourceLogFiles() can legitimately return two different files with the same base
+                // name (e.g. AndroidAPS.log from the main log dir AND from the scoped-storage
+                // app-specific fallback dir) -- ZipOutputStream throws "duplicate entry" on the second
+                // identical entry name, which used to abort the whole export before it ever reached the
+                // cloud upload step (2026-09-11: this is what silently broke Export/Send Logs and the
+                // ISF-long-press log trigger on Live while the separate AIV export kept working fine).
+                // Disambiguate with the parent directory name first so the source stays visible in the
+                // zip; fall back to a numeric suffix if that still collides.
+                var entryName = file.name
+                if (!usedEntryNames.add(entryName)) {
+                    entryName = "${file.parentFile?.name ?: "dup"}_${file.name}"
+                    var suffix = 2
+                    while (!usedEntryNames.add(entryName)) {
+                        entryName = "${file.parentFile?.name ?: "dup"}_${suffix}_${file.name}"
+                        suffix++
+                    }
+                }
                 FileInputStream(file).use { fileInputStream ->
                     BufferedInputStream(fileInputStream, bufferSize).use { origin ->
-                        out.putNextEntry(ZipEntry(file.name))
+                        out.putNextEntry(ZipEntry(entryName))
                         var count: Int
                         while (origin.read(data, 0, bufferSize).also { count = it } != -1) {
                             out.write(data, 0, count)

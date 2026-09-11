@@ -1,5 +1,5 @@
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
-index 30d590b566..70b1cd0eae 100644
+index 30d590b..70b1cd0 100644
 --- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
 @@ -19,6 +19,7 @@ object BolusProgressData {
@@ -25,7 +25,7 @@ index 30d590b566..70b1cd0eae 100644
 \ No newline at end of file
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt
 new file mode 100644
-index 0000000000..1111111111
+index 0000000..c904f5c
 --- /dev/null
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt
 @@ -0,0 +1,32 @@
@@ -63,7 +63,7 @@ index 0000000000..1111111111
 +}
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt
 new file mode 100644
-index 0000000000..1111111111
+index 0000000..78e5efe
 --- /dev/null
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt
 @@ -0,0 +1,24 @@
@@ -92,7 +92,7 @@ index 0000000000..1111111111
 +    }
 +}
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
-index d73005110b..7186c22b39 100644
+index d730051..7186c22 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
 @@ -125,6 +125,9 @@ enum class BooleanKey(
@@ -106,7 +106,7 @@ index d73005110b..7186c22b39 100644
      WizardIncludeTrend("wizard_include_trend_bg", defaultValue = false),
      SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false),
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
-index 5de6a0cc63..dc5b064775 100644
+index 5de6a0c..dc5b064 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 @@ -23,5 +23,6 @@ enum class LongKey(
@@ -118,7 +118,7 @@ index 5de6a0cc63..dc5b064775 100644
  }
 \ No newline at end of file
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
-index 336209de6f..7ef57d06cc 100644
+index 336209d..7ef57d0 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
 @@ -4,6 +4,7 @@ import android.content.Context
@@ -138,7 +138,7 @@ index 336209de6f..7ef57d06cc 100644
  
      @Suppress("DEPRECATION")
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
-index 811cd2a748..812782438d 100644
+index 811cd2a..3ad2899 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 @@ -4,9 +4,11 @@ import android.annotation.SuppressLint
@@ -811,7 +811,7 @@ index 811cd2a748..812782438d 100644
                  }
              }
              if (quickWizardEntry != null) {
-@@ -555,6 +980,450 @@ class BolusWizard @Inject constructor(
+@@ -555,6 +980,515 @@ class BolusWizard @Inject constructor(
          })
      }
  
@@ -1010,10 +1010,60 @@ index 811cd2a748..812782438d 100644
 +    // at the call site, not instead of it — the cancel note (with its own reason) still marks that the
 +    // REMAINING residual/dose was dropped; this only additionally marks that THIS part's own calculated
 +    // amount was zero.
-+    private fun insertZeroDoseTreatment(label: String, iobIncrease: Double) {
++    private fun insertZeroDoseTreatment(label: String, iobIncrease: Double, calculation: BCR) {
 +        val zeroNote = "$label: 0U (IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U)"
-+        val zeroBolus = BS(timestamp = dateUtil.now(), amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
-+        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroNote).blockingGet()
++        val zeroBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
++        val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
++        persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, source, zeroNote).blockingGet()
++        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
++        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
++            therapyEvent = TE(
++                timestamp = NoteTimestampAllocator.next(dateUtil.now()),
++                type = TE.Type.NOTE,
++                glucoseUnit = profileFunction.getUnits()
++            ).also {
++                it.note = "S0.00"
++                it.duration = T.mins(1).msecs()
++            },
++            action = Action.CAREPORTAL,
++            source = source,
++            note = calculation.note,
++            listValues = listOf()
++        ).blockingGet()
++    }
++
++    // A follow-up is an IOB-delta calculation, not a second calculation of the original meal.
++    // Keep its own timestamp/ID and expose the actual inputs in Treatments' calc details.
++    private fun followUpCalculation(
++        timestamp: Long, label: String, baseDose: Double, iobBaseline: Double,
++        liveIob: Double, dose: Double, detail: String
++    ): BCR {
++        val gs = glucoseStatusProvider.glucoseStatusData
++        val iobIncrease = max(0.0, liveIob - iobBaseline)
++        return BCR(
++            timestamp = timestamp,
++            targetBGLow = 0.0, targetBGHigh = 0.0,
++            isf = 0.0, ic = ic,
++            bolusIOB = iobIncrease, wasBolusIOBUsed = true,
++            basalIOB = 0.0, wasBasalIOBUsed = false,
++            glucoseValue = gs?.glucose ?: 0.0, wasGlucoseUsed = false,
++            glucoseDifference = 0.0, glucoseInsulin = 0.0,
++            glucoseTrend = 0.0, wasTrendUsed = false, trendInsulin = 0.0,
++            cob = 0.0, wasCOBUsed = false, cobInsulin = 0.0,
++            carbs = 0.0, wereCarbsUsed = false, carbsInsulin = 0.0,
++            otherCorrection = baseDose,
++            wasSuperbolusUsed = false, superbolusInsulin = 0.0,
++            wasTempTargetUsed = false, totalInsulin = dose,
++            percentageCorrection = 100, profileName = profileFunction.getProfileName(),
++            note = "$label (${if (quickWizard) "QuickWizard" else "WizardDialog"}): " +
++                "base ${decimalFormatter.to2Decimal(baseDose)}U, " +
++                "total IOB baseline ${decimalFormatter.to2Decimal(iobBaseline)}U, " +
++                "now ${decimalFormatter.to2Decimal(liveIob)}U, " +
++                "rise ${decimalFormatter.to2Decimal(iobIncrease)}U; " +
++                "calculated ${decimalFormatter.to2Decimal(dose)}U after residual cap/pump-step rounding. " +
++                "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
++                "Gate BG=${gs?.glucose}, delta=${gs?.delta}, short delta=${gs?.shortAvgDelta} mg/dL. " + detail
++        )
 +    }
 +
 +    // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
@@ -1145,6 +1195,10 @@ index 811cd2a748..812782438d 100644
 +            val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
 +            if (thisDose <= 0) {
 +                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
++                insertZeroDoseTreatment("Carb split", iobIncrease, followUpCalculation(
++                    dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
++                    "No insulin delivered. Remaining ${decimalFormatter.to2Decimal(remainingResidual)}U; retry in ${intervalMins}min."
++                ))
 +                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline)
 +                return@postDelayed
 +            }
@@ -1152,14 +1206,20 @@ index 811cd2a748..812782438d 100644
 +                eventType = TE.Type.CORRECTION_BOLUS
 +                insulin = thisDose
 +                notes = "Reduced split bolus part"
++                val calculation = followUpCalculation(
++                    timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
++                    "Remaining before this request ${decimalFormatter.to2Decimal(remainingResidual)}U."
++                )
 +                uel.log(
 +                    action = Action.BOLUS,
-+                    source = Sources.WizardDialog,
++                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
 +                    note = notes,
 +                    listValues = listOf(ValueWithUnit.Insulin(thisDose))
 +                )
 +                commandQueue.bolus(this, object : Callback() {
 +                    override fun run() {
++                        calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
++                        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
 +                        if (!result.success)
 +                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
 +                        else {
@@ -1235,7 +1295,9 @@ index 811cd2a748..812782438d 100644
 +            val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
 +            if (thisDose <= 0) {
 +                aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
-+                insertZeroDoseTreatment("Delayed $label dose", iobIncrease)
++                insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
++                    dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
++                ))
 +                cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
 +                return@postDelayed
 +            }
@@ -1243,14 +1305,17 @@ index 811cd2a748..812782438d 100644
 +                eventType = TE.Type.CORRECTION_BOLUS
 +                insulin = thisDose
 +                notes = "Delayed $label dose"
++                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "")
 +                uel.log(
 +                    action = Action.BOLUS,
-+                    source = Sources.WizardDialog,
++                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
 +                    note = notes,
 +                    listValues = listOf(ValueWithUnit.Insulin(thisDose))
 +                )
 +                commandQueue.bolus(this, object : Callback() {
 +                    override fun run() {
++                        calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
++                        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
 +                        if (!result.success)
 +                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
 +                    }
@@ -1264,7 +1329,7 @@ index 811cd2a748..812782438d 100644
          if (eCarbsYesNo == QuickWizardEntry.YES) {
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt
 new file mode 100644
-index 0000000000..1111111111
+index 0000000..2ec354a
 --- /dev/null
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt
 @@ -0,0 +1,334 @@
@@ -1603,7 +1668,7 @@ index 0000000000..1111111111
 +    }
 +}
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
-index fd34e33415..c71e792e94 100644
+index fd34e33..c71e792 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 @@ -147,7 +147,7 @@ class QuickWizardEntry @Inject constructor(
@@ -1641,7 +1706,7 @@ index fd34e33415..c71e792e94 100644
 +    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
  }
 diff --git a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
-index c78699cf99..e93794bf80 100644
+index c78699c..e93794b 100644
 --- a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
 +++ b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
 @@ -369,7 +369,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
@@ -1660,7 +1725,7 @@ index c78699cf99..e93794bf80 100644
          aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
          consoleError.clear()
 diff --git a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
-index 0b49c91940..aa9a872914 100644
+index 0b49c91..4b36baa 100644
 --- a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
 +++ b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
 @@ -97,7 +97,9 @@ import app.aaps.core.objects.extensions.directionToIcon
@@ -1700,7 +1765,7 @@ index 0b49c91940..aa9a872914 100644
          handler.removeCallbacksAndMessages(null)
          handler.looper.quitSafely()
      }
-@@ -583,7 +591,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
+@@ -583,24 +591,89 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
          val actualBg = iobCobCalculator.ads.actualBg()
          val profile = profileFunction.getProfile()
          val profileName = profileFunction.getProfileName()
@@ -1708,8 +1773,9 @@ index 0b49c91940..aa9a872914 100644
          val quickWizardEntry = quickWizard.getActive()
          if (quickWizardEntry != null && actualBg != null && profile != null) {
              binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
-@@ -591,16 +598,82 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
-             if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
+             val wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+-            if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
++            if (wizard.calculatedTotalInsulin > 0.0 || quickWizardEntry.carbs() > 0.0) {
                  val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
                  activity?.let {
 -                    if (abs(wizard.insulinAfterConstraints - wizard.calculatedTotalInsulin) >= pump.pumpDescription.pumpType.determineCorrectBolusStepSize(wizard.insulinAfterConstraints) || carbsAfterConstraints != quickWizardEntry.carbs()) {
@@ -1793,8 +1859,17 @@ index 0b49c91940..aa9a872914 100644
      @SuppressLint("SetTextI18n")
      private fun processButtonsVisibility() {
          val lastBG = iobCobCalculator.ads.lastBg()
+@@ -619,7 +692,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
+                 val wizard = quickWizardEntry.doCalc(profile, profileName, lastBG)
+                 binding.buttonsLayout.quickWizardButton.text = quickWizardEntry.buttonText() + "\n" + rh.gs(app.aaps.core.objects.R.string.format_carbs, quickWizardEntry.carbs()) +
+                     " " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
+-                if (wizard.calculatedTotalInsulin <= 0) binding.buttonsLayout.quickWizardButton.visibility = View.GONE
++                if (wizard.calculatedTotalInsulin <= 0 && quickWizardEntry.carbs() <= 0) binding.buttonsLayout.quickWizardButton.visibility = View.GONE
+             } else binding.buttonsLayout.quickWizardButton.visibility = View.GONE
+         }
+ 
 diff --git a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
-index cb833955b6..5823f0282a 100644
+index cb83395..5823f02 100644
 --- a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
 +++ b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
 @@ -314,6 +314,7 @@ class OverviewPlugin @Inject constructor(
@@ -1807,7 +1882,7 @@ index cb833955b6..5823f0282a 100644
                  key = "overview_advanced_settings"
 diff --git a/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml b/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml
 new file mode 100644
-index 0000000000..1111111111
+index 0000000..d6c9ce1
 --- /dev/null
 +++ b/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml
 @@ -0,0 +1,53 @@
@@ -1865,7 +1940,7 @@ index 0000000000..1111111111
 +
 +</LinearLayout>
 diff --git a/plugins/main/src/main/res/values/strings.xml b/plugins/main/src/main/res/values/strings.xml
-index be532e9823..266fbecb7c 100644
+index be532e9..266fbec 100644
 --- a/plugins/main/src/main/res/values/strings.xml
 +++ b/plugins/main/src/main/res/values/strings.xml
 @@ -271,6 +271,12 @@
@@ -1881,8 +1956,55 @@ index be532e9823..266fbecb7c 100644
      <string name="enable_bolus_advisor">Enable bolus advisor</string>
      <string name="enable_bolus_advisor_summary">Use reminder to start eating later instead of wizard result during high glycemia ("pre-bolus")</string>
      <string name="enablesuperbolus">Enable superbolus in wizard</string>
+diff --git a/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt b/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
+index 8eadb30..7741a24 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
+@@ -23,7 +23,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
+ import app.aaps.core.interfaces.logging.UserEntryLogger
+ import app.aaps.core.interfaces.plugin.ActivePlugin
+ import app.aaps.core.interfaces.profile.ProfileFunction
+-import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
+ import app.aaps.core.interfaces.queue.CommandQueue
+ import app.aaps.core.interfaces.resources.ResourceHelper
+ import app.aaps.core.interfaces.rx.AapsSchedulers
+@@ -49,7 +48,6 @@ import app.aaps.ui.events.EventQuickWizardChange
+ import io.reactivex.rxjava3.disposables.CompositeDisposable
+ import io.reactivex.rxjava3.kotlin.plusAssign
+ import javax.inject.Inject
+-import kotlin.math.abs
+ 
+ class QuickWizardListActivity : TranslatedDaggerAppCompatActivity(), OnStartDragListener {
+ 
+@@ -133,21 +131,23 @@ class QuickWizardListActivity : TranslatedDaggerAppCompatActivity(), OnStartDrag
+                     val actualBg = iobCobCalculator.ads.actualBg()
+                     val profile = profileFunction.getProfile()
+                     val profileName = profileFunction.getProfileName()
+-                    val pump = activePlugin.activePump
+                     val quickWizardEntry = quickWizard[position]
+ 
+                     if (actualBg != null && profile != null) {
+                         val wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+ 
+-                        if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
++                        if (wizard.calculatedTotalInsulin > 0.0 || quickWizardEntry.carbs() > 0.0) {
+                             val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
+-                            if (abs(wizard.insulinAfterConstraints - wizard.calculatedTotalInsulin) >= pump.pumpDescription.pumpType.determineCorrectBolusStepSize(wizard.insulinAfterConstraints) || carbsAfterConstraints != quickWizardEntry.carbs()) {
++                            // The shared confirmation explains insulin constraints and schedules splits.
++                            // Only invalid carbs block this entry; do not show a delivery error for a normal max-bolus clamp.
++                            if (carbsAfterConstraints != quickWizardEntry.carbs()) {
+                                 OKDialog.show(
+                                     it.context, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\n" + rh.gs(
+                                         R.string
+                                             .change_your_input
+                                     )
+                                 )
++                                return@setOnLongClickListener true
+                             }
+                             wizard.confirmAndExecute(it.context, quickWizardEntry)
+                         }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt b/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
-index 8132f60480..9128dd7802 100644
+index 8132f60..9128dd7 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
 @@ -24,6 +24,7 @@ import app.aaps.core.data.ue.Sources
@@ -1904,7 +2026,7 @@ index 8132f60480..9128dd7802 100644
                      ml.bolus?.let { bolus ->
                          disposable += persistenceLayer.invalidateBolus(
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
-index b5a12e4db5..8a39e61e2c 100644
+index b5a12e4..8a39e61 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
 @@ -69,6 +69,7 @@ class BolusProgressDialog : DaggerDialogFragment() {
@@ -1916,7 +2038,7 @@ index b5a12e4db5..8a39e61e2c 100644
              binding.stop.visibility = View.INVISIBLE
              uel.log(Action.CANCEL_BOLUS, Sources.Overview, BolusProgressData.status)
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
-index ec8a60f48e..101b052e43 100644
+index ec8a60f..101b052 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
 @@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
@@ -1942,7 +2064,7 @@ index ec8a60f48e..101b052e43 100644
                          })
                      }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
-index 746aa6c41f..135175b803 100644
+index 746aa6c..135175b 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
 @@ -124,6 +124,9 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
@@ -1994,7 +2116,7 @@ index 746aa6c41f..135175b803 100644
          //
      }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
-index d076ad8c0a..6f4419f699 100644
+index d076ad8..6f4419f 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
 @@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
@@ -2022,7 +2144,7 @@ index d076ad8c0a..6f4419f699 100644
                                  }
                              })
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
-index e26414e000..9a8bd7d468 100644
+index e26414e..9a8bd7d 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
 @@ -19,6 +19,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -2064,7 +2186,7 @@ index e26414e000..9a8bd7d468 100644
                      }
                  })
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
-index 51682085fc..e0eb212919 100644
+index 5168208..e0eb212 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
 @@ -21,6 +21,7 @@ import app.aaps.core.data.model.GlucoseUnit
@@ -2403,7 +2525,7 @@ index 51682085fc..e0eb212919 100644
  
      }
 diff --git a/ui/src/main/res/layout/dialog_edit_quickwizard.xml b/ui/src/main/res/layout/dialog_edit_quickwizard.xml
-index 4d64fb7856..03bac65eed 100644
+index 4d64fb7..03bac65 100644
 --- a/ui/src/main/res/layout/dialog_edit_quickwizard.xml
 +++ b/ui/src/main/res/layout/dialog_edit_quickwizard.xml
 @@ -435,6 +435,52 @@
@@ -2460,7 +2582,7 @@ index 4d64fb7856..03bac65eed 100644
  
          <TableLayout
 diff --git a/ui/src/main/res/layout/dialog_wizard.xml b/ui/src/main/res/layout/dialog_wizard.xml
-index 36e9c0ebf5..bf5adf4b34 100644
+index 36e9c0e..bf5adf4 100644
 --- a/ui/src/main/res/layout/dialog_wizard.xml
 +++ b/ui/src/main/res/layout/dialog_wizard.xml
 @@ -75,6 +75,121 @@
