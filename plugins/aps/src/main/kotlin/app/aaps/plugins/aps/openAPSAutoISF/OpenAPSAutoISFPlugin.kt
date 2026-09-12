@@ -2015,7 +2015,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun applyBMildOutcomeFactors(gMgdl: Double, setTt: Boolean = true) {
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         setSmbDeliveryRatio(mildBase + 0.15)
-        if (setTt) startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 2)
+        // Stash the exact creation timestamp of the TT just started (if it actually was -- this no-ops
+        // like any other startTempTargetIfNeeded call if a TT was already active) so
+        // bmildOwnFiveTtActive() can later prove ownership of THIS SPECIFIC TT by exact timestamp
+        // match, not just by value+recency. See that function's own doc comment.
+        if (setTt) startTempTargetIfNeededAt(90.1 /* 5.0 mmol */, 2)?.let {
+            preferences.put(LongKey.ApsAutoIsfLastBmildTtCreatedAt, it)
+        }
         if (gMgdl < 106.2 /* 5.9 mmol */) {
             preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
         }
@@ -2024,6 +2030,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
     private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
+
+    // Returns the active TT's own creation timestamp (TT.timestamp, ms), or null if no TT is active.
+    // Used for exact-identity checks (e.g. bmildOwnFiveTtActive()) where matching on value alone would
+    // also match an unrelated TT that happens to share the same target.
+    private fun activeTtTimestamp(): Long? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.timestamp
 
     // Converts mmol/L to mg/dL using the app's actual conversion constant (Constants.MMOLL_TO_MGDL
     // = 18.0), NOT the 18.016 this file's comments otherwise use for display rounding. Use this
@@ -2042,17 +2053,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return !readyToRun("HighDaytimeBrake", 6) || !readyToRun("HighEveNightBrake", 6)
     }
 
-    // True while THIS fork's BolusGivenMild/BolusGivenMildFailsafe 5.0 mmol TT is live: own markRun
-    // within 3 min (2-min TT plus one cycle of slop) and the active TT is 5.0, not some other
-    // automation's or the user's own manually-set target in the same band. Added 2026-09-12 after
-    // confirming CarbsStopTT57's cb1 sub-block (range 4.6-5.9 mmol, same COB/IOB/BGL/Delta profile
-    // that makes BMild fire in the first place) was cancelling BMild's own 2-min hold timer within a
-    // cycle or two of it being set -- defeating the delivery-ratio boost before DelOff's own
-    // "no active TT" check would otherwise have let it hold for its full 2 minutes.
+    // True only while the CURRENTLY ACTIVE TT is literally the one BolusGivenMild/
+    // BolusGivenMildFailsafe last created via applyBMildOutcomeFactors -- proven by an exact match on
+    // TT.timestamp (stashed at creation into ApsAutoIsfLastBmildTtCreatedAt), not by inferring
+    // ownership from value+recency. Added 2026-09-12 after confirming CarbsStopTT57's cb1 sub-block
+    // (range 4.6-5.9 mmol, same COB/IOB/BGL/Delta profile that makes BMild fire in the first place)
+    // was cancelling BMild's own 2-min hold timer within a cycle or two of it being set -- defeating
+    // the delivery-ratio boost before DelOff's own "no active TT" check would otherwise have let it
+    // hold for its full 2 minutes.
+    //
+    // Deliberately exact rather than a "TT is ~5.0mmol AND BMild fired recently" coincidence check:
+    // that weaker form would also protect an unrelated TT (e.g. a manually-set 5.0mmol Activity
+    // target) that happened to appear within the same few minutes, exempting it from CarbsStopTT57
+    // for no good reason -- the opposite failure this function exists to avoid. An exact timestamp
+    // match can only be true for the literal DB row BMild itself inserted: once that TT is replaced by
+    // any other TT (BMild's own next fire included), the new one gets a new timestamp and this
+    // correctly stops protecting it.
     private fun bmildOwnFiveTtActive(): Boolean {
-        val ttIsFive = activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(5.0)) <= mmolToMgdl(0.08) } == true
-        if (!ttIsFive) return false
-        return !readyToRun("BolusGivenMild", 3) || !readyToRun("BolusGivenMildFailsafe", 3)
+        val lastBmildTtCreatedAt = preferences.get(LongKey.ApsAutoIsfLastBmildTtCreatedAt)
+        if (lastBmildTtCreatedAt == 0L) return false
+        return activeTtTimestamp() == lastBmildTtCreatedAt
     }
 
     // True when the currently active TT is within toleranceMmol of targetMmol. Centralizes the
@@ -2090,12 +2110,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ).subscribe()
     }
 
-    // Not yet called anywhere; ready for later conditions. Mirrors ActionStartTempTarget, including its
-    // own built-in guard: no-ops if a temp target is already active rather than stacking/replacing it.
-    private fun startTempTargetIfNeeded(targetMgdl: Double, durationInMinutes: Int): Boolean {
-        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) return false
+    // Mirrors ActionStartTempTarget, including its own built-in guard: no-ops if a temp target is
+    // already active rather than stacking/replacing it. Returns the exact timestamp (ms) used for the
+    // new TT's own TT.timestamp field on success, null on no-op -- lets a caller that needs to prove
+    // ownership of ITS OWN TT later (e.g. applyBMildOutcomeFactors, see bmildOwnFiveTtActive()) stash
+    // that exact value rather than re-deriving it from a second, possibly-differing dateUtil.now()
+    // call. startTempTargetIfNeeded() below is a thin boolean-returning wrapper for every other,
+    // unchanged call site.
+    private fun startTempTargetIfNeededAt(targetMgdl: Double, durationInMinutes: Int): Long? {
+        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) return null
+        val now = dateUtil.now()
         val tt = TT(
-            timestamp = dateUtil.now(),
+            timestamp = now,
             duration = TimeUnit.MINUTES.toMillis(durationInMinutes.toLong()),
             reason = TT.Reason.AUTOMATION,
             lowTarget = targetMgdl,
@@ -2112,8 +2138,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ValueWithUnit.Minute(durationInMinutes)
             )
         ).subscribe()
-        return true
+        return now
     }
+
+    // Thin boolean-returning wrapper over startTempTargetIfNeededAt() above for every call site that
+    // only cares whether a TT was actually started, not its exact timestamp.
+    private fun startTempTargetIfNeeded(targetMgdl: Double, durationInMinutes: Int): Boolean =
+        startTempTargetIfNeededAt(targetMgdl, durationInMinutes) != null
 
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSendSMS.
     private fun sendSms(text: String): Boolean = smsCommunicator.sendNotificationToAllNumbers(text)

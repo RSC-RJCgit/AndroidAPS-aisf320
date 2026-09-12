@@ -83,4 +83,12 @@ enum class LongKey(
     ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0, defaultedBySM = true),
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0, defaultedBySM = true),
 
+    // Added 2026-09-12: the exact TT.timestamp (creation time, ms) of the 5.0mmol TT BMild/
+    // BMildFailsafe last successfully created, stashed by applyBMildOutcomeFactors right at creation.
+    // Lets bmildOwnFiveTtActive() in OpenAPSAutoISFPlugin.kt prove the CURRENTLY active TT is literally
+    // that same DB row (exact timestamp match) rather than inferring ownership from value+recency
+    // coincidence -- a coincidence-based check would also exempt an unrelated 5.0mmol TT (e.g. a
+    // manually-set one) that happened to appear in the same few minutes. 0 = none yet.
+    ApsAutoIsfLastBmildTtCreatedAt("autoisf_last_bmild_tt_created_at", 0, defaultedBySM = true, exportable = false),
+
 }
