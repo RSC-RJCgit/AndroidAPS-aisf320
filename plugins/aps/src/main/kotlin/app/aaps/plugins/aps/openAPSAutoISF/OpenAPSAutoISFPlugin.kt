@@ -3747,6 +3747,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // ABOVE baseline — deliberately one-directional (only reverts an elevated/boosted acce, never
         // touches a legitimately-reduced protective acce like NightAcce's 0.35 or GentleHypoRisk's
         // 0.07/0.02, which sit below baseline and are unrelated to this rule).
+        //
+        // Fixed 2026-09-13: this had NO grace period at all -- the 5-min readyToRun above only throttles
+        // REPEAT fires, it does not delay the FIRST one, so this could (and, confirmed against real
+        // 2026-09-12 data, routinely did) revert a boost within 1 cycle of it being set, sometimes on
+        // the very same minute. All three trigger conditions are individually easy to satisfy at almost
+        // any moment in a normal day (BG<8.5mmol is exactly the range these boosts are meant to act in
+        // -- they exist to catch a RISE starting low, not one already high; genuine movement is common;
+        // "no raw Libre >12mmol in 48h" can span a whole quiet day) -- so in practice the elevated PP/
+        // acce weight almost never got to persist long enough to do the job the boost automations set it
+        // for, regardless of whether the rise that justified it was still ongoing. Real evidence: BMild
+        // fired at 08:41 PM 12 Sep 2026 (Virtual), reverted at 08:42 PM -- one minute later, BG still
+        // only 7.9mmol, nowhere near resolved. Fix: require that NONE of the 7 boost automations this
+        // revert exists to counter (named in this block's own comment above) has fired within the last
+        // 15 minutes, before allowing a revert -- gives the boost an actual window to act, still reverts
+        // reasonably promptly once genuinely stale. 15 min is a first estimate, not yet verified against
+        // real data -- retune if boosts still get cut short, or if stale weights now linger too long.
         if (readyToRun("PpWeightRevertUnder8_5", 5)) {
             val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
             val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
@@ -3758,8 +3774,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
             val noRecentHigh = !recentLibreOver12(48)
             val trigger = lowBg || activeMovement || noRecentHigh
-            val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger
-            val acceNeedsRevert = currentAcce > baselineAcce && trigger
+            val recentPpBoostFire = !readyToRun("BolusGiven", 15) || !readyToRun("BolusGivenMild", 15) ||
+                !readyToRun("High6PP", 15) || !readyToRun("HighOldPod", 15) ||
+                !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15)
+            val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger && !recentPpBoostFire
+            val acceNeedsRevert = currentAcce > baselineAcce && trigger && !recentPpBoostFire
             if (ppNeedsRevert || acceNeedsRevert) {
                 if (ppNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
                 if (acceNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, baselineAcce)
