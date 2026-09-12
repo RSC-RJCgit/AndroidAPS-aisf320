@@ -99,6 +99,21 @@
                         app:layout_gravity="fill"
                         app:layout_row="1" />
 
+                    <app.aaps.core.ui.elements.SingleClickButton
+                        android:id="@+id/log_share"
+                        style="@style/GrayButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:drawableTop="@drawable/ic_share_log"
+                        android:paddingStart="0dp"
+                        android:paddingEnd="0dp"
+                        android:text="@string/share_all_logs"
+                        android:textSize="11sp"
+                        app:layout_column="1"
+                        app:layout_columnWeight="1"
+                        app:layout_gravity="fill"
+                        app:layout_row="1" />
+
                 </androidx.gridlayout.widget.GridLayout>
 
             </com.google.android.material.card.MaterialCardView>

@@ -94,6 +94,7 @@ class MaintenanceFragment : DaggerFragment() {
         inMenu = parentClass == uiInteraction.singleFragmentActivity
         updateProtectedUi()
         binding.logSend.setOnClickListener { maintenancePlugin.sendLogs(trigger = "MANUAL") }
+        binding.logShare.setOnClickListener { maintenancePlugin.shareLogs() }
         binding.logDelete.setOnClickListener {
             disposable +=
                 Completable.fromAction { maintenancePlugin.deleteLogs(5) }

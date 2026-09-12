@@ -1,6 +1,8 @@
 package app.aaps.plugins.configuration.maintenance
 
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -43,6 +45,7 @@ import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -160,6 +163,49 @@ class MaintenancePlugin @Inject constructor(
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
             addCloudLogCarePortalNote(trigger, success = false)
+        }
+    }
+
+    /** Added 2026-09-13: explicit, deliberate log-sharing action -- unlike the removed automatic
+     *  cloud-failure fallback (which used to fire unprompted from sendLogs() on any cloud error), this
+     *  only ever runs when the user presses the dedicated Share Logs button. Builds its own fresh zip
+     *  independently of sendLogs()'s cloud-upload flow (same source files/naming, via the same
+     *  getLogFiles()/constructName()/zipLogsToFile() helpers) and hands it to the system share sheet via
+     *  a proper FileProvider content:// Uri (the manifest's existing ${'$'}{applicationId}.fileprovider,
+     *  already covering external storage -- see app/src/main/res/xml/filepaths.xml) and
+     *  Intent.createChooser(), instead of the SAF-copy dance the old email fallback used. */
+    fun shareLogs() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val amount = preferences.get(IntKey.MaintenanceLogsAmount)
+                val logs = getLogFiles(amount)
+                if (logs.isEmpty()) {
+                    withContext(Dispatchers.Main) { ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_no_source)) }
+                    return@launch
+                }
+                val zipName = constructName()
+                val localZip = File(localLogsDir(), zipName)
+                zipLogsToFile(localZip, logs)
+                if (localZip.length() < 1024) {
+                    withContext(Dispatchers.Main) { ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_under_1kb)) }
+                    return@launch
+                }
+                saveLogsLocally(localZip, "SHARE_MANUAL")
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", localZip)
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Log Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(shareIntent, rh.gs(R.string.maintenance_logs_share_title)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                withContext(Dispatchers.Main) { context.startActivity(chooser) }
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.CORE, "Error preparing logs for manual share", e)
+                withContext(Dispatchers.Main) { ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error)) }
+            }
         }
     }
 

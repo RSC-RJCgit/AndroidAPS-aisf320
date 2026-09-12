@@ -1891,9 +1891,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // brand-new pod (<2h) is already over 9.0 mmol. Post-change highs happen at any hour; the
     // daytime gates were blocking both BMild's delivery factors and determine_basal's 09:00-21:00
     // Tier 3 factor gate. Null pod age does not bypass (unknown != new).
-    private fun newPodHighBgAnyTimeOk(glucoseMgdl: Double): Boolean {
-        val podH = hoursSinceCurrentPodChange() ?: return false
-        return podH < 2.0 && glucoseMgdl > 162.2 /* 9.0 mmol */
+    // Extended 2026-09-13, per explicit request, with a second bypass: Usual2forTH block 3
+    // ("waking/rising BGL" -- see that block's own doc comment) already confirms a genuine rise is
+    // under way any time from 05:01, well before BMild's 08:30 window or Tier 3/High6PP's 09:00
+    // windows open -- 13 Sep 06:41-07:41 example: UsuIP-3 fired at BG 8.5mmol/06:41, but nothing else
+    // was eligible to help until BG reached HiBrkDay's own 9.0mmol bar at 07:41, a full hour later,
+    // purely because BMild/Tier3/High6PP's day windows hadn't opened yet and this was a slow
+    // basal-only climb that never crossed BMild's IOB-rise gate. Deliberately NOT an unconditional
+    // window-widening (that would fire on ordinary non-rising mornings too) -- gated on Usual2forTH
+    // having actually fired recently, i.e. a real confirmed rise, using the same lastRunTimestamps
+    // map/pattern as the other same-cycle cross-checks in this file (e.g. recentOwnBoostFire above).
+    // 90 min comfortably covers that observed 60-min gap while still lapsing well within the same
+    // rise episode, not staying open for the rest of the day.
+    private fun daytimeGateBypassOk(glucoseMgdl: Double): Boolean {
+        val podH = hoursSinceCurrentPodChange()
+        val newPodHigh = podH != null && podH < 2.0 && glucoseMgdl > 162.2 /* 9.0 mmol */
+        val recentUsual2forTH = (lastRunTimestamps["Usual2forTH"] ?: 0L) > dateUtil.now() - T.mins(90).msecs()
+        return newPodHigh || recentUsual2forTH
     }
 
     // Hours since the last recorded sensor change, or null if none found. Matches TriggerSensorAge's
@@ -2895,7 +2909,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour -- the day window
             // otherwise blocks a post-change high before 08:30 or after 02:00.
-            return (isTimeBetween(8, 30, 2, 0) || newPodHighBgAnyTimeOk(g))
+            return (isTimeBetween(8, 30, 2, 0) || daytimeGateBypassOk(g))
                 && (iobRising || mealLeftoverRise) && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */
                 && (mealLeftoverRise || rawDelta5 < 14.4 * stackK) /* bg3 owns >= 0.80 unless leftover-meal rise and bg3 did not fire */
@@ -2992,7 +3006,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // unchanged; this only drops the timing veto after a manual bolus/carb entry.
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour, same bypass as BMild.
             val profileName = profileFunction.getProfileName()
-            return (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
+            return (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
@@ -5680,7 +5694,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Post-bolus/carb quiet window removed 2026-09-01 along with regular BolusGivenMild's.
         if (profile_percentage == 100 && activeTtMgdl() == null
             && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-            && (isTimeBetween(9, 0, 21, 0) || newPodHighBgAnyTimeOk(glucoseStatus.glucose))
+            && (isTimeBetween(9, 0, 21, 0) || daytimeGateBypassOk(glucoseStatus.glucose))
             && readyToRun("BolusGivenMildFailsafe", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
@@ -5729,7 +5743,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
                 && g >= 117.1 && d >= 0.0
-            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
+            val bg3Would = outerGuardOk && readyToRun("BolusGiven", 5) && (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK && rawDelta1FloorOkBg3
                 // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
@@ -5740,7 +5754,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val mealLeftoverRise = g >= 108.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)
                 && glucoseStatus.shortAvgDelta >= 2.7
-            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g))
+            val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
                 && (iobChange5 > 0.40 * stackK * thresholdScale || mealLeftoverRise) && d >= 5.4 * stackK
                 && rawDelta5 >= 5.4 * stackK && (mealLeftoverRise || rawDelta5 < 14.4 * stackK)
                 && rawDelta1FloorOkMild && (mealLeftoverRise || rawDelta1 < 14.4 * stackK)
@@ -5832,7 +5846,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mildRawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || mildRawDelta1 >= 4.5 * mildStackK
             val mildDeliverySuppressed = smbCount5Min() <= 1 && mildRawDelta5 >= 5.4 && mildRawDelta5 < 14.4 && mildRawDelta1 < 14.4
             val mildConfirmed = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
-                (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(g)) &&
+                (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g)) &&
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
@@ -5914,7 +5928,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val persistentMinutes = if (startedAt > 0L) (dateUtil.now() - startedAt) / 60_000.0 else 0.0
             if (readyToRun("PersistentRiseRelease", 5) &&
                 preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
-                (isTimeBetween(8, 30, 0, 0) || newPodHighBgAnyTimeOk(glucoseStatus.glucose)) &&
+                (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(glucoseStatus.glucose)) &&
                 holding && persistentMinutes >= 10.0 &&
                 profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
@@ -6917,8 +6931,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
                 // replace x2/x1.5; TT stays 4.0@5min so HiBrkDayCut still binds. Mid 6.5-7.0 keeps x1.5.
+                // 2026-09-13, per explicit request: the 06:00-08:30 dawn slot above IS now reopened,
+                // but only via daytimeGateBypassOk() -- i.e. only once Usual2forTH has already
+                // confirmed a genuine rise (or the existing new-pod+BG>9 case) -- never unconditionally,
+                // so an ordinary flat/falling morning still gets no mid-band coverage in that slot. See
+                // that function's own doc comment for the 13 Sep 06:41-07:41 example this closes: BG
+                // sat at 8.5-9.0mmol for an hour with nothing eligible to help because this slot was
+                // closed and HiBrkDay's own high band doesn't open until 9.0mmol.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
-                val midBand = !highBand && isTimeBetween(8, 30, 1, 30)
+                val midBand = !highBand && (isTimeBetween(8, 30, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
                     && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
                     && checkAutomationState("MJ", "NOMJremains")
                     && !checkAutomationState("LowBG", "50recent")
@@ -7859,7 +7880,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "recentLowBG" to replayRecentLowBG,
                 "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
                 "bg3BasicCriteriaMet" to replayBg3BasicCriteriaMet,
-                "newPodHighBgAnyTimeOk" to newPodHighBgAnyTimeOk(glucoseStatus.glucose),
+                "daytimeGateBypassOk" to daytimeGateBypassOk(glucoseStatus.glucose),
                 "acceIsfValue" to replayAcceIsfValue
             ),
             "determine_state" to mapOf(
@@ -7947,7 +7968,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // automation's markRun, so a second query here would not see a just-consumed throttle as false.
             bmildBasicCriteriaMet = replayBmildBasicCriteriaMet,
             bg3BasicCriteriaMet = replayBg3BasicCriteriaMet,
-            newPodHighBgAnyTimeOk = newPodHighBgAnyTimeOk(glucoseStatus.glucose),
+            daytimeGateBypassOk = daytimeGateBypassOk(glucoseStatus.glucose),
             // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
             // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
             // alone, never real dosing.
