@@ -138,8 +138,8 @@
     <string name="maintenance_amount">No of Logs to send</string>
     <string name="auto_export_logs_to_cloud_title">Auto-export logs to cloud every 6h</string>
     <string name="auto_export_logs_to_cloud_summary">Automatically upload logs to cloud storage every 6 hours, using the same destination as the manual Send Logs button.</string>
-    <!-- 2026-09-13: was "Send Logs by Email" -- this button hasn't sent email since the automatic
-         email/share fallback was removed; it only does cloud-upload-or-local-save now. See
+    <!-- 2026-09-13: was "Send Logs by Email"; this button hasn't sent email since the automatic
+         email/share fallback was removed, it only does cloud-upload-or-local-save now. See
          share_all_logs below for the new, separate, explicit share action. -->
     <string name="send_all_logs">Send Logs</string>
     <string name="delete_logs">Delete Logs</string>
