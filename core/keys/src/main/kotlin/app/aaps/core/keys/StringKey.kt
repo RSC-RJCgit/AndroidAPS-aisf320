@@ -123,12 +123,6 @@ enum class StringKey(
     // replaying the frozen name a reduction started with, which goes stale the moment the role is
     // re-picked to a different profile mid-reduction. Purely internal bookkeeping; never user-visible.
     ApsAutoIsfLastReductionRoleKey("autoisf_last_reduction_role_key", ""),
-    // Added 2026-09-12, Virtual-only "attempt to start Shizuku" (see AdbWirelessStarter.kt in
-    // plugins:aps and IntKey.ApsAutoIsfAdbPairPort/ApsAutoIsfAdbConnectPort). The 6-digit pairing code
-    // shown alongside ApsAutoIsfAdbPairPort on Android's ONE-TIME "Pair device with pairing code"
-    // screen -- entered here by hand, consumed by the one-time pairing action, then cleared regardless
-    // of success (pairing codes are single-use/time-limited on Android's own side anyway).
-    ApsAutoIsfAdbPairCode("autoisf_adb_pair_code", "", exportable = false),
     // Added 2026-08-27: Battery1pc/BatteryOver1pc (OpenAPSAutoISFPlugin.kt) previously hardcoded the
     // literal string "Current Profile50" for the low-battery safety-profile switch -- the one coded
     // profile role with no configurability or setup validation at all, unlike Standard/Low above.

@@ -1372,15 +1372,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // 2026-09-02: stage first, then Shizuku pm install -r of that staged file.
         // Live runs immediately (EventAutoIsfDirectTtCode 5.200). Client relays TT 5.200.
         INSTALL_AAPS333_SHIZUKU("Install newest AAPS333 APK (Shizuku)", 5.200),
-        // 2026-09-12, Virtual-only best-effort ADB-wireless actions (see AdbWirelessStarter.kt in
+        // 2026-09-12, Virtual-only best-effort "attempt to start Shizuku" (see AdbWirelessStarter.kt in
         // plugins:aps). Only meaningful pressed directly on Virtual's own screen (the immediate
         // EventAutoIsfDirectTtCode listener there is Virtual-gated). If pressed from Client this still
         // goes through the normal setRelayTt() path above like any other row, relaying a TT to Live —
-        // but nothing on Live consumes 5.206/5.208 (no invoke()-loop handler was added for these two
-        // codes), so a Client press simply does nothing anywhere, which is the intended "Virtual only"
-        // behavior without needing a special-case block here. One-time pairing, then repeatable start
-        // attempts.
-        ADB_PAIR_ATTEMPT("ADB wireless: pair (Virtual only)", 5.206),
+        // but nothing on Live consumes 5.208 (no invoke()-loop handler was added for this code), so a
+        // Client press simply does nothing anywhere, which is the intended "Virtual only" behavior
+        // without needing a special-case block here. No pairing action exists (or ever will, via this
+        // library — see AdbWirelessStarter's own doc comment): whether the key this attempts to use is
+        // actually authorized is entirely outside AAPS's control.
         ADB_START_ATTEMPT("ADB wireless: attempt Shizuku start (Virtual only)", 5.208)
     }
 
@@ -1552,7 +1552,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.LOCATION_SMS_THIS_PHONE,
                 BasalDirectAction.STAGE_AAPS333_NEWEST,
                 BasalDirectAction.INSTALL_AAPS333_SHIZUKU,
-                BasalDirectAction.ADB_PAIR_ATTEMPT,
                 BasalDirectAction.ADB_START_ATTEMPT ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 

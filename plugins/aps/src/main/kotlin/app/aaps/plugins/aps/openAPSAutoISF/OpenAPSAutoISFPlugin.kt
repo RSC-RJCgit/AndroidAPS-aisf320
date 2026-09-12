@@ -377,9 +377,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     } else if (kotlin.math.abs(event.mmol - 5.202) <= 0.0000001) {
                         // Stage+prune only — Virtual can test copy/keep-20 without replacing AAPS.
                         Schedulers.io().scheduleDirect { stageNewestAaps333Apk("list2-direct") }
-                    } else if (kotlin.math.abs(event.mmol - 5.206) <= 0.0000001) {
-                        // One-time ADB-wireless pairing attempt — see AdbWirelessStarter.pair().
-                        Schedulers.io().scheduleDirect { attemptAdbWirelessPair() }
                     } else if (kotlin.math.abs(event.mmol - 5.208) <= 0.0000001) {
                         // Manual "attempt to start Shizuku now" — see AdbWirelessStarter.attemptStart().
                         Schedulers.io().scheduleDirect { attemptAdbWirelessStart("list2-direct") }
@@ -1632,27 +1629,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("Shizuku APK install exception: ${e.message}")
             aapsLogger.warn(LTag.APS, "Shizuku APK install failed", e)
         }
-    }
-
-    // Manual one-time ADB-wireless pairing attempt — List2 5.206. Virtual-only, see
-    // AdbWirelessStarter's own doc comment. Reads IntKey.ApsAutoIsfAdbPairPort/
-    // StringKey.ApsAutoIsfAdbPairCode (set by hand in Settings from Android's own "Pair device with
-    // pairing code" screen just before pressing this), reports the outcome by SMS/note (unlike the
-    // silent best-effort attemptStart() call inside installNewestAaps333Apk() — this one is a
-    // deliberate, one-off user action and should say what happened), then clears the pairing code
-    // regardless of outcome (single-use/time-limited on Android's own side anyway).
-    private fun attemptAdbWirelessPair() {
-        if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
-            aapsLogger.info(LTag.APS, "ADB wireless pair skipped: Virtual-only")
-            return
-        }
-        val pairPort = preferences.get(IntKey.ApsAutoIsfAdbPairPort)
-        val pairCode = preferences.get(StringKey.ApsAutoIsfAdbPairCode)
-        val (ok, detail) = AdbWirelessStarter.pair(context, pairPort, pairCode)
-        preferences.put(StringKey.ApsAutoIsfAdbPairCode, "")
-        aapsLogger.info(LTag.APS, "AdbWirelessStarter.pair: ok=$ok $detail")
-        addCarePortalNote(if (ok) "AdbPrOk" else "AdbPrNg")
-        sendSms("ADB wireless pair: $detail")
     }
 
     // Manual "attempt to start Shizuku now" — List2 5.208. Virtual-only. Same underlying call as

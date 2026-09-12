@@ -55,16 +55,13 @@ enum class IntKey(
     ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),
     ApsAutoIsfSplitBolusInterval("split_bolus_interval", 7, 1, 10, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSplitBolusEnabled),
     // Added 2026-09-12, Virtual-only "attempt to start Shizuku" (see AdbWirelessStarter.kt in
-    // plugins:aps). Both read from Android's own Settings -> Developer options -> Wireless debugging
-    // screen, entered here once by hand -- this is a best-effort attempt only, expected to stop
-    // working (silently, no retry/rediscovery) whenever wireless debugging is toggled off and back on,
-    // which usually changes both ports. 0 = not yet configured.
-    //  - ConnectPort: the ongoing "IP address & port" shown while wireless debugging is on. Used for
-    //    every actual attempt to start Shizuku, once already paired.
-    //  - PairPort: the port shown on the ONE-TIME "Pair device with pairing code" screen, alongside
-    //    StringKey.ApsAutoIsfAdbPairCode. Only needed for the one-time pairing action itself.
+    // plugins:aps). The ongoing "IP address & port" shown in Settings -> Developer options -> Wireless
+    // debugging while it's on, entered here once by hand -- this is a best-effort attempt only,
+    // expected to stop working (silently, no retry/rediscovery) whenever wireless debugging is toggled
+    // off and back on, which usually changes this port. 0 = not yet configured. Whether the key this
+    // is used with is actually authorized at all is a separate question entirely outside AAPS's
+    // control -- see AdbWirelessStarter's own doc comment; no pairing action exists here.
     ApsAutoIsfAdbConnectPort("autoisf_adb_connect_port", 0, 0, 65535, defaultedBySM = true, exportable = false),
-    ApsAutoIsfAdbPairPort("autoisf_adb_pair_port", 0, 0, 65535, defaultedBySM = true, exportable = false),
     FslMinFitMinutes("fslMinMinutes", 20, 3, 20, defaultedBySM = true),
     FslMaxSmoothGap("Exp1SmoothGap", 20, 10, 60, defaultedBySM = true),
     FslCalibrationDuration("Calibration_Duration", 20, 20, 20, defaultedBySM = true),   // effectively frozen
