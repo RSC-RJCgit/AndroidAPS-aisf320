@@ -138,6 +138,9 @@
     <string name="maintenance_amount">No of Logs to send</string>
     <string name="auto_export_logs_to_cloud_title">Auto-export logs to cloud every 6h</string>
     <string name="auto_export_logs_to_cloud_summary">Automatically upload logs to cloud storage every 6 hours, using the same destination as the manual Send Logs button.</string>
+    <string name="email_fallback_on_auto_export_title">Show share popup when log export fails</string>
+    <string name="email_fallback_on_auto_export_summary">If a cloud log upload is unavailable or fails, pop up the share sheet (e.g. Quick Share/email) as a fallback. Off by default for every trigger - automatic 6h cycle, Send Logs button, ISF long-press, remote TT alike. A local copy is always kept either way, so turning this off never loses the log, just the popup.</string>
+    <string name="maintenance_logs_share_title">Send log export…</string>
     <string name="send_all_logs">Send Logs by Email</string>
     <string name="delete_logs">Delete Logs</string>
     <string name="configbuilder_nightscoutversion_label">Nightscout version:</string>

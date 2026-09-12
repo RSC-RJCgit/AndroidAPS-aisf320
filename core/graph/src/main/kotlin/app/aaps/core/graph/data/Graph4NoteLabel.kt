@@ -36,7 +36,14 @@ object Graph4NoteLabel {
         "OldSensorNewDay3" to "OSNd3",
         "OldSensor1" to "OS1",
         "OldSensor2" to "OS2",
-        "OldSensor3" to "OS3"
+        "OldSensor3" to "OS3",
+        // Added 2026-09-12: OldPodInsReqBoost's fire/revert pair both take(5) to "OldPo" -- same
+        // collision class as HiBrk*/Steroids* above.
+        "OldPodBst" to "OPBst",
+        "OldPodBstOff" to "OPBOf",
+        // Added 2026-09-12: AdbWirelessStarter's outcome pair both take(5) to "AdbSt".
+        "AdbStOk" to "AdSOk",
+        "AdbStNg" to "AdSNg"
     )
 
     fun display(full: String): String {

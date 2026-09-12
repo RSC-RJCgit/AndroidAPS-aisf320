@@ -166,12 +166,7 @@ class MaintenancePlugin @Inject constructor(
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
             addCloudLogCarePortalNote(trigger, success = false)
-            if (safZip != null) {
-                val recipient = preferences.get(StringKey.MaintenanceEmail)
-                val emailIntent: Intent = this.sendMail(safZip.uri, recipient, "Log Export")
-                aapsLogger.debug("sending emailIntent")
-                context.startActivity(emailIntent)
-            }
+            safZip?.let { fallbackToEmailLogs(it, trigger) }
         }
     }
 
@@ -507,7 +502,7 @@ class MaintenancePlugin @Inject constructor(
                         aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                         ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                         addCloudLogCarePortalNote(trigger, success = false)
-                        emailFallback?.let { fallbackToEmailLogs(it) }
+                        emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                         return@launch
                     }
 
@@ -541,7 +536,7 @@ class MaintenancePlugin @Inject constructor(
                         ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
                         addCloudLogCarePortalNote(trigger, success = false)
                         ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
-                        emailFallback?.let { fallbackToEmailLogs(it) }
+                        emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                     }
                 } catch (e: Exception) {
                     aapsLogger.error("Error uploading logs to cloud storage", e)
@@ -549,7 +544,7 @@ class MaintenancePlugin @Inject constructor(
                     ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
                     addCloudLogCarePortalNote(trigger, success = false)
                     ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
-                    emailFallback?.let { fallbackToEmailLogs(it) }
+                    emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                 }
             }
         } catch (e: Exception) {
@@ -557,7 +552,7 @@ class MaintenancePlugin @Inject constructor(
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
             addCloudLogCarePortalNote(trigger, success = false)
-            emailFallback?.let { fallbackToEmailLogs(it) }
+            emailFallback?.let { fallbackToEmailLogs(it, trigger) }
         }
     }
 
@@ -607,13 +602,30 @@ class MaintenancePlugin @Inject constructor(
 
     private val cloudLogSuccessNoteLock = Any()
     
-    private fun fallbackToEmailLogs(zipFile: DocumentFile) {
+    /** Added 2026-09-13: this fallback used to fire context.startActivity() on a bare, unwrapped
+     *  ACTION_SEND intent from EVERY cloud-log failure path (not enabled, no active provider, upload
+     *  error, or an exception preparing/uploading) -- with no default handler pinned for that intent,
+     *  Android resolves it via the system share sheet, surfacing Quick Share/Nearby Share unprompted.
+     *  Off by default (MaintenanceEmailFallbackEnabled) for every trigger, automatic 6h KeepAliveWorker
+     *  cycle and manual Send Logs button / ISF long-press / remote TT alike -- a local zip copy is saved
+     *  unconditionally by saveLogsLocally() either way, so suppressing this doesn't lose the log, just
+     *  the popup. When turned on, it now goes via Intent.createChooser() as this function's own doc
+     *  comment always said it should, instead of barging straight into whatever the OS resolves
+     *  ACTION_SEND to. */
+    private fun fallbackToEmailLogs(zipFile: DocumentFile, trigger: String) {
+        if (!preferences.get(BooleanKey.MaintenanceEmailFallbackEnabled)) {
+            aapsLogger.debug("Suppressing email/share fallback for trigger=$trigger (MaintenanceEmailFallbackEnabled off)")
+            return
+        }
         aapsLogger.debug("Falling back to email for log sending")
         val recipient = preferences.get(StringKey.MaintenanceEmail)
         val attachmentUri = zipFile.uri
         val emailIntent: Intent = this.sendMail(attachmentUri, recipient, "Log Export")
-        aapsLogger.debug("sending emailIntent")
-        context.startActivity(emailIntent)
+        val chooser = Intent.createChooser(emailIntent, rh.gs(R.string.maintenance_logs_share_title)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        aapsLogger.debug("sending emailIntent (trigger=$trigger) via chooser")
+        context.startActivity(chooser)
     }
 
     fun selectAapsDirectory(activity: DaggerAppCompatActivityWithResult) {
@@ -645,6 +657,13 @@ class MaintenancePlugin @Inject constructor(
                     ctx = context, booleanKey = BooleanKey.MaintenanceAutoExportLogsToCloud,
                     title = R.string.auto_export_logs_to_cloud_title,
                     summary = R.string.auto_export_logs_to_cloud_summary
+                )
+            )
+            addPreference(
+                AdaptiveSwitchPreference(
+                    ctx = context, booleanKey = BooleanKey.MaintenanceEmailFallbackEnabled,
+                    title = R.string.email_fallback_on_auto_export_title,
+                    summary = R.string.email_fallback_on_auto_export_summary
                 )
             )
             addPreference(preferenceManager.createPreferenceScreen(context).apply {

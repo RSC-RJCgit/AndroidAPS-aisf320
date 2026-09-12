@@ -2655,17 +2655,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
         val iobData = iobArray[0]
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
-        // SMB-block window for the (separate, unrelated to BolusWizard's own split-bolus feature)
-        // 50%-profile delayed-bolus mechanism. BolusWizard's own carb-split/protein/fat scheduling never
-        // blocks SMBs (removed entirely — see BolusWizard.kt's scheduleReducedPartsSplitBolus), so there
-        // is no longer a second window to combine here.
-        val delayedBolusBlockUntil = preferences.get(LongKey.DelayedBolusBlockSmbUntil)
-        val microBolusAllowed = if (delayedBolusBlockUntil > dateUtil.now()) {
-            inputConstraints.copyReasons(ConstraintObject(false, aapsLogger).also { it.set(false, "Delayed bolus active — SMBs blocked until ${dateUtil.timeString(delayedBolusBlockUntil)}", this) })
-            false
-        } else {
-            constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
-        }
+        // SMB-block window for the delayed-bolus mechanism REMOVED 2026-09-13 per explicit request:
+        // the "Delayed ..." field shown in the Wizard calc note (BolusWizard.kt's alwaysShownCalcInfoNote())
+        // is only a PREVIEW computed once at record-creation time, while the REAL delayedProfilePct /
+        // recent50Triggered / walkingSoonCutApplied determination is re-derived independently later, inside
+        // BolusWizard's own commandQueue.bolus() success callback -- confirmed the two can diverge (profile%
+        // /automation state/BG can change in the gap between them), so the note could read "Delayed none"
+        // while the real check still silently armed an 85-minute SMB block anyway, with nothing to show it
+        // had happened. Given that, the block is no longer applied at all -- microBolusAllowed now depends
+        // only on constraintsChecker.isSMBModeEnabled(), same as OpenAPSSMBPlugin. DelayedBolusBlockSmbUntil
+        // ITSELF is untouched: BolusWizard.kt still sets it, DelayedBolusWorker.kt still clears it and still
+        // delivers/declines the follow-up dose on its own merits, and the ActivityOff automation further
+        // down this file still reads it as a plain "is a delayed dose still pending" signal -- only this
+        // SMB-blocking consequence of it is gone.
+        val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
         aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
         consoleError.clear()
