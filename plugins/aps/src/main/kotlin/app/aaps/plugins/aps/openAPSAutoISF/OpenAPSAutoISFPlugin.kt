@@ -482,33 +482,47 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                             automationStateService.inState("MJ", "NOMJremains") &&
                             automationStateService.inState("Steroids", "Steroids Off"))
 
+                // directMenu || bypass added 2026-09-12 to INCREASE_130/150/190/250 and TURN_OFF,
+                // matching START_110's own existing bypass above. The MJ/percentage re-checks below
+                // exist to guard against a STALE notification tap (conditions may have drifted in the
+                // time between the notification being generated and the user tapping it) -- that
+                // staleness window doesn't exist for a direct menu press, which is a live, immediate
+                // user action. Without this, TURN_OFF in particular could silently no-op (debug log
+                // only, no SMS, no revert) whenever MJ wasn't exactly "NOMJremains" or the profile
+                // wasn't exactly 100% at that instant -- confirmed real case: "Steroids ON" not
+                // reverting after a direct TURN_OFF press.
                 EventSteroidUserAction.Action.INCREASE_130 ->
-                    automationStateService.inState("Steroids", "SteroidsON") &&
-                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName))
+                    directMenu ||
+                        (automationStateService.inState("Steroids", "SteroidsON") &&
+                            (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                            (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)))
 
                 EventSteroidUserAction.Action.INCREASE_150 ->
-                    automationStateService.inState("Steroids", "SteroidsON") &&
-                        automationStateService.inState("MJ", "NOMJremains") &&
-                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
+                    directMenu ||
+                        (automationStateService.inState("Steroids", "SteroidsON") &&
+                            automationStateService.inState("MJ", "NOMJremains") &&
+                            (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                            (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)))
 
                 EventSteroidUserAction.Action.INCREASE_190 ->
-                    automationStateService.inState("Steroids", "SteroidsON") &&
-                        automationStateService.inState("MJ", "NOMJremains") &&
-                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
+                    directMenu ||
+                        (automationStateService.inState("Steroids", "SteroidsON") &&
+                            automationStateService.inState("MJ", "NOMJremains") &&
+                            (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                            (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)))
 
                 EventSteroidUserAction.Action.INCREASE_250 ->
-                    automationStateService.inState("Steroids", "SteroidsON") &&
-                        automationStateService.inState("MJ", "NOMJremains") &&
-                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
-                        (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
+                    directMenu ||
+                        (automationStateService.inState("Steroids", "SteroidsON") &&
+                            automationStateService.inState("MJ", "NOMJremains") &&
+                            (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100 &&
+                            (!steroidKotlinButtonsEnabled || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)))
 
                 EventSteroidUserAction.Action.TURN_OFF ->
-                    automationStateService.inState("Steroids", "SteroidsON") &&
-                        automationStateService.inState("MJ", "NOMJremains") &&
-                        (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100
+                    directMenu ||
+                        (automationStateService.inState("Steroids", "SteroidsON") &&
+                            automationStateService.inState("MJ", "NOMJremains") &&
+                            (profileFunction.getProfile() as? ProfileSealed.EPS)?.value?.originalPercentage == 100)
             }
         } catch (e: IllegalStateException) {
             aapsLogger.error(LTag.APS, "Direct Steroid button cannot read automation states", e)
@@ -2028,6 +2042,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return !readyToRun("HighDaytimeBrake", 6) || !readyToRun("HighEveNightBrake", 6)
     }
 
+    // True while THIS fork's BolusGivenMild/BolusGivenMildFailsafe 5.0 mmol TT is live: own markRun
+    // within 3 min (2-min TT plus one cycle of slop) and the active TT is 5.0, not some other
+    // automation's or the user's own manually-set target in the same band. Added 2026-09-12 after
+    // confirming CarbsStopTT57's cb1 sub-block (range 4.6-5.9 mmol, same COB/IOB/BGL/Delta profile
+    // that makes BMild fire in the first place) was cancelling BMild's own 2-min hold timer within a
+    // cycle or two of it being set -- defeating the delivery-ratio boost before DelOff's own
+    // "no active TT" check would otherwise have let it hold for its full 2 minutes.
+    private fun bmildOwnFiveTtActive(): Boolean {
+        val ttIsFive = activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(5.0)) <= mmolToMgdl(0.08) } == true
+        if (!ttIsFive) return false
+        return !readyToRun("BolusGivenMild", 3) || !readyToRun("BolusGivenMildFailsafe", 3)
+    }
+
     // True when the currently active TT is within toleranceMmol of targetMmol. Centralizes the
     // "identify which manually-set TT is active" pattern (5.7/5.8mmol reversal, 6.8mmol Activity,
     // 8.0mmol hyp) so the conversion constant and tolerance are correct and consistent everywhere.
@@ -3483,7 +3510,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // true while the actual ratio quietly reverted underneath it. Re-reads the preference fresh
             // (not the `boostActive` val captured above, which predates the branches) so a same-cycle
             // activation is applied immediately rather than waiting a full extra cycle.
-            if (preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)) {
+            //
+            // Fixed 2026-09-12: this reassert ran unconditionally every cycle, INCLUDING cycles where
+            // BMild/BolusGiven bg3/HiBrk had just set their own boosted ratio and started their own TT
+            // later in this same invoke() (this block sits earlier in file order, ~line 3437 vs BMild's
+            // ~5518). Their boost would win for exactly the one cycle it fired, then get silently
+            // stomped back to baseline*1.3 the very next cycle by this block running first -- BMild's
+            // note/SMS would fire every time (its own logic never saw this latch) but the ratio (and by
+            // extension any visible dosing effect) never actually held. Confirmed 12 Sep 2026: BMild
+            // fired repeatedly per careportal notes with zero visible change to smb_delivery_ratio or
+            // TT-driven behavior. Every one of those TT-owning boosts marks its territory with an active
+            // TT (this automation never sets one of its own), so skipping the reassert whenever a TT is
+            // active lets them win for their own duration without weakening OldPodInsReqBoost's own
+            // purpose -- it resumes reasserting the instant their TT clears.
+            if (preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive) && activeTtMgdl() == null) {
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandard110ProfileName))
             }
@@ -5918,7 +5958,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val iob = iobData.iob
                 val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
                 // Block 1: TT 4.6–5.9 mmol, COB>10, IOB>=2.2, BGL>=5.0, Delta>=0
-                val cb1 = cob > 10.0 && tt <= 106.3 && tt >= 82.9 && iob >= 2.2 && g >= 90.1 && d >= 0.0
+                // bmildOwnFiveTtActive() guard added 2026-09-12 -- this range fully contains BMild's
+                // own 5.0mmol 2-min hold TT, and BMild's own firing conditions are nearly the same
+                // COB/IOB/BGL/Delta profile, so without this guard CarbsStopTT57 would cancel BMild's
+                // timer almost immediately after BMild set it. See bmildOwnFiveTtActive()'s own doc
+                // comment for the confirmed real-device evidence.
+                val cb1 = cob > 10.0 && tt <= 106.3 && tt >= 82.9 && iob >= 2.2 && g >= 90.1 && d >= 0.0 && !bmildOwnFiveTtActive()
                 // Block 2: TT 6.2–6.4 mmol, COB>10, BGL>=5.0, Delta>=0.05 mmol, IOB<=2.2
                 val cb2 = cob > 10.0 && g >= 90.1 && d >= 0.9 && tt >= 111.7 && tt < 115.3 && iob <= 2.2
                 // Block 3: bolus <=10 min ago, TT 5.7–5.8 mmol, BGL>=5.0, Delta>=0

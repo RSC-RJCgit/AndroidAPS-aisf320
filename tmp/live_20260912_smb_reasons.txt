@@ -1,0 +1,50 @@
+09:28:14.090
+ User setting iobTH=22% modulated to 26% or 2.51U
+09:30:12.349
+ User setting iobTH=22% modulated to 26% or 2.51U
+ SMB disabled by Full Loop logic: iob 2.757 is above effective iobTH 2.5079999999999996
+09:31:11.942
+ User setting iobTH=22% modulated to 26% or 2.51U
+ SMB disabled by Full Loop logic: iob 2.774 is above effective iobTH 2.5079999999999996
+09:31:28.194
+ User setting iobTH=22% modulated to 26% or 2.51U
+ SMB disabled by Full Loop logic: iob 2.772 is above effective iobTH 2.5079999999999996
+09:32:10.394
+ User setting iobTH=22% modulated to 26% or 2.51U
+ SMB disabled by Full Loop logic: iob 2.798 is above effective iobTH 2.5079999999999996
+09:35:11.605
+ User setting iobTH=22% modulated to 26% or 2.51U
+ SMB disabled by Full Loop logic: iob 2.865 is above effective iobTH 2.5079999999999996
+09:40:12.607
+ User setting iobTH=22% modulated to 24% or 2.3U
+ SMB disabled by Full Loop logic: iob 2.927 is above effective iobTH 2.2989999999999995
+09:42:14.264
+ User setting iobTH=22% modulated to 24% or 2.3U
+ SMB disabled by Full Loop logic: iob 2.912 is above effective iobTH 2.2989999999999995
+09:42:29.424
+ User setting iobTH=22% modulated to 24% or 2.3U
+ SMB disabled by Full Loop logic: iob 2.907 is above effective iobTH 2.2989999999999995
+09:45:12.050
+ User setting iobTH=22% modulated to 24% or 2.3U
+ SMB disabled by Full Loop logic: iob 2.935 is above effective iobTH 2.2989999999999995
+09:50:12.587
+ User setting iobTH=22% modulated to 24% or 2.3U
+ SMB disabled by Full Loop logic: iob 3.0 is above effective iobTH 2.2989999999999995
+09:55:25.719
+ User setting iobTH=22% not modulated
+ SMB disabled by Full Loop logic: iob 3.079 is above effective iobTH 2.09
+09:55:41.366
+ User setting iobTH=22% not modulated
+ SMB disabled by Full Loop logic: iob 3.072 is above effective iobTH 2.09
+09:56:15.420
+ User setting iobTH=22% not modulated
+ SMB disabled by Full Loop logic: iob 3.075 is above effective iobTH 2.09
+09:56:34.456
+ User setting iobTH=22% not modulated
+ SMB disabled by Full Loop logic: iob 3.067 is above effective iobTH 2.09
+09:57:23.699
+ User setting iobTH=22% not modulated
+ SMB disabled; current target 5.1 has odd decimal
+09:57:35.192
+ User setting iobTH=22% not modulated
+ SMB disabled by Full Loop logic: iob 3.044 is above effective iobTH 2.09
