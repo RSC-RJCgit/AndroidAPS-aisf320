@@ -1,8 +1,6 @@
 package app.aaps.plugins.configuration.maintenance
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
@@ -32,8 +30,6 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.toast.ToastUtils
-import app.aaps.core.validators.DefaultEditTextValidator
-import app.aaps.core.validators.EditTextValidator
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
@@ -155,18 +151,15 @@ class MaintenancePlugin @Inject constructor(
             return
         }
 
-        val safZip = copyZipToSaf(localZip, zipName)
-
         // Check export destination preference (master switch or individual setting)
         if ((exportOptionsDialog.isLogCloudEnabled()) &&
             cloudStorageManager.isCloudStorageActive()) {
-            sendLogsToCloudDrive(localZip, trigger, safZip)
+            sendLogsToCloudDrive(localZip, trigger)
         } else {
             val status = "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=CLOUD_NOT_ENABLED"
             aapsLogger.error(LTag.CORE, status)
             ExportScriptDebugStatus.add(status)
             addCloudLogCarePortalNote(trigger, success = false)
-            safZip?.let { fallbackToEmailLogs(it, trigger) }
         }
     }
 
@@ -237,19 +230,6 @@ class MaintenancePlugin @Inject constructor(
                     }
                 }
             }
-        }
-    }
-
-    /** Optional SAF copy for the email fallback only. Must not be required for local save or Drive. */
-    private fun copyZipToSaf(localZip: File, zipName: String): DocumentFile? {
-        return try {
-            val dest = fileListProvider.ensureTempDirExists()?.createFile("application/zip", zipName) ?: return null
-            context.contentResolver.openOutputStream(dest.uri)?.use { it.write(localZip.readBytes()) }
-                ?: return null
-            dest
-        } catch (e: Exception) {
-            aapsLogger.debug(LTag.CORE, "SAF log-zip copy skipped: ${e.message}")
-            null
         }
     }
 
@@ -427,59 +407,7 @@ class MaintenancePlugin @Inject constructor(
         out.close()
     }
 
-    @Suppress("SameParameterValue")
-    private fun sendMail(attachmentUri: Uri, recipient: String, subject: String): Intent {
-        val builder = StringBuilder()
-        builder.append("ADD TIME OF EVENT HERE: " + System.lineSeparator())
-        builder.append("ADD ISSUE DESCRIPTION OR GITHUB ISSUE REFERENCE NUMBER: " + System.lineSeparator())
-        builder.append("-------------------------------------------------------" + System.lineSeparator())
-        builder.append("(Please remember this will send only very recent logs." + System.lineSeparator())
-        builder.append("If you want to provide logs for event older than a few hours," + System.lineSeparator())
-        builder.append("you have to do it manually)" + System.lineSeparator())
-        builder.append("-------------------------------------------------------" + System.lineSeparator())
-        builder.append(rh.gs(config.appName) + " " + config.VERSION + System.lineSeparator())
-        if (config.AAPSCLIENT) builder.append("NSCLIENT" + System.lineSeparator())
-        builder.append("Build: " + config.BUILD_VERSION + System.lineSeparator())
-        builder.append("Remote: " + config.REMOTE + System.lineSeparator())
-        builder.append("Flavor: " + config.FLAVOR + config.BUILD_TYPE + System.lineSeparator())
-        builder.append(rh.gs(R.string.configbuilder_nightscoutversion_label) + " " + nsSettingsStatus.getVersion() + System.lineSeparator())
-        if (config.isEngineeringMode()) builder.append(rh.gs(R.string.engineering_mode_enabled))
-        return sendMail(attachmentUri, recipient, subject, builder.toString())
-    }
-
-    /**
-     * send a mail with the given file to the recipients with the given subject.
-     *
-     * the returned intent should be used to really send the mail using
-     *
-     * startActivity(Intent.createChooser(emailIntent , "Send email..."));
-     *
-     * @param attachmentUri
-     * @param recipient
-     * @param subject
-     * @param body
-     *
-     * @return
-     */
-    private fun sendMail(
-        attachmentUri: Uri,
-        recipient: String,
-        subject: String,
-        body: String
-    ): Intent {
-        aapsLogger.debug("sending email to $recipient with subject $subject")
-        val emailIntent = Intent(Intent.ACTION_SEND)
-        emailIntent.type = "text/plain"
-        emailIntent.putExtra(Intent.EXTRA_EMAIL, arrayOf(recipient))
-        emailIntent.putExtra(Intent.EXTRA_SUBJECT, subject)
-        emailIntent.putExtra(Intent.EXTRA_TEXT, body)
-        aapsLogger.debug("put path $attachmentUri")
-        emailIntent.putExtra(Intent.EXTRA_STREAM, attachmentUri)
-        emailIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return emailIntent
-    }
-
-    private fun sendLogsToCloudDrive(zipFile: File, trigger: String, emailFallback: DocumentFile?) {
+    private fun sendLogsToCloudDrive(zipFile: File, trigger: String) {
         try {
             aapsLogger.debug("Sending logs to cloud storage")
             val bytes = zipFile.readBytes()
@@ -502,7 +430,6 @@ class MaintenancePlugin @Inject constructor(
                         aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                         ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=NO_ACTIVE_PROVIDER")
                         addCloudLogCarePortalNote(trigger, success = false)
-                        emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                         return@launch
                     }
 
@@ -536,7 +463,6 @@ class MaintenancePlugin @Inject constructor(
                         ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=UPLOAD")
                         addCloudLogCarePortalNote(trigger, success = false)
                         ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_failed))
-                        emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                     }
                 } catch (e: Exception) {
                     aapsLogger.error("Error uploading logs to cloud storage", e)
@@ -544,7 +470,6 @@ class MaintenancePlugin @Inject constructor(
                     ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=EXCEPTION")
                     addCloudLogCarePortalNote(trigger, success = false)
                     ToastUtils.errorToast(context, rh.gs(R.string.logs_upload_error))
-                    emailFallback?.let { fallbackToEmailLogs(it, trigger) }
                 }
             }
         } catch (e: Exception) {
@@ -552,7 +477,6 @@ class MaintenancePlugin @Inject constructor(
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE", e)
             ExportScriptDebugStatus.add("EXPORT_STATUS trigger=$trigger component=CLOUD_LOG result=FAILURE reason=PREPARE")
             addCloudLogCarePortalNote(trigger, success = false)
-            emailFallback?.let { fallbackToEmailLogs(it, trigger) }
         }
     }
 
@@ -601,32 +525,6 @@ class MaintenancePlugin @Inject constructor(
     }
 
     private val cloudLogSuccessNoteLock = Any()
-    
-    /** Added 2026-09-13: this fallback used to fire context.startActivity() on a bare, unwrapped
-     *  ACTION_SEND intent from EVERY cloud-log failure path (not enabled, no active provider, upload
-     *  error, or an exception preparing/uploading) -- with no default handler pinned for that intent,
-     *  Android resolves it via the system share sheet, surfacing Quick Share/Nearby Share unprompted.
-     *  Off by default (MaintenanceEmailFallbackEnabled) for every trigger, automatic 6h KeepAliveWorker
-     *  cycle and manual Send Logs button / ISF long-press / remote TT alike -- a local zip copy is saved
-     *  unconditionally by saveLogsLocally() either way, so suppressing this doesn't lose the log, just
-     *  the popup. When turned on, it now goes via Intent.createChooser() as this function's own doc
-     *  comment always said it should, instead of barging straight into whatever the OS resolves
-     *  ACTION_SEND to. */
-    private fun fallbackToEmailLogs(zipFile: DocumentFile, trigger: String) {
-        if (!preferences.get(BooleanKey.MaintenanceEmailFallbackEnabled)) {
-            aapsLogger.debug("Suppressing email/share fallback for trigger=$trigger (MaintenanceEmailFallbackEnabled off)")
-            return
-        }
-        aapsLogger.debug("Falling back to email for log sending")
-        val recipient = preferences.get(StringKey.MaintenanceEmail)
-        val attachmentUri = zipFile.uri
-        val emailIntent: Intent = this.sendMail(attachmentUri, recipient, "Log Export")
-        val chooser = Intent.createChooser(emailIntent, rh.gs(R.string.maintenance_logs_share_title)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        aapsLogger.debug("sending emailIntent (trigger=$trigger) via chooser")
-        context.startActivity(chooser)
-    }
 
     fun selectAapsDirectory(activity: DaggerAppCompatActivityWithResult) {
         try {
@@ -645,25 +543,12 @@ class MaintenancePlugin @Inject constructor(
             key = "maintenance_settings"
             title = rh.gs(R.string.maintenance_settings)
             initialExpandedChildrenCount = 0
-            addPreference(
-                AdaptiveStringPreference(
-                    ctx = context, stringKey = StringKey.MaintenanceEmail, dialogMessage = R.string.maintenance_email, title = R.string.maintenance_email,
-                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_EMAIL)
-                )
-            )
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MaintenanceLogsAmount, title = R.string.maintenance_amount))
             addPreference(
                 AdaptiveSwitchPreference(
                     ctx = context, booleanKey = BooleanKey.MaintenanceAutoExportLogsToCloud,
                     title = R.string.auto_export_logs_to_cloud_title,
                     summary = R.string.auto_export_logs_to_cloud_summary
-                )
-            )
-            addPreference(
-                AdaptiveSwitchPreference(
-                    ctx = context, booleanKey = BooleanKey.MaintenanceEmailFallbackEnabled,
-                    title = R.string.email_fallback_on_auto_export_title,
-                    summary = R.string.email_fallback_on_auto_export_summary
                 )
             )
             addPreference(preferenceManager.createPreferenceScreen(context).apply {

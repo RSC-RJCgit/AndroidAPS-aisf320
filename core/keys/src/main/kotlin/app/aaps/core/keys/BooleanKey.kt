@@ -200,15 +200,6 @@ enum class BooleanKey(
 
     MaintenanceEnableExportSettingsAutomation("enable_unattended_export", true, defaultedBySM = false),
     MaintenanceAutoExportLogsToCloud("maintenance_auto_export_logs_to_cloud", false, defaultedBySM = false),
-    // When a log export's cloud path is unavailable/fails (not enabled, no active provider, upload
-    // error, or an exception while preparing/uploading), sendLogs() falls back to a raw ACTION_SEND
-    // share intent (fallbackToEmailLogs()/the CLOUD_NOT_ENABLED branch in MaintenancePlugin.sendLogs()).
-    // Left off (the default), that fallback never runs at all, for ANY trigger -- automatic 6h
-    // KeepAliveWorker cycle, Send Logs button, ISF long-press, remote TT alike -- it was popping Quick
-    // Share/Nearby Share unprompted every time cloud upload failed or wasn't configured, unattended
-    // cycle or not. A local zip copy is still saved unconditionally either way (saveLogsLocally()), so
-    // turning this off never loses the log, just the popup.
-    MaintenanceEmailFallbackEnabled("maintenance_email_fallback_enabled", false, defaultedBySM = false),
 
     AutotuneAutoSwitchProfile("autotune_auto", false),
     AutotuneCategorizeUamAsBasal("categorize_uam_as_basal", false),

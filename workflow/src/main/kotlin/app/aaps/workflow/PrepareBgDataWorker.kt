@@ -408,20 +408,31 @@ class PrepareBgDataWorker(
                 // just missed in that pass since this is a WorkManager worker, not that Fragment, so it
                 // can't reuse those private helpers directly. Duplicates the minimal parsing here instead
                 // of a larger cross-module refactor for one boolean.
-                val boostModeText = if (config.AAPSCLIENT) {
-                    val mirrored = preferences.get(StringNonKey.MirroredAutoIsfSettings)
+                // Mirrored settings map, hoisted out of boostModeText's own branch so iobThText below can
+                // reuse it instead of re-parsing MirroredAutoIsfSettings a second time.
+                val mirrored = if (config.AAPSCLIENT) {
+                    preferences.get(StringNonKey.MirroredAutoIsfSettings)
                         .lineSequence()
                         .mapNotNull { line ->
                             val sep = line.indexOf(" = ")
                             if (sep <= 0) null else line.substring(0, sep) to line.substring(sep + 3)
                         }
                         .toMap()
+                } else null
+                val boostModeText = if (mirrored != null) {
                     when (mirrored[BooleanKey.ApsAutoIsfUamBoostEnabled.key]?.lowercase(Locale.ROOT)) {
                         "true"  -> "On"
                         "false" -> "Off"
                         else    -> "?"
                     }
                 } else if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
+                // IOB threshold %, same Client-mirroring reasoning as boostModeText just above --
+                // ApsAutoIsfIobThPercent is written by several invoke()-only coded automations
+                // (ActivityOff, StepsSteroidsOff, etc.), so a direct local preference read would be stale
+                // on Client. Graph1-only per request -- graph5's targetOffsetDuTLabel below stays as-is.
+                val iobThText = if (mirrored != null) {
+                    mirrored[IntKey.ApsAutoIsfIobThPercent.key] ?: "?"
+                } else preferences.get(IntKey.ApsAutoIsfIobThPercent).toString()
                 // HP3: same formula as HP2 above, but BOTH the base-glucose term and the delta5 term are
                 // swapped to UKF3's own values (ukf3RawMgdl, computed unconditionally further up)
                 // instead of live dosing BGL / UKF-raw-delta5 -- answers "what would the hypo prediction
@@ -441,6 +452,9 @@ class PrepareBgDataWorker(
                     String.format(Locale.getDefault(), "%.1f", hp3)
                 } else "--"
                 val targetOffsetDuTLabel = "targetOffset= $targetOffsetText  HP3= $hp3Text  Boost= $boostModeText"
+                // Graph1 only gets its own TH=<iobTH%> field appended (added 2026-09-13, per request) --
+                // graph5's targetOffsetDuTLabel above is left unchanged.
+                val targetOffsetDuTGraph1Label = "$targetOffsetDuTLabel  TH=$iobThText%"
                 // 75.6 (4.2mmol) -> 50.0 (2.8mmol), same reasoning/timing as IsfWeightsRowDataPoint's own
                 // anchor above -- the renderer draws this row at endY + a small pixel offset BELOW the
                 // pp= row's anchor, so lowering both keeps that same relative "one line below" spacing
@@ -450,7 +464,7 @@ class PrepareBgDataWorker(
                         TargetOffsetDuTGraph1DataPoint(
                             latest.timestamp,
                             profileUtil.fromMgdlToUnits(50.0),
-                            targetOffsetDuTLabel,
+                            targetOffsetDuTGraph1Label,
                             rh
                         )
                     )
