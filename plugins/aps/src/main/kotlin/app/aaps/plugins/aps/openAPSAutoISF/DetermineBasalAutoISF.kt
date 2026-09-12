@@ -348,10 +348,18 @@ class DetermineBasalAutoISF @Inject constructor(
         steps15M: Int,
         steps5M: Int,
         smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
-        smbBoostRecent: Boolean = false,   // BolusGiven bg1/2/3 / BMild within 30 min, or COB>=9 -> skip fast-rise caps
+        // BolusGiven bg1/2/3 / BMild / Tier 3 UAM Boost within 30 min, or COB>=9 -> skip fast-rise caps.
+        // Tier 3 folded in 2026-09-13 (via the caller's own uamBoostRecent, same value passed below) --
+        // per explicit request, exactly parallel to BMild's own existing treatment, not a separate or
+        // weaker exemption. Still gated by the SAME holdFastRiseAfterUamBst no-COB/high-IOB carve-out
+        // below regardless of which OR-branch made this true, so the 6 Sep 12:16-12:30 BMild|UamBst
+        // hypo (IOB 1.91-2.49U, COB 0, BG crashed 8.9->4.1) this file's own history already guards
+        // against stays guarded against either way.
+        smbBoostRecent: Boolean = false,
         // True when UamBst marked within the last 20 min. The firing cycle itself still sees false
         // (markRun is after determine_basal), so the first boosted SMB is unchanged. Default false
-        // preserves callers/tests.
+        // preserves callers/tests. Also now one of smbBoostRecent's own OR-branches (see caller) --
+        // this param's OWN uses below (holdFastRiseAfterUamBst, postUamBstLate) are unchanged.
         uamBoostRecent: Boolean = false,
         // NightFrSkip: same FastRise restore as smbBoostRecent, but only 1–2 loop cycles (00:30-04:00).
         // The 0.6U/10min cap below still binds -- this must NOT be wired into smbBoostRecent's 30-min
@@ -2218,10 +2226,12 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // RECENT DELIVERY BOOST: SKIP ALL FAST-RISE CAPS
 // =====================================================
-                // If BolusGiven (bg1/2/3) or BolusGivenMild fired within the last 30 min, or meal COB
-                // is still >= 9 g, or NightFrSkip is in its 1–2 cycle window, restore the full uncapped
-                // SMB — an unexpectedly high spike now reverts more readily (the raw-delta-driven
-                // reversal logic), so the fast-rise reductions above aren't needed in that window.
+                // If BolusGiven (bg1/2/3), BolusGivenMild, or Tier 3 UAM Boost fired within the last 30
+                // min, or meal COB is still >= 9 g, or NightFrSkip is in its 1–2 cycle window, restore
+                // the full uncapped SMB — an unexpectedly high spike now reverts more readily (the
+                // raw-delta-driven reversal logic), so the fast-rise reductions above aren't needed in
+                // that window. Tier 3 folded in 2026-09-13, exactly parallel to BMild's own existing
+                // treatment here (see smbBoostRecent's own doc comment on the function signature).
                 // NightFrSkip is a separate 2-min flag, not the 30-min smbBoostRecent window.
                 // NB: microBolusFullUncapped was snapshotted AFTER the anti-stacking x0.9 trim, so that
                 // trim survives this restore — only the fast-rise caps are undone.
@@ -2234,7 +2244,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 val holdFastRiseAfterUamBst = uamBoostRecent && iobHighNoCob
                 if ((smbBoostRecent || nightFrSkipActive) && !holdFastRiseAfterUamBst && microBolus != microBolusFullUncapped) {
                     val skipWhy = when {
-                        smbBoostRecent -> "BolusGiven/Mild boost within 30 min"
+                        smbBoostRecent -> "BolusGiven/Mild/Tier3 boost within 30 min"
                         else -> "NightFrSkip 1-2 cycle"
                     }
                     rT.reason.append(" fast-rise caps skipped ($skipWhy): microBolus ${round(microBolus, 2)} -> ${round(microBolusFullUncapped, 2)} ")

@@ -7707,15 +7707,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // when explicitly enabled, copied into the read-only replay trace below. This avoids a trace
         // query a few milliseconds later seeing a different database/automation state.
         val replaySmbInt5Sec = smbInterval5Sec()
+        // UamBst mark is written after determine_basal, so the firing cycle still sees false.
+        // 20 min covers the 6 Sep 12:16→12:30 tail without lasting into the next meal. Computed before
+        // replaySmbBoostRecent (2026-09-13) so Tier 3 firing recently can also feed into it below --
+        // see that val's own doc comment for why.
+        val replayUamBoostRecent = !readyToRun("UamBst", 20)
+        // 2026-09-13, per explicit request: Tier 3 UAM Boost now gets the SAME FastRise-cap-skip
+        // exemption BMild/Giv already had (replayUamBoostRecent added to this first OR-group only --
+        // NOT the second IOB-ceiling escape clause below, since BolusGivenMild/Bg3 aren't in that one
+        // either; this keeps Tier 3 exactly parallel to BMild's own existing treatment, not stronger),
+        // rather than only ever making the LATER taper worse via
+        // holdFastRiseAfterUamBst/postUamBstLate in DetermineBasalAutoISF.kt. Deliberately safe to add
+        // here without weakening the existing no-COB/high-IOB protection: holdFastRiseAfterUamBst
+        // (built from the real 6 Sep 12:16-12:30 BMild|UamBst hypo -- IOB 1.91-2.49U, COB 0, BG
+        // crashed 8.9->4.1) reads this SAME smbBoostRecent value downstream and blocks the skip
+        // whenever IOB is already high with no COB, regardless of which OR-branch made it true -- so
+        // Tier 3 inherits that exact same safety carve-out automatically, not a separate or weaker one.
         val replaySmbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30)
-            || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
+            || !readyToRun("BolusGiven", 30) || replayUamBoostRecent || mealData.mealCOB >= 9.0)
             && (rawDelta1Raw ?: -9999.0) >= 1.8
             && (rawDelta5Raw ?: -9999.0) >= 1.8
             && glucoseStatus.longAvgDelta > -1.8
             && (iobData.iob < 0.33 * oapsProfile.max_iob || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
-        // UamBst mark is written after determine_basal, so the firing cycle still sees false.
-        // 20 min covers the 6 Sep 12:16→12:30 tail without lasting into the next meal.
-        val replayUamBoostRecent = !readyToRun("UamBst", 20)
         // Same key as the fire throttle: markRun("NightFrSkip") makes readyToRun(2) false for ~2 min
         // (this cycle + next) and readyToRun(60) false for the one-shot hour. Must NOT be folded into
         // replaySmbBoostRecent -- that is a 30-min FastRise waiver.
