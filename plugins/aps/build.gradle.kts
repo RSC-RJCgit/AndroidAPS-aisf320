@@ -43,6 +43,13 @@ dependencies {
     // Direct coordinates so this module does not wait on a regenerated version-catalog accessor.
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+
+    // Virtual-only "attempt to start Shizuku" (2026-09-12): a small pure-Kotlin ADB client (used by
+    // Maestro) rather than hand-rolling the ADB wireless-debugging protocol. Version pinned to the
+    // newest one known at the time this was added -- NOT verified resolvable from this offline
+    // environment; if Gradle sync 404s on this exact version, bump to whatever is current on Maven
+    // Central for dev.mobile:dadb and nothing else here needs to change. See AdbWirelessStarter.kt.
+    implementation("dev.mobile:dadb:1.2.10")
 }
 
 // Read-only JVM process used by tools/oref-digital-twin. It executes the production

@@ -213,13 +213,14 @@ class WizardDialog : DaggerDialogFragment() {
             savedInstanceState?.getDouble("carbs_input")
                 ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
-        // Protein, folded into insulinFromCarbs as protein/25 carb-equivalent (see BolusWizard.doCalc) — own
-        // fixed 200g upper bound, not tied to the carbs constraint.
+        // Protein: Warsaw-FPU carb-equivalent (protein×0.4), delivered separately from insulinFromCarbs
+        // as a combined extended series with fat (see BolusWizard.warsawFpuPlan()) — own fixed 200g
+        // upper bound, not tied to the carbs constraint.
         binding.proteinInput.setParams(
             savedInstanceState?.getDouble("protein_input")
                 ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
-        // Fat, folded into insulinFromCarbs as fat/11 carb-equivalent (see BolusWizard.doCalc) — same fixed
+        // Fat: Warsaw-FPU carb-equivalent (fat×0.9), same treatment as protein above — same fixed
         // 200g upper bound as protein.
         binding.fatInput.setParams(
             savedInstanceState?.getDouble("fat_input")
@@ -709,20 +710,18 @@ class WizardDialog : DaggerDialogFragment() {
                 splitBolusInitialized = false
             }
 
-            // Protein's/fat's own projected delayed doses (see BolusWizard's scheduleSingleDelayedDose) —
-            // independent of carb-splitting above, shown whenever either amount is present. Projected
-            // amounts are the FULL pre-IOB-delta figures; the actual delivered amount at 2h/3h may end up
-            // lower (or the dose skipped entirely) depending on how much IOB has risen by then.
-            if (wizard.insulinFromProteinOnly > 0.0 || wizard.insulinFromFatOnly > 0.0) {
-                val infoText = when {
-                    wizard.insulinFromProteinOnly > 0.0 && wizard.insulinFromFatOnly > 0.0 ->
-                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U and Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 2 and 3 hours, less IOB rise"
-                    wizard.insulinFromProteinOnly > 0.0 ->
-                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U split at 2 hours, less IOB rise"
-                    else ->
-                        "Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 3 hours, less IOB rise"
-                }
-                binding.proteinFatDelayInfo.text = infoText
+            // Combined protein+fat Warsaw-FPU series preview (see BolusWizard.warsawFpuPlan() — this
+            // calls that SAME function rather than re-deriving the FPU/duration formula here, so this
+            // preview can't drift out of sync with the real schedule). Projected amounts are the FULL
+            // pre-IOB-delta figures; the actual delivered total across the series may end up lower (or
+            // individual sub-doses skipped entirely) depending on how much IOB has risen by each one's
+            // own delivery time.
+            val fpuPlan = wizard.warsawFpuPlan()
+            if (fpuPlan != null) {
+                val hours = fpuPlan.durationMinutes / 60.0
+                binding.proteinFatDelayInfo.text =
+                    "Protein+Fat ${decimalFormatter.to2Decimal(fpuPlan.totalInsulin)}U over ${decimalFormatter.to2Decimal(hours)}h " +
+                        "(${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)}), less IOB rise"
                 binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
             } else {
                 binding.proteinFatDelayInfo.visibility = android.view.View.GONE

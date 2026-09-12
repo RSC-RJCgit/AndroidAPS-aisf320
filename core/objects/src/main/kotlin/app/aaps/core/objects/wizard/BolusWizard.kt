@@ -69,6 +69,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class BolusWizard @Inject constructor(
     private val aapsLogger: AAPSLogger,
@@ -134,16 +135,17 @@ class BolusWizard @Inject constructor(
         private set
     var insulinFromCarbs = 0.0
         private set
-    // Decomposed halves of insulinFromCarbs (which is their sum) — exposed so callers (the reducedMode
-    // split-bolus check below, and WizardDialog's live max-bolus-override default) can compare protein's
-    // own contribution against carbs' own, without each needing to recompute carbs/ic and protein/25/ic
-    // separately.
+    // insulinFromCarbsOnly: carbs' own contribution (exposed so callers — the reducedMode split-bolus
+    // check below, and WizardDialog's live max-bolus-override default — can compare it against
+    // protein's/fat's own, without each needing to recompute carbs/ic separately).
     var insulinFromCarbsOnly = 0.0
         private set
+    // insulinFromProteinOnly/insulinFromFatOnly: each component's own Warsaw-FPU carb-equivalent
+    // (protein×0.4, fat×0.9 — see doCalc()'s own doc comment) divided by IC. NOT folded into
+    // insulinFromCarbs/calculatedTotalInsulin — delivered separately as a combined extended series, see
+    // warsawFpuPlan().
     var insulinFromProteinOnly = 0.0
         private set
-    // Fat's own contribution — same pattern as protein: folded in as a carb-equivalent (fat/11, vs
-    // protein's fat/25) before dividing by IC, so it shares insulinFromCarbs' unit conversion.
     var insulinFromFatOnly = 0.0
         private set
     var insulinFromBolusIOB = 0.0
@@ -168,8 +170,13 @@ class BolusWizard @Inject constructor(
     var manualSplitBolusEnabled: Boolean = false
     var manualSplitBolusIntervalMins: Int = 7
     private var splitBolusScheduled = false  // guard against double-callback
-    private var proteinDoseScheduled = false // guard against double-callback (protein's single +120min dose)
-    private var fatDoseScheduled = false     // guard against double-callback (fat's single +180min dose)
+    // Guard against double-callback for the combined protein+fat Warsaw-FPU extended dose series (see
+    // warsawFpuPlan()/scheduleSplitProteinFatDoses()). Replaced 2026-09-12's separate
+    // proteinDoseScheduled/fatDoseScheduled pair -- protein and fat are no longer scheduled
+    // independently at their own fixed +120min/+180min delays, but as one combined series spread over
+    // a duration set by their COMBINED FPU, so one shared guard is now correct (there is only ever one
+    // series to double-schedule against, not two).
+    private var fpuDoseScheduled = false
 
     // Result
     var calculatedTotalInsulin: Double = 0.0
@@ -201,12 +208,13 @@ class BolusWizard @Inject constructor(
     lateinit var profileName: String
     var tempTarget: TT? = null
     var carbs: Int = 0
-    // Protein input (grams), converted to a carb-equivalent (protein/25) and added on top of carbs for
-    // the insulinFromCarbs calculation only — the raw carbs field itself (what actually gets recorded
-    // on the delivered treatment) is untouched, so treatment history still reflects the real carbs eaten.
+    // Protein input (grams). Converted to a Warsaw-FPU carb-equivalent (protein×0.4) and delivered as
+    // its own combined extended series with fat, entirely separate from insulinFromCarbs — see
+    // warsawFpuPlan(). The raw carbs field itself (what actually gets recorded on the delivered
+    // treatment) is untouched, so treatment history still reflects the real carbs eaten.
     var protein: Int = 0
-    // Fat input (grams), converted to a carb-equivalent (fat/11) and added on top of carbs (and protein)
-    // for the insulinFromCarbs calculation only — same treatment as protein above, different divisor.
+    // Fat input (grams). Converted to a Warsaw-FPU carb-equivalent (fat×0.9) — same treatment as
+    // protein above, different factor. See warsawFpuPlan().
     var fat: Int = 0
     var cob: Double = 0.0
     var bg: Double = 0.0
@@ -328,11 +336,20 @@ class BolusWizard @Inject constructor(
         }
 
         // Insulin from carbs — base-100 IC when the active profile is boosted (see baseScale above).
-        // Protein and fat are each computed as their own carb-equivalent (protein/25, fat/11) divided by
-        // IC, but are NO LONGER folded into insulinFromCarbs/calculatedTotalInsulin — they're delivered
-        // entirely separately, as their own single fixed-time doses (see the protein/fat scheduling in
-        // commonProcessing()'s success callback: one dose at +120min for protein, one at +180min for
-        // fat), independent of the immediate bolus and of the carb-split schedule below.
+        // Protein and fat are each computed as their own carb-equivalent divided by IC, but are NO
+        // LONGER folded into insulinFromCarbs/calculatedTotalInsulin — they're delivered entirely
+        // separately, as a combined extended series (see warsawFpuPlan()/scheduleSplitProteinFatDoses()
+        // in commonProcessing()'s success callback), independent of the immediate bolus and of the
+        // carb-split schedule below.
+        //
+        // Divisors switched 2026-09-12 to the real Warsaw/Pankiewicz FPU carb-equivalent factors
+        // (protein×0.4, fat×0.9 — equivalently protein/2.5, fat/1.111) from this fork's original
+        // protein/25, fat/11 (protein×0.04, fat×0.091) — roughly 10x weaker than Warsaw. Only safe to
+        // strengthen this far because delivery is now ALSO spread over a Warsaw-FPU-scaled duration
+        // (see warsawExtendedDurationMinutes()) instead of one fixed-time dose per component — the two
+        // changes are a pair, not independent: stronger divisors alone, still on a single fixed-time
+        // dose, would front-load ~10x the insulin at one moment instead of matching the slow multi-hour
+        // fat/protein-driven rise it's meant to cover.
         ic = profile.getIc() * baseScale
         insulinFromCarbsOnly = carbs / ic
         // Recent50 mechanism: see recent50ShouldReduceWizard(). Halves ONLY the carbs-driven portion
@@ -342,8 +359,8 @@ class BolusWizard @Inject constructor(
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
-        insulinFromProteinOnly = (protein / 25.0) / ic
-        insulinFromFatOnly = (fat / 11.0) / ic
+        insulinFromProteinOnly = (protein * 0.4) / ic
+        insulinFromFatOnly = (fat * 0.9) / ic
         insulinFromCarbs = insulinFromCarbsOnly
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
@@ -471,7 +488,8 @@ class BolusWizard @Inject constructor(
     // here BEFORE that function runs (createBolusCalculatorResult() is always called first, see call
     // sites), purely as a projection: it doesn't schedule anything itself, just reports whether the
     // manual "Split bolus every" setting will actually fire for this dose and at what interval, which was
-    // previously missing from the calc note entirely (only protein/fat @2h/@3h were shown).
+    // previously missing from the calc note entirely (only the combined protein+fat Warsaw-FPU series
+    // was shown — see warsawFpuPlan()).
     private fun splitProjectionNote(): String {
         val parts = mutableListOf<String>()
         val schedulingPct = activeProfileSwitchPct()
@@ -493,8 +511,12 @@ class BolusWizard @Inject constructor(
                 parts.add("Carb split ${decimalFormatter.to2Decimal(residual)}U every ${manualSplitBolusIntervalMins}min")
             }
         }
-        if (insulinFromProteinOnly > 0.0) parts.add("Protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U @2h")
-        if (insulinFromFatOnly > 0.0) parts.add("Fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U @3h")
+        warsawFpuPlan()?.let { plan ->
+            parts.add(
+                "Protein+Fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
+                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
+            )
+        }
         if (parts.isEmpty()) return ""
         return parts.joinToString(" and ") + " split, less IOB rise"
     }
@@ -986,16 +1008,67 @@ class BolusWizard @Inject constructor(
         })
     }
 
+    // Combined protein+fat Warsaw-FPU delivery plan: fat/protein-units (FPU = (9×fat_g + 4×protein_g)/100)
+    // set ONE shared extended-delivery duration for BOTH components together (real Warsaw treats
+    // fat and protein as one combined load, not two independently-timed contributions), which is then
+    // split into roughly-hourly sub-doses, each delivered through the existing
+    // scheduleSingleDelayedDose() gate (BG safety + IOB-delta reduction/cancellation, independently, at
+    // ITS OWN delivery time — nothing new to build there, just calling it more than twice).
+    // insulinFromProteinOnly/insulinFromFatOnly (see doCalc()) already carry the real Warsaw per-gram
+    // strength; this only decides duration/split, not amount. Returns null when there's nothing to
+    // schedule (no protein or fat entered). Shared by scheduleSplitProteinFatDoses() (the real schedule),
+    // splitProjectionNote() (the calc-note PREVIEW of the same plan), and WizardDialog's own live
+    // proteinFatDelayInfo preview — public rather than private specifically so the UI-layer preview
+    // calls this SAME function instead of re-deriving the FPU/duration formula itself, which would
+    // otherwise risk drifting out of sync with the real schedule exactly like splitProjectionNote()'s
+    // own doc comment already warns about for the carb-split preview.
+    data class WarsawFpuPlan(
+        val fpu: Double, val durationMinutes: Int, val numDoses: Int, val perDoseInsulin: Double, val totalInsulin: Double
+    )
+
+    fun warsawFpuPlan(): WarsawFpuPlan? {
+        val totalInsulin = insulinFromProteinOnly + insulinFromFatOnly
+        if (totalInsulin <= 0.0) return null
+        val fpu = (9 * fat + 4 * protein) / 100.0
+        val durationMinutes = warsawExtendedDurationMinutes(fpu)
+        val numDoses = max(1, (durationMinutes / 60.0).roundToInt())
+        return WarsawFpuPlan(fpu, durationMinutes, numDoses, totalInsulin / numDoses, totalInsulin)
+    }
+
+    // Classic Warsaw/Pankiewicz FPU→duration table, linearly interpolated between the reference points
+    // below so a meal's EXACT FPU (not just whole numbers) gets a proportionate duration instead of
+    // jumping in whole-FPU steps. Reference points (FPU to hours): 0→0 (no fat/protein: no extension),
+    // 1→3h, 2→4h, 3→5h, 4→6h, 5+→8h (capped — the widely-cited table doesn't extend further). These
+    // breakpoints are the commonly-published version, not yet verified against this fork's own real
+    // device data (see this file's "evidence over guessing" practice) — watch actual post-meal outcomes
+    // once this has run for real before trusting the exact hours, and retune here if a different
+    // reference table is preferred.
+    private fun warsawExtendedDurationMinutes(fpu: Double): Int {
+        val points = listOf(0.0 to 0.0, 1.0 to 3.0, 2.0 to 4.0, 3.0 to 5.0, 4.0 to 6.0, 5.0 to 8.0)
+        val hours = when {
+            fpu <= 0.0 -> 0.0
+            fpu >= 5.0 -> 8.0
+            else       -> {
+                val idx = points.indexOfLast { it.first <= fpu }
+                val (fpuLo, hLo) = points[idx]
+                val (fpuHi, hHi) = points[idx + 1]
+                hLo + (hHi - hLo) * (fpu - fpuLo) / (fpuHi - fpuLo)
+            }
+        }
+        return (hours * 60).roundToInt()
+    }
+
     // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
     // larger recalculated dose split if it exceeds maxBolus — excluding >100 was a bug, not intentional;
     // only a REDUCED profile, where the assumptions this recalculation relies on don't hold, should be
     // excluded), total > maxBolus, enabled per-bolus. SMBs are never blocked here — the old
     // equal-parts/SplitBolusBlockSmbUntil mode is gone entirely; every split is BG-gated and
-    // IOB-delta-sized instead (see scheduleReducedPartsSplitBolus). Also schedules protein's/fat's own
-    // single delayed doses. Extracted into its own function so it can be called either from
-    // commandQueue.bolus()'s success callback (a real immediate delivery/carbs-record happened), or
-    // directly, synchronously, for a protein/fat-only entry that never goes through commandQueue.bolus()
-    // at all (see the call sites in commonProcessing()).
+    // IOB-delta-sized instead (see scheduleReducedPartsSplitBolus). Also schedules the combined
+    // protein+fat Warsaw-FPU extended dose series (see warsawFpuPlan() above). Extracted into its own
+    // function so it can be called either from commandQueue.bolus()'s success callback (a real
+    // immediate delivery/carbs-record happened), or directly, synchronously, for a protein/fat-only
+    // entry that never goes through commandQueue.bolus() at all (see the call sites in
+    // commonProcessing()).
     private fun scheduleSplitProteinFatDoses() {
         // A combined insulin/carbs entry can report success from both pump delivery and
         // asynchronous carb persistence. Claim this confirmation once, before bumping the
@@ -1052,32 +1125,42 @@ class BolusWizard @Inject constructor(
                 noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U every ${intervalMins}min")
             }
         }
-        // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after the actual
+        // Shared baseline for the Warsaw-FPU series' OWN IOB-delta reduction: IOB right after the actual
         // delivered immediate dose (insulinAfterConstraints — carbs/BG/etc only, since protein/fat are
-        // excluded from it) joined the pool. A lot of SMBs firing between now and each one's own
-        // +120/+180min delivery point can already cover much of the anticipated protein/fat-driven rise —
-        // see scheduleSingleDelayedDose.
+        // excluded from it) joined the pool. A lot of SMBs firing between now and any one of the series'
+        // own delivery points can already cover much of the anticipated protein/fat-driven rise — see
+        // scheduleSingleDelayedDose. Shared across every sub-dose (not recomputed per-dose) since it's
+        // meant to capture the state right after the immediate bolus, once, not drift as the series runs.
         val iobBaselineForDelayedDoses = iobBeforeFirstDose + insulinAfterConstraints
-        // Protein: one single dose at +120min. Decoupled from manualSplitBolusEnabled (the "Split bolus
-        // every" checkbox) entirely — fires whenever protein was entered, regardless of whether
-        // carb-splitting is enabled/needed for this bolus — its own amount, its own timing, its own gate.
-        // Still requires schedulingPct >= 100, same reasoning as carb-splits: at any other percentage the
-        // carb-equivalent this amount was computed from no longer reflects reality.
-        if (!proteinDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromProteinOnly > 0.0) {
-            proteinDoseScheduled = true
-            aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
-            scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-            totalProjectedFutureSplitDoses += insulinFromProteinOnly
-            noteDetails.add("protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U at +120min")
-        }
-        // Fat: one single dose at +180min. Same decoupling/preconditions as protein above — fully
-        // independent of the carb-split schedule and of protein's own dose.
-        if (!fatDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromFatOnly > 0.0) {
-            fatDoseScheduled = true
-            aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
-            scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-            totalProjectedFutureSplitDoses += insulinFromFatOnly
-            noteDetails.add("fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U at +180min")
+        // Combined protein+fat Warsaw-FPU series: see warsawFpuPlan()'s own doc comment for why this is
+        // ONE combined plan (shared duration from combined FPU) rather than protein and fat each on
+        // their own fixed +120min/+180min timer as before 2026-09-12. Decoupled from
+        // manualSplitBolusEnabled (the "Split bolus every" checkbox) entirely — fires whenever protein
+        // or fat was entered, regardless of whether carb-splitting is enabled/needed for this bolus —
+        // its own amount, its own timing, its own gate. Still requires schedulingPct >= 100, same
+        // reasoning as carb-splits: at any other percentage the carb-equivalent this amount was computed
+        // from no longer reflects reality. Each sub-dose is independently BG- and IOBdelta-gated, AT ITS
+        // OWN delivery time, by scheduleSingleDelayedDose() — same mechanism as before, just called
+        // numDoses times instead of once each for protein/fat.
+        warsawFpuPlan()?.let { plan ->
+            if (!fpuDoseScheduled && !superBolusActive && schedulingPct >= 100) {
+                fpuDoseScheduled = true
+                aapsLogger.info(
+                    LTag.CORE,
+                    "DelayedDose(fpu): FPU=${plan.fpu} duration=${plan.durationMinutes}min split into " +
+                        "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose"
+                )
+                for (i in 1..plan.numDoses) {
+                    val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
+                    else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
+                    scheduleSingleDelayedDose(plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+                }
+                totalProjectedFutureSplitDoses += plan.totalInsulin
+                noteDetails.add(
+                    "protein+fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
+                        "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
+                )
+            }
         }
         // Single combined CarePortal note marking that split/protein/fat dosing was just scheduled, with
         // the total amount still to come (e.g. "S1.30") — separate from each individual part's own
@@ -1411,18 +1494,21 @@ class BolusWizard @Inject constructor(
         }, delayMs)
     }
 
-    // Protein's/fat's single fixed-time delayed dose (see the call sites, +120min/+180min respectively).
-    // Gated at delivery time on the SAME combined criteria as carb splits: not cancelled (stop press or
+    // One single fixed-time delayed dose. Called once per carb-split residual part, and once per
+    // sub-dose of the combined protein+fat Warsaw-FPU series (see scheduleSplitProteinFatDoses()/
+    // warsawFpuPlan() — a meal with real fat/protein calls this several times, spread across the
+    // FPU-scaled duration, each an entirely independent call with its own delayMins/label). Gated at
+    // delivery time on the SAME combined criteria as carb splits: not cancelled (stop press or
     // superseded by a newer entry), profile% still >=100, pump not suspended, superbolus not active, and
-    // the live BG safety check — any failure skips this one dose entirely (no retry, since there's only
-    // ever this one delivery for this contribution).
+    // the live BG safety check — any failure skips THIS ONE call's dose only (no retry; a sibling
+    // sub-dose later in the same series still gets its own independent check).
     //
     // Dose sizing is ALSO IOB-delta reduced, same principle as scheduleReducedPartsSplitBolus: a lot of
     // SMBs (or anything else) firing between now and this delivery point may have already covered much of
     // the anticipated protein/fat-driven rise, so iobBaseline (IOB right after the immediate dose was
-    // delivered — shared by both protein's and fat's own call, see the call site) is compared against the
+    // delivered — shared across every call in the series, see the call site) is compared against the
     // live IOB at delivery time; only a genuine rise reduces the dose, and dropping to <=0 cancels it
-    // entirely (no partial delivery, no retry).
+    // entirely (no partial delivery, no retry) — for just this call, other sub-doses are unaffected.
     private fun scheduleSingleDelayedDose(
         dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs()
