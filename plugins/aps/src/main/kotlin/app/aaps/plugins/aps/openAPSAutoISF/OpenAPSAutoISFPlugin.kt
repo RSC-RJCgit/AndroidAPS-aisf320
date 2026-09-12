@@ -1677,6 +1677,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun tryAutoInstallNewerApk() {
         if (config.AAPSCLIENT) return
+        // Defer (not consume the 45-min cooldown -- just skip THIS 15-min check, try again next time)
+        // while a boost/rise is actively in progress. Added 2026-09-13 after a real collision: a
+        // Shizuku auto-install kill+relaunch on Virtual landed right as HiBrkDayMid/P120 was about to
+        // fire, and the app was down through that whole ~0.96U dosing window -- Virtual's IOB then ran
+        // ~0.7-1.0U behind Client's for the rest of the evening, not from any dosing-logic difference,
+        // just from missing that one window entirely. This can't fully eliminate the risk (a rise can
+        // still start moments after an install already begins), but it stops the install from
+        // deliberately landing ON TOP of a boost that's already firing or just fired. activeTtMgdl()
+        // covers BMild/bg3/HiBrk/Giv (all TT-owning while active); the throttle checks catch a boost
+        // that already fired and released its TT within the last 5 min.
+        if (activeTtMgdl() != null ||
+            !readyToRun("BolusGivenMild", 5) || !readyToRun("BolusGivenBg3", 5) ||
+            !readyToRun("BolusGiven", 5) || !readyToRun("UamBst", 5)
+        ) {
+            aapsLogger.info(LTag.APS, "Auto APK deferred: boost/rise active or just fired, retrying next 15-min check")
+            return
+        }
         val stage = stageNewestAaps333Apk("auto-15min", notify = false)
         if (!stage.ok) {
             aapsLogger.info(LTag.APS, "Auto APK stage miss: ${stage.detail}")
