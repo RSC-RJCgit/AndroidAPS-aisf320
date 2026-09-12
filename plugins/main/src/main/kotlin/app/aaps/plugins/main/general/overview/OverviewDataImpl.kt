@@ -31,15 +31,8 @@ import app.aaps.core.objects.extensions.isInProgress
 import app.aaps.core.objects.extensions.toStringFull
 import app.aaps.core.objects.extensions.toStringShort
 import com.jjoe64.graphview.series.DataPoint
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.plus
-import kotlinx.datetime.toInstant
-import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.time.Instant
 
 @Singleton
 class OverviewDataImpl @Inject constructor(
@@ -171,13 +164,25 @@ class OverviewDataImpl @Inject constructor(
     override fun initRange() {
         rangeToDisplay = preferences.get(IntNonKey.RangeToDisplay)
 
-        val tz = TimeZone.currentSystemDefault()
-        val now = Instant.fromEpochMilliseconds(System.currentTimeMillis())
-        val local = now.toLocalDateTime(tz)
-        val truncatedHour = LocalDateTime(local.year, local.month, local.day, local.hour, 0)
-        val nextFullHour = truncatedHour.toInstant(tz).plus(1, DateTimeUnit.HOUR, tz)
+        // True rolling window ending at "now" (rounded UP to the next 5-minute mark, plus the same
+        // small GraphView-rounding pad the previous version used) -- NOT the next full clock hour.
+        //
+        // Previously toTime was anchored to the next full clock hour (e.g. 15:00 for anything requested
+        // just after 14:00), so the visible window stayed FIXED for the entire clock hour rather than
+        // rolling with "now": at HH:01 almost the whole window was empty (no data exists yet for the
+        // other ~59 minutes), and the instant the clock reached the next hour the window jumped forward
+        // a full hour, instantly dropping the ~59 minutes of context that had been visible a moment
+        // before. On the 1h scale this meant recent-data visibility could shrink to almost nothing right
+        // after an hour boundary — confirmed 2026-09-13 per user report — and the same reset happened,
+        // proportionally less severely, on every other scale (3h/6h/12h/18h/24h) too. Rounding to 5
+        // minutes instead of a full hour keeps the original design's intent (round numbers, so the
+        // window doesn't visibly jitter left/right by a few seconds on every refresh) while shrinking
+        // the worst-case reset gap from up to 59 minutes down to at most 5.
+        val nowMs = System.currentTimeMillis()
+        val fiveMinMs = T.mins(5).msecs()
+        val roundedUpToNow = ((nowMs / fiveMinMs) + 1) * fiveMinMs
 
-        toTime = nextFullHour.toEpochMilliseconds() + 100000 // a little bit more to avoid wrong rounding - GraphView specific
+        toTime = roundedUpToNow + 100000 // a little bit more to avoid wrong rounding - GraphView specific
         fromTime = toTime - T.hours(rangeToDisplay.toLong()).msecs()
         endTime = toTime
     }
