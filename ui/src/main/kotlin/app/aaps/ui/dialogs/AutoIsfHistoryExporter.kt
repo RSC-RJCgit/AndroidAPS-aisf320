@@ -20,9 +20,11 @@ import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
@@ -59,6 +61,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val profileFunction: ProfileFunction,
     private val preferences: Preferences,
     private val config: Config,
+    private val virtualPump: VirtualPump,
     private val aapsLogger: AAPSLogger,
     private val iobCobCalculator: IobCobCalculator,
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
@@ -139,6 +142,13 @@ class AutoIsfHistoryExporter @Inject constructor(
      * beginning of an AIV window; notes are only displayed when they fall in a row's own minute. */
     fun carePortalNotesFrom(from: Long): List<TE> =
         persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
+            .filterNot { hideLiveUamBoostEchoes() && CodedAutomationNames.isUamBoostNote(it.note) }
+
+    // Virtual shares Live's NS site, so Live's UamBst notes land here even when this phone's
+    // Tier 3 toggle is off. Client must still see Live's own fires. Local Virtual fires only
+    // exist while the toggle is on, so hiding UamBst while it is off does not drop a real one.
+    private fun hideLiveUamBoostEchoes(): Boolean =
+        virtualPump.isEnabled() && !config.AAPSCLIENT && !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
 
     /** MJ-only compatibility query retained for graph/history callers. */
     fun mjNotesFrom(from: Long): List<TE> =

@@ -15,6 +15,18 @@ object CodedAutomationNames {
 
     enum class MatchType { EXACT, CLOSE, NONE }
 
+    // CarePortal / graph markers written only when Tier 3 actually fires locally
+    // (addCarePortalNote("UamBst") + addGraphAnnouncement("B")). Live uploads both to the
+    // shared NS site; Virtual then shows them as if this phone had boosted. Filter those
+    // two literals on VirtualPump (not Client) -- see AutoIsfHistoryExporter /
+    // PrepareTreatmentsDataWorker / StoreDataForDbImpl.
+    const val UAM_BOOST_NOTE = "UamBst"
+    const val UAM_BOOST_GRAPH_ANNOUNCEMENT = "B"
+
+    fun isUamBoostNote(note: String?): Boolean = note?.trim() == UAM_BOOST_NOTE
+
+    fun isUamBoostGraphAnnouncement(note: String?): Boolean = note?.trim() == UAM_BOOST_GRAPH_ANNOUNCEMENT
+
     val KEYS: List<String> = listOf(
         "50SetRecent", "50pcMakes5.7", "AcceUp0.5", "AcceWeightDownTT", "AcceWeightHighDownTT",
         "AcceWeightHighUpTT", "AcceWeightUpTT", "ActivityOff", "ActivityProf50", "ActivityTTReversal",

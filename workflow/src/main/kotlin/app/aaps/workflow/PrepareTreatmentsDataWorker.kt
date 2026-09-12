@@ -17,10 +17,12 @@ import app.aaps.core.graph.data.HeartRateDataPoint
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.StepsDataPoint
 import app.aaps.core.graph.data.TherapyEventDataPoint
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventIobCalculationProgress
@@ -28,7 +30,9 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +52,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var config: Config
 
     class PrepareTreatmentsData(
         val overviewData: OverviewData
@@ -188,11 +193,21 @@ class PrepareTreatmentsDataWorker(
                 }
         }
 
+        // Virtual shares Live's NS site. Hide Live's Tier 3 UamBst note (graph4) and "B"
+        // announcement (main graph) while this phone's own UAM Boost toggle is off -- same
+        // rule as AutoIsfHistoryExporter.carePortalNotesFrom(). Client still shows Live's.
+        val hideLiveUamBoostEchoes = activePlugin.activePump is VirtualPump &&
+            !config.AAPSCLIENT &&
+            !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
         // Careportal — split plain notes (graph2) from everything else (main graph, unchanged).
         persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), endTime).blockingGet()
             .map { TherapyEventDataPoint(it, rh, profileUtil, translator) }
             .filterTimeframe(fromTime, endTime)
             .forEach {
+                if (hideLiveUamBoostEchoes &&
+                    (CodedAutomationNames.isUamBoostNote(it.data.note) && it.data.type == TE.Type.NOTE ||
+                        it.data.type == TE.Type.ANNOUNCEMENT && CodedAutomationNames.isUamBoostGraphAnnouncement(it.data.note))
+                ) return@forEach
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
                 if (it.data.type == TE.Type.NOTE) {
                     it.colorOverride = dominantIsfColorAt(aivList, it.x.toLong())

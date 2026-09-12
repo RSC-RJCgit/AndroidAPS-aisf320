@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.utils.CodedAutomationNames
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -261,7 +262,7 @@ class StoreDataForDbImpl @Inject constructor(
         synchronized(therapyEvents) {
             if (therapyEvents.isNotEmpty()) {
                 therapyEvents.chunked(chunk).forEach {
-                    persistenceLayer.syncNsTherapyEvents(it.toMutableList(), doLog = !fullSync).blockingGet().also { result ->
+                    persistenceLayer.syncNsTherapyEvents(dropLiveUamBoostEchoes(it), doLog = !fullSync).blockingGet().also { result ->
                         inserted.add(TE::class.java.simpleName, result.inserted.size)
                         invalidated.add(TE::class.java.simpleName, result.invalidated.size)
                         nsIdUpdated.add(TE::class.java.simpleName, result.updatedNsId.size)
@@ -572,6 +573,22 @@ class StoreDataForDbImpl @Inject constructor(
                 }
             }
             deleteGlucoseValue.clear()
+        }
+    }
+
+    // Virtual shares Live's NS site. Drop Live's UamBst NOTE / "B" ANNOUNCEMENT so they are
+    // not stored here. Keep a marker that already exists locally (same type+timestamp) so a
+    // Virtual fire coming back from NS can still receive its nsId. Client is unchanged.
+    private fun dropLiveUamBoostEchoes(incoming: List<TE>): MutableList<TE> {
+        if (!virtualPump.isEnabled() || config.AAPSCLIENT) return incoming.toMutableList()
+        return incoming.filterTo(mutableListOf()) { te ->
+            val marker = te.type == TE.Type.NOTE && CodedAutomationNames.isUamBoostNote(te.note) ||
+                te.type == TE.Type.ANNOUNCEMENT && CodedAutomationNames.isUamBoostGraphAnnouncement(te.note)
+            if (!marker) return@filterTo true
+            val local = persistenceLayer.getTherapyEventDataFromTime(te.timestamp, te.type, true)
+                .any { existing -> existing.timestamp == te.timestamp }
+            if (!local) aapsLogger.debug(LTag.NSCLIENT, "Ignoring Live UAM Boost echo on Virtual: ${te.type} ${te.note}")
+            local
         }
     }
 
