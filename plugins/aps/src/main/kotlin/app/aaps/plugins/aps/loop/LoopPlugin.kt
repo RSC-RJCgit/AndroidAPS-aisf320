@@ -155,7 +155,29 @@ class LoopPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             // Skip db change of ending previous TT
             .debounce(10L, TimeUnit.SECONDS)
-            .subscribe({ invoke("EventTempTargetChange", true) }, fabricPrivacy::logException)
+            // Real incident 2026-09-12 (Virtual, 828->829 auto-install window): invoke() threw
+            // (java.lang.InterruptedException, wrapped as RuntimeException, from
+            // minutesSinceLastNormalBolus()'s PersistenceLayerImpl.getNewestBolusOfType().blockingGet())
+            // right as fabricPrivacy::logException as the onError handler here meant the WHOLE
+            // subscription terminated per RxJava's subscribe(onNext, onError) contract -- onError ends
+            // the stream, it does not resume it. In THIS fork, this TT-change trigger carries a
+            // significant share of the effective loop cadence (automations here start/cancel TTs
+            // constantly -- BMild, HiBrk, and dozens of others), so losing it silently stopped invoke()
+            // firing for ~28 minutes (18:38-19:06) with no crash, no notification, nothing visibly
+            // wrong -- confirmed via AIV history showing the exact same gap. Applies to Live too, same
+            // code. Fix: catch inside onNext instead of letting an exception reach onError, so a single
+            // failed cycle can never terminate the subscription -- it just logs and waits for the next
+            // TT-change event. fabricPrivacy::logException stays as the onError fallback for whatever
+            // this doesn't anticipate (e.g. an error from the rxBus/debounce plumbing itself, not from
+            // invoke()'s own body).
+            .subscribe({
+                           try {
+                               invoke("EventTempTargetChange", true)
+                           } catch (e: Throwable) {
+                               aapsLogger.error(LTag.APS, "EventTempTargetChange-triggered invoke() failed; subscription stays alive for the next TT change", e)
+                               fabricPrivacy.logException(e)
+                           }
+                       }, fabricPrivacy::logException)
     }
 
     private fun createNotificationChannel() {
