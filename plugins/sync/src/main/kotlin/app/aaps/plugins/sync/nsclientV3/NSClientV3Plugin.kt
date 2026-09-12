@@ -216,6 +216,25 @@ class NSClientV3Plugin @Inject constructor(
         }
     }
 
+    // Wraps an rxBus onNext body so a thrown exception is logged but never reaches onError. Real
+    // 2026-09-12 incident (see LoopPlugin.kt's EventTempTargetChange subscription doc comment): a
+    // single exception inside subscribe(onNext, onError)'s onNext reaches onError and PERMANENTLY
+    // terminates that subscription per RxJava's contract -- no automatic resubscribe. Every
+    // subscription in this onStart() is registered once for the whole app session, not tied to any UI
+    // lifecycle that would naturally recreate it, and most of them are what actually triggers NS
+    // uploads -- losing one the same way LoopPlugin's died would silently stop this plugin uploading
+    // (or reacting to reconnects/preference changes) for the rest of the session, with no crash and no
+    // visible sign anything was wrong. fabricPrivacy::logException stays as the onError fallback for
+    // whatever this doesn't catch (e.g. an error from the rxBus/observeOn plumbing itself).
+    private fun safe(label: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            aapsLogger.error(LTag.NSCLIENT, "$label failed; subscription stays alive for the next event", e)
+            fabricPrivacy.logException(e)
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
@@ -229,90 +248,97 @@ class NSClientV3Plugin @Inject constructor(
             .toObservable(EventAppExit::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({
-                           stopService()
-                           WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
-                           WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
+                           safe("onEventAppExit") {
+                               stopService()
+                               WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
+                               WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
+                           }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventConnectivityOptionChanged::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ ev ->
-                           rxBus.send(EventNSClientNewLog("● CONNECTIVITY", ev.blockingReason))
-                           if (ev.connected && isAllowed) {
-                               val service = nsClientV3Service
-                               if (service == null || service.storageSocket == null)
-                                   setClient() // (re)create client and WS; WS_CONNECT callback will trigger executeLoop
-                               executeLoop("CONNECTIVITY", forceNew = false)
-                               // Trigger upload of data that accumulated while offline.
-                               // executeLoop may skip when WS is enabled and initial load is done,
-                               // but pending outbound data still needs to be pushed.
-                               executeUpload("CONNECTIVITY", forceNew = false)
-                           } else if (ev.connected && !isAllowed) {
-                               nsClientV3Service?.let { service ->
-                                   if (service.storageSocket != null) stopService()
+                           safe("onEventConnectivityOptionChanged") {
+                               rxBus.send(EventNSClientNewLog("● CONNECTIVITY", ev.blockingReason))
+                               if (ev.connected && isAllowed) {
+                                   val service = nsClientV3Service
+                                   if (service == null || service.storageSocket == null)
+                                       setClient() // (re)create client and WS; WS_CONNECT callback will trigger executeLoop
+                                   executeLoop("CONNECTIVITY", forceNew = false)
+                                   // Trigger upload of data that accumulated while offline.
+                                   // executeLoop may skip when WS is enabled and initial load is done,
+                                   // but pending outbound data still needs to be pushed.
+                                   executeUpload("CONNECTIVITY", forceNew = false)
+                               } else if (ev.connected && !isAllowed) {
+                                   nsClientV3Service?.let { service ->
+                                       if (service.storageSocket != null) stopService()
+                                   }
                                }
+                               rxBus.send(EventNSClientUpdateGuiStatus())
                            }
-                           rxBus.send(EventNSClientUpdateGuiStatus())
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ ev ->
-                           if (ev.isChanged(StringKey.NsClientAccessToken.key) ||
-                               ev.isChanged(StringKey.NsClientUrl.key) ||
-                               ev.isChanged(BooleanKey.NsClient3UseWs.key) ||
-                               ev.isChanged(NsclientBooleanKey.NsPaused.key) ||
-                               ev.isChanged(BooleanKey.NsClientNotificationsFromAlarms.key) ||
-                               ev.isChanged(BooleanKey.NsClientNotificationsFromAnnouncements.key)
-                           ) {
+                           safe("onEventPreferenceChange") {
                                if (ev.isChanged(StringKey.NsClientAccessToken.key) ||
-                                   ev.isChanged(StringKey.NsClientUrl.key)
+                                   ev.isChanged(StringKey.NsClientUrl.key) ||
+                                   ev.isChanged(BooleanKey.NsClient3UseWs.key) ||
+                                   ev.isChanged(NsclientBooleanKey.NsPaused.key) ||
+                                   ev.isChanged(BooleanKey.NsClientNotificationsFromAlarms.key) ||
+                                   ev.isChanged(BooleanKey.NsClientNotificationsFromAnnouncements.key)
                                ) {
-                                   clearPrimaryTokenFailureNotify()
+                                   if (ev.isChanged(StringKey.NsClientAccessToken.key) ||
+                                       ev.isChanged(StringKey.NsClientUrl.key)
+                                   ) {
+                                       clearPrimaryTokenFailureNotify()
+                                   }
+                                   stopService()
+                                   nsAndroidClient = null
+                                   setClient()
                                }
-                               stopService()
-                               nsAndroidClient = null
-                               setClient()
+                               if (ev.isChanged(LongNonKey.LocalProfileLastChange.key))
+                                   executeUpload("PROFILE_CHANGE", forceNew = true)
                            }
-                           if (ev.isChanged(LongNonKey.LocalProfileLastChange.key))
-                               executeUpload("PROFILE_CHANGE", forceNew = true)
-
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNSClientNewLog::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
-                           addToLog(event)
-                           aapsLogger.debug(LTag.NSCLIENT, event.action + " " + event.logText)
+                           safe("onEventNSClientNewLog") {
+                               addToLog(event)
+                               aapsLogger.debug(LTag.NSCLIENT, event.action + " " + event.logText)
+                           }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNewHistoryData::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("NEW_DATA", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventNewHistoryData") { executeUpload("NEW_DATA", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventTempTargetChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventTempTargetChange", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventTempTargetChange") { executeUpload("EventTempTargetChange", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventProfileSwitchChanged::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventProfileSwitchChanged", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventProfileSwitchChanged") { executeUpload("EventProfileSwitchChanged", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventDeviceStatusChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventDeviceStatusChange", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventDeviceStatusChange") { executeUpload("EventDeviceStatusChange", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventTherapyEventChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventTherapyEventChange", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventTherapyEventChange") { executeUpload("EventTherapyEventChange", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventRunningModeChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventRunningModeChange", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventRunningModeChange") { executeUpload("EventRunningModeChange", forceNew = false) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventProfileStoreChanged::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ executeUpload("EventProfileStoreChanged", forceNew = false) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventProfileStoreChanged") { executeUpload("EventProfileStoreChanged", forceNew = false) } }, fabricPrivacy::logException)
 
         runLoop = Runnable {
             var refreshInterval = T.mins(5).msecs()

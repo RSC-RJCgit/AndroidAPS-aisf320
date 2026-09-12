@@ -100,6 +100,25 @@ class IobCobCalculatorPlugin @Inject constructor(
     private val dataLock = Any()
     private var thread: Thread? = null
 
+    // Wraps an rxBus onNext body so a thrown exception is logged but never reaches onError. Real
+    // 2026-09-12 incident (see LoopPlugin.kt's EventTempTargetChange subscription doc comment): a
+    // single exception inside subscribe(onNext, onError)'s onNext reaches onError and PERMANENTLY
+    // terminates that subscription per RxJava's contract -- no automatic resubscribe. Every
+    // subscription in this onStart() is registered once for the whole app session, not tied to any UI
+    // lifecycle that would naturally recreate it, and this plugin feeds IOB/COB directly into the
+    // loop's own calculations -- losing one of these the same way LoopPlugin's died would silently
+    // stop IOB/COB recalculation reacting to that event type for the rest of the session.
+    // fabricPrivacy::logException stays as the onError fallback for whatever this doesn't catch (e.g.
+    // an error from the rxBus/observeOn plumbing itself, not from the wrapped block).
+    private fun safe(label: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            aapsLogger.error(LTag.AUTOSENS, "$label failed; subscription stays alive for the next event", e)
+            fabricPrivacy.logException(e)
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         // EventConfigBuilderChange
@@ -107,69 +126,73 @@ class IobCobCalculatorPlugin @Inject constructor(
             .toObservable(EventConfigBuilderChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
-                           resetDataAndRunCalculation("onEventConfigBuilderChange", event)
+                           safe("onEventConfigBuilderChange") { resetDataAndRunCalculation("onEventConfigBuilderChange", event) }
                        }, fabricPrivacy::logException)
         // EventEffectiveProfileSwitchChanged
         disposable += rxBus
             .toObservable(EventEffectiveProfileSwitchChanged::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
-                           newHistoryData(event.startDate, false, event)
+                           safe("onEventEffectiveProfileSwitchChanged") { newHistoryData(event.startDate, false, event) }
                        }, fabricPrivacy::logException)
         // EventPreferenceChange
         disposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
-                           if (event.isChanged(IntKey.AutosensPeriod.key) ||
-                               event.isChanged(StringKey.SafetyAge.key) ||
-                               event.isChanged(DoubleKey.AbsorptionMaxTime.key) ||
-                               event.isChanged(DoubleKey.ApsAmaMin5MinCarbsImpact.key) ||
-                               event.isChanged(DoubleKey.ApsSmbMin5MinCarbsImpact.key) ||
-                               event.isChanged(DoubleKey.AbsorptionCutOff.key) ||
-                               event.isChanged(DoubleKey.AutosensMax.key) ||
-                               event.isChanged(DoubleKey.AutosensMin.key) ||
-                               event.isChanged(IntKey.InsulinOrefPeak.key)
-                           ) {
-                               resetDataAndRunCalculation("onEventPreferenceChange", event)
-                           }
-                           if (event.isChanged(StringKey.GeneralUnits.key)) {
-                               overviewData.reset()
-                               rxBus.send(EventNewHistoryData(0, false))
-                           }
-                           if (event.isChanged(IntNonKey.RangeToDisplay.key)) {
-                               overviewData.initRange()
-                               calculationWorkflow.runOnScaleChanged(this, overviewData)
-                               rxBus.send(EventNewHistoryData(0, false))
+                           safe("onEventPreferenceChange") {
+                               if (event.isChanged(IntKey.AutosensPeriod.key) ||
+                                   event.isChanged(StringKey.SafetyAge.key) ||
+                                   event.isChanged(DoubleKey.AbsorptionMaxTime.key) ||
+                                   event.isChanged(DoubleKey.ApsAmaMin5MinCarbsImpact.key) ||
+                                   event.isChanged(DoubleKey.ApsSmbMin5MinCarbsImpact.key) ||
+                                   event.isChanged(DoubleKey.AbsorptionCutOff.key) ||
+                                   event.isChanged(DoubleKey.AutosensMax.key) ||
+                                   event.isChanged(DoubleKey.AutosensMin.key) ||
+                                   event.isChanged(IntKey.InsulinOrefPeak.key)
+                               ) {
+                                   resetDataAndRunCalculation("onEventPreferenceChange", event)
+                               }
+                               if (event.isChanged(StringKey.GeneralUnits.key)) {
+                                   overviewData.reset()
+                                   rxBus.send(EventNewHistoryData(0, false))
+                               }
+                               if (event.isChanged(IntNonKey.RangeToDisplay.key)) {
+                                   overviewData.initRange()
+                                   calculationWorkflow.runOnScaleChanged(this, overviewData)
+                                   rxBus.send(EventNewHistoryData(0, false))
+                               }
                            }
                        }, fabricPrivacy::logException)
         // EventNewHistoryData
         disposable += rxBus
             .toObservable(EventNewHistoryData::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ event -> scheduleHistoryDataChange(event) }, fabricPrivacy::logException)
+            .subscribe({ event -> safe("onEventNewHistoryData") { scheduleHistoryDataChange(event) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventTherapyEventChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ calculationWorkflow.runOnEventTherapyEventChange(overviewData) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventTherapyEventChange") { calculationWorkflow.runOnEventTherapyEventChange(overviewData) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventRunningModeChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ calculationWorkflow.runOnEventTherapyEventChange(overviewData) }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventRunningModeChange") { calculationWorkflow.runOnEventTherapyEventChange(overviewData) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventAppInitialized::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe(
                 {
-                    calculationWorkflow.runCalculation(
-                        CalculationWorkflow.MAIN_CALCULATION,
-                        this,
-                        overviewData,
-                        "onEventAppInitialized",
-                        System.currentTimeMillis(),
-                        bgDataReload = true,
-                        cause = it
-                    )
+                    safe("onEventAppInitialized") {
+                        calculationWorkflow.runCalculation(
+                            CalculationWorkflow.MAIN_CALCULATION,
+                            this,
+                            overviewData,
+                            "onEventAppInitialized",
+                            System.currentTimeMillis(),
+                            bgDataReload = true,
+                            cause = it
+                        )
+                    }
                 },
                 fabricPrivacy::logException
             )
