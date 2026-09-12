@@ -2812,6 +2812,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun updateGraph() {
         _binding ?: return
+        // Refresh the rolling time window on every actual redraw, not just at plugin startup or when
+        // the scale preference itself changes (the only two places initRange() was otherwise called --
+        // see OverviewPlugin.onStart() and IobCobCalculatorPlugin's RangeToDisplay preference listener).
+        // Without this, initRange()'s own "always end near now" fix (2026-09-12) only ever re-anchored
+        // at those two rare moments -- for the rest of a session, updateGraph() below kept reading the
+        // SAME stale overviewData.fromTime/endTime every time new data triggered a redraw (roughly every
+        // 5 min via UpdateGraphWorker), so the window still went stale between app-opens/scale-changes
+        // exactly like before that fix, just with a smaller worst-case gap. Confirmed 2026-09-13 per
+        // user report that the 1h view still wasn't rolling. initRange() itself is cheap (three field
+        // assignments, no I/O), so calling it on every redraw has no real cost.
+        overviewData.initRange()
         // One-shot cross-module signal from CleanGraphTT (OpenAPSAutoISFPlugin.kt, TT=5.042): applies the
         // same "no SMB labels, no BGL arrowheads, solid uniform-green line" combo as long-pressing IOB
         // then Basal, then clears itself so it doesn't keep re-applying and block manual long-presses
