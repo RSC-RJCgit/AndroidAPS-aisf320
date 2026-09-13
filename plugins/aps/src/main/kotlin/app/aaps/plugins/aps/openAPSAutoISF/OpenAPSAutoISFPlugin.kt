@@ -3791,9 +3791,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
             val noRecentHigh = !recentLibreOver12(48)
             val trigger = lowBg || activeMovement || noRecentHigh
+            // Added 2026-09-13: HighDaytimeBrake/HighEveNightBrake (HiBrkDay/HiBrkDayMid) were missing
+            // from this list despite calling the SAME applyBMildOutcomeFactors() that elevates PP weight
+            // (see its own ApsAutoIsfPpWeight=PpWeightHigh line) -- confirmed against real same-day data
+            // (13 Sep 01:27-01:38 PM): PPrv reverted HiBrkDayMid's PP weight within 1 minute of it firing,
+            // over and over (same 6-14min fire/revert/cut cycle repeating all afternoon), exactly the
+            // failure mode this whole grace-period mechanism exists to prevent -- just missed for this
+            // one automation pair when the list above was built.
             val recentPpBoostFire = !readyToRun("BolusGiven", 15) || !readyToRun("BolusGivenMild", 15) ||
                 !readyToRun("High6PP", 15) || !readyToRun("HighOldPod", 15) ||
-                !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15)
+                !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15) ||
+                !readyToRun("HighDaytimeBrake", 15) || !readyToRun("HighEveNightBrake", 15)
             val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger && !recentPpBoostFire
             val acceNeedsRevert = currentAcce > baselineAcce && trigger && !recentPpBoostFire
             if (ppNeedsRevert || acceNeedsRevert) {

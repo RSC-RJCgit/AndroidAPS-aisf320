@@ -1,5 +1,5 @@
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
-index 30d590b..70b1cd0 100644
+index 30d590b566..70b1cd0eae 100644
 --- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt
 @@ -19,6 +19,7 @@ object BolusProgressData {
@@ -25,7 +25,7 @@ index 30d590b..70b1cd0 100644
 \ No newline at end of file
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt
 new file mode 100644
-index 0000000..c904f5c
+index 0000000000..1111111111
 --- /dev/null
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt
 @@ -0,0 +1,32 @@
@@ -63,7 +63,7 @@ index 0000000..c904f5c
 +}
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt
 new file mode 100644
-index 0000000..78e5efe
+index 0000000000..1111111111
 --- /dev/null
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt
 @@ -0,0 +1,24 @@
@@ -92,7 +92,7 @@ index 0000000..78e5efe
 +    }
 +}
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
-index d730051..7186c22 100644
+index d73005110b..7186c22b39 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
 @@ -125,6 +125,9 @@ enum class BooleanKey(
@@ -106,7 +106,7 @@ index d730051..7186c22 100644
      WizardIncludeTrend("wizard_include_trend_bg", defaultValue = false),
      SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false),
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
-index 5de6a0c..dc5b064 100644
+index 5de6a0cc63..dc5b064775 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 @@ -23,5 +23,6 @@ enum class LongKey(
@@ -118,7 +118,7 @@ index 5de6a0c..dc5b064 100644
  }
 \ No newline at end of file
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
-index 336209d..7ef57d0 100644
+index 336209de6f..7ef57d06cc 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt
 @@ -4,6 +4,7 @@ import android.content.Context
@@ -138,7 +138,7 @@ index 336209d..7ef57d0 100644
  
      @Suppress("DEPRECATION")
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
-index 811cd2a..3ad2899 100644
+index 811cd2a748..1ace2f68e5 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 @@ -4,9 +4,11 @@ import android.annotation.SuppressLint
@@ -186,7 +186,7 @@ index 811cd2a..3ad2899 100644
  import app.aaps.core.objects.extensions.formatColor
  import app.aaps.core.objects.extensions.highValueToUnitsToString
  import app.aaps.core.objects.extensions.lowValueToUnitsToString
-@@ -50,10 +58,13 @@ import app.aaps.core.objects.extensions.round
+@@ -50,12 +58,17 @@ import app.aaps.core.objects.extensions.round
  import app.aaps.core.ui.dialogs.OKDialog
  import app.aaps.core.utils.HtmlHelper
  import app.aaps.core.utils.JsonHelper
@@ -194,13 +194,17 @@ index 811cd2a..3ad2899 100644
 +import android.os.Looper
  import java.util.Calendar
  import java.util.LinkedList
++import java.util.concurrent.atomic.AtomicBoolean
  import javax.inject.Inject
  import kotlin.math.abs
 +import kotlin.math.ceil
  import kotlin.math.max
  import kotlin.math.min
++import kotlin.math.roundToInt
  
-@@ -73,6 +84,7 @@ class BolusWizard @Inject constructor(
+ class BolusWizard @Inject constructor(
+     private val aapsLogger: AAPSLogger,
+@@ -73,6 +86,7 @@ class BolusWizard @Inject constructor(
      private val config: Config,
      private val uel: UserEntryLogger,
      private val automation: Automation,
@@ -208,7 +212,7 @@ index 811cd2a..3ad2899 100644
      private val glucoseStatusProvider: GlucoseStatusProvider,
      private val uiInteraction: UiInteraction,
      private val persistenceLayer: PersistenceLayer,
-@@ -87,8 +99,32 @@ class BolusWizard @Inject constructor(
+@@ -87,8 +101,32 @@ class BolusWizard @Inject constructor(
          private set
      var ic = 0.0
          private set
@@ -241,40 +245,47 @@ index 811cd2a..3ad2899 100644
      private var targetBGLow = 0.0
      private var targetBGHigh = 0.0
      private var bgDiff = 0.0
-@@ -96,6 +132,18 @@ class BolusWizard @Inject constructor(
+@@ -96,6 +134,19 @@ class BolusWizard @Inject constructor(
          private set
      var insulinFromCarbs = 0.0
          private set
-+    // Decomposed halves of insulinFromCarbs (which is their sum) — exposed so callers (the reducedMode
-+    // split-bolus check below, and WizardDialog's live max-bolus-override default) can compare protein's
-+    // own contribution against carbs' own, without each needing to recompute carbs/ic and protein/25/ic
-+    // separately.
++    // insulinFromCarbsOnly: carbs' own contribution (exposed so callers — the reducedMode split-bolus
++    // check below, and WizardDialog's live max-bolus-override default — can compare it against
++    // protein's/fat's own, without each needing to recompute carbs/ic separately).
 +    var insulinFromCarbsOnly = 0.0
 +        private set
++    // insulinFromProteinOnly/insulinFromFatOnly: each component's own Warsaw-FPU carb-equivalent
++    // (protein×0.4, fat×0.9 — see doCalc()'s own doc comment) divided by IC. NOT folded into
++    // insulinFromCarbs/calculatedTotalInsulin — delivered separately as a combined extended series, see
++    // warsawFpuPlan().
 +    var insulinFromProteinOnly = 0.0
 +        private set
-+    // Fat's own contribution — same pattern as protein: folded in as a carb-equivalent (fat/11, vs
-+    // protein's fat/25) before dividing by IC, so it shares insulinFromCarbs' unit conversion.
 +    var insulinFromFatOnly = 0.0
 +        private set
      var insulinFromBolusIOB = 0.0
          private set
      var insulinFromBasalIOB = 0.0
-@@ -113,6 +161,13 @@ class BolusWizard @Inject constructor(
+@@ -112,6 +163,19 @@ class BolusWizard @Inject constructor(
+         private set
  
      private var accepted = false
- 
++    private val followUpSchedulingStarted = AtomicBoolean(false)
++
 +    // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
 +    var manualSplitBolusEnabled: Boolean = false
 +    var manualSplitBolusIntervalMins: Int = 7
 +    private var splitBolusScheduled = false  // guard against double-callback
-+    private var proteinDoseScheduled = false // guard against double-callback (protein's single +120min dose)
-+    private var fatDoseScheduled = false     // guard against double-callback (fat's single +180min dose)
-+
++    // Guard against double-callback for the combined protein+fat Warsaw-FPU extended dose series (see
++    // warsawFpuPlan()/scheduleSplitProteinFatDoses()). Replaced 2026-09-12's separate
++    // proteinDoseScheduled/fatDoseScheduled pair -- protein and fat are no longer scheduled
++    // independently at their own fixed +120min/+180min delays, but as one combined series spread over
++    // a duration set by their COMBINED FPU, so one shared guard is now correct (there is only ever one
++    // series to double-schedule against, not two).
++    private var fpuDoseScheduled = false
+ 
      // Result
      var calculatedTotalInsulin: Double = 0.0
-         private set
-@@ -123,6 +178,17 @@ class BolusWizard @Inject constructor(
+@@ -123,6 +187,17 @@ class BolusWizard @Inject constructor(
      var insulinAfterConstraints: Double = 0.0
          private set
      var calculatedPercentage: Int = 100
@@ -292,35 +303,39 @@ index 811cd2a..3ad2899 100644
          private set
      var calculatedCorrection: Double = 0.0
          private set
-@@ -132,6 +198,13 @@ class BolusWizard @Inject constructor(
+@@ -132,6 +207,14 @@ class BolusWizard @Inject constructor(
      lateinit var profileName: String
      var tempTarget: TT? = null
      var carbs: Int = 0
-+    // Protein input (grams), converted to a carb-equivalent (protein/25) and added on top of carbs for
-+    // the insulinFromCarbs calculation only — the raw carbs field itself (what actually gets recorded
-+    // on the delivered treatment) is untouched, so treatment history still reflects the real carbs eaten.
++    // Protein input (grams). Converted to a Warsaw-FPU carb-equivalent (protein×0.4) and delivered as
++    // its own combined extended series with fat, entirely separate from insulinFromCarbs — see
++    // warsawFpuPlan(). The raw carbs field itself (what actually gets recorded on the delivered
++    // treatment) is untouched, so treatment history still reflects the real carbs eaten.
 +    var protein: Int = 0
-+    // Fat input (grams), converted to a carb-equivalent (fat/11) and added on top of carbs (and protein)
-+    // for the insulinFromCarbs calculation only — same treatment as protein above, different divisor.
++    // Fat input (grams). Converted to a Warsaw-FPU carb-equivalent (fat×0.9) — same treatment as
++    // protein above, different factor. See warsawFpuPlan().
 +    var fat: Int = 0
      var cob: Double = 0.0
      var bg: Double = 0.0
      private var correction: Double = 0.0
-@@ -150,6 +223,13 @@ class BolusWizard @Inject constructor(
+@@ -150,6 +233,16 @@ class BolusWizard @Inject constructor(
      private var quickWizard: Boolean = true
      var usePercentage: Boolean = false
      var positiveIOBOnly: Boolean = false
-+    // "Walking soon" checkbox: forces the immediate dose to 50%, independent of and without touching
-+    // usePercentage/totalPercentage/percentageCorrection, so the delayed-bolus fullRequired calculation
-+    // (see the walkingSoon branch in commonProcessing()'s success callback) can keep reading those
-+    // fields untouched and top up toward the user's own normal percentage rather than toward this
-+    // override. See WizardDialog.kt for the pre-tick default (steps60>100 AND BGL<6.0, not
-+    // rising fast).
++    // "Walking soon" checkbox: cuts the immediate dose to MOVING_PERCENT (70), independent of and
++    // without touching usePercentage/totalPercentage/percentageCorrection, so delayed fullRequired
++    // still aims at standing wiz%. QuickWizard "always on" is gated on live S30 (S5 OR watch only)
++    // in QuickWizardEntry (seated = no cut). Dialog auto-tick is stillMovingNow AND BGL<6, not
++    // leftover S60. Manual dialog tick still covers "about to walk" while quiet, at 70% not 50%.
 +    var walkingSoon: Boolean = false
++    // True only when walkingSoon actually reduced the immediate % below standing wiz%.
++    // Delayed / Wz133 follow this, not the checkbox: a seated QuickWizard "always on"
++    // press must not SMB-block 85 min for a cut that never happened.
++    var walkingSoonCutApplied: Boolean = false
  
      fun doCalc(
          profile: Profile,
-@@ -173,13 +253,18 @@ class BolusWizard @Inject constructor(
+@@ -173,13 +266,18 @@ class BolusWizard @Inject constructor(
          usePercentage: Boolean = false,
          totalPercentage: Double = 100.0,
          quickWizard: Boolean = false,
@@ -340,11 +355,12 @@ index 811cd2a..3ad2899 100644
          this.cob = cob
          this.bg = bg
          this.correction = correction
-@@ -198,9 +283,19 @@ class BolusWizard @Inject constructor(
+@@ -198,9 +296,20 @@ class BolusWizard @Inject constructor(
          this.usePercentage = usePercentage
          this.totalPercentage = totalPercentage
          this.positiveIOBOnly = positiveIOBOnly
 +        this.walkingSoon = walkingSoon
++        this.walkingSoonCutApplied = false
 +
 +        // QuickWizard/wizard correction: when the ACTIVE profile percentage is above 100%, calculate
 +        // the bolus on the 100% (base) profile instead of the boosted rates. The profile scales IC and
@@ -361,7 +377,7 @@ index 811cd2a..3ad2899 100644
          targetBGLow = profileUtil.fromMgdlToUnits(profile.getTargetLowMgdl())
          targetBGHigh = profileUtil.fromMgdlToUnits(profile.getTargetHighMgdl())
          if (useTT && tempTarget != null) {
-@@ -225,9 +320,24 @@ class BolusWizard @Inject constructor(
+@@ -225,9 +334,33 @@ class BolusWizard @Inject constructor(
              }
          }
  
@@ -369,11 +385,20 @@ index 811cd2a..3ad2899 100644
 -        ic = profile.getIc()
 -        insulinFromCarbs = carbs / ic
 +        // Insulin from carbs — base-100 IC when the active profile is boosted (see baseScale above).
-+        // Protein and fat are each computed as their own carb-equivalent (protein/25, fat/11) divided by
-+        // IC, but are NO LONGER folded into insulinFromCarbs/calculatedTotalInsulin — they're delivered
-+        // entirely separately, as their own single fixed-time doses (see the protein/fat scheduling in
-+        // commonProcessing()'s success callback: one dose at +120min for protein, one at +180min for
-+        // fat), independent of the immediate bolus and of the carb-split schedule below.
++        // Protein and fat are each computed as their own carb-equivalent divided by IC, but are NO
++        // LONGER folded into insulinFromCarbs/calculatedTotalInsulin — they're delivered entirely
++        // separately, as a combined extended series (see warsawFpuPlan()/scheduleSplitProteinFatDoses()
++        // in commonProcessing()'s success callback), independent of the immediate bolus and of the
++        // carb-split schedule below.
++        //
++        // Divisors switched 2026-09-12 to the real Warsaw/Pankiewicz FPU carb-equivalent factors
++        // (protein×0.4, fat×0.9 — equivalently protein/2.5, fat/1.111) from this fork's original
++        // protein/25, fat/11 (protein×0.04, fat×0.091) — roughly 10x weaker than Warsaw. Only safe to
++        // strengthen this far because delivery is now ALSO spread over a Warsaw-FPU-scaled duration
++        // (see warsawExtendedDurationMinutes()) instead of one fixed-time dose per component — the two
++        // changes are a pair, not independent: stronger divisors alone, still on a single fixed-time
++        // dose, would front-load ~10x the insulin at one moment instead of matching the slow multi-hour
++        // fat/protein-driven rise it's meant to cover.
 +        ic = profile.getIc() * baseScale
 +        insulinFromCarbsOnly = carbs / ic
 +        // Recent50 mechanism: see recent50ShouldReduceWizard(). Halves ONLY the carbs-driven portion
@@ -383,26 +408,26 @@ index 811cd2a..3ad2899 100644
 +        if (carbsHalvedByRecent50) {
 +            insulinFromCarbsOnly /= 2.0
 +        }
-+        insulinFromProteinOnly = (protein / 25.0) / ic
-+        insulinFromFatOnly = (fat / 11.0) / ic
++        insulinFromProteinOnly = (protein * 0.4) / ic
++        insulinFromFatOnly = (fat * 0.9) / ic
 +        insulinFromCarbs = insulinFromCarbsOnly
          insulinFromCOB = if (useCob) (cob / ic) else 0.0
  
          // Insulin from IOB
-@@ -255,7 +365,11 @@ class BolusWizard @Inject constructor(
+@@ -255,7 +388,11 @@ class BolusWizard @Inject constructor(
          // Total
          calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
  
 -        val percentage = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
-+        // "Walking soon" override: force 50% for the immediate dose only. Deliberately does not touch
-+        // usePercentage/totalPercentage/percentageCorrection themselves -- the delayed-bolus
-+        // fullRequired calculation downstream reads those fields directly and needs them to still
-+        // reflect the user's normal (non-overridden) percentage, not this one-off reduction.
-+        val percentage = if (walkingSoon) 50.0 else (if (usePercentage) totalPercentage else percentageCorrection.toDouble())
++        // Walking soon: 70% now (or standing % if that is already lower). Does not touch
++        // usePercentage/totalPercentage/percentageCorrection — delayed fullRequired still uses those.
++        val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
++        val percentage = WizardActivitySteps.walkingSoonImmediatePercent(walkingSoon, standingPct)
++        walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
  
          // Percentage adjustment
          totalBeforePercentageAdjustment = calculatedTotalInsulin
-@@ -274,8 +388,63 @@ class BolusWizard @Inject constructor(
+@@ -274,8 +411,65 @@ class BolusWizard @Inject constructor(
              calculatedCorrection = 0.0
          }
  
@@ -445,8 +470,10 @@ index 811cd2a..3ad2899 100644
 +
 +        // After percentage and HP safety: ×1.33 on the number the calculator would otherwise deliver.
 +        // Wizard BG (not a second CGM read) for the 8.0 bar; CGM deltas for the three rise gates.
++        // Not stacked on a walkingSoon cut (keep Wz133 as a high-rising option once seated).
 +        // Protein/fat delayed doses are not in calculatedTotalInsulin and stay unscaled.
 +        if (calculatedTotalInsulin > 0.0 &&
++            !walkingSoonCutApplied &&
 +            bgMgdl * Constants.MGDL_TO_MMOLL > 8.0 &&
 +            deltaMmol > 0.2 && shortDeltaMmol > 0.2 && longDeltaMmol > 0.2
 +        ) {
@@ -466,7 +493,7 @@ index 811cd2a..3ad2899 100644
  
          insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(calculatedTotalInsulin, aapsLogger)).value()
  
-@@ -283,8 +452,112 @@ class BolusWizard @Inject constructor(
+@@ -283,8 +477,117 @@ class BolusWizard @Inject constructor(
          return this
      }
  
@@ -480,7 +507,8 @@ index 811cd2a..3ad2899 100644
 +    // here BEFORE that function runs (createBolusCalculatorResult() is always called first, see call
 +    // sites), purely as a projection: it doesn't schedule anything itself, just reports whether the
 +    // manual "Split bolus every" setting will actually fire for this dose and at what interval, which was
-+    // previously missing from the calc note entirely (only protein/fat @2h/@3h were shown).
++    // previously missing from the calc note entirely (only the combined protein+fat Warsaw-FPU series
++    // was shown — see warsawFpuPlan()).
 +    private fun splitProjectionNote(): String {
 +        val parts = mutableListOf<String>()
 +        val schedulingPct = activeProfileSwitchPct()
@@ -502,8 +530,12 @@ index 811cd2a..3ad2899 100644
 +                parts.add("Carb split ${decimalFormatter.to2Decimal(residual)}U every ${manualSplitBolusIntervalMins}min")
 +            }
 +        }
-+        if (insulinFromProteinOnly > 0.0) parts.add("Protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U @2h")
-+        if (insulinFromFatOnly > 0.0) parts.add("Fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U @3h")
++        warsawFpuPlan()?.let { plan ->
++            parts.add(
++                "Protein+Fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
++                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
++            )
++        }
 +        if (parts.isEmpty()) return ""
 +        return parts.joinToString(" and ") + " split, less IOB rise"
 +    }
@@ -534,7 +566,7 @@ index 811cd2a..3ad2899 100644
 +        val recent50TriggeredPreview = recent50ShouldReduceWizard()
 +        val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
 +            preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-+            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoon)
++            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied)
 +        val delayedLabel = if (!delayedWillFire) {
 +            "none"
 +        } else {
@@ -579,7 +611,7 @@ index 811cd2a..3ad2899 100644
          return BCR(
              timestamp = dateUtil.now(),
              targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
-@@ -315,7 +588,7 @@ class BolusWizard @Inject constructor(
+@@ -315,7 +618,7 @@ class BolusWizard @Inject constructor(
              totalInsulin = calculatedTotalInsulin,
              percentageCorrection = percentageCorrection,
              profileName = profileName,
@@ -588,7 +620,7 @@ index 811cd2a..3ad2899 100644
          )
      }
  
-@@ -328,6 +601,16 @@ class BolusWizard @Inject constructor(
+@@ -328,6 +631,16 @@ class BolusWizard @Inject constructor(
                  rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, insulinAfterConstraints).formatColor
                      (context, rh, app.aaps.core.ui.R.attr.bolusColor) + pct
              )
@@ -605,7 +637,7 @@ index 811cd2a..3ad2899 100644
          }
          if (carbs > 0 && !advisor) {
              var timeShift = ""
-@@ -360,6 +643,22 @@ class BolusWizard @Inject constructor(
+@@ -360,6 +673,22 @@ class BolusWizard @Inject constructor(
                  rh.gs(app.aaps.core.ui.R.string.bolus_constraint_applied_warn, calculatedTotalInsulin, insulinAfterConstraints)
                      .formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
              )
@@ -628,7 +660,7 @@ index 811cd2a..3ad2899 100644
          if (config.AAPSCLIENT && insulinAfterConstraints > 0)
              actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
          if (useAlarm && !advisor && carbs > 0 && carbTime > 0)
-@@ -388,7 +687,15 @@ class BolusWizard @Inject constructor(
+@@ -388,7 +717,15 @@ class BolusWizard @Inject constructor(
      }
  
      fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
@@ -645,7 +677,7 @@ index 811cd2a..3ad2899 100644
              if (accepted) {
                  aapsLogger.debug(LTag.UI, "guarding: already accepted")
                  return
-@@ -407,6 +714,15 @@ class BolusWizard @Inject constructor(
+@@ -407,6 +744,15 @@ class BolusWizard @Inject constructor(
              else
                  commonProcessing(ctx, quickWizardEntry)
          } else {
@@ -661,7 +693,7 @@ index 811cd2a..3ad2899 100644
              OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.no_action_selected))
          }
      }
-@@ -467,6 +783,16 @@ class BolusWizard @Inject constructor(
+@@ -467,6 +813,16 @@ class BolusWizard @Inject constructor(
          if (percentageCorrection != 100) {
              message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_percent, totalBeforePercentageAdjustment, percentageCorrection, calculatedTotalInsulin)
          }
@@ -678,7 +710,7 @@ index 811cd2a..3ad2899 100644
          return message
      }
  
-@@ -478,7 +804,8 @@ class BolusWizard @Inject constructor(
+@@ -478,7 +834,8 @@ class BolusWizard @Inject constructor(
  
          val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
          OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
@@ -688,7 +720,7 @@ index 811cd2a..3ad2899 100644
                  if (useSuperBolus) {
                      if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
                          loop.handleRunningModeChange(
-@@ -518,7 +845,17 @@ class BolusWizard @Inject constructor(
+@@ -518,7 +875,17 @@ class BolusWizard @Inject constructor(
                      glucoseType = TE.MeterType.MANUAL
                      carbsTimestamp = now + T.mins(this@BolusWizard.carbTime.toLong()).msecs()
                      bolusCalculatorResult = createBolusCalculatorResult()
@@ -707,7 +739,7 @@ index 811cd2a..3ad2899 100644
                      if (insulin > 0 || carbs > 0) {
                          val action = when {
                              insulinAfterConstraints == 0.0 -> Action.CARBS
-@@ -540,13 +877,101 @@ class BolusWizard @Inject constructor(
+@@ -540,13 +907,98 @@ class BolusWizard @Inject constructor(
                              override fun run() {
                                  if (!result.success) {
                                      uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
@@ -735,14 +767,11 @@ index 811cd2a..3ad2899 100644
 +                                    // same callback correctly read profilePct=50/type=EPS at the same instant).
 +                                    val delayedProfilePct = activeProfileSwitchPct()
 +                                    val recent50Triggered = recent50ShouldReduceWizard()
-+                                    // walkingSoon (see doCalc's own comment): a third, independent way to qualify
-+                                    // for this same delayed-check path. Its own 50% reduction happened via the
-+                                    // `percentage` override in doCalc, not via profile or carbs-only halving, so
-+                                    // it needs no special-casing in fullRequired below -- percentageCorrection and
-+                                    // ic are both already untouched/normal on this path.
++                                    // walkingSoonCutApplied: delayed only if the immediate % was actually
++                                    // reduced. Seated QuickWizard always-on must not arm this path.
 +                                    if ((insulinAfterConstraints > 0 || carbs > 0) &&
 +                                        preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-+                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoon)
++                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied)
 +                                    ) {
 +                                        // FullRequired uses normal IC. On the profile-50% path, ic itself is
 +                                        // already halved by the profile switch, so normal IC = 2x ic. On the
@@ -811,21 +840,79 @@ index 811cd2a..3ad2899 100644
                  }
              }
              if (quickWizardEntry != null) {
-@@ -555,6 +980,515 @@ class BolusWizard @Inject constructor(
+@@ -555,6 +1007,586 @@ class BolusWizard @Inject constructor(
          })
      }
  
++    // Combined protein+fat Warsaw-FPU delivery plan: fat/protein-units (FPU = (9×fat_g + 4×protein_g)/100)
++    // set ONE shared extended-delivery duration for BOTH components together (real Warsaw treats
++    // fat and protein as one combined load, not two independently-timed contributions), which is then
++    // split into roughly-hourly sub-doses, each delivered through the existing
++    // scheduleSingleDelayedDose() gate (BG safety + IOB-delta reduction/cancellation, independently, at
++    // ITS OWN delivery time — nothing new to build there, just calling it more than twice).
++    // insulinFromProteinOnly/insulinFromFatOnly (see doCalc()) already carry the real Warsaw per-gram
++    // strength; this only decides duration/split, not amount. Returns null when there's nothing to
++    // schedule (no protein or fat entered). Shared by scheduleSplitProteinFatDoses() (the real schedule),
++    // splitProjectionNote() (the calc-note PREVIEW of the same plan), and WizardDialog's own live
++    // proteinFatDelayInfo preview — public rather than private specifically so the UI-layer preview
++    // calls this SAME function instead of re-deriving the FPU/duration formula itself, which would
++    // otherwise risk drifting out of sync with the real schedule exactly like splitProjectionNote()'s
++    // own doc comment already warns about for the carb-split preview.
++    data class WarsawFpuPlan(
++        val fpu: Double, val durationMinutes: Int, val numDoses: Int, val perDoseInsulin: Double, val totalInsulin: Double
++    )
++
++    fun warsawFpuPlan(): WarsawFpuPlan? {
++        val totalInsulin = insulinFromProteinOnly + insulinFromFatOnly
++        if (totalInsulin <= 0.0) return null
++        val fpu = (9 * fat + 4 * protein) / 100.0
++        val durationMinutes = warsawExtendedDurationMinutes(fpu)
++        val numDoses = max(1, (durationMinutes / 60.0).roundToInt())
++        return WarsawFpuPlan(fpu, durationMinutes, numDoses, totalInsulin / numDoses, totalInsulin)
++    }
++
++    // Classic Warsaw/Pankiewicz FPU→duration table, linearly interpolated between the reference points
++    // below so a meal's EXACT FPU (not just whole numbers) gets a proportionate duration instead of
++    // jumping in whole-FPU steps. Reference points (FPU to hours): 0→0 (no fat/protein: no extension),
++    // 1→3h, 2→4h, 3→5h, 4→6h, 5+→8h (capped — the widely-cited table doesn't extend further). These
++    // breakpoints are the commonly-published version, not yet verified against this fork's own real
++    // device data (see this file's "evidence over guessing" practice) — watch actual post-meal outcomes
++    // once this has run for real before trusting the exact hours, and retune here if a different
++    // reference table is preferred.
++    private fun warsawExtendedDurationMinutes(fpu: Double): Int {
++        val points = listOf(0.0 to 0.0, 1.0 to 3.0, 2.0 to 4.0, 3.0 to 5.0, 4.0 to 6.0, 5.0 to 8.0)
++        val hours = when {
++            fpu <= 0.0 -> 0.0
++            fpu >= 5.0 -> 8.0
++            else       -> {
++                val idx = points.indexOfLast { it.first <= fpu }
++                val (fpuLo, hLo) = points[idx]
++                val (fpuHi, hHi) = points[idx + 1]
++                hLo + (hHi - hLo) * (fpu - fpuLo) / (fpuHi - fpuLo)
++            }
++        }
++        return (hours * 60).roundToInt()
++    }
++
 +    // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
 +    // larger recalculated dose split if it exceeds maxBolus — excluding >100 was a bug, not intentional;
 +    // only a REDUCED profile, where the assumptions this recalculation relies on don't hold, should be
 +    // excluded), total > maxBolus, enabled per-bolus. SMBs are never blocked here — the old
 +    // equal-parts/SplitBolusBlockSmbUntil mode is gone entirely; every split is BG-gated and
-+    // IOB-delta-sized instead (see scheduleReducedPartsSplitBolus). Also schedules protein's/fat's own
-+    // single delayed doses. Extracted into its own function so it can be called either from
-+    // commandQueue.bolus()'s success callback (a real immediate delivery/carbs-record happened), or
-+    // directly, synchronously, for a protein/fat-only entry that never goes through commandQueue.bolus()
-+    // at all (see the call sites in commonProcessing()).
++    // IOB-delta-sized instead (see scheduleReducedPartsSplitBolus). Also schedules the combined
++    // protein+fat Warsaw-FPU extended dose series (see warsawFpuPlan() above). Extracted into its own
++    // function so it can be called either from commandQueue.bolus()'s success callback (a real
++    // immediate delivery/carbs-record happened), or directly, synchronously, for a protein/fat-only
++    // entry that never goes through commandQueue.bolus() at all (see the call sites in
++    // commonProcessing()).
 +    private fun scheduleSplitProteinFatDoses() {
++        // A combined insulin/carbs entry can report success from both pump delivery and
++        // asynchronous carb persistence. Claim this confirmation once, before bumping the
++        // supersession token, so its second callback cannot cancel its own pending doses.
++        if (!followUpSchedulingStarted.compareAndSet(false, true)) {
++            aapsLogger.debug(LTag.CORE, "SplitBolus: duplicate scheduling callback ignored")
++            return
++        }
 +        val schedulingPct = activeProfileSwitchPct()
 +        // Superbolus (this wizard's own useSuperBolus above, OR any other still-active one) blocks
 +        // carb-split/protein/fat scheduling entirely — a superbolus already bakes in its own specific 2h
@@ -874,32 +961,42 @@ index 811cd2a..3ad2899 100644
 +                noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U every ${intervalMins}min")
 +            }
 +        }
-+        // Shared baseline for protein's/fat's OWN IOB-delta reduction: IOB right after the actual
++        // Shared baseline for the Warsaw-FPU series' OWN IOB-delta reduction: IOB right after the actual
 +        // delivered immediate dose (insulinAfterConstraints — carbs/BG/etc only, since protein/fat are
-+        // excluded from it) joined the pool. A lot of SMBs firing between now and each one's own
-+        // +120/+180min delivery point can already cover much of the anticipated protein/fat-driven rise —
-+        // see scheduleSingleDelayedDose.
++        // excluded from it) joined the pool. A lot of SMBs firing between now and any one of the series'
++        // own delivery points can already cover much of the anticipated protein/fat-driven rise — see
++        // scheduleSingleDelayedDose. Shared across every sub-dose (not recomputed per-dose) since it's
++        // meant to capture the state right after the immediate bolus, once, not drift as the series runs.
 +        val iobBaselineForDelayedDoses = iobBeforeFirstDose + insulinAfterConstraints
-+        // Protein: one single dose at +120min. Decoupled from manualSplitBolusEnabled (the "Split bolus
-+        // every" checkbox) entirely — fires whenever protein was entered, regardless of whether
-+        // carb-splitting is enabled/needed for this bolus — its own amount, its own timing, its own gate.
-+        // Still requires schedulingPct >= 100, same reasoning as carb-splits: at any other percentage the
-+        // carb-equivalent this amount was computed from no longer reflects reality.
-+        if (!proteinDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromProteinOnly > 0.0) {
-+            proteinDoseScheduled = true
-+            aapsLogger.info(LTag.CORE, "DelayedDose(protein): scheduling ${insulinFromProteinOnly}U at +120min, BG- and IOBdelta-gated")
-+            scheduleSingleDelayedDose(insulinFromProteinOnly, 120, "protein", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-+            totalProjectedFutureSplitDoses += insulinFromProteinOnly
-+            noteDetails.add("protein ${decimalFormatter.to2Decimal(insulinFromProteinOnly)}U at +120min")
-+        }
-+        // Fat: one single dose at +180min. Same decoupling/preconditions as protein above — fully
-+        // independent of the carb-split schedule and of protein's own dose.
-+        if (!fatDoseScheduled && !superBolusActive && schedulingPct >= 100 && insulinFromFatOnly > 0.0) {
-+            fatDoseScheduled = true
-+            aapsLogger.info(LTag.CORE, "DelayedDose(fat): scheduling ${insulinFromFatOnly}U at +180min, BG- and IOBdelta-gated")
-+            scheduleSingleDelayedDose(insulinFromFatOnly, 180, "fat", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
-+            totalProjectedFutureSplitDoses += insulinFromFatOnly
-+            noteDetails.add("fat ${decimalFormatter.to2Decimal(insulinFromFatOnly)}U at +180min")
++        // Combined protein+fat Warsaw-FPU series: see warsawFpuPlan()'s own doc comment for why this is
++        // ONE combined plan (shared duration from combined FPU) rather than protein and fat each on
++        // their own fixed +120min/+180min timer as before 2026-09-12. Decoupled from
++        // manualSplitBolusEnabled (the "Split bolus every" checkbox) entirely — fires whenever protein
++        // or fat was entered, regardless of whether carb-splitting is enabled/needed for this bolus —
++        // its own amount, its own timing, its own gate. Still requires schedulingPct >= 100, same
++        // reasoning as carb-splits: at any other percentage the carb-equivalent this amount was computed
++        // from no longer reflects reality. Each sub-dose is independently BG- and IOBdelta-gated, AT ITS
++        // OWN delivery time, by scheduleSingleDelayedDose() — same mechanism as before, just called
++        // numDoses times instead of once each for protein/fat.
++        warsawFpuPlan()?.let { plan ->
++            if (!fpuDoseScheduled && !superBolusActive && schedulingPct >= 100) {
++                fpuDoseScheduled = true
++                aapsLogger.info(
++                    LTag.CORE,
++                    "DelayedDose(fpu): FPU=${plan.fpu} duration=${plan.durationMinutes}min split into " +
++                        "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose"
++                )
++                for (i in 1..plan.numDoses) {
++                    val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
++                    else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
++                    scheduleSingleDelayedDose(plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
++                }
++                totalProjectedFutureSplitDoses += plan.totalInsulin
++                noteDetails.add(
++                    "protein+fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
++                        "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
++                )
++            }
 +        }
 +        // Single combined CarePortal note marking that split/protein/fat dosing was just scheduled, with
 +        // the total amount still to come (e.g. "S1.30") — separate from each individual part's own
@@ -1233,18 +1330,21 @@ index 811cd2a..3ad2899 100644
 +        }, delayMs)
 +    }
 +
-+    // Protein's/fat's single fixed-time delayed dose (see the call sites, +120min/+180min respectively).
-+    // Gated at delivery time on the SAME combined criteria as carb splits: not cancelled (stop press or
++    // One single fixed-time delayed dose. Called once per carb-split residual part, and once per
++    // sub-dose of the combined protein+fat Warsaw-FPU series (see scheduleSplitProteinFatDoses()/
++    // warsawFpuPlan() — a meal with real fat/protein calls this several times, spread across the
++    // FPU-scaled duration, each an entirely independent call with its own delayMins/label). Gated at
++    // delivery time on the SAME combined criteria as carb splits: not cancelled (stop press or
 +    // superseded by a newer entry), profile% still >=100, pump not suspended, superbolus not active, and
-+    // the live BG safety check — any failure skips this one dose entirely (no retry, since there's only
-+    // ever this one delivery for this contribution).
++    // the live BG safety check — any failure skips THIS ONE call's dose only (no retry; a sibling
++    // sub-dose later in the same series still gets its own independent check).
 +    //
 +    // Dose sizing is ALSO IOB-delta reduced, same principle as scheduleReducedPartsSplitBolus: a lot of
 +    // SMBs (or anything else) firing between now and this delivery point may have already covered much of
 +    // the anticipated protein/fat-driven rise, so iobBaseline (IOB right after the immediate dose was
-+    // delivered — shared by both protein's and fat's own call, see the call site) is compared against the
++    // delivered — shared across every call in the series, see the call site) is compared against the
 +    // live IOB at delivery time; only a genuine rise reduces the dose, and dropping to <=0 cancels it
-+    // entirely (no partial delivery, no retry).
++    // entirely (no partial delivery, no retry) — for just this call, other sub-doses are unaffected.
 +    private fun scheduleSingleDelayedDose(
 +        dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
 +        deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs()
@@ -1329,10 +1429,10 @@ index 811cd2a..3ad2899 100644
          if (eCarbsYesNo == QuickWizardEntry.YES) {
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt
 new file mode 100644
-index 0000000..2ec354a
+index 0000000000..1111111111
 --- /dev/null
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,332 @@
 +package app.aaps.core.objects.wizard
 +
 +import android.content.Context
@@ -1374,12 +1474,10 @@ index 0000000..2ec354a
 +/**
 + * Delayed bolus (50%-profile wizard mechanism — NOT the equal-parts split bolus):
 + * after a wizard bolus on the 50% profile, re-checks BG every 10 min from 10 through 80
-+ * minutes and delivers the remaining gap once glucose criteria confirm a rise — × 90% if
-+ * confirmed within 20 min, × 50% if confirmation only comes later (deliberately blunt:
-+ * fullRequired's IOB deduction is a frozen snapshot from the original wizard calculation,
-+ * not re-read live, so the later confirmation lands the less that deduction still reflects
-+ * actual current IOB — the reduced multiplier is a flat safety margin for that staleness,
-+ * not a recalculation).
++ * minutes and delivers the remaining gap once glucose criteria confirm a rise.
++ * Still moving now (S30>=200, S5 OR watch only): keep MOVING_PERCENT (70) of the
++ * remaining gap. Seated: deliver the full remaining gap toward standing wiz%.
++ * No elapsed-time 90/50 haircut.
 + * Formerly named SplitBolusWorker; renamed to keep the two mechanisms unmistakable.
 + *
 + * Fixed 2026-08-26: this worker and the closed loop's own dosing (SMBs, temp basals) are two
@@ -1405,7 +1503,7 @@ index 0000000..2ec354a
 + *    carbs gap shrinks with it, independent of anything IOB-side. 1.0 = essentially nothing
 + *    absorbed yet, 0.0 = fully absorbed (no further dose warranted on carb grounds alone).
 + * The two apply in sequence: iobDelta reduces the raw gap first, then cobFraction scales what's
-+ * left, before the existing 90%/50% time multiplier.
++ * left, then the live S30 seated/moving multiplier.
 + */
 +class DelayedBolusWorker(
 +    context: Context,
@@ -1473,7 +1571,8 @@ index 0000000..2ec354a
 +            "Full required ${Round.roundTo(fullRequired, 0.01)}U - initial ${Round.roundTo(originalDose, 0.01)}U " +
 +            "- IOB cover ${Round.roundTo(iobDelta, 0.01)}U = ${Round.roundTo(gapAfterIob, 0.01)}U\n" +
 +            "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
-+            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; late factor $multiplierPct%\n" +
++            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; " +
++            "${if (multiplier < 1.0) "still moving" else "seated"} $multiplierPct%\n" +
 +            "Delayed sequence complete; no residual pending"
 +        persistenceLayer.insertOrUpdateBolusCalculatorResult(
 +            BCR(
@@ -1600,11 +1699,10 @@ index 0000000..2ec354a
 +
 +            val gapAfterIob = (fullRequired - originalDose - iobDelta).coerceAtLeast(0.0)
 +            val rawDose = gapAfterIob * cobFraction
-+            // Flat time-based cut, not a live recalculation (see class doc): confirmation within
-+            // 20 min uses the normal 90%; later confirmation — where fullRequired's frozen IOB
-+            // deduction has had longer to go stale — drops to a more conservative 50%.
 +            val elapsedMin = attempt * 10
-+            val multiplier = if (elapsedMin > 20) 0.50 else 0.90
++            val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)
++            // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 70%.
++            val multiplier = if (movingNow) WizardActivitySteps.MOVING_PERCENT / 100.0 else 1.0
 +            val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
 +            if (delayedDose <= 0.0) {
 +                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
@@ -1612,7 +1710,7 @@ index 0000000..2ec354a
 +                unblockSmb("covered by IOB/COB check")
 +                return Result.success()
 +            }
-+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} gap=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}%)")
++            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U iobDelta=${Round.roundTo(iobDelta, 0.01)}U cobFraction=${Round.roundTo(cobFraction, 0.01)} gap=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
 +            addCheckNote("$dbLabel ${delayedDose}U")
 +            unblockSmb("delivering")
 +            DetailedBolusInfo().apply {
@@ -1668,7 +1766,7 @@ index 0000000..2ec354a
 +    }
 +}
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
-index fd34e33..c71e792 100644
+index fd34e33415..c71e792e94 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 @@ -147,7 +147,7 @@ class QuickWizardEntry @Inject constructor(
@@ -1706,7 +1804,7 @@ index fd34e33..c71e792 100644
 +    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
  }
 diff --git a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
-index c78699c..e93794b 100644
+index c78699cf99..e93794bf80 100644
 --- a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
 +++ b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
 @@ -369,7 +369,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
@@ -1725,7 +1823,7 @@ index c78699c..e93794b 100644
          aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
          consoleError.clear()
 diff --git a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
-index 0b49c91..4b36baa 100644
+index 0b49c91940..4b36baa2c5 100644
 --- a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
 +++ b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt
 @@ -97,7 +97,9 @@ import app.aaps.core.objects.extensions.directionToIcon
@@ -1869,7 +1967,7 @@ index 0b49c91..4b36baa 100644
          }
  
 diff --git a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
-index cb83395..5823f02 100644
+index cb833955b6..5823f0282a 100644
 --- a/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
 +++ b/plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewPlugin.kt
 @@ -314,6 +314,7 @@ class OverviewPlugin @Inject constructor(
@@ -1882,7 +1980,7 @@ index cb83395..5823f02 100644
                  key = "overview_advanced_settings"
 diff --git a/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml b/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml
 new file mode 100644
-index 0000000..d6c9ce1
+index 0000000000..1111111111
 --- /dev/null
 +++ b/plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml
 @@ -0,0 +1,53 @@
@@ -1940,7 +2038,7 @@ index 0000000..d6c9ce1
 +
 +</LinearLayout>
 diff --git a/plugins/main/src/main/res/values/strings.xml b/plugins/main/src/main/res/values/strings.xml
-index be532e9..266fbec 100644
+index be532e9823..266fbecb7c 100644
 --- a/plugins/main/src/main/res/values/strings.xml
 +++ b/plugins/main/src/main/res/values/strings.xml
 @@ -271,6 +271,12 @@
@@ -1957,7 +2055,7 @@ index be532e9..266fbec 100644
      <string name="enable_bolus_advisor_summary">Use reminder to start eating later instead of wizard result during high glycemia ("pre-bolus")</string>
      <string name="enablesuperbolus">Enable superbolus in wizard</string>
 diff --git a/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt b/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
-index 8eadb30..7741a24 100644
+index 8eadb305eb..7741a24393 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/activities/QuickWizardListActivity.kt
 @@ -23,7 +23,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
@@ -2004,7 +2102,7 @@ index 8eadb30..7741a24 100644
                              wizard.confirmAndExecute(it.context, quickWizardEntry)
                          }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt b/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
-index 8132f60..9128dd7 100644
+index 8132f60480..9128dd7802 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt
 @@ -24,6 +24,7 @@ import app.aaps.core.data.ue.Sources
@@ -2026,7 +2124,7 @@ index 8132f60..9128dd7 100644
                      ml.bolus?.let { bolus ->
                          disposable += persistenceLayer.invalidateBolus(
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
-index b5a12e4..8a39e61 100644
+index b5a12e4db5..8a39e61e2c 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt
 @@ -69,6 +69,7 @@ class BolusProgressDialog : DaggerDialogFragment() {
@@ -2038,7 +2136,7 @@ index b5a12e4..8a39e61 100644
              binding.stop.visibility = View.INVISIBLE
              uel.log(Action.CANCEL_BOLUS, Sources.Overview, BolusProgressData.status)
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
-index ec8a60f..101b052 100644
+index ec8a60f48e..101b052e43 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
 @@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
@@ -2064,7 +2162,7 @@ index ec8a60f..101b052 100644
                          })
                      }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
-index 746aa6c..135175b 100644
+index 746aa6c41f..135175b803 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt
 @@ -124,6 +124,9 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
@@ -2116,7 +2214,7 @@ index 746aa6c..135175b 100644
          //
      }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
-index d076ad8..6f4419f 100644
+index d076ad8c0a..6f4419f699 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt
 @@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
@@ -2144,7 +2242,7 @@ index d076ad8..6f4419f 100644
                                  }
                              })
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
-index e26414e..9a8bd7d 100644
+index e26414e000..9a8bd7d468 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
 @@ -19,6 +19,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -2186,7 +2284,7 @@ index e26414e..9a8bd7d 100644
                      }
                  })
 diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
-index 5168208..e0eb212 100644
+index 51682085fc..3339d7132f 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
 @@ -21,6 +21,7 @@ import app.aaps.core.data.model.GlucoseUnit
@@ -2205,7 +2303,15 @@ index 5168208..e0eb212 100644
  import app.aaps.core.keys.IntKey
  import app.aaps.core.keys.interfaces.Preferences
  import app.aaps.core.objects.constraints.ConstraintObject
-@@ -60,6 +62,8 @@ import java.text.DecimalFormat
+@@ -47,6 +49,7 @@ import app.aaps.core.objects.extensions.round
+ import app.aaps.core.objects.extensions.valueToUnits
+ import app.aaps.core.objects.profile.ProfileSealed
+ import app.aaps.core.objects.wizard.BolusWizard
++import app.aaps.core.objects.wizard.WizardActivitySteps
+ import app.aaps.core.ui.extensions.runOnUiThread
+ import app.aaps.core.ui.extensions.toVisibility
+ import app.aaps.core.ui.toast.ToastUtils
+@@ -60,6 +63,8 @@ import java.text.DecimalFormat
  import javax.inject.Inject
  import javax.inject.Provider
  import kotlin.math.abs
@@ -2214,7 +2320,7 @@ index 5168208..e0eb212 100644
  
  class WizardDialog : DaggerDialogFragment() {
  
-@@ -76,6 +80,7 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -76,6 +81,7 @@ class WizardDialog : DaggerDialogFragment() {
      @Inject lateinit var activePlugin: ActivePlugin
      @Inject lateinit var iobCobCalculator: IobCobCalculator
      @Inject lateinit var persistenceLayer: PersistenceLayer
@@ -2222,7 +2328,7 @@ index 5168208..e0eb212 100644
      @Inject lateinit var dateUtil: DateUtil
      @Inject lateinit var protectionCheck: ProtectionCheck
      @Inject lateinit var decimalFormatter: DecimalFormatter
-@@ -85,6 +90,8 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -85,6 +91,8 @@ class WizardDialog : DaggerDialogFragment() {
      private var queryingProtection = false
      private var wizard: BolusWizard? = null
      private var calculatedPercentage = 100
@@ -2231,7 +2337,7 @@ index 5168208..e0eb212 100644
      private var calculatedCorrection = 0.0
      private var usePercentage = false
      private var carbsPassedIntoWizard = 0.0
-@@ -94,6 +101,22 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -94,6 +102,22 @@ class WizardDialog : DaggerDialogFragment() {
      private var bolusStep = 0.0
      private var _binding: DialogWizardBinding? = null
  
@@ -2254,7 +2360,7 @@ index 5168208..e0eb212 100644
      // This property is only valid between onCreateView and onDestroyView.
      private val binding get() = _binding!!
  
-@@ -128,6 +151,8 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -128,6 +152,8 @@ class WizardDialog : DaggerDialogFragment() {
          super.onSaveInstanceState(savedInstanceState)
          savedInstanceState.putDouble("bg_input", binding.bgInput.value)
          savedInstanceState.putDouble("carbs_input", binding.carbsInput.value)
@@ -2263,7 +2369,7 @@ index 5168208..e0eb212 100644
          savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
          savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
      }
-@@ -159,6 +184,19 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -159,6 +185,19 @@ class WizardDialog : DaggerDialogFragment() {
          val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
          bolusStep = activePlugin.activePump.pumpDescription.bolusStep
  
@@ -2283,17 +2389,18 @@ index 5168208..e0eb212 100644
          if (profileFunction.getUnits() == GlucoseUnit.MGDL) {
              binding.bgInput.setParams(
                  savedInstanceState?.getDouble("bg_input")
-@@ -174,6 +212,18 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -174,6 +213,19 @@ class WizardDialog : DaggerDialogFragment() {
              savedInstanceState?.getDouble("carbs_input")
                  ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
          )
-+        // Protein, folded into insulinFromCarbs as protein/25 carb-equivalent (see BolusWizard.doCalc) — own
-+        // fixed 200g upper bound, not tied to the carbs constraint.
++        // Protein: Warsaw-FPU carb-equivalent (protein×0.4), delivered separately from insulinFromCarbs
++        // as a combined extended series with fat (see BolusWizard.warsawFpuPlan()) — own fixed 200g
++        // upper bound, not tied to the carbs constraint.
 +        binding.proteinInput.setParams(
 +            savedInstanceState?.getDouble("protein_input")
 +                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
 +        )
-+        // Fat, folded into insulinFromCarbs as fat/11 carb-equivalent (see BolusWizard.doCalc) — same fixed
++        // Fat: Warsaw-FPU carb-equivalent (fat×0.9), same treatment as protein above — same fixed
 +        // 200g upper bound as protein.
 +        binding.fatInput.setParams(
 +            savedInstanceState?.getDouble("fat_input")
@@ -2302,14 +2409,14 @@ index 5168208..e0eb212 100644
  
          // If there is no BG using % lower that 100% leads to high BGs
          // because loop doesn't add missing insulin
-@@ -214,6 +264,16 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -214,6 +266,16 @@ class WizardDialog : DaggerDialogFragment() {
          calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
          binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
          binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
 +
-+        // Walking Soon default: some movement (steps60>100) AND BGL<6.0, not rising fast.
-+        // Sitting still never pre-ticks. Manual tick covers "walking soon" while quiet.
-+        // Re-applied from calculateInsulin when carbs/BG change, unless the user touched the box.
++        // Walking Soon default: S30 moving (S5 OR watch only) AND BGL<6.0, not rising fast.
++        // Leftover S60 does not pre-tick (10 Sep plane meal). Manual tick still covers
++        // "about to walk" while quiet. Re-applied from calculateInsulin unless the user touched the box.
 +        applyWalkingSoonDefault(
 +            carbs = (savedInstanceState?.getDouble("carbs_input") ?: carbsPassedIntoWizard).toInt(),
 +            protein = savedInstanceState?.getDouble("protein_input")?.toInt() ?: 0,
@@ -2319,7 +2426,7 @@ index 5168208..e0eb212 100644
          // ok button
          binding.okcancel.ok.setOnClickListener {
              if (okClicked) {
-@@ -221,6 +281,11 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -221,6 +283,11 @@ class WizardDialog : DaggerDialogFragment() {
              } else {
                  okClicked = true
                  calculateInsulin()
@@ -2331,7 +2438,7 @@ index 5168208..e0eb212 100644
                  context?.let { context ->
                      wizard?.confirmAndExecute(context)
                  }
-@@ -245,6 +310,10 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -245,6 +312,10 @@ class WizardDialog : DaggerDialogFragment() {
          binding.iobCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
          binding.bgTrendCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
          binding.sbCheckbox.setOnCheckedChangeListener(::onCheckedChanged)
@@ -2342,7 +2449,7 @@ index 5168208..e0eb212 100644
  
          val showCalc = preferences.get(BooleanKey.WizardCalculationVisible)
          binding.delimiter.visibility = showCalc.toVisibility()
-@@ -294,6 +363,8 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -294,6 +365,8 @@ class WizardDialog : DaggerDialogFragment() {
      private fun setA11yLabels() {
          binding.bgInputLabel.labelFor = binding.bgInput.editTextId
          binding.carbsInputLabel.labelFor = binding.carbsInput.editTextId
@@ -2351,7 +2458,7 @@ index 5168208..e0eb212 100644
          binding.correctionInputLabel.labelFor = binding.correctionInput.editTextId
          binding.carbTimeInputLabel.labelFor = binding.carbTimeInput.editTextId
      }
-@@ -305,6 +376,10 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -305,6 +378,10 @@ class WizardDialog : DaggerDialogFragment() {
  
      override fun onDestroy() {
          super.onDestroy()
@@ -2362,25 +2469,23 @@ index 5168208..e0eb212 100644
          disposable.clear()
          handler.removeCallbacksAndMessages(null)
          handler.looper.quitSafely()
-@@ -423,6 +498,48 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -423,6 +500,46 @@ class WizardDialog : DaggerDialogFragment() {
          }
      }
  
-+    // steps60>100 = some movement (Usual2 / UsuIP band), not the 1000 sustained-walk cutoff.
-+    // AND BGL<6.0 (29 Aug intention). Not rising fast. Quiet meals stay off. carbs/protein/fat
-+    // unused here; kept so calculateInsulin can re-apply when those fields change. Manual
-+    // tick/untick wins for the rest of the dialog.
++    // S30>=200 = moving (WizardActivitySteps; S5>=100 is OR watch-only). S15 unused. Leftover
++    // S60 never counts. AND BGL<6.0, not rising fast. Quiet / seated meals stay off.
++    // carbs/protein/fat unused here; kept so calculateInsulin can re-apply when those fields
++    // change. Manual tick/untick wins for the rest of the dialog.
 +    @Suppress("UNUSED_PARAMETER")
 +    private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean {
-+        val recentSteps60 = persistenceLayer.getStepsCountFromTimeToTime(dateUtil.now() - T.mins(60).msecs(), dateUtil.now())
-+            .maxByOrNull { it.timestamp }?.steps60min ?: 0
 +        val gs = glucoseStatusProvider.getGlucoseStatusData()
 +        val notRisingFast = (gs?.delta ?: 0.0) <= 0.9 /* +0.05 mmol/5min */
-+        val someMovement = recentSteps60 > 100
++        val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
 +        val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
 +        else gs?.glucose ?: 999.0
 +        val low = bgMgdl < 108.1 /* 6.0 mmol */
-+        return someMovement && low && notRisingFast
++        return movingNow && low && notRisingFast
 +    }
 +
 +    private fun applyWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double) {
@@ -2448,7 +2553,7 @@ index 5168208..e0eb212 100644
                  val carbsText = if (carbsAfterConstraint > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsAfterConstraint).formatColor(
                      context, rh, app.aaps.core.ui.R.attr
                          .carbsColor
-@@ -534,12 +661,73 @@ class WizardDialog : DaggerDialogFragment() {
+@@ -534,12 +661,71 @@ class WizardDialog : DaggerDialogFragment() {
                  binding.total.text = HtmlHelper.fromHtml(rh.gs(R.string.result_insulin_carbs, insulinText, carbsText))
                  binding.okcancel.ok.visibility = View.VISIBLE
              } else {
@@ -2503,20 +2608,18 @@ index 5168208..e0eb212 100644
 +                splitBolusInitialized = false
 +            }
 +
-+            // Protein's/fat's own projected delayed doses (see BolusWizard's scheduleSingleDelayedDose) —
-+            // independent of carb-splitting above, shown whenever either amount is present. Projected
-+            // amounts are the FULL pre-IOB-delta figures; the actual delivered amount at 2h/3h may end up
-+            // lower (or the dose skipped entirely) depending on how much IOB has risen by then.
-+            if (wizard.insulinFromProteinOnly > 0.0 || wizard.insulinFromFatOnly > 0.0) {
-+                val infoText = when {
-+                    wizard.insulinFromProteinOnly > 0.0 && wizard.insulinFromFatOnly > 0.0 ->
-+                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U and Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 2 and 3 hours, less IOB rise"
-+                    wizard.insulinFromProteinOnly > 0.0 ->
-+                        "Protein ${decimalFormatter.to2Decimal(wizard.insulinFromProteinOnly)}U split at 2 hours, less IOB rise"
-+                    else ->
-+                        "Fat ${decimalFormatter.to2Decimal(wizard.insulinFromFatOnly)}U split at 3 hours, less IOB rise"
-+                }
-+                binding.proteinFatDelayInfo.text = infoText
++            // Combined protein+fat Warsaw-FPU series preview (see BolusWizard.warsawFpuPlan() — this
++            // calls that SAME function rather than re-deriving the FPU/duration formula here, so this
++            // preview can't drift out of sync with the real schedule). Projected amounts are the FULL
++            // pre-IOB-delta figures; the actual delivered total across the series may end up lower (or
++            // individual sub-doses skipped entirely) depending on how much IOB has risen by each one's
++            // own delivery time.
++            val fpuPlan = wizard.warsawFpuPlan()
++            if (fpuPlan != null) {
++                val hours = fpuPlan.durationMinutes / 60.0
++                binding.proteinFatDelayInfo.text =
++                    "Protein+Fat ${decimalFormatter.to2Decimal(fpuPlan.totalInsulin)}U over ${decimalFormatter.to2Decimal(hours)}h " +
++                        "(${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)}), less IOB rise"
 +                binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
 +            } else {
 +                binding.proteinFatDelayInfo.visibility = android.view.View.GONE
@@ -2525,7 +2628,7 @@ index 5168208..e0eb212 100644
  
      }
 diff --git a/ui/src/main/res/layout/dialog_edit_quickwizard.xml b/ui/src/main/res/layout/dialog_edit_quickwizard.xml
-index 4d64fb7..03bac65 100644
+index 4d64fb7856..03bac65eed 100644
 --- a/ui/src/main/res/layout/dialog_edit_quickwizard.xml
 +++ b/ui/src/main/res/layout/dialog_edit_quickwizard.xml
 @@ -435,6 +435,52 @@
@@ -2582,7 +2685,7 @@ index 4d64fb7..03bac65 100644
  
          <TableLayout
 diff --git a/ui/src/main/res/layout/dialog_wizard.xml b/ui/src/main/res/layout/dialog_wizard.xml
-index 36e9c0e..bf5adf4 100644
+index 36e9c0ebf5..d7046b5ca2 100644
 --- a/ui/src/main/res/layout/dialog_wizard.xml
 +++ b/ui/src/main/res/layout/dialog_wizard.xml
 @@ -75,6 +75,121 @@
@@ -2686,7 +2789,7 @@ index 36e9c0e..bf5adf4 100644
 +                android:id="@+id/walking_soon_checkbox"
 +                android:layout_width="wrap_content"
 +                android:layout_height="wrap_content"
-+                android:text="Walking soon (50% now, rest later if needed)"
++                android:text="Walking soon (70% now if ticked, rest later if needed)"
 +                android:textAppearance="?android:attr/textAppearanceSmall"
 +                tools:ignore="HardcodedText" />
 +
