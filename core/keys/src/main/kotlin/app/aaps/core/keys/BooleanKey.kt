@@ -172,6 +172,11 @@ enum class BooleanKey(
     // and either falling or a fresh pod), since the boost itself needs to actually stop being applied,
     // not just stop re-notifying. Not shown in any preference screen.
     ApsAutoIsfOldPodInsReqBoostActive("autoisf_old_pod_insreq_boost_active", false, defaultedBySM = true, exportable = false),
+    // Added 2026-09-13: true while StuckHighTierC's Standard+Low role escalation (OpenAPSAutoISFPlugin.kt,
+    // triggered by StuckHighRescue or PoorResponseRescueStage2) is in effect -- see
+    // ApsAutoIsfStuckHighTierCPrevStandardRole/PrevLowRole (StringKey.kt) for the role assignments it
+    // will revert to. Not shown in any preference screen.
+    ApsAutoIsfStuckHighTierCActive("autoisf_stuckhigh_tierc_active", false, defaultedBySM = true, exportable = false),
     // Real-pump phone latch for its low-storage alert/SMS/NS Note. It prevents one set per APS cycle;
     // re-armed only after that phone's storage recovers above the hysteresis threshold.
     ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, defaultedBySM = true, exportable = false),

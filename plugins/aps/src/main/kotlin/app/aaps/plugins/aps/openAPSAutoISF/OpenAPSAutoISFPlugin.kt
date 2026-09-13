@@ -734,6 +734,42 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         )
     }
 
+    // Added 2026-09-13, per explicit request: escalate BOTH the Standard and Low ROLE ASSIGNMENTS to
+    // their own TierC rung (Standard110 / Low90) when StuckHighRescue (either branch) or
+    // PoorResponseRescueStage2 fires -- on top of whatever ratio/TT change that automation already
+    // makes -- for a genuinely unusual, hard-to-correct high. Deliberately escalates the ROLE ASSIGNMENT
+    // itself (ApsAutoIsfStandardProfileName / ApsAutoIsfLowProfileName), not just a one-off switch of
+    // the currently running profile: every other automation in this file that resolves "the current
+    // Standard/Low profile" reads those same two prefs, so once they point at Standard110/Low90 every
+    // one of those call sites -- including a day/night role-swap (MorningRoleSwapHigh/Normal) that fires
+    // WHILE this is active -- naturally lands on the escalated rung of whichever role becomes current,
+    // with no need for this automation to fight them every cycle the way a raw switchProfileIfNeeded()
+    // override would. Structured like resetStandardAndLowTiersToA (same currentProfileName/currentLow/
+    // currentStandard matching to decide which target to switch to immediately), but escalating to rung
+    // 2 instead of resetting to rung 0, and remembering the PRIOR role assignments (whatever rung they
+    // actually were, not assumed to be TierA) so the revert (StuckHighTierC run{} block, BG<7.5mmol)
+    // restores exactly that. A re-fire while already active is a no-op -- the captured prior roles must
+    // stay the ORIGINAL pre-escalation ones across repeated fires, not get overwritten by an intermediate
+    // (already-escalated) state.
+    private fun escalateToStuckHighTierC() {
+        if (preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return
+        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow90ProfileName, StringKey.ApsAutoIsfLowProfileName)
+        val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard110ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+        if (targetLow.isBlank() || targetStandard.isBlank()) return
+        val currentProfileName = profileFunction.getProfileName()
+        preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole, currentLow)
+        preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole, currentStandard)
+        preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
+        preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
+        if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
+        else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
+        applyRoleTierDeliveryNudge(roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow)), 1)
+        preferences.put(BooleanKey.ApsAutoIsfStuckHighTierCActive, true)
+        addCarePortalNote("STCOn") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
+    }
+
     // Added 2026-08-30: resolves a fine-grained tier (e.g. Standard110, Low80) down to a real profile
     // name, falling back to its base role (baseRoleKey -- ApsAutoIsfStandardProfileName or
     // ApsAutoIsfLowProfileName) whenever the tier itself hasn't been explicitly re-picked yet (blank by
@@ -5209,6 +5245,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
                         setSmbDeliveryRatio(boosted)
                         startTempTargetIfNeeded(targetBg, 30)
+                        escalateToStuckHighTierC()
                         sendSms("StuckHighRescue [ratio]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} SMBdel -> ${round(boosted, 2)}")
                         addCarePortalNote("SHRto")
                         markRun("StuckHighRescue")
@@ -5219,6 +5256,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // elsewhere in this file), for 30 min.
                     val rescueTargetMgdl = (targetBg - 36.0 /* 2.0 mmol */).coerceAtLeast(72.1 /* 4.0 mmol */)
                     startTempTargetIfNeeded(rescueTargetMgdl, 30)
+                    escalateToStuckHighTierC()
                     sendSms("StuckHighRescue [target]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} target=${round(targetMmol, 1)} -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol 30min")
                     addCarePortalNote("SHTgt")
                     markRun("StuckHighRescue")
@@ -5310,10 +5348,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val rescueTargetMgdl = (targetBg - 36.0 /* 2.0 mmol */).coerceAtLeast(72.1 /* 4.0 mmol */)
                 setSmbDeliveryRatio(boosted)
                 startTempTargetIfNeeded(rescueTargetMgdl, 30)
+                escalateToStuckHighTierC()
                 sendSms("PoorResponseRescue [stage2]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}, target -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol")
                 addCarePortalNote("PRR2")
                 markRun("PoorResponseRescueStage2")
             }
+        }
+
+        // --- StuckHighTierC: added 2026-09-13, per explicit request. Owns the revert side of
+        // escalateToStuckHighTierC() (see that function's own doc comment for the activation side,
+        // called from both StuckHighRescue branches above and PoorResponseRescueStage2 above). Runs
+        // every cycle, unthrottled -- the revert check must never wait behind a readyToRun() throttle,
+        // since it is this automation's only defence against outliving the high it was escalated for.
+        // No ongoing per-cycle reassert is needed here (unlike OldPodInsReqBoost's own reassert): once
+        // escalateToStuckHighTierC() has pointed ApsAutoIsfStandardProfileName/ApsAutoIsfLowProfileName
+        // themselves at Standard110/Low90, every OTHER automation that resolves "the current Standard/
+        // Low profile" already reads those same, now-escalated prefs -- there is nothing left in this
+        // file that would silently revert the escalation out from under this latch the way OldPod's
+        // reassert has to guard against.
+        //
+        // Revert condition is BG<7.5mmol alone (no falling/delta requirement, unlike OldPodInsReqBoost's
+        // own revert) -- 7.5mmol is comfortably above any hypo range, so this reverts well before a
+        // genuine fast fall could ever reach a level where fighting a real hypo-protection automation's
+        // own role choice would matter (and if one of those DOES reassign a role pref first, that is a
+        // more urgent, deliberate override this automation should not fight -- see escalateToStuckHigh-
+        // TierC's own early-return-if-already-active guard, which makes a stale re-fire here harmless).
+        // Restores whichever rung Standard/Low were ACTUALLY on before escalation (not assumed TierA),
+        // and reverses the same TierB/C delivery-nudge coupling MorningRoleSwap/resetStandardAndLowTiersToA
+        // use, computed against the RESTORED rung so reverting from TierC back to an already-elevated
+        // TierB (rather than all the way to TierA) correctly stays a no-op nudge.
+        run {
+            if (!preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return@run
+            val g = glucoseStatus.glucose
+            if (g >= 135.1 /* 7.5 mmol */) return@run
+            val escalatedLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            val restoredLow = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole)
+            val restoredStandard = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole)
+            val currentProfileName = profileFunction.getProfileName()
+            if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
+            if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
+            if (currentProfileName == escalatedLow && restoredLow.isNotBlank()) switchProfileIfNeeded(restoredLow)
+            else if (currentProfileName == escalatedStandard && restoredStandard.isNotBlank()) switchProfileIfNeeded(restoredStandard)
+            applyRoleTierDeliveryNudge(1, roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard, restoredLow)))
+            preferences.put(BooleanKey.ApsAutoIsfStuckHighTierCActive, false)
+            preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole, "")
+            preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole, "")
+            sendSms("StuckHighTierC off: BGL ${round(g / 18.0182, 1)} -> Standard=$restoredStandard Low=$restoredLow")
+            addCarePortalNote("STCOf") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
         }
 
         // --- NightFrSkip: one-shot 1–2 cycle FastRise skip inside the 00:30-04:00 0.6U/10min cap ---

@@ -116,6 +116,18 @@ enum class StringKey(
     ApsAutoIsfLow70ProfileName("autoisf_low70_profile_name", ""),
     ApsAutoIsfLow80ProfileName("autoisf_low80_profile_name", ""),
     ApsAutoIsfLow90ProfileName("autoisf_low90_profile_name", ""),
+    // Added 2026-09-13 for StuckHighTierC (OpenAPSAutoISFPlugin.kt): the Standard/Low ROLE ASSIGNMENTS
+    // (ApsAutoIsfStandardProfileName / ApsAutoIsfLowProfileName themselves, not just the one profile
+    // that happened to be running) as they stood the moment StuckHighRescue/PoorResponseRescueStage2
+    // first escalated BOTH ladders to their TierC rung (Standard110/Low90) -- captured once so the later
+    // revert (BG<7.5mmol) restores exactly those role assignments, whichever rung they were actually on,
+    // rather than hard-resetting to TierA like resetStandardAndLowTiersToA does. Escalating the role
+    // assignment itself (not just switching the running profile) means a day/night role-swap that fires
+    // WHILE this is active still lands on the escalated rung of whichever role becomes current, instead
+    // of this automation having to fight that swap every cycle. Both blank whenever no escalation is in
+    // flight. Not shown in any preference screen.
+    ApsAutoIsfStuckHighTierCPrevStandardRole("autoisf_stuckhigh_tierc_prev_standard_role", "", defaultedBySM = true, exportable = false),
+    ApsAutoIsfStuckHighTierCPrevLowRole("autoisf_stuckhigh_tierc_prev_low_role", "", defaultedBySM = true, exportable = false),
     // Added 2026-09-11: holds the StringKey.key of whichever Standard/Low role (base or tier) matched
     // the profile a temporary percentage reduction (startProfilePercentFor) was just started against --
     // blank if none matched. Consumed (read then cleared) by applyCurrentProfileAt100() when the
