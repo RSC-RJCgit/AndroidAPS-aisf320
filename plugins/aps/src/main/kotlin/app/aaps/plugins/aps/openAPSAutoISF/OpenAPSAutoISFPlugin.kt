@@ -5181,7 +5181,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val targetMmol = targetBg / 18.0182
             val hp = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iob, cob, bgAcce)
 
-            val highEnough = g >= 162.2 /* 9.0 mmol */
+            // Lowered 9.0->8.5mmol (2026-09-13, per explicit request) after checking prior real
+            // episodes: at least two separate stretches (a different day's 07:27-07:28 AM, and a
+            // different day's 08:58 PM-09:00 PM) showed FastRise already actively capping and HP2
+            // already >6.5 with IOB well under the ceiling, but BG sat at 8.7-8.8mmol -- just under
+            // the old 9.0 bar -- so this automation stayed silent through exactly the window it exists
+            // for, only engaging once BG happened to cross 9.0 a bit later in each episode.
+            val highEnough = g >= 153.1 /* 8.5 mmol */
             val iobRoomLeft = iob < 0.30 * maxIob
             val eligible = highEnough && iobRoomLeft && hp != null
 
