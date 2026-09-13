@@ -164,7 +164,7 @@ class OverviewDataImpl @Inject constructor(
     override fun initRange() {
         rangeToDisplay = preferences.get(IntNonKey.RangeToDisplay)
 
-        // True rolling window ending at "now" (rounded UP to the next 5-minute mark, plus the same
+        // True rolling window ending at "now" (rounded UP to the next 1-minute mark, plus the same
         // small GraphView-rounding pad the previous version used) -- NOT the next full clock hour.
         //
         // Previously toTime was anchored to the next full clock hour (e.g. 15:00 for anything requested
@@ -175,12 +175,21 @@ class OverviewDataImpl @Inject constructor(
         // before. On the 1h scale this meant recent-data visibility could shrink to almost nothing right
         // after an hour boundary — confirmed 2026-09-13 per user report — and the same reset happened,
         // proportionally less severely, on every other scale (3h/6h/12h/18h/24h) too. Rounding to 5
-        // minutes instead of a full hour keeps the original design's intent (round numbers, so the
-        // window doesn't visibly jitter left/right by a few seconds on every refresh) while shrinking
-        // the worst-case reset gap from up to 59 minutes down to at most 5.
+        // minutes instead of a full hour (this file's first fix, same day) kept the original design's
+        // intent (round numbers, so the window doesn't visibly jitter left/right by a few seconds on
+        // every refresh) while shrinking the worst-case reset gap from up to 59 minutes down to at most
+        // 5 -- but OverviewFragment.updateGraph() (called from the 60-second refreshLoop, see that
+        // file's own doc comment) re-anchors this window every 60 seconds regardless, so nothing was
+        // actually relying on a 5-minute rounding grid to avoid jitter -- a 1-minute grid matches that
+        // refresh cadence exactly and still doesn't jitter. On the 1h scale a reserved-for-the-future
+        // margin of up to 5 minutes is ~8% of the visible width and reads as the graph going "mostly
+        // blank" right after each redraw until real data catches up to it — confirmed 2026-09-13 per a
+        // second, same-day user report specifically about the 1h view. Rounding to 1 minute cuts that
+        // worst-case blank margin down to at most 1 minute (~1.7% of a 1h window), without reintroducing
+        // any of the old full-hour reset behaviour.
         val nowMs = System.currentTimeMillis()
-        val fiveMinMs = T.mins(5).msecs()
-        val roundedUpToNow = ((nowMs / fiveMinMs) + 1) * fiveMinMs
+        val roundingGridMs = T.mins(1).msecs()
+        val roundedUpToNow = ((nowMs / roundingGridMs) + 1) * roundingGridMs
 
         toTime = roundedUpToNow + 100000 // a little bit more to avoid wrong rounding - GraphView specific
         fromTime = toTime - T.hours(rangeToDisplay.toLong()).msecs()
