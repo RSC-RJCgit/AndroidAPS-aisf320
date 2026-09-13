@@ -226,13 +226,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // line always shows *something* -- last engagement time/IOB/factor if it's ever fired, "never" if
     // not -- rather than only appearing on the cycle it actually engages and being silent/absent the
     // rest of the time.
-    // PoorResponseRescue's dose anchor: timestamp + BG of the most recent >=0.6U BolusGiven/BMild/
-    // UamBst delivery, latched every cycle from autoIsfValues.smbDelivered/.timestamp (same one-cycle-
-    // stale carry-forward pattern as bgAcce/lastAcceIsf/lastCycleInsulinReq above -- smbDelivered for
-    // THIS cycle isn't known until after determine_basal() returns, so automations running before it
-    // next cycle see last cycle's value). 0L = no qualifying dose latched yet.
+    // PoorResponseRescue's dose anchor: timestamp + BG + SDelta of the most recent >=0.6U
+    // BolusGiven/BMild/UamBst delivery (not any 0.6U SMB). Latched every cycle from last cycle's
+    // autoIsfValues.smbDelivered/.timestamp (same one-cycle-stale carry-forward as bgAcce/
+    // lastAcceIsf/lastCycleInsulinReq -- smbDelivered for THIS cycle isn't known until after
+    // determine_basal() returns). 0L = no qualifying dose latched yet. lastBigDoseSDeltaMgdl is
+    // the shortAvgDelta at latch time, for the Stage 1/2 "no deceleration" check.
     private var lastBigDoseTimestamp: Long = 0L
     private var lastBigDoseBgMgdl: Double = 0.0
+    private var lastBigDoseSDeltaMgdl: Double = 0.0
     private var lastDuraTaperTimestamp: Long = 0L
     private var lastDuraTaperInfo: String = ""
     // TodOffsetsZero's own sustained-duration tracking -- see that block's doc comment. 0L means "not
@@ -5259,23 +5261,40 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // FIRST PASS, retrospective-only (one 13 Sep episode) -- every threshold here (dose bar, both
         // check windows, both rise bars, both remedy sizes) is a defensible starting estimate, not yet
         // validated against real device data. Watch real fires and retune.
+        //
+        // Latch is BMild / Giv / UamBst only (2026-09-13): smbDelivered >= 0.6 AND one of those keys
+        // marked in the last 3 min. Latch sees last cycle's SMB (this block runs before determine_basal),
+        // so 3 min is this cycle plus one skipped loop -- tight enough that a later non-boost 0.6U drip
+        // cannot reset Stage 1/2 off the boosted shot. BMildFS included (same applyBMildOutcomeFactors
+        // path, own key).
+        // "No deceleration" is current SDelta still >= 75% of the latched dose SDelta, plus delta > 0
+        // and rise-since-dose. 13 Sep 16:57 BMild|UamBst: dose SDelta 0.36, Stage 1 0.41-0.48, Stage 2
+        // 0.59-0.61 -- all pass. A strict current-Delta >= dose-Delta would have failed 17:03 (0.41 vs
+        // 0.48) on noise.
         run {
-            // Latch the most recent qualifying dose every cycle, independent of the eligibility checks
-            // below, so the anchor always reflects the LATEST >=0.6U dose even while Stage 1/2 are
-            // still watching an earlier one.
-            if (autoIsfValues.smbDelivered >= 0.6) {
+            // Latch the most recent qualifying boost dose every cycle, independent of the eligibility
+            // checks below, so the anchor always reflects the LATEST >=0.6U BMild/Giv/UamBst shot even
+            // while Stage 1/2 are still watching an earlier one.
+            val recentBoostMark = !readyToRun("BolusGivenMild", 3)
+                || !readyToRun("BolusGivenMildFailsafe", 3)
+                || !readyToRun("BolusGiven", 3)
+                || !readyToRun("BolusGivenBg3", 3)
+                || !readyToRun("UamBst", 3)
+            if (autoIsfValues.smbDelivered >= 0.6 && recentBoostMark) {
                 lastBigDoseTimestamp = autoIsfValues.timestamp
                 lastBigDoseBgMgdl = glucoseStatus.glucose
+                lastBigDoseSDeltaMgdl = glucoseStatus.shortAvgDelta
             }
             if (lastBigDoseTimestamp <= 0L) return@run
 
             val minutesSinceDose = (dateUtil.now() - lastBigDoseTimestamp) / 60_000.0
             val riseSinceMgdl = glucoseStatus.glucose - lastBigDoseBgMgdl
             val stillRising = glucoseStatus.delta > 0.0
+            val noDecel = glucoseStatus.shortAvgDelta >= lastBigDoseSDeltaMgdl * 0.75
             val iob = iobData.iob
             val maxIob = constraintsChecker.getMaxIOBAllowed().value()
             val iobRoomLeft = iob < 0.30 * maxIob
-            if (!(iobRoomLeft && stillRising)) return@run
+            if (!(iobRoomLeft && stillRising && noDecel)) return@run
 
             if (minutesSinceDose in 6.0..8.0 && riseSinceMgdl >= 5.4 /* 0.3 mmol */ && readyToRun("PoorResponseRescueStage1", 10)) {
                 val boosted = (smb_delivery_ratio + 0.05).coerceAtMost(smb_delivery_ratio_max)
@@ -7789,18 +7808,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
         // Computed once (nullable) and reused below for BOTH smbBoostRecent and the fast-rise-capping
         // confirmation params, to avoid querying the raw BG readings table twice per loop. The two uses
-        // apply OPPOSITE fallbacks on purpose: smbBoostRecent's raw checks must FAIL-safe when data is
-        // missing (-9999 -> don't bypass/relax capping), whereas the new capping-confirmation params
-        // must PASS-safe when missing (+9999 -> don't let absent confirmation block a cap the original
-        // Delta/SDelta logic would already have applied).
+        // apply OPPOSITE fallbacks on purpose: smbBoostRecent's UKF-raw D5 check must FAIL-safe when
+        // data is missing (-9999 -> don't bypass/relax capping), whereas the capping-confirmation
+        // params must PASS-safe when missing (+9999 -> don't let absent confirmation block a cap the
+        // original Delta/SDelta logic would already have applied).
         val rawDelta1Raw = rawDelta1MinMgdl()
         val rawDelta5Raw = rawDelta5MinMgdl()
         val aapsDelta1Raw = aapsDelta1MinMgdl()
         val rawDelta15Raw = rawDelta15MinMgdl()
         // SMB adjustment confirmations follow the LibreUKF toggle. When enabled, use the UKF-smoothed
         // raw signal; when disabled, preserve the existing immediate Libre .noise deltas. The recent-
-        // boost reversion gate below and DetermineBasal's early-morning fresh-reversal guard deliberately
-        // continue to use immediate raw values because their purpose is to see a turn before smoothing.
+        // boost skip below now uses ukfRaw D5 (same channel as BMild/Giv/bg3). DetermineBasal's
+        // early-morning fresh-reversal guard still uses immediate raw, to see a turn before smoothing.
         val useUkfLibreSpecial = preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing)
         val useUkf1LiveComparison = preferences.get(BooleanKey.FslUseUkfSmoothing) && activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
         val useUkfRawForSmb = useUkf1LiveComparison || useUkfLibreSpecial
@@ -7954,23 +7973,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // taper reads as "ages ago" and falls through to the unchanged hard-hold behavior.
         val replayUamBstMinutesAgo = (lastRunTimestamps["UamBst"])
             ?.let { ((dateUtil.now() - it) / 60_000L).toInt() } ?: Int.MAX_VALUE
-        // 2026-09-13, per explicit request: Tier 3 UAM Boost now gets the SAME FastRise-cap-skip
-        // exemption BMild/Giv already had (replayUamBoostRecent added to this first OR-group only --
-        // NOT the second IOB-ceiling escape clause below, since BolusGivenMild/Bg3 aren't in that one
-        // either; this keeps Tier 3 exactly parallel to BMild's own existing treatment, not stronger),
-        // rather than only ever making the LATER taper worse via
-        // holdFastRiseAfterUamBst/postUamBstLate in DetermineBasalAutoISF.kt. Deliberately safe to add
-        // here without weakening the existing no-COB/high-IOB protection: holdFastRiseAfterUamBst
-        // (built from the real 6 Sep 12:16-12:30 BMild|UamBst hypo -- IOB 1.91-2.49U, COB 0, BG
-        // crashed 8.9->4.1) reads this SAME smbBoostRecent value downstream and blocks the skip
-        // whenever IOB is already high with no COB, regardless of which OR-branch made it true -- so
-        // Tier 3 inherits that exact same safety carve-out automatically, not a separate or weaker one.
+        // 2026-09-13: BMild / Giv / Tier 3 (or COB>=9) skip FastRise caps for 30 min. Tier 3 is in
+        // this first OR-group exactly parallel to BMild. holdFastRiseAfterUamBst downstream still
+        // blocks a full skip when IOB is already high with no COB after UamBst (6 Sep 12:16-12:30
+        // BMild|UamBst hypo -- IOB 1.91-2.49U, COB 0, BG crashed 8.9->4.1), then tapers 5 min full
+        // / 10 min partial.
+        // 2026-09-13 evening Live 835 ~16:57-17:39 UAM climb (COB 0): skip never went true, so
+        // FastRise 750/602 stayed on the BMild|UamBst SMBs and that taper never ran. Two ANDs
+        // were the cause and are removed here:
+        //   1. immediate raw D1 >= 1.8 mg/dL -- 16:57 AIV rawD1 was 0.00 mmol (same noisy 1-min
+        //      raw the FastRise *caps* already stopped using in August). The remaining D5 check
+        //      is ukfRaw D5, same channel BMild/Giv/bg3 already use (16:57 RawUKF5 was 1.20 mmol),
+        //      not unsmoothed Libre .noise. Missing UKF D5 fails safe.
+        //   2. IOB < 0.33*max_iob unless BolusGiven or COB>=9 -- 17:39 IOB 3.29 > ~3.14, and
+        //      BMild/UamBst did not count. That ceiling made the taper unreachable. High-IOB /
+        //      no-COB after UamBst is the taper's job, not a second gate in front of it.
         val replaySmbBoostRecent = (!readyToRun("BolusGivenBg3", 30) || !readyToRun("BolusGivenMild", 30)
             || !readyToRun("BolusGiven", 30) || replayUamBoostRecent || mealData.mealCOB >= 9.0)
-            && (rawDelta1Raw ?: -9999.0) >= 1.8
-            && (rawDelta5Raw ?: -9999.0) >= 1.8
+            && ((smbUkfRaw ?: ukfRawMetrics()).delta5 ?: -9999.0) >= 1.8
             && glucoseStatus.longAvgDelta > -1.8
-            && (iobData.iob < 0.33 * oapsProfile.max_iob || !readyToRun("BolusGiven", 30) || mealData.mealCOB >= 9.0)
         // Same key as the fire throttle: markRun("NightFrSkip") makes readyToRun(2) false for ~2 min
         // (this cycle + next) and readyToRun(60) false for the one-shot hour. Must NOT be folded into
         // replaySmbBoostRecent -- that is a 30-min FastRise waiver.
@@ -8096,27 +8117,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps15M = steps15,
             steps5M = steps5,
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
-            // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3 or BolusGivenMild)
-            // fired within the last 30 min, or while meal COB is still >= 9 g: an unexpectedly high spike
-            // now reverts more readily (the raw-delta-driven reversals), so the caps' conservatism isn't
-            // needed during that window.
+            // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3, BMild, or
+            // Tier 3) fired within the last 30 min, or while meal COB is still >= 9 g.
             // readyToRun() is a pure timestamp check (no mutation); true-when-never-run, so !ready =
             // "fired within the last 30 min".
-            // Self-gating on the RAW deltas: the bypass only takes effect while both the 1-min and 5-min
-            // raw Libre deltas still read >= +0.1 mmol. The raws see a turn before the smoothed AAPS
-            // deltas do, so the moment the rise breaks the caps re-apply on the next 1-min loop (and
-            // resume if the rise resumes within the 30 min). Missing raw data (-9999 fallback) fails
-            // safe: caps apply.
-            // Reversion/high-IOB guard: the raw-delta self-gate above only sees the SHORT-term trend, so
-            // a brief renewed uptick right after a boost could pass it even while the LONGER trend is
-            // still net-negative (recovering from an overshoot the boost itself likely caused) and IOB is
-            // already elevated from that same recent boost — exactly when the caps' conservatism is
-            // still warranted, not when it should be waived. 0.33 * max_iob (not a flat unit count) sits
-            // above typical daytime IOB but below the ~3.3-3.6U peaks actually observed during genuine
-            // sustained rises, so the bypass stays available through those, only cutting out right at the
-            // observed high-IOB tail. Waived when BolusGiven itself just fired or meal COB >= 9: 1 Sep
-            // 2026 15:31 meal put IOB at 3.3U from the announced bolus before any SMB, which is exactly
-            // when Giv-1 needed the bypass (FastRise 750 still applied at 15:35).
+            // Self-gating on ukfRaw D5 (>= 1.8 mg/dL) and longAvgDelta (> -1.8): same raw channel
+            // BMild/Giv/bg3 already use. Bypass only holds while that 5-min UKF-raw rise is still
+            // on and the longer trend isn't already reversing. Immediate raw D1 was dropped
+            // 2026-09-13 (Live 835 16:57 rawD1=0.00 mmol blocked BMild|UamBst). Missing UKF D5
+            // (-9999 fallback) fails safe: caps apply. High-IOB / no-COB after UamBst is
+            // holdFastRiseAfterUamBst's 5-then-10 taper, not a 0.33*max_iob gate here (that
+            // ceiling blocked the 17:39 BMild|UamBst at IOB 3.29).
             smbBoostRecent = replaySmbBoostRecent,
             uamBoostRecent = replayUamBoostRecent,
             uamBstMinutesAgo = replayUamBstMinutesAgo,

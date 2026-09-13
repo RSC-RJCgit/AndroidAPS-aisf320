@@ -2366,9 +2366,12 @@ class DetermineBasalAutoISF @Inject constructor(
                         aapsDelta1Mgdl >= 0.25 * 18
 
                 // Extra later-rise cut after a recent UamBst, or whenever IOB is already high with
-                // COB 0. 6 Sep 12:16 first shot (IOB 0.71) is left alone: uamBoostRecent is still
-                // false that cycle. 12:23+ (IOB 1.91, COB 0) is the bind — 0.18*max_iob ≈ 1.71U at
-                // 9.5. Does not stack a second multiplier on top of this same block's 1.5/1.9 taper.
+                // COB 0. This is the "rise did not decelerate after a high SMB" guard — it must
+                // stay able to recut follow-up SMBs even while the first-tier FastRise skip/5+10
+                // taper is waiving the 750/602 cascade. 6 Sep 12:16 first shot (IOB 0.71) is left
+                // alone: uamBoostRecent is still false that cycle. 12:23+ (IOB 1.91, COB 0) is the
+                // bind — 0.18*max_iob ≈ 1.71U at 9.5. Does not stack a second multiplier on top of
+                // this same block's 1.5/1.9 amount taper (the when-branch below is either/or).
                 val postUamBstLate = uamBoostRecent && !uamBoostEnhancedCandidateThisCycle
                 val laterRiseAfterBoost = postUamBstLate || iobHighNoCob
                 if ((fastRiseNow || postUamBstLate) && microBolus > 0.0) {

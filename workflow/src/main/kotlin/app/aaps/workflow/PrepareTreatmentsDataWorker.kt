@@ -122,8 +122,11 @@ class PrepareTreatmentsDataWorker(
                 val nearestResult = apsResultsList.minByOrNull { r -> kotlin.math.abs(r.date - dp.x.toLong()) }
                 if (nearestResult != null && kotlin.math.abs(nearestResult.date - dp.x.toLong()) < T.mins(15).msecs()) {
                     // Same skip as AutoIsfHistoryExporter.exactFastRiseStr: reason still contains
-                    // "microBolus * 0.75" even when smbBoostRecent later undid that cap.
-                    if (!nearestResult.reason.contains("fast-rise caps skipped", ignoreCase = true)) {
+                    // "microBolus * 0.75" even when smbBoostRecent later undid that cap (full skip
+                    // or the 5+10 post-UamBst taper).
+                    if (!nearestResult.reason.contains("fast-rise caps skipped", ignoreCase = true)
+                        && !nearestResult.reason.contains("fast-rise caps tapered", ignoreCase = true)
+                    ) {
                         val factor = fastRiseRegex.find(nearestResult.reason)?.groupValues?.get(1)?.toDoubleOrNull()
                         if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
                     }
