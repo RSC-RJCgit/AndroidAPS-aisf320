@@ -177,6 +177,12 @@ enum class BooleanKey(
     // ApsAutoIsfStuckHighTierCPrevStandardRole/PrevLowRole (StringKey.kt) for the role assignments it
     // will revert to. Not shown in any preference screen.
     ApsAutoIsfStuckHighTierCActive("autoisf_stuckhigh_tierc_active", false, defaultedBySM = true, exportable = false),
+    // Added 2026-09-13 for UnexplainedHighTierC (OpenAPSAutoISFPlugin.kt): latches true the first time
+    // COB appears or a UAM boost fires DURING the current ApsAutoIsfUnexplainedHighSinceTs episode (not
+    // just "currently no COB/UAM", which would miss a meal that already finished absorbing earlier in
+    // the same 2h+ high stretch). Reset to false in lockstep with that timestamp resetting to 0. Not
+    // shown in any preference screen.
+    ApsAutoIsfUnexplainedHighMealSeen("autoisf_unexplained_high_meal_seen", false, defaultedBySM = true, exportable = false),
     // Real-pump phone latch for its low-storage alert/SMS/NS Note. It prevents one set per APS cycle;
     // re-armed only after that phone's storage recovers above the hysteresis threshold.
     ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, defaultedBySM = true, exportable = false),

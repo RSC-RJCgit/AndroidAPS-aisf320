@@ -5355,9 +5355,61 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // --- UnexplainedHighTierC: added 2026-09-13, per explicit request. A THIRD trigger into the
+        // SAME escalateToStuckHighTierC()/revert mechanism as StuckHighRescue and
+        // PoorResponseRescueStage2 above -- reusing the identical escalation and the identical shared
+        // BG<7.5mmol revert (StuckHighTierC run{} block right below) -- but with its own, much simpler
+        // condition: BG>8.0mmol continuously for 2h+ WITH NO meal/UAM seen anywhere in that stretch.
+        // Where StuckHighRescue/PoorResponseRescue key off HP2/dose-response signals (fast, early, but
+        // food-agnostic), this one is a slower backstop aimed specifically at the "no identifiable
+        // cause" case (poor pod site, unexpected absorption failure, etc.) -- unlike OldPod's own
+        // sustained-high tracker (ApsAutoIsfOldPodHighSinceTs, >10.0mmol), this is pod-age-independent
+        // and uses its own 8.0mmol threshold and its own timestamp (ApsAutoIsfUnexplainedHighSinceTs).
+        //
+        // "No meal/UAM seen in that time" is a LATCHED condition over the whole episode
+        // (ApsAutoIsfUnexplainedHighMealSeen), not just "currently no COB/no recent UAM" -- a meal that
+        // started and fully absorbed 90 minutes into an otherwise-2h-high stretch still disqualifies it,
+        // since that WOULD explain the high. mealData.mealCOB>0 covers announced/detected carbs;
+        // readyToRun("UamBst", 120)==false (i.e. a UAM boost delivery marked within the last 2h) covers
+        // the UAM path -- same UamBst key StuckHighRescue's own replay/PoorResponseRescue's latch read
+        // elsewhere in this file.
+        //
+        // FIRST PASS, not yet validated against real data -- watch real fires and retune.
+        run {
+            val g = glucoseStatus.glucose
+            val highNow = g > 144.1 /* 8.0 mmol */
+            var highSinceTs = preferences.get(LongKey.ApsAutoIsfUnexplainedHighSinceTs)
+            var mealSeen = preferences.get(BooleanKey.ApsAutoIsfUnexplainedHighMealSeen)
+            if (highNow) {
+                if (highSinceTs == 0L) {
+                    highSinceTs = dateUtil.now()
+                    preferences.put(LongKey.ApsAutoIsfUnexplainedHighSinceTs, highSinceTs)
+                    mealSeen = false
+                    preferences.put(BooleanKey.ApsAutoIsfUnexplainedHighMealSeen, false)
+                }
+                val mealNow = mealData.mealCOB > 0.0 || !readyToRun("UamBst", 120)
+                if (mealNow && !mealSeen) {
+                    mealSeen = true
+                    preferences.put(BooleanKey.ApsAutoIsfUnexplainedHighMealSeen, true)
+                }
+            } else if (highSinceTs != 0L) {
+                highSinceTs = 0L
+                preferences.put(LongKey.ApsAutoIsfUnexplainedHighSinceTs, 0L)
+                preferences.put(BooleanKey.ApsAutoIsfUnexplainedHighMealSeen, false)
+            }
+            val highSustained = highSinceTs != 0L && (dateUtil.now() - highSinceTs) >= T.hours(2).msecs()
+            if (highSustained && !mealSeen && readyToRun("UnexplainedHighTierC", 30)) {
+                escalateToStuckHighTierC()
+                sendSms("UnexplainedHighTierC: g=${round(g / 18.0182, 1)} high 2h+, no meal/UAM seen -> TierC")
+                addCarePortalNote("UnHTC") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
+                markRun("UnexplainedHighTierC")
+            }
+        }
+
         // --- StuckHighTierC: added 2026-09-13, per explicit request. Owns the revert side of
         // escalateToStuckHighTierC() (see that function's own doc comment for the activation side,
-        // called from both StuckHighRescue branches above and PoorResponseRescueStage2 above). Runs
+        // called from both StuckHighRescue branches, PoorResponseRescueStage2, and UnexplainedHighTierC
+        // above -- one shared latch/revert regardless of which of the three triggered it). Runs
         // every cycle, unthrottled -- the revert check must never wait behind a readyToRun() throttle,
         // since it is this automation's only defence against outliving the high it was escalated for.
         // No ongoing per-cycle reassert is needed here (unlike OldPodInsReqBoost's own reassert): once

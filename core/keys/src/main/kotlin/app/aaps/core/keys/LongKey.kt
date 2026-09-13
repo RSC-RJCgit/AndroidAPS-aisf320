@@ -35,6 +35,14 @@ enum class LongKey(
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.
     ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0, defaultedBySM = true),
+    // Internal-only, added 2026-09-13 for UnexplainedHighTierC (OpenAPSAutoISFPlugin.kt): timestamp (ms)
+    // when the current sustained-high-BG episode (>8.0mmol) started -- separate from OldPod's own
+    // ApsAutoIsfOldPodHighSinceTs above since the threshold differs (8.0mmol here vs 10.0mmol there) and
+    // this one is pod-age-independent. 0 means no episode currently in progress. Reset to 0 the instant
+    // BG drops back to <=8.0mmol, so this only ever measures an UNBROKEN stretch above the threshold. See
+    // ApsAutoIsfUnexplainedHighMealSeen (BooleanKey.kt) for the paired "was there a meal/UAM during this
+    // same episode" latch.
+    ApsAutoIsfUnexplainedHighSinceTs("autoisf_unexplained_high_since_ts", 0, defaultedBySM = true),
     // Virtual-Pump phone cursor for the newest StLow/legacy StorageLow Note already alerted. A later NS Note has a
     // new timestamp and is handled once, including across app restarts.
     ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0, defaultedBySM = true),
