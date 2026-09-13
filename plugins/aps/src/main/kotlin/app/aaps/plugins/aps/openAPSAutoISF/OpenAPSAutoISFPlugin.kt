@@ -389,6 +389,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     } else if (kotlin.math.abs(event.mmol - 5.208) <= 0.0000001) {
                         // Manual "attempt to start Shizuku now" — see AdbWirelessStarter.attemptStart().
                         Schedulers.io().scheduleDirect { attemptAdbWirelessStart("list2-direct") }
+                    } else if (kotlin.math.abs(event.mmol - 5.210) <= 0.0000001) {
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
+                        preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
+                        sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("Bt1${if (newState) "On" else "Off"}")
+                        rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.212) <= 0.0000001) {
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+                        preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, newState)
+                        if (newState) revertProfileBatchToBasic("List2 Toggle2")
+                        sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
+                        rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -458,14 +471,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addGraphAnnouncement("MJ")
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                switchToLowAtSharedTier()
                 setAutomationState("MJ", "MJ active")
                 addCarePortalNote("MJ active")
             }
 
             EventMjUserAction.Action.RESTORE -> {
                 sendSms("MJ dose 4+ days old")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setAutomationState("MJ", "NOMJremains")
@@ -767,6 +780,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
         applyRoleTierDeliveryNudge(roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow)), 1)
         preferences.put(BooleanKey.ApsAutoIsfStuckHighTierCActive, true)
+        keepSteroidsOff()
         addCarePortalNote("STCOn") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
     }
 
@@ -808,9 +822,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Added 2026-08-31. The seven Standard/Low base+tier role keys a "SetRole" assignment can target,
     // in the exact order the ProfileSwitchDialog's role selector lists them -- so the coded ProfileSwitch
-    // duration (51..57 min) maps as (durationMinutes - 50), and the "SetRole <prefKey>=<profile>" Note
-    // matches on prefKey. Steroid tiers are deliberately NOT here: those are name-detected in the dialog
-    // (steroidRoleKeyForProfileName) and never travel this channel.
+    // duration (51..57 min) maps as (durationMinutes - 50). StandardTierA and SteroidTier A–F travel
+    // the Note channel only (not 51-57).
     private val setRoleKeysInOrder = listOf(
         StringKey.ApsAutoIsfStandardProfileName,
         StringKey.ApsAutoIsfStandard105ProfileName,
@@ -821,19 +834,64 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         StringKey.ApsAutoIsfLow90ProfileName
     )
 
-    private fun setRoleKeyForIndex(oneBasedIndex: Int): StringKey? = setRoleKeysInOrder.getOrNull(oneBasedIndex - 1)
-    private fun setRoleKeyForToken(prefKeyToken: String): StringKey? = setRoleKeysInOrder.firstOrNull { it.key == prefKeyToken }
+    private val setRoleNoteKeys = setRoleKeysInOrder + listOf(
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfSteroid100ProfileName,
+        StringKey.ApsAutoIsfSteroid110ProfileName,
+        StringKey.ApsAutoIsfSteroid130ProfileName,
+        StringKey.ApsAutoIsfSteroid150ProfileName,
+        StringKey.ApsAutoIsfSteroid190ProfileName,
+        StringKey.ApsAutoIsfSteroid250ProfileName
+    )
 
-    // Applies a resolved role assignment locally: writes the role pref, mirrors a base-Standard write
-    // into the Standard100 ladder anchor (as the ProfileSwitchDialog and "Select coded profiles" picker
-    // both do), and only if <profileName> actually exists in the active store. Returns true if applied.
+    private val steroidsOffRoleKeys = setOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    private fun setRoleKeyForIndex(oneBasedIndex: Int): StringKey? = setRoleKeysInOrder.getOrNull(oneBasedIndex - 1)
+    private fun setRoleKeyForToken(prefKeyToken: String): StringKey? = setRoleNoteKeys.firstOrNull { it.key == prefKeyToken }
+
+    // Applies a resolved role assignment locally: writes the role pref only if <profileName> exists
+    // in the active store. Does not mirror StandardCurrent into StandardTierA -- that floor is
+    // List1-only so Current can be reassigned without losing the A rung. Returns true if applied.
     private fun applySetRole(roleKey: StringKey, profileName: String): Boolean {
         if (profileName.isBlank()) return false
         if (activePlugin.activeProfileSource.profile?.getSpecificProfile(profileName) == null) return false
         preferences.put(roleKey, profileName)
-        if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
-            preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
+        if (roleKey in steroidsOffRoleKeys) {
+            lockstepPartnerCurrent(roleKey, profileName)
+            keepSteroidsOff()
+        }
         return true
+    }
+
+    // Writing StandardCurrent or LowCurrent also points the partner Current at the same A/B/C
+    // letter. A name that is not on that role's ladder (e.g. last night's LowCurrent=Steroid100)
+    // is left unpaired so MorningRoleSwap can take the other role's letter instead.
+    private fun lockstepPartnerCurrent(roleKey: StringKey, profileName: String) {
+        when (roleKey) {
+            StringKey.ApsAutoIsfStandardProfileName -> {
+                val idx = ladderIndexOf(profileName, standardRoleLadder)
+                if (idx < 0) return
+                val low = resolveTieredProfileName(lowRoleLadder[idx], StringKey.ApsAutoIsfLowProfileName)
+                if (low.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, low)
+            }
+            StringKey.ApsAutoIsfLowProfileName -> {
+                val idx = ladderIndexOf(profileName, lowRoleLadder)
+                if (idx < 0) return
+                val std = resolveTieredProfileName(standardRoleLadder[idx], StringKey.ApsAutoIsfStandard100ProfileName)
+                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+                if (std.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, std)
+            }
+            else -> Unit
+        }
     }
 
     // MorningRoleSwap ladder keys (Standard100/105/110 and Low70/80/90). Shared by band helpers
@@ -873,7 +931,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // (rung >= 1). B and C share one band so A→B and A→C nudge once; B↔C does not stack.
     private fun roleTierBandForIndex(index: Int): Int = if (index <= 0) 0 else 1
 
-    // Highest configured Standard/Low ladder rung currently live (off-ladder counts as 0 / TierA).
+    // Shared A/B/C letter. Off-ladder is ignored when the other Current is on-ladder
+    // (do not treat Steroid100-as-LowCurrent as TierA). Both off → 0.
     private fun sharedRoleLadderIndex(
         standardName: String = preferences.get(StringKey.ApsAutoIsfStandardProfileName),
         lowName: String = preferences.get(StringKey.ApsAutoIsfLowProfileName)
@@ -881,9 +940,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val stdIdx = ladderIndexOf(standardName, standardRoleLadder)
         val lowIdx = ladderIndexOf(lowName, lowRoleLadder)
         if (stdIdx < 0 && lowIdx < 0) return 0
-        val stdAligned = if (stdIdx < 0) 0 else stdIdx
-        val lowAligned = if (lowIdx < 0) 0 else lowIdx
-        return maxOf(stdAligned, lowAligned)
+        if (stdIdx < 0) return lowIdx
+        if (lowIdx < 0) return stdIdx
+        return maxOf(stdIdx, lowIdx)
+    }
+
+    // Letter in force for MorningRoleSwap / overnight Standard↔Low. Running role wins when it
+    // is on its ladder (or its name matches a ladder slot even if Current is stale). Else the
+    // on-ladder partner. -1 only when neither Current nor the running name is on a ladder.
+    private fun sourceRoleRung(
+        standardName: String = preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+        lowName: String = preferences.get(StringKey.ApsAutoIsfLowProfileName),
+        runningName: String = profileFunction.getProfileName()
+    ): Int {
+        val stdIdx = ladderIndexOf(standardName, standardRoleLadder)
+        val lowIdx = ladderIndexOf(lowName, lowRoleLadder)
+        val runningLowIdx = ladderIndexOf(runningName, lowRoleLadder)
+        val runningStdIdx = ladderIndexOf(runningName, standardRoleLadder)
+        return when {
+            runningName == lowName && lowIdx >= 0 -> lowIdx
+            runningName == standardName && stdIdx >= 0 -> stdIdx
+            runningLowIdx >= 0 -> runningLowIdx
+            runningStdIdx >= 0 -> runningStdIdx
+            stdIdx >= 0 && lowIdx >= 0 -> maxOf(stdIdx, lowIdx)
+            stdIdx >= 0 -> stdIdx
+            lowIdx >= 0 -> lowIdx
+            else -> -1
+        }
     }
 
     // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) to role-tier
@@ -930,10 +1013,144 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
         else if (currentProfileName == currentStandard) switchProfileIfNeeded(targetStandard)
         applyRoleTierDeliveryNudge(previousBand, 0)
+        keepSteroidsOff()
         sendSms("$reason: Low=$targetLow Standard=$targetStandard")
         addCarePortalNote(note)
         markRun(throttleKey)
         return true
+    }
+
+    // 2026-09-14 ProfileBatchAuto: one shared Standard/Low rung write, same lock-step pair
+    // MorningRoleSwap uses (100+70 / 105+80 / 110+90). Switches the running profile when it
+    // currently matches the previous live Standard or Low role.
+    private fun applySharedRoleRung(
+        newIndex: Int,
+        reason: String,
+        switchRunning: Boolean = true,
+        announce: Boolean = true
+    ): Boolean {
+        if (newIndex !in standardRoleLadder.indices) return false
+        val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(previousStandard, previousLow))
+        val newLow = resolveTieredProfileName(lowRoleLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
+            ?: return false
+        val newStandard = resolveTieredProfileName(standardRoleLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
+            .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+            .takeIf { it.isNotBlank() } ?: return false
+        val currentProfileName = profileFunction.getProfileName()
+        preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
+        preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
+        if (switchRunning) {
+            if (currentProfileName == previousLow) switchProfileIfNeeded(newLow)
+            else if (currentProfileName == previousStandard) switchProfileIfNeeded(newStandard)
+        }
+        if (previousLow != newLow || previousStandard != newStandard) {
+            applyRoleTierDeliveryNudge(previousBand, roleTierBandForIndex(newIndex))
+        }
+        keepSteroidsOff()
+        if (announce) sendSms("$reason: Low=$newLow Standard=$newStandard")
+        return previousLow != newLow || previousStandard != newStandard || currentProfileName == previousLow || currentProfileName == previousStandard
+    }
+
+    // Overnight / MJ / hypo Standard↔Low: align both Currents to the letter already in force,
+    // then switch to that role. No new StandardCurrentTier key — the letter is sourceRoleRung().
+    private fun switchToLowAtSharedTier(durationInMinutes: Int = 0) {
+        val idx = sourceRoleRung().coerceAtLeast(0)
+        applySharedRoleRung(idx, "LockstepLow", switchRunning = false, announce = false)
+        val target = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        if (target.isNotBlank()) switchProfileIfNeeded(target, durationInMinutes)
+    }
+
+    private fun switchToStandardAtSharedTier(durationInMinutes: Int = 0) {
+        val idx = sourceRoleRung().coerceAtLeast(0)
+        applySharedRoleRung(idx, "LockstepStd", switchRunning = false, announce = false)
+        val target = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        if (target.isNotBlank()) switchProfileIfNeeded(target, durationInMinutes)
+    }
+
+    // Standard/Low role writes stay on the Steroids Off protocol. Never invent SteroidsON from these.
+    private fun keepSteroidsOff() {
+        try {
+            if (!checkAutomationState("Steroids", "Steroids Off")) {
+                setAutomationState("Steroids", "Steroids Off")
+            }
+        } catch (e: IllegalStateException) {
+            aapsLogger.error(LTag.APS, "keepSteroidsOff cannot write Steroids Off", e)
+        }
+    }
+
+    private enum class ProfileBatchSlot { LOW_A, LOW_B, LOW_C, STD_A, STD_B, STD_C, OTHER }
+
+    private fun currentProfileBatchSlot(): ProfileBatchSlot {
+        val running = profileFunction.getProfileName()
+        val lowRole = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val stdRole = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val lowIdx = ladderIndexOf(lowRole, lowRoleLadder)
+        val stdIdx = ladderIndexOf(stdRole, standardRoleLadder)
+        if (running == lowRole) return when (if (lowIdx >= 0) lowIdx else sharedRoleLadderIndex(stdRole, lowRole)) {
+            0 -> ProfileBatchSlot.LOW_A
+            1 -> ProfileBatchSlot.LOW_B
+            else -> ProfileBatchSlot.LOW_C
+        }
+        if (running == stdRole) return when (if (stdIdx >= 0) stdIdx else sharedRoleLadderIndex(stdRole, lowRole)) {
+            0 -> ProfileBatchSlot.STD_A
+            1 -> ProfileBatchSlot.STD_B
+            else -> ProfileBatchSlot.STD_C
+        }
+        return ProfileBatchSlot.OTHER
+    }
+
+    // Toggle2 / hold-basic: StandardCurrent+LowCurrent back to StandardTierA/LowTierA.
+    // Leaves SteroidTier A–F and any running SteroidsON profile alone.
+    private fun revertProfileBatchToBasic(reason: String): Boolean {
+        return resetStandardAndLowTiersToA(
+            reason = "ProfileBatchRevert ($reason)",
+            note = "BtchRst",
+            throttleKey = "ProfileBatchRevert",
+            throttleMinutes = 5
+        )
+    }
+
+    // One step on the Steroids Off map only: LowA→B→C→StdA→B→C. No SteroidTier rungs.
+    // Down is the reverse (StdA→LowC; lock-step B/C rungs step down together).
+    private fun stepProfileBatch(up: Boolean, why: String): Boolean {
+        if (!readyToRun("ProfileBatchStep", 30)) return false
+        val slot = currentProfileBatchSlot()
+        val ok = if (up) when (slot) {
+            ProfileBatchSlot.LOW_A -> applySharedRoleRung(1, "ProfileBatchUp $why")
+            ProfileBatchSlot.LOW_B -> applySharedRoleRung(2, "ProfileBatchUp $why")
+            ProfileBatchSlot.LOW_C -> {
+                val std = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+                if (std.isBlank()) false
+                else {
+                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, std)
+                    switchProfileIfNeeded(std)
+                    keepSteroidsOff()
+                    sendSms("ProfileBatchUp $why: LowC -> Standard $std")
+                    true
+                }
+            }
+            ProfileBatchSlot.STD_A -> applySharedRoleRung(1, "ProfileBatchUp $why")
+            ProfileBatchSlot.STD_B -> applySharedRoleRung(2, "ProfileBatchUp $why")
+            else -> false
+        } else when (slot) {
+            ProfileBatchSlot.STD_C -> applySharedRoleRung(1, "ProfileBatchDn $why")
+            ProfileBatchSlot.STD_B -> applySharedRoleRung(0, "ProfileBatchDn $why")
+            ProfileBatchSlot.STD_A -> applySharedRoleRung(2, "ProfileBatchDn $why").also {
+                val low = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                if (low.isNotBlank()) switchProfileIfNeeded(low)
+            }
+            ProfileBatchSlot.LOW_C -> applySharedRoleRung(1, "ProfileBatchDn $why")
+            ProfileBatchSlot.LOW_B -> applySharedRoleRung(0, "ProfileBatchDn $why")
+            else -> false
+        }
+        if (ok) {
+            addCarePortalNote(if (up) "BtchUp" else "BtchDn")
+            markRun("ProfileBatchStep")
+        }
+        return ok
     }
 
     // LowBgTierAReset lookback: true if [series] (oldest-first timestamp→mg/dL) contains a continuous
@@ -2597,6 +2814,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "BoostIobMaxDownTT" -> 5.190
         "BoostIobMaxUpTT" -> 5.192
         "Tier3BoostToggleTT" -> 5.194
+        "ProfileBatchAutoToggleTT" -> 5.210
+        "ProfileBatchRevertToggleTT" -> 5.212
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
         "LocationSmsThisPhoneTT" -> 5.204
@@ -3125,8 +3344,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) stores it locally here; this applies it
         // on the loop phone. Slow (~40-70 min) but independent of the fast coded-duration path below --
         // both are idempotent (preferences.put of the same value is a no-op). Cursor-tracked by Note
-        // timestamp; each Note applied once, across restarts. Only the seven Standard/Low base+tier keys
-        // are honoured, and only if <profile> exists in the active store (applySetRole checks).
+        // timestamp; each Note applied once, across restarts. Standard/Low base+tier, StandardTierA,
+        // and SteroidTier A–F Notes are honoured when <profile> exists in the active store.
         // isRealLoopPhone() gate added 2026-09-11: this is meant to apply ONLY on the loop phone (per
         // the comment above), but had no device check at all -- Client/Virtual would each apply the
         // same relayed role assignment to themselves, the same gap AnyDesk's relay had before its own
@@ -3218,7 +3437,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Code port of the "Test2" automation (MJ=MJ5): also switches to Current ProfileReal for 30 min.
         if (readyToRun("MJ5", 5) && checkAutomationState("MJ", "MJ5")) {
             addCarePortalNote("A1")
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
+            switchToStandardAtSharedTier(30)
             setAutomationState("MJ", "NOMJremains")
             markRun("MJ5")
         }
@@ -4320,7 +4539,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // without editing anything. List 1's own row presents both as one Strong/Low choice dialog (see
         // OverviewFragment.kt's ttCodesList()), each button relaying whichever of these two TT codes.
         if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+            switchToStandardAtSharedTier()
             cancelCurrentTempTarget()
             sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})")
             addCarePortalNote("PrSt")
@@ -4328,7 +4547,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+            switchToLowAtSharedTier()
             cancelCurrentTempTarget()
             sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
             addCarePortalNote("PrLow")
@@ -4543,6 +4762,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("T3B${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("Tier 3 UAM Boost toggled", true))
             markRun("Tier3BoostToggleTT")
+        }
+
+        if (readyToRun("ProfileBatchAutoToggleTT", 2) && activeTtNear(5.210, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt1${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
+            markRun("ProfileBatchAutoToggleTT")
+        }
+        if (readyToRun("ProfileBatchRevertToggleTT", 2) && activeTtNear(5.212, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, newState)
+            cancelCurrentTempTarget()
+            if (newState) revertProfileBatchToBasic("List2 Toggle2")
+            sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
+            markRun("ProfileBatchRevertToggleTT")
         }
 
         // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
@@ -5166,7 +5405,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && sd > -1.8 && sd <= 1.8   /* -0.1 < SDelta <= 0.1 mmol */
 
             if (rescueOk) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 60)
+                switchToStandardAtSharedTier(60)
                 preferences.put(LongKey.ApsAutoIsfOvernightRescueUntil, dateUtil.now() + T.mins(60).msecs())
                 sendSms("OvernightDuraRescue: g=${round(g / 18.0182, 1)} duraISF=${round(duraIsf, 2)} finalISF=${round(finalIsf, 2)} -> Standard 60min")
                 addCarePortalNote("DuraRsc")
@@ -5529,7 +5768,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // !rescueActive gates ONLY the profile switch, same as MJrecentCurrProfAcce/NightAcce
                 // below -- acce/iobTH still apply regardless of an active rescue (previously the whole
                 // block, including these two, was wrongly gated on !rescueActive as well).
-                if (!rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName), 30)
+                if (!rescueActive) switchToLowAtSharedTier(30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP2=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
@@ -5575,7 +5814,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("BatteryOver1pc", 5)
             && profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel > 1) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 0)
+            switchToStandardAtSharedTier(0)
             sendSms("AllOK Batt")
             setAutomationState("Profile", "AllOK")
             addCarePortalNote("bat>1")
@@ -5683,7 +5922,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val branch1 = baseOk && iobTH <= 50
             val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH != null && cannulaH >= 60.0
             if (branch1 || branch2) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
+                switchToStandardAtSharedTier(30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)
                 setBgAccelIsfWeight(0.50)
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
@@ -5739,7 +5978,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val aoB3 = lastBolusMin <= 10 && !delayedBolusPending
             if (aoB1 || aoB2 || aoB3) {
                 cancelCurrentTempTarget()
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 sendSms("Activity 70_0.70 0.35 Acce")
@@ -5951,7 +6190,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BolusGiven71 [b$bBlock]: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
                 cancelCurrentTempTarget()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
+                switchToStandardAtSharedTier(30)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
@@ -6450,8 +6689,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // iobTH<=19 is a separate, more severe reduction from other automations, not what was
             // flip-flopping, so it's left alone.
             val stabilized = d >= 0.0 && sd >= 0.0
-            // block 1: daytime 08:00–20:00, some activity, iobTH low or reduced
-            val u2b1 = isTimeBetween(8, 0, 20, 0) &&
+            // block 1: daytime 08:00–20:00, or earlier once Shower12 is ≥30 min old AND BGL>7.0
+            // with SDelta>0.10 (2026-09-14). Shower12 itself is 05:30–08:30; require it in the
+            // last 4h so yesterday's latch cannot open Usual2forTH at 05:00.
+            val shower12At = lastRunTimestamps["Shower12"] ?: 0L
+            val nowMs = dateUtil.now()
+            val shower12Over30 = shower12At != 0L &&
+                nowMs - shower12At >= T.mins(30).msecs() &&
+                nowMs - shower12At <= T.hours(4).msecs()
+            val earlyUsualAfterShower = shower12Over30 &&
+                g > 126.1 /* 7.0 mmol */ &&
+                sd > 1.8 /* 0.10 mmol */
+            val u2b1Time = isTimeBetween(8, 0, 20, 0) ||
+                (earlyUsualAfterShower && isTimeBetween(5, 30, 20, 0))
+            val u2b1 = u2b1Time &&
                 (steps180 >= 10 || iobTH <= 19 || (iobTH == 50 && stabilized)) &&
                 steps60 >= 50
             // block 2: day 09:01–20:00, iobTH at night/twilight level
@@ -6498,7 +6749,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ctBlock = when { ctB1 -> "1"; ctB2 -> "2"; else -> null }
             if (ctBlock != null) {
                 setBgAccelIsfWeight(0.50)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName), 30)
+                switchToStandardAtSharedTier(30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime recovery restores delivery baseline
@@ -6561,7 +6812,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 uiInteraction.addNotification(id = 9006, text = "_____POD2", level = Notification.URGENT)
                 addGraphAnnouncement("_____POD2")
                 setAutomationState("Profile", "PP130")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 sendSms("POD 78 hours")
                 sendSmsToNumbers("POD 78 hours", StringKey.SmsPod2Numbers)
                 markRun("Pod2")
@@ -6613,7 +6864,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // and iobTH actions below still run unconditionally, so the MJ-night tuning this block
                 // exists for is preserved whether or not a low is predicted.
                 val hpMj = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
-                if ((isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if ((isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) && !rescueActive) switchToLowAtSharedTier()
                 sendSms("MJ recent CurrProf Acce HP2=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
@@ -6641,7 +6892,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 3.6 /* 0.2 mmol */
                 && isTimeBetween(7, 0, 0, 0)
                 && onCurrentProfile) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.50)
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
@@ -6752,7 +7003,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val off2 = isTimeBetween(21, 0, 0, 0) && g <= 144.1 /* 8.0 mmol */
                 && profile_percentage == 120 && d <= 3.6 /* 0.2 mmol */
             if (off1 || off2) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 sendSms("High6PPoff Acce")
                 addCarePortalNote("off120")
                 markRun("High6PPoff")
@@ -6774,7 +7025,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 3.6 /* 0.2 mmol */
                 && podH <= 80.0
                 && isTimeBetween(10, 0, 18, 0)) {
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 setAutomationState("Profile", "C100")
                 startProfilePercentFor(130, 60)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
@@ -6800,7 +7051,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (off1 || off2 || off3) {
                 sendSms("HighPP130Off")
                 setAutomationState("Profile", "C100")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 addCarePortalNote("130Off")
                 setAutomationState("LowBG", "NO50rec")
                 markRun("HighPP130Off")
@@ -6860,7 +7111,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val podBoostRecent = !readyToRun("RecentPod", 60) || !readyToRun("OldPod2", 60)
             if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null && podBoostRecent) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+                switchToStandardAtSharedTier()
                 sendSms("RecentPodOff Acce")
                 addCarePortalNote("pTTOff")
                 markRun("RecentPodOff")
@@ -6923,7 +7174,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (podActivatedSinceExport) {
                 sendSms("ExportSettingsPodActivation")
                 exportSettingsFor("NewPod")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                switchToLowAtSharedTier()
                 cancelCurrentTempTarget()
                 setAutomationState("Profile", "PP130")
                 markRun("ExportSettingsPodActivation")
@@ -7314,12 +7565,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //   Low:      [Low70, Low80, Low90] -- Low70 is the matching floor. Base "Low" (the live role
         //             preference) is not a rung; it is what this block WRITES after resolving a rung
         //             to a true local profile name.
-        // High/Normal still fire both roles in the same cycle. Until 2026-09-02 each ladder stepped
-        // from its OWN index, so a 100/80 start became 105/90 (Standard +1, Low +1 from a higher
-        // rung). Now they share one rung: High uses min(std,low) then +1, Normal uses max then -1,
-        // so both always land on the same pair -- 100+70, 105+80, or 110+90. Off-ladder counts as
-        // rung 0 for the min/max; both off + High enters the floor (not 105/80); both off + Normal
-        // is a no-op. Ceiling + High / floor + Normal re-writes the same pair.
+        // High/Normal still fire both roles in the same cycle. They share one letter: the running
+        // role's A/B/C (sourceRoleRung) then High +1 / Normal -1, so both Currents always land on
+        // the same pair -- A+A, B+B, or C+C. An off-ladder partner (e.g. LowCurrent=Steroid100)
+        // is ignored instead of being treated as TierA, which used to pull Standard C down to B.
+        // Both off + High enters the floor; both off + Normal is a no-op. Ceiling + High / floor
+        // + Normal re-writes the same pair.
         // 2026-09-03: when the live roles actually change band, also nudge
         // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) via
         // applyRoleTierDeliveryNudge — TierA ↔ (TierB|TierC) once, never stacked on B↔C.
@@ -7345,43 +7596,77 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val stepUp = highMatch // false for normalMatch (stepping down); meaningless if neither matched
                 val previousLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                 val previousStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-                val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(previousStandard, previousLow))
-                val stdIdx = ladderIndexOf(previousStandard, standardRoleLadder)
-                val lowIdx = ladderIndexOf(previousLow, lowRoleLadder)
+                val source = sourceRoleRung(previousStandard, previousLow)
                 val newIndex = when {
                     !(highMatch || normalMatch) -> -1
-                    stdIdx < 0 && lowIdx < 0 -> if (stepUp) 0 else -1
-                    else -> {
-                        val stdAligned = if (stdIdx < 0) 0 else stdIdx
-                        val lowAligned = if (lowIdx < 0) 0 else lowIdx
-                        val shared = if (stepUp) minOf(stdAligned, lowAligned) else maxOf(stdAligned, lowAligned)
-                        ladderStepIndex(shared, standardRoleLadder.size, stepUp)
-                    }
+                    source < 0 -> if (stepUp) 0 else -1
+                    else -> ladderStepIndex(source, standardRoleLadder.size, stepUp)
                 }
-                val newLow = if (newIndex < 0) null
-                else resolveTieredProfileName(lowRoleLadder[newIndex], StringKey.ApsAutoIsfLowProfileName).takeIf { it.isNotBlank() }
-                // Resolve Standard rung -> Standard100 anchor -> (added 2026-08-31) the live Standard
-                // role as a last resort. An unconfigured Standard100 used to resolve to "" and wipe
-                // the live Standard role.
-                val newStandard = if (newIndex < 0) null
-                else resolveTieredProfileName(standardRoleLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
-                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
-                    .takeIf { it.isNotBlank() }
-                if (!newLow.isNullOrBlank() && !newStandard.isNullOrBlank()) {
-                    val currentProfileName = profileFunction.getProfileName()
-                    preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
-                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
-                    if (currentProfileName == previousLow) switchProfileIfNeeded(newLow)
-                    else if (currentProfileName == previousStandard) switchProfileIfNeeded(newStandard)
-                    // 2026-09-03: couple SMB baseline / MildBoost to TierA ↔ TierB/C band (not per rung).
-                    if (previousLow != newLow || previousStandard != newStandard) {
-                        applyRoleTierDeliveryNudge(previousBand, roleTierBandForIndex(newIndex))
+                val tag = if (highMatch) "RolesHi" else "RolesNorm"
+                if (newIndex >= 0 && applySharedRoleRung(newIndex, "MorningRoleSwap $tag HP=${round(hp!!, 1)}")) {
+                    val nowLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                    val nowStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                    if (previousLow != nowLow || previousStandard != nowStandard) {
+                        val streak = preferences.get(IntKey.ApsAutoIsfMorningRoleSwapChangeStreak) + 1
+                        preferences.put(IntKey.ApsAutoIsfMorningRoleSwapChangeStreak, streak)
                     }
-                    val tag = if (highMatch) "RolesHi" else "RolesNorm"
-                    sendSms("MorningRoleSwap $tag: Low=$newLow Standard=$newStandard (HP=${round(hp!!, 1)})")
                     addCarePortalNote(tag)
                     markRun("MorningRoleSwap")
                 }
+            }
+        }
+
+        // --- ProfileBatchAuto: 2026-09-14. Toggle1 enables one-step Low/StandardTier A/B/C moves
+        // while keeping Steroids Off. Toggle2 holds/reverts to StandardTierA+LowTierA and blocks up.
+        // Up: PoorResponse Stage 2 just fired OR BGL>12.0 for 2h OR ukfRaw BGL>14.0 for 2h.
+        // Down: second consecutive 03:00-07:00 MorningRoleSwap that actually changed Standard/Low,
+        // or GentleHypoRisk this cycle. Never walks SteroidTier A–F.
+        run {
+            val g = glucoseStatus.glucose
+            if (g > 216.2 /* 12.0 mmol */) {
+                if (preferences.get(LongKey.ApsAutoIsfBatchBgl12SinceTs) == 0L)
+                    preferences.put(LongKey.ApsAutoIsfBatchBgl12SinceTs, dateUtil.now())
+            } else {
+                preferences.put(LongKey.ApsAutoIsfBatchBgl12SinceTs, 0L)
+            }
+            val ukfG = ukfRawMetrics().glucose
+            if (ukfG != null && ukfG > 252.2 /* 14.0 mmol */) {
+                if (preferences.get(LongKey.ApsAutoIsfBatchUkf14SinceTs) == 0L)
+                    preferences.put(LongKey.ApsAutoIsfBatchUkf14SinceTs, dateUtil.now())
+            } else {
+                preferences.put(LongKey.ApsAutoIsfBatchUkf14SinceTs, 0L)
+            }
+
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) {
+                revertProfileBatchToBasic("Toggle2 hold")
+                return@run
+            }
+            if (!preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)) return@run
+
+            val bgl12For2h = preferences.get(LongKey.ApsAutoIsfBatchBgl12SinceTs).let {
+                it != 0L && dateUtil.now() - it >= T.hours(2).msecs()
+            }
+            val ukf14For2h = preferences.get(LongKey.ApsAutoIsfBatchUkf14SinceTs).let {
+                it != 0L && dateUtil.now() - it >= T.hours(2).msecs()
+            }
+            val exceptionalRise = !readyToRun("PoorResponseRescueStage2", 5)
+            val wantUp = exceptionalRise || bgl12For2h || ukf14For2h
+            val gentleHypo = !readyToRun("GentleHypoRisk", 5)
+            val secondMorningSwap = preferences.get(IntKey.ApsAutoIsfMorningRoleSwapChangeStreak) >= 2
+            val wantDown = gentleHypo || secondMorningSwap
+            when {
+                wantDown -> {
+                    stepProfileBatch(up = false, why = if (gentleHypo) "GentleHypoRisk" else "MorningRoleSwap x2")
+                    if (secondMorningSwap) preferences.put(IntKey.ApsAutoIsfMorningRoleSwapChangeStreak, 0)
+                }
+                wantUp -> stepProfileBatch(
+                    up = true,
+                    why = when {
+                        exceptionalRise -> "PRR2 no-decel"
+                        bgl12For2h -> "BGL>12 2h"
+                        else -> "ukfRaw>14 2h"
+                    }
+                )
             }
         }
 
@@ -7499,7 +7784,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // stronger one) through both bursts -- the weak profile has to be in place BEFORE a burst
                 // starts, which is what an unconditional overnight switch achieves. Window starts at 22:00
                 // rather than midnight because the first burst began at 23:10.
-                if (isTimeBetween(22, 0, 6, 0) || (hpEve != null && hpEve < 5.0)) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if (isTimeBetween(22, 0, 6, 0) || (hpEve != null && hpEve < 5.0)) switchToLowAtSharedTier()
                 sendSms("EveningTH CurrProf 50_0.45 Acce HP2=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("Eve")
                 markRun("EveningTH")
@@ -7522,7 +7807,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d <= 0.0) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 15)
                 setBgAccelIsfWeight(0.50)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                switchToLowAtSharedTier()
                 sendSms("TwilightTH15Acce0.50")
                 addCarePortalNote("TWi")
                 markRun("TwilightTH15Acce")
@@ -7552,7 +7837,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // iobTH to 22 below falsifies that condition), so it applies once and stops regardless of
                 // whether the profile switch happened.
                 val hpNight = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
-                if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchToLowAtSharedTier()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 22)
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
@@ -7796,7 +8081,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfLowProfileName))
+                switchToLowAtSharedTier()
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 addCarePortalNote("Steps Steroids OFF")
@@ -9587,6 +9872,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // ApsAutoIsfBoostAutomationsEnabled/ApsAutoIsfMildBoostRatio pair just above, which
                     // is BolusGiven/BolusGivenMild's own unrelated "boost".
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostEnabled, summary = R.string.autoisf_uam_boost_enabled_summary, title = R.string.autoisf_uam_boost_enabled_title))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, summary = R.string.autoisf_profile_batch_auto_enabled_summary, title = R.string.autoisf_profile_batch_auto_enabled_title))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, summary = R.string.autoisf_profile_batch_revert_enabled_summary, title = R.string.autoisf_profile_batch_revert_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxBolus, dialogMessage = R.string.autoisf_uam_boost_max_bolus_summary, title = R.string.autoisf_uam_boost_max_bolus_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostScale, dialogMessage = R.string.autoisf_uam_boost_scale_summary, title = R.string.autoisf_uam_boost_scale_title))

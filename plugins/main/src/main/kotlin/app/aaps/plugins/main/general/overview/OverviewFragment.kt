@@ -1351,6 +1351,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // without navigating there. Dispatches the same local-toggle way as MJ_BUTTONS_TOGGLE/
         // STEROID_BUTTON_TOGGLE below (EventAutoIsfDirectTtCode, no real TT created).
         TIER3_BOOST_TOGGLE("Tier 3 UAM Boost on/off", 5.194),
+        PROFILE_BATCH_AUTO_TOGGLE("Profile batch auto on/off (Toggle1)", 5.210),
+        PROFILE_BATCH_REVERT_TOGGLE("Revert profile batch to basic (Toggle2)", 5.212),
         // Added 2026-08-23: on/off for ApsAutoIsfUseUkf1ForDosing -- see
         // OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc comment. Same
         // EventAutoIsfDirectTtCode dispatch as the two toggles above.
@@ -1547,6 +1549,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.MJ_BUTTONS_TOGGLE,
                 BasalDirectAction.STEROID_BUTTON_TOGGLE,
                 BasalDirectAction.TIER3_BOOST_TOGGLE,
+                BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE,
+                BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE,
                 BasalDirectAction.UKF1_DOSING_TOGGLE,
                 BasalDirectAction.LOCATION_SMS_TOGGLE,
                 BasalDirectAction.LOCATION_SMS_THIS_PHONE,
@@ -1586,6 +1590,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.MJ_BUTTONS_TOGGLE      -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
         BasalDirectAction.STEROID_BUTTON_TOGGLE  -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
         BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
+        BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
+        BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
         BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
@@ -2365,7 +2371,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // same list, matching every other row here.
         // Label updated 2026-08-23 (was "...Standard/Low") when showProfileNamesPopup() grew from 2 to 8
         // roles -- see that function's own doc comment.
-        TtCode.Action("Re-pick coded profiles (Standard/Low/Steroid)") {
+        TtCode.Action("Re-pick coded profiles (Standard/Low/SteroidTier)") {
             showProfileNamesPopup(act) { showTtCodesListDialog() }
         },
         // UKFset2 removed from here 2026-08-15: it no longer has any live dosing effect on the graph
@@ -2613,22 +2619,26 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // literals. Not cancelable (no tap-outside-to-dismiss) since Cancel/OK are both handled explicitly
     // below and either one marks the flag reviewed.
     //
-    // Client (AAPSCLIENT) 2026-09-02: this phone does not loop and must not read or write the role
-    // prefs locally -- those belong on Live/Virtual. On Client the spinners start at "leave unchanged"
-    // (no local pref as default), OK emits SetRole Notes only (the slow ProfileSwitchDialog backup
-    // channel; Live's invoke() applies them). Steroid rows are not in setRoleKeysInOrder so they are
-    // not sent from here -- use Profile Switch with a steroid-marked name. Fast coded-duration (51-57
-    // min) still only carries ONE role per Profile Switch, which is why Re-pick on Client is Note-only.
+    // Client (AAPSCLIENT): does not write role prefs locally. Spinners show Live's snapshot value
+    // (same rows as Virtual/Live, including StandardTierA and SteroidTier A–F). OK emits SetRole
+    // Notes; Live's invoke() applies them. Fast coded-duration 51-57 still only carries one role.
     private data class ProfileRoleSpec(val label: String, val key: StringKey, val optional: Boolean = false)
 
     private val setRoleRelayKeys = listOf(
         StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard100ProfileName,
         StringKey.ApsAutoIsfStandard105ProfileName,
         StringKey.ApsAutoIsfStandard110ProfileName,
         StringKey.ApsAutoIsfLowProfileName,
         StringKey.ApsAutoIsfLow70ProfileName,
         StringKey.ApsAutoIsfLow80ProfileName,
-        StringKey.ApsAutoIsfLow90ProfileName
+        StringKey.ApsAutoIsfLow90ProfileName,
+        StringKey.ApsAutoIsfSteroid100ProfileName,
+        StringKey.ApsAutoIsfSteroid110ProfileName,
+        StringKey.ApsAutoIsfSteroid130ProfileName,
+        StringKey.ApsAutoIsfSteroid150ProfileName,
+        StringKey.ApsAutoIsfSteroid190ProfileName,
+        StringKey.ApsAutoIsfSteroid250ProfileName
     )
 
     private fun emitSetRoleRelayNote(roleKey: StringKey, profileName: String) {
@@ -2656,30 +2666,42 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             onDone()
             return
         }
+        val steroidsOffRoleKeys = setOf(
+            StringKey.ApsAutoIsfStandardProfileName,
+            StringKey.ApsAutoIsfStandard100ProfileName,
+            StringKey.ApsAutoIsfStandard105ProfileName,
+            StringKey.ApsAutoIsfStandard110ProfileName,
+            StringKey.ApsAutoIsfLowProfileName,
+            StringKey.ApsAutoIsfLow70ProfileName,
+            StringKey.ApsAutoIsfLow80ProfileName,
+            StringKey.ApsAutoIsfLow90ProfileName
+        )
         val roleSpecs = listOf(
-            ProfileRoleSpec("Standard profile (live role — attach any profile, not a %):", StringKey.ApsAutoIsfStandardProfileName),
-            ProfileRoleSpec("Low profile (live role — attach any profile, not a %):", StringKey.ApsAutoIsfLowProfileName),
-            ProfileRoleSpec("Steroid 100% (off/baseline):", StringKey.ApsAutoIsfSteroid100ProfileName),
-            ProfileRoleSpec("Steroid 110%:", StringKey.ApsAutoIsfSteroid110ProfileName),
-            ProfileRoleSpec("Steroid 130%:", StringKey.ApsAutoIsfSteroid130ProfileName),
-            ProfileRoleSpec("Steroid 150%:", StringKey.ApsAutoIsfSteroid150ProfileName),
-            ProfileRoleSpec("Steroid 190%:", StringKey.ApsAutoIsfSteroid190ProfileName),
-            ProfileRoleSpec("Steroid 250%:", StringKey.ApsAutoIsfSteroid250ProfileName),
-            // MorningRoleSwap ladder slots (added 2026-08-30). Labels are Tiers A/B/C, not a fixed
-            // %. Internal keys still say 100/105/110 and 70/80/90; attach any true local profile.
-            ProfileRoleSpec("Standard Tier A (optional floor):", StringKey.ApsAutoIsfStandard100ProfileName, optional = true),
-            ProfileRoleSpec("Standard Tier B (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
-            ProfileRoleSpec("Standard Tier C (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
-            ProfileRoleSpec("Low Tier A (optional floor):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
-            ProfileRoleSpec("Low Tier B (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
-            ProfileRoleSpec("Low Tier C (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true)
+            ProfileRoleSpec("StandardCurrent (live role — automations reassign this):", StringKey.ApsAutoIsfStandardProfileName),
+            ProfileRoleSpec("LowCurrent (live role — automations reassign this):", StringKey.ApsAutoIsfLowProfileName),
+            ProfileRoleSpec("StandardTierA (stable floor, optional):", StringKey.ApsAutoIsfStandard100ProfileName, optional = true),
+            ProfileRoleSpec("StandardTierB (optional):", StringKey.ApsAutoIsfStandard105ProfileName, optional = true),
+            ProfileRoleSpec("StandardTierC (optional):", StringKey.ApsAutoIsfStandard110ProfileName, optional = true),
+            ProfileRoleSpec("LowTierA (optional floor):", StringKey.ApsAutoIsfLow70ProfileName, optional = true),
+            ProfileRoleSpec("LowTierB (optional):", StringKey.ApsAutoIsfLow80ProfileName, optional = true),
+            ProfileRoleSpec("LowTierC (optional):", StringKey.ApsAutoIsfLow90ProfileName, optional = true),
+            ProfileRoleSpec("SteroidTierA (ON, 100 baseline):", StringKey.ApsAutoIsfSteroid100ProfileName),
+            ProfileRoleSpec("SteroidTierB (ON, 110):", StringKey.ApsAutoIsfSteroid110ProfileName),
+            ProfileRoleSpec("SteroidTierC (ON, 130):", StringKey.ApsAutoIsfSteroid130ProfileName),
+            ProfileRoleSpec("SteroidTierD (ON, 150):", StringKey.ApsAutoIsfSteroid150ProfileName),
+            ProfileRoleSpec("SteroidTierE (ON, 190):", StringKey.ApsAutoIsfSteroid190ProfileName),
+            ProfileRoleSpec("SteroidTierF (ON, 250):", StringKey.ApsAutoIsfSteroid250ProfileName)
         )
         val relayOnly = config.AAPSCLIENT
+        val liveRoles = if (relayOnly) mirroredAutoIsfSettings() else emptyMap()
         val notSetSentinel = if (relayOnly) "(leave unchanged — not sent to Live)" else "(not set -- falls back to Standard/Low)"
+        val sharedHelp =
+            "Steroids Off: StandardCurrent/LowCurrent are live pointers automations rewrite. StandardTierA is the stable floor — keep it separate so Current can be reassigned. Low/Standard Tiers A/B/C pair A+A, B+B, C+C. SteroidTierA–F are SteroidsON only."
 
         fun spinnerFor(current: String, optional: Boolean): Spinner {
             val spinner = Spinner(act)
-            val choices = if (optional) listOf(notSetSentinel) + profileNames else profileNames
+            val names = if (current.isNotBlank() && current !in profileNames) listOf(current) + profileNames else profileNames
+            val choices = if (optional) listOf(notSetSentinel) + names else names
             val adapter = ArrayAdapter(act, android.R.layout.simple_spinner_item, choices)
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinner.adapter = adapter
@@ -2688,9 +2710,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return spinner
         }
 
-        val spinners = roleSpecs.map { spec ->
-            val optional = relayOnly || spec.optional
-            val current = if (relayOnly) "" else preferences.get(spec.key)
+        val currents = roleSpecs.map { spec ->
+            if (relayOnly) liveRoles[spec.key.key].orEmpty() else preferences.get(spec.key)
+        }
+        val spinners = roleSpecs.mapIndexed { i, spec ->
+            val current = currents[i]
+            val optional = spec.optional || (relayOnly && current.isBlank())
             spinnerFor(current, optional)
         }
         val container = LinearLayout(act).apply {
@@ -2698,13 +2723,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             setPadding(48, 24, 48, 0)
             addView(TextView(act).apply {
                 text = if (relayOnly)
-                    "Client does not loop. Rows start unchanged and are not read from this phone. OK sends SetRole Notes to Live (slow NS path). Fast coded Profile Switch still carries one role at a time. Steroid rows are not sent from here."
+                    "$sharedHelp Client OK sends SetRole Notes to Live (slow NS). Fast coded Profile Switch still one role at a time. Spinners show Live snapshot${mirroredSettingsAge()}."
                 else
-                    "Pick which of your profiles fill each role. Standard/Low Tiers A/B/C are ladder slots (paired A+A, B+B, C+C), not a fixed 70/80/90 or 100/105/110. Attach any true local profile name."
+                    sharedHelp
                 setPadding(0, 0, 0, 24)
             })
             roleSpecs.forEachIndexed { i, spec ->
-                addView(TextView(act).apply { text = spec.label; if (i > 0) setPadding(0, 32, 0, 0) })
+                val live = currents[i]
+                val label = if (relayOnly && live.isNotBlank()) "${spec.label}  [Live: $live]" else spec.label
+                addView(TextView(act).apply { text = label; if (i > 0) setPadding(0, 32, 0, 0) })
                 addView(spinners[i])
             }
         }
@@ -2722,10 +2749,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     var sent = 0
                     roleSpecs.forEachIndexed { i, spec ->
                         if (spec.key !in setRoleRelayKeys) return@forEachIndexed
-                        val pos = spinners[i].selectedItemPosition
-                        if (pos == 0) return@forEachIndexed
-                        val value = profileNames[pos - 1]
-                        emitSetRoleRelayNote(spec.key, value)
+                        val selected = spinners[i].selectedItem?.toString().orEmpty()
+                        if (selected.isBlank() || selected == notSetSentinel || selected == currents[i]) return@forEachIndexed
+                        emitSetRoleRelayNote(spec.key, selected)
                         sent++
                     }
                     ToastUtils.infoToast(
@@ -2734,6 +2760,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         else "Sent $sent SetRole Note(s) to Live. Wait for RoleSet on the pump phone."
                     )
                 } else {
+                    var touchedSteroidsOffRoles = false
                     roleSpecs.forEachIndexed { i, spec ->
                         val pos = spinners[i].selectedItemPosition
                         val value = if (spec.optional) {
@@ -2741,9 +2768,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         } else {
                             profileNames[pos]
                         }
+                        val previous = preferences.get(spec.key)
                         preferences.put(spec.key, value)
-                        if (spec.key == StringKey.ApsAutoIsfStandardProfileName) {
-                            preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, value)
+                        if (spec.key in steroidsOffRoleKeys && previous != value) touchedSteroidsOffRoles = true
+                    }
+                    if (touchedSteroidsOffRoles) {
+                        try {
+                            automationStateService.setState("Steroids", "Steroids Off")
+                        } catch (e: IllegalStateException) {
+                            aapsLogger.error(LTag.APS, "List1 cannot write Steroids Off", e)
                         }
                     }
                     preferences.put(OverviewStringKey.ApsAutoIsfProfileNamesReviewed, dateUtil.now().toString())

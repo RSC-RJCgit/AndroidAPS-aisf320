@@ -53,6 +53,9 @@ enum class IntKey(
     ApsUamMaxMinutesOfBasalToLimitSmb("uamsmbmaxminutes", 30, 15, 120, defaultedBySM = true, dependency = BooleanKey.ApsUseSmb),
     ApsCarbsRequestThreshold("carbsReqThreshold", 1, 1, 100, defaultedBySM = true),
     ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),
+    // Consecutive 03:00-07:00 MorningRoleSwap fires that actually changed Standard/Low.
+    // ProfileBatchAuto DOWN fires at 2 (B→A is the usual case, not a filter). 0 = none.
+    ApsAutoIsfMorningRoleSwapChangeStreak("autoisf_morning_roleswap_change_streak", 0, 0, 10, defaultedBySM = true, exportable = false),
     ApsAutoIsfSplitBolusInterval("split_bolus_interval", 7, 1, 10, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSplitBolusEnabled),
     // Added 2026-09-12, Virtual-only "attempt to start Shizuku" (see AdbWirelessStarter.kt in
     // plugins:aps). The ongoing "IP address & port" shown in Settings -> Developer options -> Wireless

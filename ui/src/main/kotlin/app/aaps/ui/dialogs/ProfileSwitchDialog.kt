@@ -227,6 +227,8 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         RoleOption("LowTierA", StringKey.ApsAutoIsfLow70ProfileName),
         RoleOption("LowTierB", StringKey.ApsAutoIsfLow80ProfileName),
         RoleOption("LowTierC", StringKey.ApsAutoIsfLow90ProfileName)
+        // StandardTierA is the List1 stable floor (ApsAutoIsfStandard100ProfileName), not a 51-57
+        // slot. Writing StandardCurrent still mirrors into that floor. Do not collapse Current into A.
     )
 
     private val standardTierKeys = setOf(
@@ -392,8 +394,6 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         } ?: roleOption.key?.let { roleKey ->
                             if (!config.AAPSCLIENT) {
                                 preferences.put(roleKey, profileName)
-                                if (roleKey == StringKey.ApsAutoIsfStandardProfileName)
-                                    preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, profileName)
                             }
                             emitSetRoleNote(roleKey, profileName)
                         }

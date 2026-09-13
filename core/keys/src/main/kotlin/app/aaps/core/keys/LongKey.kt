@@ -43,6 +43,10 @@ enum class LongKey(
     // ApsAutoIsfUnexplainedHighMealSeen (BooleanKey.kt) for the paired "was there a meal/UAM during this
     // same episode" latch.
     ApsAutoIsfUnexplainedHighSinceTs("autoisf_unexplained_high_since_ts", 0, defaultedBySM = true),
+    // ProfileBatchAuto UP: unbroken BGL > 12.0 mmol stretch start. 0 = not in a stretch.
+    ApsAutoIsfBatchBgl12SinceTs("autoisf_batch_bgl12_since_ts", 0, defaultedBySM = true),
+    // ProfileBatchAuto UP: unbroken ukfRaw BGL > 14.0 mmol stretch start. 0 = not in a stretch.
+    ApsAutoIsfBatchUkf14SinceTs("autoisf_batch_ukf14_since_ts", 0, defaultedBySM = true),
     // Virtual-Pump phone cursor for the newest StLow/legacy StorageLow Note already alerted. A later NS Note has a
     // new timestamp and is handled once, including across app restarts.
     ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0, defaultedBySM = true),

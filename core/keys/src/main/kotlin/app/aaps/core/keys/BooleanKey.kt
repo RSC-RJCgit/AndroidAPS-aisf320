@@ -107,6 +107,12 @@ enum class BooleanKey(
     // which is a different, unrelated feature (BolusGiven/BolusGivenMild). Default false: opt-in,
     // Tier 3 UAM Boost was hardcoded off (`val boostActive = false`) before this preference existed.
     ApsAutoIsfUamBoostEnabled("autoisf_uam_boost_enabled", false, defaultedBySM = true),
+    // 2026-09-14: standing enable for ProfileBatchAuto (OpenAPSAutoISFPlugin.kt) -- one-step
+    // Low/StandardTier A/B/C moves while keeping Steroids Off. Default off. List2 5.210 flips.
+    ApsAutoIsfProfileBatchAutoEnabled("autoisf_profile_batch_auto_enabled", false, defaultedBySM = true),
+    // 2026-09-14: when on, force StandardCurrent/LowCurrent back to StandardTierA/LowTierA
+    // and block auto-up. Does not touch SteroidTier A–F. List2 5.212 flips. Default off.
+    ApsAutoIsfProfileBatchRevertEnabled("autoisf_profile_batch_revert_enabled", false, defaultedBySM = true),
     // Added 2026-08-23: routes the AutoISF plugin's own getGlucoseStatusData() -- the single choke
     // point behind glucoseStatusProvider.glucoseStatusData app-wide when this plugin is the active APS
     // -- through the literal "UKF1" comparison series (UnscentedKalmanFilterPlugin.smoothForDisplay()
