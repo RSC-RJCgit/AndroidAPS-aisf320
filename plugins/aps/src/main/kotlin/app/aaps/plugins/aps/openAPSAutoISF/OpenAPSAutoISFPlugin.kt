@@ -7780,6 +7780,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // replaySmbBoostRecent (2026-09-13) so Tier 3 firing recently can also feed into it below --
         // see that val's own doc comment for why.
         val replayUamBoostRecent = !readyToRun("UamBst", 20)
+        // Added 2026-09-13, per explicit request: whole minutes since UamBst last marked, feeding
+        // DetermineBasalAutoISF.kt's graduated post-UamBst fast-rise taper (see that param's own doc
+        // comment). Int.MAX_VALUE when UamBst has never fired (lastRunTimestamps has no entry) so the
+        // taper reads as "ages ago" and falls through to the unchanged hard-hold behavior.
+        val replayUamBstMinutesAgo = (lastRunTimestamps["UamBst"])
+            ?.let { ((dateUtil.now() - it) / 60_000L).toInt() } ?: Int.MAX_VALUE
         // 2026-09-13, per explicit request: Tier 3 UAM Boost now gets the SAME FastRise-cap-skip
         // exemption BMild/Giv already had (replayUamBoostRecent added to this first OR-group only --
         // NOT the second IOB-ceiling escape clause below, since BolusGivenMild/Bg3 aren't in that one
@@ -7870,6 +7876,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "smbInt5Sec" to replaySmbInt5Sec,
                 "smbBoostRecent" to replaySmbBoostRecent,
                 "uamBoostRecent" to replayUamBoostRecent,
+                "uamBstMinutesAgo" to replayUamBstMinutesAgo,
                 "nightFrSkipActive" to replayNightFrSkipActive,
                 "rawDelta5Mgdl" to replayRawDelta5Mgdl,
                 "immediateRawDelta5Mgdl" to replayImmediateRawDelta5Mgdl,
@@ -7944,6 +7951,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // when Giv-1 needed the bypass (FastRise 750 still applied at 15:35).
             smbBoostRecent = replaySmbBoostRecent,
             uamBoostRecent = replayUamBoostRecent,
+            uamBstMinutesAgo = replayUamBstMinutesAgo,
             nightFrSkipActive = replayNightFrSkipActive,
             // Extra AND confirmations on the fast-rise capping blocks' own Delta gate (see
             // DetermineBasalAutoISF.kt). Pass-safe fallback (9999.0) when data is missing.

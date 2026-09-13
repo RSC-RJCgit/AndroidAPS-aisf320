@@ -361,6 +361,13 @@ class DetermineBasalAutoISF @Inject constructor(
         // preserves callers/tests. Also now one of smbBoostRecent's own OR-branches (see caller) --
         // this param's OWN uses below (holdFastRiseAfterUamBst, postUamBstLate) are unchanged.
         uamBoostRecent: Boolean = false,
+        // Added 2026-09-13, per explicit request: whole minutes since UamBst last marked (1-min loop
+        // cadence, so this doubles as a cycle count). Int.MAX_VALUE default preserves callers/tests that
+        // don't pass it (reads as "ages ago", i.e. no taper). Used ONLY inside holdFastRiseAfterUamBst's
+        // own branch below to turn that hard hold into a graduated taper instead of a binary switch --
+        // does not change anything about WHEN the hold engages (still uamBoostRecent && iobHighNoCob,
+        // the same no-COB/high-IOB carve-out from the real 6 Sep 12:16-12:30 BMild|UamBst hypo).
+        uamBstMinutesAgo: Int = Int.MAX_VALUE,
         // NightFrSkip: same FastRise restore as smbBoostRecent, but only 1–2 loop cycles (00:30-04:00).
         // The 0.6U/10min cap below still binds -- this must NOT be wired into smbBoostRecent's 30-min
         // window. Default false = unchanged callers/tests.
@@ -2251,8 +2258,31 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" fast-rise caps skipped ($skipWhy): microBolus ${round(microBolus, 2)} -> ${round(microBolusFullUncapped, 2)} ")
                     microBolus = microBolusFullUncapped
-                } else if (holdFastRiseAfterUamBst && (smbBoostRecent || nightFrSkipActive)) {
-                    rT.reason.append(" fast-rise caps kept after UamBst (IOB ${round(IOB, 2)} COB ${round(COB, 1)}) ")
+                } else if (holdFastRiseAfterUamBst && (smbBoostRecent || nightFrSkipActive) && microBolus != microBolusFullUncapped) {
+                    // Added 2026-09-13, per explicit request: graduated taper instead of a hard hold, so
+                    // the post-boost high-IOB/no-COB window isn't all-or-nothing. First 5 cycles after
+                    // UamBst fired: unchanged (still fully uncapped -- IOB is rarely high enough this
+                    // soon for the hold to have engaged anyway, matching the pre-existing early-window
+                    // behavior). Cycles 6-15: blend 75% of the way from the fast-rise-capped value toward
+                    // the fully uncapped one (nearer uncapped, per explicit request) instead of either
+                    // extreme. Cycle 16+ (or once uamBoostRecent's own 20-min window lapses): back to the
+                    // original hard hold (0% -- fully capped), same protection the real 6 Sep 12:16-12:30
+                    // BMild|UamBst hypo (IOB 1.91-2.49U, COB 0, BG crashed 8.9->4.1) fix was built for.
+                    val taperFactor = when {
+                        uamBstMinutesAgo <= 5  -> 1.0
+                        uamBstMinutesAgo <= 15 -> 0.75
+                        else                   -> 0.0
+                    }
+                    if (taperFactor > 0.0) {
+                        val cappedMicroBolus = microBolus
+                        microBolus += (microBolusFullUncapped - microBolus) * taperFactor
+                        rT.reason.append(
+                            " fast-rise caps tapered after UamBst (${uamBstMinutesAgo}min, x${round(taperFactor, 2)}, IOB ${round(IOB, 2)} COB ${round(COB, 1)}): " +
+                                "microBolus ${round(cappedMicroBolus, 2)} -> ${round(microBolus, 2)} "
+                        )
+                    } else {
+                        rT.reason.append(" fast-rise caps kept after UamBst (${uamBstMinutesAgo}min, IOB ${round(IOB, 2)} COB ${round(COB, 1)}) ")
+                    }
                 }
 // =====================================================
 // RECENT-LOW REBOUND GUARD

@@ -106,6 +106,9 @@ object AutoIsfReplayAdapterMain {
             uamBoostRecent = parameters.get("uamBoostRecent")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean
                 ?: false,
+            uamBstMinutesAgo = parameters.get("uamBstMinutesAgo")
+                ?.takeIf { it.isJsonPrimitive }?.asInt
+                ?: Int.MAX_VALUE,
             nightFrSkipActive = parameters.get("nightFrSkipActive")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean
                 ?: false,
