@@ -226,6 +226,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // line always shows *something* -- last engagement time/IOB/factor if it's ever fired, "never" if
     // not -- rather than only appearing on the cycle it actually engages and being silent/absent the
     // rest of the time.
+    // PoorResponseRescue's dose anchor: timestamp + BG of the most recent >=0.6U BolusGiven/BMild/
+    // UamBst delivery, latched every cycle from autoIsfValues.smbDelivered/.timestamp (same one-cycle-
+    // stale carry-forward pattern as bgAcce/lastAcceIsf/lastCycleInsulinReq above -- smbDelivered for
+    // THIS cycle isn't known until after determine_basal() returns, so automations running before it
+    // next cycle see last cycle's value). 0L = no qualifying dose latched yet.
+    private var lastBigDoseTimestamp: Long = 0L
+    private var lastBigDoseBgMgdl: Double = 0.0
     private var lastDuraTaperTimestamp: Long = 0L
     private var lastDuraTaperInfo: String = ""
     // TodOffsetsZero's own sustained-duration tracking -- see that block's doc comment. 0L means "not
@@ -5126,6 +5133,161 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("OvernightDuraRescue: g=${round(g / 18.0182, 1)} duraISF=${round(duraIsf, 2)} finalISF=${round(finalIsf, 2)} -> Standard 60min")
                 addCarePortalNote("DuraRsc")
                 markRun("OvernightDuraRescue")
+            }
+        }
+
+        // --- StuckHighRescue: added 2026-09-13, per explicit request, after a real 13 Sep BG=13.0mmol
+        // plateau (Client, ~17:50-18:01) where insulinReq had collapsed toward zero despite BG staying
+        // high, because the model's own prediction (minPredBG/eventualBG in DetermineBasalAutoISF.kt --
+        // insulinReq = (min(minPredBG, eventualBG) - target_bg) / sens) was already close to target.
+        // HP2 (hypoPrediction2Mmol) is used here as an EARLIER, plugin-side proxy for that same
+        // "predicted landing point" concept -- same shape of formula, computed before determine_basal()
+        // runs -- NOT the literal minPredBG/eventualBG values, which only exist inside that function.
+        //
+        // Two branches, using HP2 in OPPOSITE directions for two different real failure modes seen in
+        // that same episode:
+        //   - HP2 HIGH (>6.5mmol) while BG is high: the model's own prediction agrees BG is headed
+        //     high, so insulinReq is likely ALREADY substantial -- the observed problem there was the
+        //     delivery-ratio CEILING capping how much of that Req reached an actual SMB (13 Sep 17:51:
+        //     Req=3.56U, SMB=0.25U delivered). Remedy: temporarily raise the live SMB delivery ratio.
+        //     Revert is automatic and free -- the existing "SMB delivery ratio reset... once no TT is
+        //     active" block a few hundred lines up already restores baseline the moment the paired TT
+        //     below ends; no new revert logic needed.
+        //   - HP2 LOW/near target (<= target+1.0mmol) while BG is still high: the model is being
+        //     falsely reassured (13 Sep 12:00 PM: minPredBG 5.2 vs target 5.0 -- a 0.2mmol gap -- while
+        //     actual BG sat at 7.2, a 2.2mmol real gap), so insulinReq collapses toward zero regardless
+        //     of ratio. Remedy: temporarily lower the effective target via a normal TT -- target_bg is
+        //     TT-aware by design in the original AutoISF/oref0 formula above, so this widens the gap
+        //     that formula sees without touching that formula, or any other core algorithm code, at
+        //     all -- exactly the same mechanism every other TT-setting automation in this file already
+        //     uses (HighDaytimeBrake, BMild, etc.).
+        //
+        // Shared IOB ceiling (0.30 * max_iob) on both branches: this automation only ever pushes toward
+        // MORE delivery (higher ratio, or a lower target widening insulinReq's gap), so it must not
+        // fire once IOB is already substantial -- same caution as iobHighNoCob/the dura_ISF IOB taper
+        // elsewhere in this file. By the time IOB reached ~4U in the 13 Sep episode, the original
+        // formula's own caution was almost certainly correct to hold back; this automation is for the
+        // EARLIER window, not for piling on once IOB is already high.
+        //
+        // FIRST PASS -- every threshold below (BG bar, HP2 cutoffs, ratio bump, TT target/duration, IOB
+        // ceiling, re-arm throttle) is a defensible starting estimate, not yet validated against real
+        // device data. Watch real fires and retune, same as OvernightDuraRescue's own thresholds were.
+        run {
+            if (!readyToRun("StuckHighRescue", 30)) return@run
+            val g = glucoseStatus.glucose
+            val cob = mealData.mealCOB
+            val iob = iobData.iob
+            val maxIob = constraintsChecker.getMaxIOBAllowed().value()
+            val targetMmol = targetBg / 18.0182
+            val hp = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iob, cob, bgAcce)
+
+            val highEnough = g >= 162.2 /* 9.0 mmol */
+            val iobRoomLeft = iob < 0.30 * maxIob
+            val eligible = highEnough && iobRoomLeft && hp != null
+
+            if (eligible && hp != null) {
+                if (hp > 6.5) {
+                    // Ratio-capped branch: boost delivery ratio, hold it open with a TT at the SAME
+                    // target (just needs any TT active for the existing DelOff-exemption to not reset
+                    // the boost next cycle) so it reverts to baseline automatically once this TT ends.
+                    // +0.10 (2026-09-13 first pass) raised to +0.20, per explicit request, after
+                    // retrospective-checking the 13 Sep 17:12-17:38 episode this was built from: +0.10
+                    // (baseline 0.15 -> 0.25) was still a modest step against Req values that reached
+                    // 2.4-3.9U in that window, and well under BMild's own boost (mildBase+0.15, ~0.50)
+                    // -- +0.20 (-> 0.35) halves that gap to BMild while still leaving BMild as the
+                    // stronger tier. Still coerced to smb_delivery_ratio_max, so a device with a lower
+                    // configured ceiling is unaffected.
+                    val boosted = (smb_delivery_ratio + 0.20).coerceAtMost(smb_delivery_ratio_max)
+                    if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
+                        setSmbDeliveryRatio(boosted)
+                        startTempTargetIfNeeded(targetBg, 30)
+                        sendSms("StuckHighRescue [ratio]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} SMBdel -> ${round(boosted, 2)}")
+                        addCarePortalNote("SHRto")
+                        markRun("StuckHighRescue")
+                    }
+                } else if (hp <= targetMmol + 1.0) {
+                    // Target-gap-too-small branch: fixed -2.0mmol TT, floored at 4.0mmol (the same
+                    // aggressive-correction TT floor HighDaytimeBrake/HighEveNightBrake already use
+                    // elsewhere in this file), for 30 min.
+                    val rescueTargetMgdl = (targetBg - 36.0 /* 2.0 mmol */).coerceAtLeast(72.1 /* 4.0 mmol */)
+                    startTempTargetIfNeeded(rescueTargetMgdl, 30)
+                    sendSms("StuckHighRescue [target]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} target=${round(targetMmol, 1)} -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol 30min")
+                    addCarePortalNote("SHTgt")
+                    markRun("StuckHighRescue")
+                }
+            }
+        }
+
+        // --- PoorResponseRescue: added 2026-09-13, per explicit request, catching the SAME "insulin
+        // isn't producing an effect" failure mode as StuckHighRescue above, but anchored to a SPECIFIC
+        // recent dose and its actual observed response, rather than a BG-level/HP2 threshold -- built
+        // to fire MUCH earlier in a rise (retrospectively, before BG even reached 9.0mmol in the 13 Sep
+        // 16:57-18:01 episode this was built from, where BG had already reached 13.0mmol before
+        // anything else caught it). A >=0.6U BolusGiven/BMild/UamBst dose should show SOME visible
+        // effect within a handful of minutes; if it doesn't, that is a real, event-anchored "this isn't
+        // working" signal, available much sooner than watching for a sustained high BG or a long
+        // accumulation window.
+        //
+        // Two stages sharing the same dose anchor, each with its OWN readyToRun key so one firing does
+        // not block the other's later window (a real bug caught while designing this -- a single shared
+        // key with a 20-min throttle would have suppressed Stage 2 until ~20 min after Stage 1's own
+        // mark, missing Stage 2's intended 14-16 min window entirely):
+        //   - Stage 1 (6-8 min after the dose, low certainty): a SMALL nudge only (+0.05 ratio) -- 6-8
+        //     minutes is genuinely very early for ANY correction, even a normal one, to show visible
+        //     effect, so this fires on real uncertainty, not confirmed failure.
+        //   - Stage 2 (14-16 min after the SAME dose, higher certainty): if BG is STILL rising by more
+        //     than Stage 1's own bar this much later, that confirms the early read rather than being
+        //     noise -- escalate to StuckHighRescue's own combined remedy (+0.20 ratio AND the -2.0mmol/
+        //     4.0mmol-floor target TT), reusing that automation's already-agreed numbers rather than
+        //     inventing a third set.
+        //
+        // Retrospective check against the 13 Sep episode (04:57 PM BMild|UamBst, 0.65U, BG 7.4mmol):
+        // Stage 1's window (05:03-05:05) saw BG at 7.8-8.1 (+0.4 to +0.7mmol, still rising every single
+        // minute) -- would have fired ~9 minutes before BG crossed StuckHighRescue's own 9.0mmol bar.
+        // Stage 2's window (~05:11-05:13) saw BG at 8.9-9.1 (+1.5 to +1.7mmol) -- would also have fired,
+        // independently of Stage 1, confirming the early read.
+        //
+        // Shared IOB ceiling (0.30 * max_iob, same as StuckHighRescue) -- this automation only ever
+        // pushes toward MORE delivery, so it must stay out of the way once IOB is already substantial.
+        //
+        // FIRST PASS, retrospective-only (one 13 Sep episode) -- every threshold here (dose bar, both
+        // check windows, both rise bars, both remedy sizes) is a defensible starting estimate, not yet
+        // validated against real device data. Watch real fires and retune.
+        run {
+            // Latch the most recent qualifying dose every cycle, independent of the eligibility checks
+            // below, so the anchor always reflects the LATEST >=0.6U dose even while Stage 1/2 are
+            // still watching an earlier one.
+            if (autoIsfValues.smbDelivered >= 0.6) {
+                lastBigDoseTimestamp = autoIsfValues.timestamp
+                lastBigDoseBgMgdl = glucoseStatus.glucose
+            }
+            if (lastBigDoseTimestamp <= 0L) return@run
+
+            val minutesSinceDose = (dateUtil.now() - lastBigDoseTimestamp) / 60_000.0
+            val riseSinceMgdl = glucoseStatus.glucose - lastBigDoseBgMgdl
+            val stillRising = glucoseStatus.delta > 0.0
+            val iob = iobData.iob
+            val maxIob = constraintsChecker.getMaxIOBAllowed().value()
+            val iobRoomLeft = iob < 0.30 * maxIob
+            if (!(iobRoomLeft && stillRising)) return@run
+
+            if (minutesSinceDose in 6.0..8.0 && riseSinceMgdl >= 5.4 /* 0.3 mmol */ && readyToRun("PoorResponseRescueStage1", 10)) {
+                val boosted = (smb_delivery_ratio + 0.05).coerceAtMost(smb_delivery_ratio_max)
+                if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
+                    setSmbDeliveryRatio(boosted)
+                    startTempTargetIfNeeded(targetBg, 20)
+                    sendSms("PoorResponseRescue [stage1]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}")
+                    addCarePortalNote("PRR1")
+                    markRun("PoorResponseRescueStage1")
+                }
+            } else if (minutesSinceDose in 14.0..16.0 && riseSinceMgdl >= 9.0 /* 0.5 mmol */ && readyToRun("PoorResponseRescueStage2", 10)) {
+                val boosted = (smb_delivery_ratio + 0.20).coerceAtMost(smb_delivery_ratio_max)
+                val rescueTargetMgdl = (targetBg - 36.0 /* 2.0 mmol */).coerceAtLeast(72.1 /* 4.0 mmol */)
+                setSmbDeliveryRatio(boosted)
+                startTempTargetIfNeeded(rescueTargetMgdl, 30)
+                sendSms("PoorResponseRescue [stage2]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}, target -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol")
+                addCarePortalNote("PRR2")
+                markRun("PoorResponseRescueStage2")
             }
         }
 
