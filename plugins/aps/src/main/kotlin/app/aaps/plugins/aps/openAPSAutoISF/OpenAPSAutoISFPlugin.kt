@@ -776,7 +776,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow90ProfileName, StringKey.ApsAutoIsfLowProfileName)
         val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard110ProfileName, StringKey.ApsAutoIsfStandardProfileName)
         if (targetLow.isBlank() || targetStandard.isBlank()) return
-        val currentProfileName = profileFunction.getProfileName()
+        // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+        val currentProfileName = profileFunction.getOriginalProfileName()
         preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole, currentLow)
         preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole, currentStandard)
         preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
@@ -1023,7 +1024,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (currentLow == targetLow && currentStandard == targetStandard) return false
         if (!readyToRun(throttleKey, throttleMinutes)) return false
         val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow))
-        val currentProfileName = profileFunction.getProfileName()
+        // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+        val currentProfileName = profileFunction.getOriginalProfileName()
         preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
         preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
         if (currentProfileName == currentLow) switchProfileIfNeeded(targetLow)
@@ -1054,7 +1056,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val newStandard = resolveTieredProfileName(standardRoleLadder[newIndex], StringKey.ApsAutoIsfStandard100ProfileName)
             .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
             .takeIf { it.isNotBlank() } ?: return false
-        val currentProfileName = profileFunction.getProfileName()
+        // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+        val currentProfileName = profileFunction.getOriginalProfileName()
         preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
         preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
         if (switchRunning) {
@@ -1099,7 +1102,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private enum class ProfileBatchSlot { LOW_A, LOW_B, LOW_C, STD_A, STD_B, STD_C, OTHER }
 
     private fun currentProfileBatchSlot(): ProfileBatchSlot {
-        val running = profileFunction.getProfileName()
+        // getOriginalProfileName(), not getProfileName() -- see sourceRoleRung()'s own 2026-09-14
+        // doc comment. A %-boosted running profile must still be recognized as its bare role.
+        val running = profileFunction.getOriginalProfileName()
         val lowRole = preferences.get(StringKey.ApsAutoIsfLowProfileName)
         val stdRole = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
         val lowIdx = ladderIndexOf(lowRole, lowRoleLadder)
@@ -1259,7 +1264,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     data class ProfileRoleClassification(val strength: String, val steroidTier: String)
 
     fun classifyCurrentProfileRole(): ProfileRoleClassification {
-        val name = profileFunction.getProfileName()
+        // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+        val name = profileFunction.getOriginalProfileName()
         val strength = when (name) {
             preferences.get(StringKey.ApsAutoIsfStandardProfileName) -> "Standard"
             preferences.get(StringKey.ApsAutoIsfLowProfileName)      -> "Low"
@@ -3233,7 +3239,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */
                 && (mealLeftoverRise || rawDelta5 < 14.4 * stackK) /* bg3 owns >= 0.80 unless leftover-meal rise and bg3 did not fire */
                 && rawDelta1FloorOk && (mealLeftoverRise || rawDelta1 < 14.4 * stackK) /* same upper band as rawDelta5 */
-                && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName)   // not on the MJ/night profile
+                && profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName)   // not on the MJ/night profile (bare name -- see sourceRoleRung()'s 2026-09-14 doc comment)
                 && !mjActive()               // and MJ must not be in an active cycle (was: == NOMJremains)
                 // Cross-cooldown with bg3: same reasoning as bg3's mirror check above — lastBolusMin/
                 // lastCarbMin don't see either automation's own SMB delivery, so without this a bg3 fire's
@@ -3324,7 +3330,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // at explicit request -- same as bmildBasicCriteriaMet. Rise-confirmation gates below are
             // unchanged; this only drops the timing veto after a manual bolus/carb entry.
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour, same bypass as BMild.
-            val profileName = profileFunction.getProfileName()
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val profileName = profileFunction.getOriginalProfileName()
             return (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
@@ -5452,7 +5459,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g   = glucoseStatus.glucose
             val sd  = glucoseStatus.shortAvgDelta   // mg/dL
             val ld  = glucoseStatus.longAvgDelta    // mg/dL
-            val onLowProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val onLowProfile = profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
 
             val duraIsf  = autoIsfValues.duraIsf
             val finalIsf = autoIsfValues.finalIsf
@@ -5739,7 +5747,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
             val restoredLow = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole)
             val restoredStandard = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole)
-            val currentProfileName = profileFunction.getProfileName()
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val currentProfileName = profileFunction.getOriginalProfileName()
             if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
             if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
             if (currentProfileName == escalatedLow && restoredLow.isNotBlank()) switchProfileIfNeeded(restoredLow)
@@ -5806,7 +5815,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (!readyToRun("OffHighProf", 30)) return@run
             val g  = glucoseStatus.glucose
             val d  = glucoseStatus.delta
-            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val onCurrentProfile = profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val noTT = activeTtMgdl() == null
             val steroidOff = checkAutomationState("Steroids", "Steroids Off")
             // Hypo-prediction gate: only back off (drop to the low profile + acce 0.18 / iobTH 18) when a
@@ -5854,7 +5864,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // and wasn't covered by ProfileRoleSanityCheck below until now. Now ApsAutoIsfSafetyProfileName,
         // defaulting to that same literal so existing installs see no behavior change.
         if (readyToRun("Battery1pc", 20)
-            && profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            && profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel <= 1
             && activePlugin.activePump !is VirtualPump) {
             switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSafetyProfileName), 0)
@@ -5875,7 +5886,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // cancelled) a hypo 50%.
         // 5-min floor throttle added on top of the profile guard (see readyToRun() usage note).
         if (readyToRun("BatteryOver1pc", 5)
-            && profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            && profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel > 1) {
             switchToStandardAtSharedTier(0)
             sendSms("AllOK Batt")
@@ -6226,7 +6238,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta5 >= 3.6 && rawDelta1 >= 3.6 /* 0.2 mmol UKFraw confirmation */
             val bgRise2 = g >= 90.1  && sd >= 7.2 && d >= 7.2   // >=5.0 mmol fast rise
                 && rawDelta5 >= 7.2 && rawDelta1 >= 7.2 /* 0.4 mmol UKFraw confirmation */
-            val profileName = profileFunction.getProfileName()
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val profileName = profileFunction.getOriginalProfileName()
             val onNormalProfile = profileName == preferences.get(StringKey.ApsAutoIsfStandardProfileName) || profileName == preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val bg1 = postBolusGate && (bgRise1 || bgRise2) && recentSteps60Minutes <= 1600
                 && iobTH < 71 && g <= 198.2 && checkAutomationState("Steroids", "Steroids Off")
@@ -6481,7 +6494,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ((mildIobChange5 > 0.40 * mildStackK * mildThresholdScale && d >= 5.4 * mildStackK) || mildDeliverySuppressed) &&
                 mildRawDelta5 >= 5.4 * mildStackK && mildRawDelta5 < 14.4 * mildStackK &&
                 mildRawDelta1FloorOk && mildRawDelta1 < 14.4 * mildStackK &&
-                profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
+                // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+                profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
                 readyToRun("BolusGivenBg3", 5) &&
                 recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200 &&
@@ -6561,7 +6575,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
                 (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(glucoseStatus.glucose)) &&
                 holding && persistentMinutes >= 10.0 &&
-                profileFunction.getProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
+                // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+                profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
                 recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
             ) {
@@ -7799,7 +7814,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
-            val onCurrentProfileEither = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName) || profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            val onCurrentProfileEither = profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName) || profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandardProfileName)
             // TWO FIXES, both from the careportal trail on the night of 7->8 Aug 2026, which showed "Eve"
             // firing every 5-6 min from 23:08 to 00:18 and alternating with "NtCap" from midnight:
             //
