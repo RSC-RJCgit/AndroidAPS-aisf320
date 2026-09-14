@@ -2703,8 +2703,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // itself throws IllegalStateException for an unknown stateName/stateValue, same as the automation action.
     private fun setAutomationState(stateName: String, stateValue: String): Boolean {
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
-        automationStateService.setState(stateName, stateValue)
-        return true
+        // 2026-09-14: this function's own doc comment above has always claimed it "no-ops (rather
+        // than throwing)" when stateValue isn't a valid value for stateName -- it never actually did
+        // that. Also corrected the same day: AutomationStateService.setState() actually validates via
+        // Kotlin require(...), which throws IllegalArgumentException, NOT IllegalStateException --
+        // every doc comment and the first pass of this very fix assumed the wrong type, which would
+        // have caught nothing. Real consequence of an uncaught throw: handleDirectMjUserAction's START
+        // branch and handleDirectSteroidUserAction's START_110 branch both call this MID-sequence, with
+        // SMS/notification/profile-switch effects on either side of it -- a throw here silently aborts
+        // everything after it (the exception is only caught far up, at the rxBus subscription's
+        // onError, which just logs "... button failed" with no user-visible sign anything went wrong).
+        // Catching both exception types here, at the one shared choke point, protects every
+        // setAutomationState() call in this file at once rather than needing each of the ~15+ call
+        // sites individually wrapped.
+        return try {
+            automationStateService.setState(stateName, stateValue)
+            true
+        } catch (e: IllegalArgumentException) {
+            aapsLogger.error(LTag.APS, "setAutomationState(\"$stateName\", \"$stateValue\") failed -- value not declared for this state?", e)
+            false
+        } catch (e: IllegalStateException) {
+            aapsLogger.error(LTag.APS, "setAutomationState(\"$stateName\", \"$stateValue\") failed -- value not declared for this state?", e)
+            false
+        }
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -150,10 +150,13 @@ class AutoIsfHistoryExporter @Inject constructor(
     private fun hideLiveUamBoostEchoes(): Boolean =
         virtualPump.isEnabled() && !config.AAPSCLIENT && !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
 
-    /** MJ-only compatibility query retained for graph/history callers. */
+    /** MJ-only compatibility query retained for graph/history callers.
+     *  "MJ active" (not bare "MJ") is what handleDirectMjUserAction's START branch actually writes --
+     *  see mjStateStr()'s own 2026-09-14 doc comment for why both spellings must be recognized here too,
+     *  otherwise this pre-filter drops the note before mjStateStr() ever gets a chance to match it. */
     fun mjNotesFrom(from: Long): List<TE> =
         carePortalNotesFrom(from)
-            .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff") }
+            .filter { val t = it.note ?: ""; t == "MJ" || t == "MJ active" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff") }
 
     // -----------------------------------------------------------------------------------------------
     // File export
@@ -1145,14 +1148,21 @@ class AutoIsfHistoryExporter @Inject constructor(
             "\"${value.replace("\"", "\"\"")}\""
         else value
     fun mjStateStr(timestamp: Long, mjNotes: List<TE>): String {
+        // 2026-09-14: handleDirectMjUserAction's START branch (OpenAPSAutoISFPlugin.kt) writes the
+        // careportal note as "MJ active", not bare "MJ" -- this lookup only ever checked for "MJ",
+        // so a real, confirmed-active MJ cycle (verified via the in-app States tab) permanently showed
+        // as "NOM" here regardless of device, since the note text simply never matched. "MJ active"
+        // is also the literal key Graph4NoteLabel.kt's own stacked-note abbreviation table depends on
+        // for a different graph panel, so the fix is here (recognize both spellings) rather than
+        // changing what gets written.
         val latest = mjNotes.firstOrNull {
             val note = it.note ?: ""
-            it.timestamp <= timestamp && (note == "MJ" || note == "MJ2" || note == "MJ3" ||
+            it.timestamp <= timestamp && (note == "MJ" || note == "MJ active" || note == "MJ2" || note == "MJ3" ||
                 note == "MoreMJ" || note == "A1" || note == "NOMJremains" || note.startsWith("MJoff"))
         } ?: return "NOM"
         val note = latest.note ?: return "NOM"
         return when {
-            note == "MJ"  -> "MJa"
+            note == "MJ" || note == "MJ active" -> "MJa"
             note == "MJ2" -> "MJ2"
             note == "MJ3" -> "MJ3"
             note == "MoreMJ" -> "MJ3"   // MoreMJ advances NOMJremains -> MJ3 directly

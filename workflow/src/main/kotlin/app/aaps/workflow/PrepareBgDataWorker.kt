@@ -716,13 +716,19 @@ class PrepareBgDataWorker(
     // and sync to the client, so this shows correctly on both master and client (unlike
     // automationStateService, which doesn't sync).
     private fun latestMjState(atTime: Long): String {
+        // 2026-09-14: same gap as AutoIsfHistoryExporter.mjStateStr() -- handleDirectMjUserAction's
+        // START branch writes the careportal note as "MJ active", not bare "MJ", so this graph-label
+        // lookup permanently showed "NOM" for a real, confirmed-active MJ cycle. See that function's
+        // own doc comment for why the fix recognizes both spellings here rather than changing what
+        // gets written (Graph4NoteLabel.kt's own abbreviation table depends on the literal "MJ active"
+        // text staying as-is).
         val notes = persistenceLayer.getTherapyEventDataFromTime(atTime - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
         val note = notes.firstOrNull {
             val t = it.note ?: ""
-            it.timestamp <= atTime && (t == "MJ" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff"))
+            it.timestamp <= atTime && (t == "MJ" || t == "MJ active" || t == "MJ2" || t == "MJ3" || t == "MoreMJ" || t == "A1" || t == "NOMJremains" || t.startsWith("MJoff"))
         } ?: return "NOM"
         return when (note.note) {
-            "MJ"     -> "MJa"
+            "MJ", "MJ active" -> "MJa"
             "MJ2"    -> "MJ2"
             "MJ3"    -> "MJ3"
             "MoreMJ" -> "MJ3"   // MoreMJ advances NOMJremains -> MJ3 directly
