@@ -953,10 +953,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Letter in force for MorningRoleSwap / overnight Standard↔Low. Running role wins when it
     // is on its ladder (or its name matches a ladder slot even if Current is stale). Else the
     // on-ladder partner. -1 only when neither Current nor the running name is on a ladder.
+    //
+    // 2026-09-14: runningName MUST be the bare (original) profile name, not getProfileName()'s
+    // customized one -- getCustomizedName() appends " (NNN%)" whenever percentage != 100
+    // (ProfileSwitchExtension.kt), while every role pref/ladder entry is stored bare. Real incident:
+    // High6PPoff/HighPP130Off/PodChangeHighPP130 all call switchToStandardAtSharedTier() specifically
+    // WHILE a temporary percentage boost is still active (that IS what they're exiting), so the old
+    // getProfileName() default handed this function "Profile150 (120%)" as runningName -- which could
+    // never equal the bare "Profile150" standardName/ladder entries, knocking it off its own top-
+    // priority "trust what's actually running" branch and onto a lower-priority fallback instead.
+    // Confirmed against real careportal data: two same-day StandardCurrent drops (150->130) both
+    // landed in the same minute as an "off120" (High6PPoff) note.
     private fun sourceRoleRung(
         standardName: String = preferences.get(StringKey.ApsAutoIsfStandardProfileName),
         lowName: String = preferences.get(StringKey.ApsAutoIsfLowProfileName),
-        runningName: String = profileFunction.getProfileName()
+        runningName: String = profileFunction.getOriginalProfileName()
     ): Int {
         val stdIdx = ladderIndexOf(standardName, standardRoleLadder)
         val lowIdx = ladderIndexOf(lowName, lowRoleLadder)
@@ -1162,16 +1173,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ProfileBatchSlot.LOW_A -> applySharedRoleRung(1, "ProfileBatchUp $why")
             ProfileBatchSlot.LOW_B -> applySharedRoleRung(2, "ProfileBatchUp $why")
             ProfileBatchSlot.LOW_C -> {
-                val std = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName)
-                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
-                if (std.isBlank()) false
-                else {
-                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, std)
+                // 2026-09-14 drift fix: this used to write ONLY StandardProfileName (to TierA),
+                // leaving LowProfileName stale at TierC -- the same asymmetric-write bug as the
+                // ProfileSwitchDialog one (see its own 2026-09-14 comment). switchRunning=false
+                // because applySharedRoleRung would otherwise switch the RUNNING profile back onto
+                // the now-updated Low (since we're still ON Low at this instant) instead of crossing
+                // over onto Standard, which is the whole point of stepping "up" past Low's ceiling.
+                if (applySharedRoleRung(0, "ProfileBatchUp $why", switchRunning = false, announce = false)) {
+                    val std = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                     switchProfileIfNeeded(std)
-                    keepSteroidsOff()
                     sendSms("ProfileBatchUp $why: LowC -> Standard $std")
                     true
-                }
+                } else false
             }
             ProfileBatchSlot.STD_A -> applySharedRoleRung(1, "ProfileBatchUp $why")
             ProfileBatchSlot.STD_B -> applySharedRoleRung(2, "ProfileBatchUp $why")
