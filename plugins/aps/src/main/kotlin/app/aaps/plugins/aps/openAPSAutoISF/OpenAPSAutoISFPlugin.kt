@@ -397,11 +397,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.212) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
-                        preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, newState)
-                        if (newState) revertProfileBatchToBasic("List2 Toggle2")
+                        setProfileBatchRevertA(newState, "List2 Toggle2")
                         sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
                         addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
                         rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.214) <= 0.0000001) {
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
+                        setProfileBatchRevertC(newState, "List2 Toggle3")
+                        sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("Bt3${if (newState) "On" else "Off"}")
+                        rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
                     } else {
                         pendingDirectTtCode = event.mmol
                         aapsLogger.info(LTag.APS, "Queued local AutoISF settings control ${event.mmol}")
@@ -1110,6 +1115,42 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             throttleKey = "ProfileBatchRevert",
             throttleMinutes = 5
         )
+    }
+
+    // Toggle3 / hold-TierC: StandardCurrent+LowCurrent to StandardTierC/LowTierC.
+    // Same SteroidsON leave-alone as Toggle2. No-op (no SMS) when already on C.
+    private fun revertProfileBatchToTierC(reason: String): Boolean {
+        val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow90ProfileName, StringKey.ApsAutoIsfLowProfileName)
+        val targetStandard = resolveTieredProfileName(StringKey.ApsAutoIsfStandard110ProfileName, StringKey.ApsAutoIsfStandardProfileName)
+            .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        if (targetLow.isBlank() || targetStandard.isBlank()) return false
+        if (currentLow == targetLow && currentStandard == targetStandard) return false
+        if (!readyToRun("ProfileBatchRevertC", 5)) return false
+        val ok = applySharedRoleRung(2, "ProfileBatchRevertC ($reason)")
+        if (ok) {
+            addCarePortalNote("BtchRstC")
+            markRun("ProfileBatchRevertC")
+        }
+        return ok
+    }
+
+    // Toggle2 and Toggle3 are holds at opposite ends of the Off ladder — they cannot both be on.
+    private fun setProfileBatchRevertA(enabled: Boolean, reason: String) {
+        preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, enabled)
+        if (enabled) {
+            preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            revertProfileBatchToBasic(reason)
+        }
+    }
+
+    private fun setProfileBatchRevertC(enabled: Boolean, reason: String) {
+        preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, enabled)
+        if (enabled) {
+            preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            revertProfileBatchToTierC(reason)
+        }
     }
 
     // One step on the Steroids Off map only: LowA→B→C→StdA→B→C. No SteroidTier rungs.
@@ -2816,6 +2857,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "Tier3BoostToggleTT" -> 5.194
         "ProfileBatchAutoToggleTT" -> 5.210
         "ProfileBatchRevertToggleTT" -> 5.212
+        "ProfileBatchRevertCToggleTT" -> 5.214
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
         "LocationSmsThisPhoneTT" -> 5.204
@@ -4775,13 +4817,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         if (readyToRun("ProfileBatchRevertToggleTT", 2) && activeTtNear(5.212, 0.0001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, newState)
+            setProfileBatchRevertA(newState, "List2 Toggle2")
             cancelCurrentTempTarget()
-            if (newState) revertProfileBatchToBasic("List2 Toggle2")
             sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
             addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
             markRun("ProfileBatchRevertToggleTT")
+        }
+        if (readyToRun("ProfileBatchRevertCToggleTT", 2) && activeTtNear(5.214, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
+            setProfileBatchRevertC(newState, "List2 Toggle3")
+            cancelCurrentTempTarget()
+            sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt3${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
+            markRun("ProfileBatchRevertCToggleTT")
         }
 
         // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
@@ -7617,10 +7667,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- ProfileBatchAuto: 2026-09-14. Toggle1 enables one-step Low/StandardTier A/B/C moves
-        // while keeping Steroids Off. Toggle2 holds/reverts to StandardTierA+LowTierA and blocks up.
-        // Up: PoorResponse Stage 2 just fired OR BGL>12.0 for 2h OR ukfRaw BGL>14.0 for 2h.
-        // Down: second consecutive 03:00-07:00 MorningRoleSwap that actually changed Standard/Low,
-        // or GentleHypoRisk this cycle. Never walks SteroidTier A–F.
+        // while keeping Steroids Off. Toggle2 holds/reverts to StandardTierA+LowTierA and blocks
+        // steps. Toggle3 holds/reverts to StandardTierC+LowTierC and blocks steps. Toggle2 and
+        // Toggle3 are mutually exclusive. Never walks SteroidTier A–F.
         run {
             val g = glucoseStatus.glucose
             if (g > 216.2 /* 12.0 mmol */) {
@@ -7637,8 +7686,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(LongKey.ApsAutoIsfBatchUkf14SinceTs, 0L)
             }
 
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) {
+            val holdA = preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+            val holdC = preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
+            if (holdA && holdC) {
+                aapsLogger.warn(LTag.APS, "ProfileBatch Toggle2 and Toggle3 both on — holding neither until one is off")
+                return@run
+            }
+            if (holdA) {
                 revertProfileBatchToBasic("Toggle2 hold")
+                return@run
+            }
+            if (holdC) {
+                revertProfileBatchToTierC("Toggle3 hold")
                 return@run
             }
             if (!preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)) return@run
@@ -9874,6 +9933,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostEnabled, summary = R.string.autoisf_uam_boost_enabled_summary, title = R.string.autoisf_uam_boost_enabled_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, summary = R.string.autoisf_profile_batch_auto_enabled_summary, title = R.string.autoisf_profile_batch_auto_enabled_title))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, summary = R.string.autoisf_profile_batch_revert_enabled_summary, title = R.string.autoisf_profile_batch_revert_enabled_title))
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, summary = R.string.autoisf_profile_batch_revert_c_enabled_summary, title = R.string.autoisf_profile_batch_revert_c_enabled_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxBolus, dialogMessage = R.string.autoisf_uam_boost_max_bolus_summary, title = R.string.autoisf_uam_boost_max_bolus_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, dialogMessage = R.string.autoisf_uam_boost_max_iob_summary, title = R.string.autoisf_uam_boost_max_iob_title))
                     addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUamBoostScale, dialogMessage = R.string.autoisf_uam_boost_scale_summary, title = R.string.autoisf_uam_boost_scale_title))

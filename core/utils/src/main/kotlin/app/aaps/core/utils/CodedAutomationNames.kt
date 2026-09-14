@@ -44,7 +44,7 @@ object CodedAutomationNames {
         "MJrecentCurrProfAcce", "MildBoostDownTT", "MildBoostUpTT", "MoreMJ", "NightAcce", "NightFrSkip",
         "Not50Recently", "OffHighProf", "OldPod2", "OvernightDuraRescue", "PP50Off", "PeakInsulinTimeDownTT",
         "PeakInsulinTimeUpTT", "Pod1", "Pod2", "PodChangeHighPP130", "PoorResponseRescueStage1", "PoorResponseRescueStage2",
-        "ProfileBatchAutoToggleTT", "ProfileBatchRevertToggleTT", "ProfileBatchStep", "PpWeightDownTT",
+        "ProfileBatchAutoToggleTT", "ProfileBatchRevertToggleTT", "ProfileBatchRevertCToggleTT", "ProfileBatchRevertC", "ProfileBatchStep", "PpWeightDownTT",
         "PpWeightHighDownTT", "PpWeightHighUpTT", "PpWeightRevertUnder8_5", "PpWeightUpTT",
         "PreSoakSensor24hrs", "PrepareSet50", "RecentPod", "RecentPodOff", "SemiTwilightAcce",
         "SensorAgeAutoOff", "SensorAgeAutoOn", "SensorAgeCodeToggleTT", "SensorAgeToggleTT", "SensorS1hr", "SensorS2hr", "ShizukuApkInstallTT", "Shower12", "SkittlesHypoRisk",

@@ -289,7 +289,9 @@
     <string name="autoisf_profile_batch_auto_enabled_title">Profile batch auto (Toggle1)</string>
     <string name="autoisf_profile_batch_auto_enabled_summary">Default off. When on, one-step raise/lower of LowTier/StandardTier A/B/C (Steroids Off): up on exceptional rise without deceleration or BGL&gt;12 / ukfRaw&gt;14 for 2h; down on a second consecutive 03:00–07:00 MorningRoleSwap change or GentleHypoRisk. Does not use SteroidTier A–F.</string>
     <string name="autoisf_profile_batch_revert_enabled_title">Revert profile batch to basic (Toggle2)</string>
-    <string name="autoisf_profile_batch_revert_enabled_summary">Default off. When on, force StandardCurrent+LowCurrent back to StandardTierA/LowTierA and block auto-up. Leaves SteroidTier A–F and SteroidsON alone.</string>
+    <string name="autoisf_profile_batch_revert_enabled_summary">Default off. When on, force StandardCurrent+LowCurrent back to StandardTierA/LowTierA and block auto-up. Turns off Toggle3. Leaves SteroidTier A–F and SteroidsON alone.</string>
+    <string name="autoisf_profile_batch_revert_c_enabled_title">Revert profile batch to TierC (Toggle3)</string>
+    <string name="autoisf_profile_batch_revert_c_enabled_summary">Default off. When on, force StandardCurrent+LowCurrent to StandardTierC/LowTierC and block ProfileBatchAuto steps. Turns off Toggle2. Leaves SteroidTier A–F and SteroidsON alone.</string>
     <string name="autoisf_uam_boost_enabled_title">Enable Tier 3 UAM Boost</string>
     <string name="autoisf_uam_boost_enabled_summary">Default off. Master switch for the Tier 3 UAM Boost condition in DetermineBasalAutoISF.kt (strong acceleration with positive delta) -- distinct from \"Enable boost automations\" above, which is BolusGiven/BolusGivenMild\'s own separate feature.</string>
     <string name="autoisf_uam_boost_max_bolus_title">UAM Boost max bolus (boost_max)</string>

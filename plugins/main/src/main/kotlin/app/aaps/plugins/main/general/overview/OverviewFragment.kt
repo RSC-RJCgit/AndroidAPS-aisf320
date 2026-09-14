@@ -1353,6 +1353,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TIER3_BOOST_TOGGLE("Tier 3 UAM Boost on/off", 5.194),
         PROFILE_BATCH_AUTO_TOGGLE("Profile batch auto on/off (Toggle1)", 5.210),
         PROFILE_BATCH_REVERT_TOGGLE("Revert profile batch to basic (Toggle2)", 5.212),
+        PROFILE_BATCH_REVERT_C_TOGGLE("Revert profile batch to TierC (Toggle3)", 5.214),
         // Added 2026-08-23: on/off for ApsAutoIsfUseUkf1ForDosing -- see
         // OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc comment. Same
         // EventAutoIsfDirectTtCode dispatch as the two toggles above.
@@ -1551,6 +1552,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.TIER3_BOOST_TOGGLE,
                 BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE,
                 BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE,
+                BasalDirectAction.PROFILE_BATCH_REVERT_C_TOGGLE,
                 BasalDirectAction.UKF1_DOSING_TOGGLE,
                 BasalDirectAction.LOCATION_SMS_TOGGLE,
                 BasalDirectAction.LOCATION_SMS_THIS_PHONE,
@@ -1592,6 +1594,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
         BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
         BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+        BasalDirectAction.PROFILE_BATCH_REVERT_C_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
         BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {

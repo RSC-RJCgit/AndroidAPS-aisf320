@@ -113,6 +113,10 @@ enum class BooleanKey(
     // 2026-09-14: when on, force StandardCurrent/LowCurrent back to StandardTierA/LowTierA
     // and block auto-up. Does not touch SteroidTier A–F. List2 5.212 flips. Default off.
     ApsAutoIsfProfileBatchRevertEnabled("autoisf_profile_batch_revert_enabled", false, defaultedBySM = true),
+    // 2026-09-14: Toggle3 sibling of Toggle2. When on, force StandardCurrent/LowCurrent to
+    // StandardTierC/LowTierC and block ProfileBatchAuto steps. Mutually exclusive with Toggle2.
+    // Does not touch SteroidTier A–F. List2 5.214 flips. Default off.
+    ApsAutoIsfProfileBatchRevertCEnabled("autoisf_profile_batch_revert_c_enabled", false, defaultedBySM = true),
     // Added 2026-08-23: routes the AutoISF plugin's own getGlucoseStatusData() -- the single choke
     // point behind glucoseStatusProvider.glucoseStatusData app-wide when this plugin is the active APS
     // -- through the literal "UKF1" comparison series (UnscentedKalmanFilterPlugin.smoothForDisplay()
