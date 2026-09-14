@@ -864,12 +864,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun setRoleKeyForIndex(oneBasedIndex: Int): StringKey? = setRoleKeysInOrder.getOrNull(oneBasedIndex - 1)
     private fun setRoleKeyForToken(prefKeyToken: String): StringKey? = setRoleNoteKeys.firstOrNull { it.key == prefKeyToken }
 
+    // 2026-09-14: same marker check as ProfileSwitchDialog.kt's steroidRoleKeyForProfileName() and
+    // OverviewFragment.kt's isSteroidMarkedProfileName() -- kept as a separate local copy since this
+    // function lives in a different module from both of those. This is the single receiving-side
+    // choke point for EVERY relay channel that can assign a Standard/Low role (SetRole Note AND the
+    // fast 51-57min coded-duration path below) -- guarding here, not just each sender, means a bad
+    // assignment is refused regardless of which UI (or a future one, or an un-patched device still
+    // relaying from an older build) originated it. Real incident: a Steroid-marked name reached
+    // ApsAutoIsfLowProfileName/ApsAutoIsfLow90ProfileName this way with the sending UI having no
+    // check of its own at the time.
+    private fun isSteroidMarkedProfileName(name: String): Boolean =
+        name.contains("steroid", ignoreCase = true) || name.contains("%")
+
     // Applies a resolved role assignment locally: writes the role pref only if <profileName> exists
     // in the active store. Does not mirror StandardCurrent into StandardTierA -- that floor is
     // List1-only so Current can be reassigned without losing the A rung. Returns true if applied.
     private fun applySetRole(roleKey: StringKey, profileName: String): Boolean {
         if (profileName.isBlank()) return false
         if (activePlugin.activeProfileSource.profile?.getSpecificProfile(profileName) == null) return false
+        if (roleKey in steroidsOffRoleKeys && isSteroidMarkedProfileName(profileName)) return false
         preferences.put(roleKey, profileName)
         if (roleKey in steroidsOffRoleKeys) {
             lockstepPartnerCurrent(roleKey, profileName)
