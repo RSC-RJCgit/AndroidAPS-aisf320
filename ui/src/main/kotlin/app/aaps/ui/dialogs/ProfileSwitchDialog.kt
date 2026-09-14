@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.dialogs.OKDialog
@@ -143,6 +144,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         }
 
         context?.let { context ->
+            binding.roleStateSummary.text = roleStateSummaryText()
             binding.roleAssignSpinner.adapter =
                 ArrayAdapter(context, app.aaps.core.ui.R.layout.spinner_centered, roleSelectorLabels())
             binding.roleAssignSpinner.setSelection(0)
@@ -207,31 +209,30 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         }
     }
 
-    // Role selector (replaces the old binary "set as Low" checkbox, 2026-08-31). Index 0 = no change;
-    // indexes 1..7 map 1:1 to setRoleKeysInOrder AND to coded ProfileSwitch durations 51..57 min (see
-    // the two receiver blocks in OpenAPSAutoISFPlugin.invoke()). Keep this order in lockstep with that
-    // list -- the duration code is (index + 50). Labels for the spinner are built in
-    // roleSelectorLabels() so the default line can say how to assign, and so the running profile's
-    // tier can be starred without changing this order or the confirmation's short names.
-    private data class RoleOption(val label: String, val key: StringKey?)
+    // Role selector. durationCode 51–57 is the fast ProfileSwitch path (setRoleKeysInOrder on the
+    // loop phone). StandardTierA and SteroidTier A–F have no 51–57 slot — they travel the SetRole
+    // Note only. Spinner order matches List1; durationCode is on the option, not the index.
+    private data class RoleOption(val label: String, val key: StringKey?, val durationCode: Int? = null)
     private val roleOptions = listOf(
         RoleOption("(no role change — use dropdown to assign a role)", null),
-        // Labels only (2026-09-11) -- "Standard"/"Low" renamed to "...Current" to make clear these are
-        // the mutable, currently-assigned role (overwritten by MorningRoleSwapHigh/Normal escalations),
-        // distinct from the fixed TierB/TierC rungs below. Display text only -- the underlying StringKey
-        // storage names (and AutoISF_settings_*.txt exports) are unchanged.
-        RoleOption("StandardCurrent", StringKey.ApsAutoIsfStandardProfileName),
-        RoleOption("StandardTierB", StringKey.ApsAutoIsfStandard105ProfileName),
-        RoleOption("StandardTierC", StringKey.ApsAutoIsfStandard110ProfileName),
-        RoleOption("LowCurrent", StringKey.ApsAutoIsfLowProfileName),
-        RoleOption("LowTierA", StringKey.ApsAutoIsfLow70ProfileName),
-        RoleOption("LowTierB", StringKey.ApsAutoIsfLow80ProfileName),
-        RoleOption("LowTierC", StringKey.ApsAutoIsfLow90ProfileName)
-        // StandardTierA is the List1 stable floor (ApsAutoIsfStandard100ProfileName), not a 51-57
-        // slot. Writing StandardCurrent still mirrors into that floor. Do not collapse Current into A.
+        RoleOption("StandardCurrent", StringKey.ApsAutoIsfStandardProfileName, 51),
+        RoleOption("LowCurrent", StringKey.ApsAutoIsfLowProfileName, 54),
+        RoleOption("StandardTierA (Note)", StringKey.ApsAutoIsfStandard100ProfileName),
+        RoleOption("StandardTierB", StringKey.ApsAutoIsfStandard105ProfileName, 52),
+        RoleOption("StandardTierC", StringKey.ApsAutoIsfStandard110ProfileName, 53),
+        RoleOption("LowTierA", StringKey.ApsAutoIsfLow70ProfileName, 55),
+        RoleOption("LowTierB", StringKey.ApsAutoIsfLow80ProfileName, 56),
+        RoleOption("LowTierC", StringKey.ApsAutoIsfLow90ProfileName, 57),
+        RoleOption("SteroidTierA (Note)", StringKey.ApsAutoIsfSteroid100ProfileName),
+        RoleOption("SteroidTierB (Note)", StringKey.ApsAutoIsfSteroid110ProfileName),
+        RoleOption("SteroidTierC (Note)", StringKey.ApsAutoIsfSteroid130ProfileName),
+        RoleOption("SteroidTierD (Note)", StringKey.ApsAutoIsfSteroid150ProfileName),
+        RoleOption("SteroidTierE (Note)", StringKey.ApsAutoIsfSteroid190ProfileName),
+        RoleOption("SteroidTierF (Note)", StringKey.ApsAutoIsfSteroid250ProfileName)
     )
 
     private val standardTierKeys = setOf(
+        StringKey.ApsAutoIsfStandard100ProfileName,
         StringKey.ApsAutoIsfStandard105ProfileName,
         StringKey.ApsAutoIsfStandard110ProfileName
     )
@@ -240,25 +241,55 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         StringKey.ApsAutoIsfLow80ProfileName,
         StringKey.ApsAutoIsfLow90ProfileName
     )
+    private val steroidTierKeys = setOf(
+        StringKey.ApsAutoIsfSteroid100ProfileName,
+        StringKey.ApsAutoIsfSteroid110ProfileName,
+        StringKey.ApsAutoIsfSteroid130ProfileName,
+        StringKey.ApsAutoIsfSteroid150ProfileName,
+        StringKey.ApsAutoIsfSteroid190ProfileName,
+        StringKey.ApsAutoIsfSteroid250ProfileName
+    )
+
+    private fun mirroredRoleMap(): Map<String, String> =
+        preferences.get(StringNonKey.MirroredAutoIsfSettings)
+            .lineSequence()
+            .mapNotNull { line ->
+                val separator = line.indexOf(" = ")
+                if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 3)
+            }
+            .toMap()
 
     private fun rolePref(key: StringKey): String =
-        if (config.AAPSCLIENT) "" else preferences.get(key).trim()
+        if (config.AAPSCLIENT) mirroredRoleMap()[key.key].orEmpty().trim()
+        else preferences.get(key).trim()
+
+    private fun roleDisplay(key: StringKey): String = rolePref(key).ifBlank { "(not set)" }
+
+    private fun roleStateSummaryText(): String {
+        val src = if (config.AAPSCLIENT) "Live snapshot" else "This phone"
+        return buildString {
+            appendLine("$src:")
+            appendLine("StandardCurrent ${roleDisplay(StringKey.ApsAutoIsfStandardProfileName)}")
+            appendLine("LowCurrent ${roleDisplay(StringKey.ApsAutoIsfLowProfileName)}")
+            appendLine("Standard A/B/C ${roleDisplay(StringKey.ApsAutoIsfStandard100ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfStandard105ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfStandard110ProfileName)}")
+            appendLine("Low A/B/C ${roleDisplay(StringKey.ApsAutoIsfLow70ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfLow80ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfLow90ProfileName)}")
+            append("Steroid A–F ${roleDisplay(StringKey.ApsAutoIsfSteroid100ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfSteroid110ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfSteroid130ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfSteroid150ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfSteroid190ProfileName)} / ${roleDisplay(StringKey.ApsAutoIsfSteroid250ProfileName)}")
+        }
+    }
 
     // Stars the most specific role that currently holds the running original profile. A matching
-    // Standard105/110 or Low70/80/90 wins over its Standard/Low base so both don't light up when
-    // lock-step has pointed the live role at the same name as that rung. Client does not read local
-    // role prefs (those belong on Live); it falls back to a standalone number in the running name.
+    // Standard A/B/C or Low A/B/C wins over its Current so both don't light up when lock-step has
+    // pointed the live role at the same name as that rung. Client reads Live's snapshot.
     private fun activeRoleKeys(running: String): Set<StringKey> {
         if (running.isBlank()) return emptySet()
         val matched = mutableSetOf<StringKey>()
-        for (key in standardTierKeys + lowTierKeys) {
+        for (key in standardTierKeys + lowTierKeys + steroidTierKeys) {
             val assigned = rolePref(key)
             if (assigned.isNotEmpty() && assigned == running) matched += key
         }
         if (matched.none { it in standardTierKeys }) {
-            val std100 = rolePref(StringKey.ApsAutoIsfStandard100ProfileName)
             val std = rolePref(StringKey.ApsAutoIsfStandardProfileName)
-            if (std100 == running || std == running) matched += StringKey.ApsAutoIsfStandardProfileName
+            if (std == running) matched += StringKey.ApsAutoIsfStandardProfileName
         }
         if (matched.none { it in lowTierKeys }) {
             val low = rolePref(StringKey.ApsAutoIsfLowProfileName)
@@ -272,7 +303,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                 has(70)  -> matched += StringKey.ApsAutoIsfLow70ProfileName
                 has(80)  -> matched += StringKey.ApsAutoIsfLow80ProfileName
                 has(90)  -> matched += StringKey.ApsAutoIsfLow90ProfileName
-                has(100) -> matched += StringKey.ApsAutoIsfStandardProfileName
+                has(100) -> matched += StringKey.ApsAutoIsfStandard100ProfileName
             }
         }
         return matched
@@ -323,18 +354,14 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         val timeShift = binding.timeshift.value.toInt()
         val typedDuration = binding.duration.value.toInt()
 
-        // Role selector: index 0 = no change; 1..7 -> roleOptions / setRoleKeysInOrder. Captured now --
-        // submit() dismisses this dialog (clearing its binding) before the confirmation callback runs.
+        // Role selector captured now -- submit() dismisses this dialog before the confirm callback.
+        // Fast 51–57 only when that option has a durationCode. StandardTierA / SteroidTier stay Note-only.
         val roleIndex = binding.roleAssignSpinner.selectedItemPosition
         val roleOption = roleOptions.getOrElse(roleIndex) { roleOptions[0] }
-        // Fast relay to the loop phone: when a Standard/Low base or tier is chosen AND the user left an
-        // indefinite, 100% switch, carry the assignment on the ProfileSwitch itself as a coded duration
-        // (51..57 min). OpenAPSAutoISFPlugin.invoke() there applies it and immediately re-issues the
-        // switch as indefinite. If the user set their own duration or percent<100, that field is theirs
-        // -- only the slower SetRole Note carries the role then. Other direction: a stray 51..57 with no
-        // role selected is bumped to 60 so the receiver can't misread it as a code.
-        val roleDurationCode = if (roleOption.key != null && typedDuration == 0 && percent == 100) 50 + roleIndex else null
-        val duration = roleDurationCode ?: if (roleOption.key == null && typedDuration in 51..57) 60 else typedDuration
+        val roleDurationCode = if (roleOption.durationCode != null && typedDuration == 0 && percent == 100) roleOption.durationCode else null
+        val duration = roleDurationCode
+            ?: if (typedDuration in 51..57 && (roleOption.key == null || roleOption.durationCode == null)) 60
+            else typedDuration
 
         if (duration > 0L)
             actions.add(rh.gs(app.aaps.core.ui.R.string.duration) + ": " + rh.gs(app.aaps.core.ui.R.string.format_mins, duration))
@@ -391,10 +418,9 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         // duration (fast follower->loop path).
                         steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
                             if (!config.AAPSCLIENT) preferences.put(steroidKey, profileName)
+                            emitSetRoleNote(steroidKey, profileName)
                         } ?: roleOption.key?.let { roleKey ->
-                            if (!config.AAPSCLIENT) {
-                                preferences.put(roleKey, profileName)
-                            }
+                            if (!config.AAPSCLIENT) preferences.put(roleKey, profileName)
                             emitSetRoleNote(roleKey, profileName)
                         }
                         if (isTT) {

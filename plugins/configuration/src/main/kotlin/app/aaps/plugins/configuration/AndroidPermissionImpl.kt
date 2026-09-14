@@ -86,7 +86,12 @@ class AndroidPermissionImpl @Inject constructor(
 
     @Synchronized
     override fun notifyForSMSPermissions(activity: FragmentActivity) {
-        if (permissionNotGranted(activity, Manifest.permission.RECEIVE_SMS))
+        // 2026-09-14: urgent red used to key off RECEIVE_SMS only. On Samsung / Android 13+
+        // Settings → SMS can show ON (SEND_SMS granted, outgoing automations work) while
+        // RECEIVE_SMS stays denied unless AAPS is the default SMS app. That produced a
+        // false "Missing SMS permission" on Virtual while SMS was still being sent.
+        // Alert only when SEND_SMS is actually missing.
+        if (permissionNotGranted(activity, Manifest.permission.SEND_SMS))
             uiInteraction.addNotification(
                 id = Notification.PERMISSION_SMS,
                 text = rh.gs(app.aaps.core.ui.R.string.smscommunicator_missingsmspermission),
@@ -98,7 +103,7 @@ class AndroidPermissionImpl @Inject constructor(
                         arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_MMS)
                     )
                 },
-                validityCheck = { permissionNotGranted(activity, Manifest.permission.RECEIVE_SMS) }
+                validityCheck = { permissionNotGranted(activity, Manifest.permission.SEND_SMS) }
             )
         else uiInteraction.dismissNotification(Notification.PERMISSION_SMS)
     }

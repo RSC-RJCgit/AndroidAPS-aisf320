@@ -88,7 +88,7 @@
          set_as_low_role_checkbox is retained (unused) so the other-locale strings aren't orphaned. -->
     <string name="set_as_low_role_checkbox">Set as Low profile (unticked = Standard; ignored for Steroid-percent profiles)</string>
     <string name="assign_coded_role_label">Assign this profile to a coded role</string>
-    <string name="assign_coded_role_hint">First item = switch only. Dropdown assigns a role. * = active tier</string>
+    <string name="assign_coded_role_hint">Same roles as List1. * = running. 51–57 min is fast for Current/B/C. StandardTierA and SteroidTier A–F are Note-only.</string>
 
     <!-- LoopDialog -->
     <string name="suspendloopfor1h">Suspend loop for 1h</string>

@@ -72,6 +72,15 @@
                 android:layout_height="wrap_content"
                 android:text="@string/assign_coded_role_label" />
 
+            <TextView
+                android:id="@+id/role_state_summary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp"
+                android:paddingBottom="6dp"
+                android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                android:textIsSelectable="true" />
+
             <Spinner
                 android:id="@+id/roleAssignSpinner"
                 android:layout_width="match_parent"
