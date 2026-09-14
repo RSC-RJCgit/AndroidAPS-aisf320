@@ -6814,9 +6814,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sd > 1.8 /* 0.10 mmol */
             val u2b1Time = isTimeBetween(8, 0, 20, 0) ||
                 (earlyUsualAfterShower && isTimeBetween(5, 30, 20, 0))
+            // steps60>=50 confirms genuine daytime activity has resumed -- but the whole point of the
+            // shower-early path is to fire during a still-quiet stretch right after a shower (the same
+            // no-steps premise Shower12 itself requires), so gating it on recent movement defeated it:
+            // confirmed 2026-09-15 on real Client data, BG/SDelta both cleared their thresholds at
+            // 06:59 with Shower12 56 min old, yet UsuIP never fired because steps60 hadn't reached 50.
+            // The shower path substitutes its own BG/SDelta/Shower12-recency evidence for the steps
+            // check instead of adding to it; the plain 08:00-20:00 daytime path is unchanged.
             val u2b1 = u2b1Time &&
                 (steps180 >= 10 || iobTH <= 19 || (iobTH == 50 && stabilized)) &&
-                steps60 >= 50
+                (earlyUsualAfterShower || steps60 >= 50)
             // block 2: day 09:01–20:00, iobTH at night/twilight level
             val u2b2 = isTimeBetween(9, 1, 20, 0) &&
                 (iobTH <= 19 || (iobTH == 50 && stabilized))
