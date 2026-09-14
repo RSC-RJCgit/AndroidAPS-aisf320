@@ -2644,6 +2644,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         StringKey.ApsAutoIsfSteroid250ProfileName
     )
 
+    // 2026-09-14: mirrors ProfileSwitchDialog.kt's steroidRoleKeyForProfileName() hasMarker gate --
+    // this dialog assigns/relays all 14 roles (Standard/Low Current+tiers AND the six Steroid tiers)
+    // from one shared, unfiltered profile list per spinner, with no cross-check between which spinner
+    // a name was picked for and what the name itself says it is. Real incident traced via careportal
+    // SetRole notes: "Steroid100" got written into autoisf_low_profile_name (LowCurrent) and later
+    // autoisf_low90_profile_name (LowTierC) this way, and downstream automations then faithfully
+    // treated LowCurrent as pointing at a Steroid profile for the rest of the day. Unlike
+    // ProfileSwitchDialog, this dialog has no single "the role wasn't picked, a name was" moment to
+    // auto-redirect from -- it is a bulk multi-role editor, so the safer fix here is to simply refuse
+    // a Steroid-marked name for a Standard/Low role slot rather than silently guessing which Steroid
+    // tier was actually meant.
+    private fun isSteroidMarkedProfileName(name: String): Boolean =
+        name.contains("steroid", ignoreCase = true) || name.contains("%")
+
     private fun emitSetRoleRelayNote(roleKey: StringKey, profileName: String) {
         val te = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
@@ -2750,20 +2764,29 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 if (relayOnly) {
                     var sent = 0
+                    var blocked = 0
                     roleSpecs.forEachIndexed { i, spec ->
                         if (spec.key !in setRoleRelayKeys) return@forEachIndexed
                         val selected = spinners[i].selectedItem?.toString().orEmpty()
                         if (selected.isBlank() || selected == notSetSentinel || selected == currents[i]) return@forEachIndexed
+                        if (spec.key in steroidsOffRoleKeys && isSteroidMarkedProfileName(selected)) {
+                            blocked++
+                            return@forEachIndexed
+                        }
                         emitSetRoleRelayNote(spec.key, selected)
                         sent++
                     }
                     ToastUtils.infoToast(
                         act,
-                        if (sent == 0) "Nothing sent (all left unchanged). Use Profile Switch for a fast one-role relay."
-                        else "Sent $sent SetRole Note(s) to Live. Wait for RoleSet on the pump phone."
+                        when {
+                            blocked > 0 -> "Sent $sent SetRole Note(s); refused $blocked Steroid-named profile(s) for a Standard/Low role -- pick the matching SteroidTier slot instead."
+                            sent == 0   -> "Nothing sent (all left unchanged). Use Profile Switch for a fast one-role relay."
+                            else        -> "Sent $sent SetRole Note(s) to Live. Wait for RoleSet on the pump phone."
+                        }
                     )
                 } else {
                     var touchedSteroidsOffRoles = false
+                    var blocked = 0
                     roleSpecs.forEachIndexed { i, spec ->
                         val pos = spinners[i].selectedItemPosition
                         val value = if (spec.optional) {
@@ -2771,9 +2794,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         } else {
                             profileNames[pos]
                         }
+                        if (spec.key in steroidsOffRoleKeys && isSteroidMarkedProfileName(value)) {
+                            blocked++
+                            return@forEachIndexed
+                        }
                         val previous = preferences.get(spec.key)
                         preferences.put(spec.key, value)
                         if (spec.key in steroidsOffRoleKeys && previous != value) touchedSteroidsOffRoles = true
+                    }
+                    if (blocked > 0) {
+                        ToastUtils.warnToast(
+                            act,
+                            "Refused $blocked Steroid-named profile(s) for a Standard/Low role -- left unchanged. Pick the matching SteroidTier slot instead."
+                        )
                     }
                     if (touchedSteroidsOffRoles) {
                         try {

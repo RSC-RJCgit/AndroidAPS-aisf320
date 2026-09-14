@@ -206,6 +206,15 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
             hasStandaloneNumber(150) -> StringKey.ApsAutoIsfSteroid150ProfileName
             hasStandaloneNumber(130) -> StringKey.ApsAutoIsfSteroid130ProfileName
             hasStandaloneNumber(110) -> StringKey.ApsAutoIsfSteroid110ProfileName
+            // 2026-09-14: SteroidTierA (100) was missing here -- the one steroid tier this dialog's
+            // auto-detection could never recognize. hasMarker above already requires "steroid" (or "%")
+            // in the name, so -- unlike a bare, unmarked "100" -- there is no ordinary-profile collision
+            // risk to guard against here (that's what the 2026-08-24 second-pass fix above addressed for
+            // the OTHER tiers). Real incident: switching to "Steroid100" while a Standard/Low role
+            // (e.g. LowTierC) was selected in the spinner fell through to that role instead of being
+            // routed to SteroidTierA, writing "Steroid100" directly into a Low-ladder preference --
+            // which downstream automations then faithfully copied into LowCurrent.
+            hasStandaloneNumber(100) -> StringKey.ApsAutoIsfSteroid100ProfileName
             else -> null
         }
     }
