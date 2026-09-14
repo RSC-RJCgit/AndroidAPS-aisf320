@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.HardLimits
@@ -383,7 +384,20 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     // Backup channel to the loop phone: a "SetRole <prefKey>=<profile>" careportal Note, picked up via
     // the secondary-NS allowlist (LoadSecondaryBolusCarbsWorker) and applied by OpenAPSAutoISFPlugin.
     // Slow (~40-70 min) but independent of the fast coded-duration path; both are idempotent.
+    //
+    // 2026-09-14: skip entirely on a VirtualPump. This dialog already applies the role assignment
+    // locally and synchronously (the preferences.put + lockstepPartnerCurrent call right above each
+    // call site) -- the note does nothing for the emitting device itself. Its only real purpose is
+    // relaying the assignment to whichever device IS the real loop phone (OpenAPSAutoISFPlugin's own
+    // isRealLoopPhone() = !AAPSCLIENT && activePump !is VirtualPump gates who may ever APPLY one).
+    // Emitting it from Virtual is worse than merely redundant: Virtual and Live typically share one
+    // Nightscout project, so a role change made here for local testing would otherwise sit as a
+    // careportal Note that Live's own SetRole handler picks up ~40-70 min later and applies for real --
+    // a test action on the non-dosing device silently overwriting the actual loop phone's role state.
+    // AAPSCLIENT is untouched: Client has no local role prefs at all (see submit()'s own comment), so
+    // this note is its ONLY path to affect real dosing and must still be emitted there.
     private fun emitSetRoleNote(roleKey: StringKey, profileName: String) {
+        if (activePlugin.activePump is VirtualPump) return
         val te = TE(
             timestamp = dateUtil.now(),
             type = TE.Type.NOTE,
