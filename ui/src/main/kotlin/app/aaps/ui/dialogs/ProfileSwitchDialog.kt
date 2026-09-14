@@ -250,6 +250,63 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         StringKey.ApsAutoIsfSteroid250ProfileName
     )
 
+    // Same A/B/C order as standardTierKeys/lowTierKeys above, kept as ordered lists (rather than
+    // indexing into the Sets) so the rung math below reads the same as its OpenAPSAutoISFPlugin.kt
+    // counterpart (standardRoleLadder/lowRoleLadder).
+    private val standardRoleLadder = listOf(
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName
+    )
+    private val lowRoleLadder = listOf(
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName
+    )
+
+    // Ported from OpenAPSAutoISFPlugin.kt's resolveTieredProfileName/ladderIndexOf/lockstepPartnerCurrent
+    // (2026-09-14, aisf321UK_847 drift fix). Root cause: submit() below used to write only the single
+    // role key picked in the spinner (e.g. LowCurrent) straight to prefs on the loop phone, with no
+    // partner update -- unlike applySetRole() on the relay-receiving side, which always keeps
+    // StandardCurrent/LowCurrent locked to the same A/B/C letter. That let this dialog silently drift
+    // Standard and Low apart (e.g. LowCurrent reassigned down to TierA while StandardCurrent stayed
+    // parked at TierC from earlier), and BasalUp's switchToStandardAtSharedTier() -- which trusts
+    // whichever role you are CURRENTLY RUNNING as the true rung -- then flipped Standard down to match
+    // Low's drifted TierA the next time it fired, discarding the TierC it had legitimately been at.
+    private fun resolveTieredProfileName(tierKey: StringKey, baseRoleKey: StringKey): String {
+        val tiered = preferences.get(tierKey).trim()
+        return tiered.ifEmpty { preferences.get(baseRoleKey) }
+    }
+
+    private fun ladderIndexOf(currentProfileName: String, rungsAscending: List<StringKey>): Int {
+        rungsAscending.forEachIndexed { index, key ->
+            val configured = preferences.get(key).trim()
+            if (configured.isNotEmpty() && configured == currentProfileName) return index
+        }
+        return -1
+    }
+
+    private fun lockstepPartnerCurrent(roleKey: StringKey, profileName: String) {
+        when (roleKey) {
+            StringKey.ApsAutoIsfStandardProfileName -> {
+                val idx = ladderIndexOf(profileName, standardRoleLadder)
+                if (idx < 0) return
+                val low = resolveTieredProfileName(lowRoleLadder[idx], StringKey.ApsAutoIsfLowProfileName)
+                if (low.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, low)
+            }
+
+            StringKey.ApsAutoIsfLowProfileName      -> {
+                val idx = ladderIndexOf(profileName, lowRoleLadder)
+                if (idx < 0) return
+                val std = resolveTieredProfileName(standardRoleLadder[idx], StringKey.ApsAutoIsfStandard100ProfileName)
+                    .ifBlank { preferences.get(StringKey.ApsAutoIsfStandardProfileName) }
+                if (std.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, std)
+            }
+
+            else                                    -> Unit
+        }
+    }
+
     private fun mirroredRoleMap(): Map<String, String> =
         preferences.get(StringNonKey.MirroredAutoIsfSettings)
             .lineSequence()
@@ -420,7 +477,12 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                             if (!config.AAPSCLIENT) preferences.put(steroidKey, profileName)
                             emitSetRoleNote(steroidKey, profileName)
                         } ?: roleOption.key?.let { roleKey ->
-                            if (!config.AAPSCLIENT) preferences.put(roleKey, profileName)
+                            if (!config.AAPSCLIENT) {
+                                preferences.put(roleKey, profileName)
+                                // 2026-09-14 drift fix: keep the partner Current locked to the same
+                                // A/B/C letter, same as applySetRole() does on the relay-receiving side.
+                                lockstepPartnerCurrent(roleKey, profileName)
+                            }
                             emitSetRoleNote(roleKey, profileName)
                         }
                         if (isTT) {
