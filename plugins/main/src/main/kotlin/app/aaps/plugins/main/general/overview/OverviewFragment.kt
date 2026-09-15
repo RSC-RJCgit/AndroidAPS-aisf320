@@ -2368,6 +2368,33 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     .show()
             }
         },
+        // Added 2026-09-15, per explicit request: jump Standard+Low to a named tier rung directly, in
+        // one tap, rather than only stepping one rung at a time (list2's Toggle1/ProfileBatchStep) or
+        // holding at the two extremes (list2's Toggle2/Toggle3, TierA/TierC only -- TierB was otherwise
+        // only reachable by passing through it mid-step). Relays whichever of the three new TT codes
+        // (5.216/5.218/5.220, see directTtCodeForRunKey in OpenAPSAutoISFPlugin.kt) since which rung to
+        // jump to is only known at tap-time -- same TtCode.Action shape as "Switch to Standard/Low
+        // profile now" above. "Currently" is approximated locally from the same ladder-membership
+        // preferences the plugin's own sharedRoleLadderIndex() reads (max of whichever role is
+        // furthest along its own ladder) -- display-only; the plugin's own copy of this logic is what
+        // actually decides which profile each tier resolves to.
+        TtCode.Action("Set Standard+Low tier (A/B/C)") {
+            val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val onTierC = standardName == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName) ||
+                lowName == preferences.get(StringKey.ApsAutoIsfLow90ProfileName)
+            val onTierB = standardName == preferences.get(StringKey.ApsAutoIsfStandard105ProfileName) ||
+                lowName == preferences.get(StringKey.ApsAutoIsfLow80ProfileName)
+            val currentLetter = if (onTierC) "C" else if (onTierB) "B" else "A"
+            androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Set Standard+Low tier")
+                .setMessage("Currently: Tier$currentLetter. Pick a tier for both roles:")
+                .setPositiveButton("Tier A") { _, _ -> applyTtControl(5.216, origin = "List 1 tier set A") }
+                .setNegativeButton("Tier B") { _, _ -> applyTtControl(5.218, origin = "List 1 tier set B") }
+                .setNeutralButton("Tier C") { _, _ -> applyTtControl(5.220, origin = "List 1 tier set C") }
+                .setOnCancelListener { showTtCodesListDialog() }
+                .show()
+        },
         // Reuses showProfileNamesPopup() unchanged (the one-time onboarding popup, this file) -- that
         // was previously shown only once ever, gated on OverviewStringKey.ApsAutoIsfProfileNamesReviewed,
         // with no way back in short of an export/import edit to clear the flag. onDone re-opens this

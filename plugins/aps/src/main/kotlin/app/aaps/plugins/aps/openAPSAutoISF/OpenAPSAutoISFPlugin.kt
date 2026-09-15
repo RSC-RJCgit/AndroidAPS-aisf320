@@ -2911,6 +2911,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "ProfileBatchAutoToggleTT" -> 5.210
         "ProfileBatchRevertToggleTT" -> 5.212
         "ProfileBatchRevertCToggleTT" -> 5.214
+        "ProfileBatchSetATT" -> 5.216
+        "ProfileBatchSetBTT" -> 5.218
+        "ProfileBatchSetCTT" -> 5.220
         "Ukf1DosingToggleTT" -> 5.196
         "LocationSmsToggleTT" -> 5.198
         "LocationSmsThisPhoneTT" -> 5.204
@@ -4886,6 +4889,40 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("Bt3${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
             markRun("ProfileBatchRevertCToggleTT")
+        }
+
+        // --- List 1 direct tier set (added 2026-09-15, per explicit request): jump Standard+Low to a
+        // named rung in one tap, rather than only stepping one rung at a time (ProfileBatchStep, via
+        // List2 Toggle1/BtchUp/BtchDn) or holding at the two extremes (List2 Toggle2/Toggle3, TierA/
+        // TierC only -- TierB was previously unreachable except by passing through it during a step).
+        // Both roles always move together -- applySharedRoleRung() already writes Standard+Low as one
+        // shared rung; this just exposes picking the destination rung directly from List 1.
+        // Turns off both hold toggles first: leaving one active would have it revert this pick straight
+        // back to A or C on the very next cycle, the same class of fight-every-cycle regression the
+        // Toggle2/Toggle3 doc comment above already warns about.
+        if (readyToRun("ProfileBatchSetATT", 2) && activeTtNear(5.216, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(0, "List1 TierSetA", switchRunning = true, announce = true)) addCarePortalNote("TierSetA")
+            rxBus.send(EventRefreshOverview("List1 tier set A", true))
+            markRun("ProfileBatchSetATT")
+        }
+        if (readyToRun("ProfileBatchSetBTT", 2) && activeTtNear(5.218, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(1, "List1 TierSetB", switchRunning = true, announce = true)) addCarePortalNote("TierSetB")
+            rxBus.send(EventRefreshOverview("List1 tier set B", true))
+            markRun("ProfileBatchSetBTT")
+        }
+        if (readyToRun("ProfileBatchSetCTT", 2) && activeTtNear(5.220, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(2, "List1 TierSetC", switchRunning = true, announce = true)) addCarePortalNote("TierSetC")
+            rxBus.send(EventRefreshOverview("List1 tier set C", true))
+            markRun("ProfileBatchSetCTT")
         }
 
         // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
