@@ -39,6 +39,16 @@ enum class LongKey(
     // term from DelayedBolusWorker's own calc (see that class's doc comment for the Db30 case that
     // motivated both changes).
     ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),
+    // Live "how much is still pending" from BolusWizard's own carb-split and Warsaw-FPU protein/fat
+    // series (milliunits, x1000), so DelayedBolusWorker -- in a different Gradle module, with no
+    // visibility into BolusWizard's own in-process Handler-scheduled doses -- can show them in its own
+    // check/cancel notes. Written/cleared by BolusWizard itself: split is the true live remainder
+    // (scheduleReducedPartsSplitBolus's own decrementing remainingResidual, written on every entry,
+    // cleared to 0 on every terminal branch); Warsaw is the combined protein+fat total, decremented by
+    // each fpu-N sub-dose's own fixed amount as scheduleSingleDelayedDose resolves it (cancelled or
+    // delivered) -- see both functions' own doc comments. Added 2026-09-16.
+    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),
+    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),
     // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.

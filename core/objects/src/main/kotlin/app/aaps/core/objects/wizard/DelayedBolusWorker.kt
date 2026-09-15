@@ -113,6 +113,16 @@ class DelayedBolusWorker(
     // A delivered delayed dose is a new calculation made well after the original Wizard result.
     // Persist it as a real BolusCalculatorResult so Treatments shows a separate "Calc" row whose
     // details explain the remainder × COB scale and explicitly close the one-shot delayed sequence.
+    // Shared trailer for both addDeliveredCalcTreatment and the "covered" note below: live InsReq (see
+    // class doc comment) plus whatever BolusWizard's own carb-split and Warsaw-FPU series still have
+    // outstanding, from LongKey.ApsAutoIsfPending{Split,Warsaw}RemainingMilliU. Shown unconditionally
+    // (not just when InsReq actually caps the dose) -- these are ALL separate insulin sources DelayedBolusWorker's
+    // own calc has no other visibility into, so surfacing them at every check, not only when one of them
+    // happens to bind, is the point. Added 2026-09-16.
+    private fun pendingSourcesLine(liveInsulinReqCap: Double?, pendingSplit: Double, pendingWarsaw: Double): String =
+        "InsReq ${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"}U; " +
+            "other pending: split ${Round.roundTo(pendingSplit, 0.01)}U, Warsaw ${Round.roundTo(pendingWarsaw, 0.01)}U"
+
     private fun addDeliveredCalcTreatment(
         gs: GlucoseStatus,
         delayedDose: Double,
@@ -125,13 +135,15 @@ class DelayedBolusWorker(
         rawDose: Double,
         liveInsulinReqCap: Double?,
         cappedRawDose: Double,
+        pendingSplit: Double,
+        pendingWarsaw: Double,
         multiplier: Double,
         dbLabel: String
     ) {
         val profile = profileFunction.getProfile()
         val multiplierPct = (multiplier * 100).toInt()
         val capNote = if (liveInsulinReqCap != null && cappedRawDose < rawDose)
-            " capped to live InsReq ${Round.roundTo(liveInsulinReqCap, 0.01)}U -> ${Round.roundTo(cappedRawDose, 0.01)}U"
+            " (capped to InsReq -> ${Round.roundTo(cappedRawDose, 0.01)}U)"
         else ""
         val note = "$dbLabel delayed bolus: ${Round.roundTo(delayedDose, 0.01)}U delivered\n" +
             "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
@@ -141,6 +153,7 @@ class DelayedBolusWorker(
             "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
             "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U$capNote; " +
             "${if (multiplier < 1.0) "still moving" else "seated"} $multiplierPct%\n" +
+            "${pendingSourcesLine(liveInsulinReqCap, pendingSplit, pendingWarsaw)}\n" +
             "Delayed sequence complete; no residual pending"
         persistenceLayer.insertOrUpdateBolusCalculatorResult(
             BCR(
@@ -172,6 +185,69 @@ class DelayedBolusWorker(
                 wasTempTargetUsed = false,
                 totalInsulin = delayedDose,
                 percentageCorrection = multiplierPct,
+                profileName = profileFunction.getProfileName(),
+                note = note
+            )
+        ).blockingGet()
+    }
+
+    // Covered-case counterpart to addDeliveredCalcTreatment above: a real BCR "Calc" row (0U) so the
+    // same breakdown -- including InsReq and the other-mechanism pending amounts -- is visible in
+    // Treatments even when nothing was delivered, not just a short 5-char careportal code. Added
+    // 2026-09-16, matching the user's explicit ask to show this at every trigger OR cancellation.
+    private fun addCoveredCalcTreatment(
+        gs: GlucoseStatus,
+        fullRequired: Double,
+        originalDose: Double,
+        currentCob: Double,
+        originalCarbs: Double,
+        cobFraction: Double,
+        remainder: Double,
+        rawDose: Double,
+        liveInsulinReqCap: Double?,
+        pendingSplit: Double,
+        pendingWarsaw: Double,
+        dbLabel: String
+    ) {
+        val profile = profileFunction.getProfile()
+        val note = "$dbLabel delayed bolus: covered, nothing delivered\n" +
+            "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
+            "SD ${Round.roundTo(gs.shortAvgDelta / 18.0182, 0.01)}, LD ${Round.roundTo(gs.longAvgDelta / 18.0182, 0.01)} mmol/L\n" +
+            "Full required ${Round.roundTo(fullRequired, 0.01)}U - initial ${Round.roundTo(originalDose, 0.01)}U " +
+            "= ${Round.roundTo(remainder, 0.01)}U\n" +
+            "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
+            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U -> 0.00U after rounding/cap\n" +
+            pendingSourcesLine(liveInsulinReqCap, pendingSplit, pendingWarsaw)
+        persistenceLayer.insertOrUpdateBolusCalculatorResult(
+            BCR(
+                timestamp = dateUtil.now(),
+                targetBGLow = profile?.getTargetLowMgdl() ?: 0.0,
+                targetBGHigh = profile?.getTargetHighMgdl() ?: 0.0,
+                isf = profile?.getIsfMgdl("DelayedBolusWorker") ?: 0.0,
+                ic = profile?.getIc() ?: 0.0,
+                bolusIOB = 0.0,
+                wasBolusIOBUsed = false,
+                basalIOB = 0.0,
+                wasBasalIOBUsed = false,
+                glucoseValue = gs.glucose,
+                wasGlucoseUsed = true,
+                glucoseDifference = gs.delta,
+                glucoseInsulin = 0.0,
+                glucoseTrend = 0.0,
+                wasTrendUsed = false,
+                trendInsulin = 0.0,
+                cob = currentCob,
+                wasCOBUsed = originalCarbs > 0.0,
+                cobInsulin = 0.0,
+                carbs = originalCarbs,
+                wereCarbsUsed = originalCarbs > 0.0,
+                carbsInsulin = 0.0,
+                otherCorrection = 0.0,
+                wasSuperbolusUsed = false,
+                superbolusInsulin = 0.0,
+                wasTempTargetUsed = false,
+                totalInsulin = 0.0,
+                percentageCorrection = 0,
                 profileName = profileFunction.getProfileName(),
                 note = note
             )
@@ -272,18 +348,38 @@ class DelayedBolusWorker(
                 else null
             val cappedRawDose = if (liveInsulinReqCap != null) min(rawDose, max(0.0, liveInsulinReqCap)) else rawDose
 
+            // Other pending amounts from BolusWizard's own carb-split/Warsaw-FPU series -- see
+            // LongKey.ApsAutoIsfPending{Split,Warsaw}RemainingMilliU's own doc comment. Shown, not
+            // gated into the dose math itself (a separate change, if ever wanted).
+            val pendingSplit = preferences.get(LongKey.ApsAutoIsfPendingSplitRemainingMilliU) / 1000.0
+            val pendingWarsaw = preferences.get(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU) / 1000.0
+
             val elapsedMin = attempt * 10
             val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)
             // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 70%.
             val multiplier = if (movingNow) WizardActivitySteps.MOVING_PERCENT / 100.0 else 1.0
             val delayedDose = Round.roundTo(max(0.0, cappedRawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
-                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
+                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
                 addCheckNote("$dbLabel covered")
+                addCoveredCalcTreatment(
+                    gs = gs,
+                    fullRequired = fullRequired,
+                    originalDose = originalDose,
+                    currentCob = currentCob,
+                    originalCarbs = originalCarbs,
+                    cobFraction = cobFraction,
+                    remainder = remainder,
+                    rawDose = rawDose,
+                    liveInsulinReqCap = liveInsulinReqCap,
+                    pendingSplit = pendingSplit,
+                    pendingWarsaw = pendingWarsaw,
+                    dbLabel = dbLabel
+                )
                 unblockSmb("covered by COB check")
                 return Result.success()
             }
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {
@@ -291,7 +387,7 @@ class DelayedBolusWorker(
                 insulin = delayedDose
                 notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U, × cobFraction ${Round.roundTo(cobFraction, 0.01)}" +
                     (liveInsulinReqCap?.let { ", capped to live InsReq ${Round.roundTo(it, 0.01)}U" } ?: "") +
-                    ", × ${(multiplier*100).toInt()}%)"
+                    ", × ${(multiplier*100).toInt()}%; ${pendingSourcesLine(liveInsulinReqCap, pendingSplit, pendingWarsaw)})"
                 uel.log(
                     action = Action.BOLUS,
                     source = Sources.WizardDialog,
@@ -315,6 +411,8 @@ class DelayedBolusWorker(
                                 rawDose = rawDose,
                                 liveInsulinReqCap = liveInsulinReqCap,
                                 cappedRawDose = cappedRawDose,
+                                pendingSplit = pendingSplit,
+                                pendingWarsaw = pendingWarsaw,
                                 multiplier = multiplier,
                                 dbLabel = dbLabel
                             )

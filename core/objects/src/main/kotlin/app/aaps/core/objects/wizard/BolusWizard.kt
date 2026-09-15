@@ -1037,16 +1037,18 @@ class BolusWizard @Inject constructor(
     // Classic Warsaw/Pankiewicz FPU→duration table, linearly interpolated between the reference points
     // below so a meal's EXACT FPU (not just whole numbers) gets a proportionate duration instead of
     // jumping in whole-FPU steps. Reference points (FPU to hours): 0→0 (no fat/protein: no extension),
-    // 1→3h, 2→4h, 3→5h, 4→6h, 5+→8h (capped — the widely-cited table doesn't extend further). These
-    // breakpoints are the commonly-published version, not yet verified against this fork's own real
-    // device data (see this file's "evidence over guessing" practice) — watch actual post-meal outcomes
-    // once this has run for real before trusting the exact hours, and retune here if a different
-    // reference table is preferred.
+    // 1→3h, 2→4h, 3→5h, 4→6h, 5+→8h in the original widely-cited table.
+    // Rescaled 2026-09-16, proportionally, to cap the max at 5h instead of 8h (factor 5/8=0.625 applied
+    // to every reference point, shape preserved): 0→0, 1→1.875h, 2→2.5h, 3→3.125h, 4→3.75h, 5+→5h
+    // (capped). These breakpoints are the commonly-published version scaled down, not yet verified
+    // against this fork's own real device data (see this file's "evidence over guessing" practice) —
+    // watch actual post-meal outcomes once this has run for real before trusting the exact hours, and
+    // retune here if a different reference table or scale factor is preferred.
     private fun warsawExtendedDurationMinutes(fpu: Double): Int {
-        val points = listOf(0.0 to 0.0, 1.0 to 3.0, 2.0 to 4.0, 3.0 to 5.0, 4.0 to 6.0, 5.0 to 8.0)
+        val points = listOf(0.0 to 0.0, 1.0 to 1.875, 2.0 to 2.5, 3.0 to 3.125, 4.0 to 3.75, 5.0 to 5.0)
         val hours = when {
             fpu <= 0.0 -> 0.0
-            fpu >= 5.0 -> 8.0
+            fpu >= 5.0 -> 5.0
             else       -> {
                 val idx = points.indexOfLast { it.first <= fpu }
                 val (fpuLo, hLo) = points[idx]
@@ -1149,6 +1151,7 @@ class BolusWizard @Inject constructor(
                     "DelayedDose(fpu): FPU=${plan.fpu} duration=${plan.durationMinutes}min split into " +
                         "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose"
                 )
+                preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round(plan.totalInsulin * 1000))
                 for (i in 1..plan.numDoses) {
                     val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
                     else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
@@ -1261,6 +1264,22 @@ class BolusWizard @Inject constructor(
         ).blockingGet()
     }
 
+    // Live "still pending" trackers for the two BolusWizard-scheduled series -- see
+    // LongKey.ApsAutoIsfPendingSplitRemainingMilliU/PendingWarsawRemainingMilliU's own doc comment.
+    // Split: called with the TRUE current remainder on every entry to scheduleReducedPartsSplitBolus
+    // (0.0 on any terminal branch, since cancellation there always drops the WHOLE remaining chain).
+    private fun setSplitPendingRemaining(amountU: Double) {
+        preferences.put(LongKey.ApsAutoIsfPendingSplitRemainingMilliU, Math.round(amountU.coerceAtLeast(0.0) * 1000))
+    }
+
+    // Warsaw: each fpu-N sub-dose is independent (not a shared decrementing total like split above), so
+    // this DECREMENTS by one sub-dose's own fixed amount as scheduleSingleDelayedDose resolves it --
+    // called at every one of its terminal branches, cancelled or delivered alike.
+    private fun decrementWarsawPendingRemaining(amountU: Double) {
+        val current = preferences.get(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU) / 1000.0
+        preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round((current - amountU).coerceAtLeast(0.0) * 1000))
+    }
+
     // Explicit 0U bolus treatment for a split/delayed dose that calculated out to <=0 (IOB rose enough
     // to fully absorb it) — same "record a visible 0U entry" pattern confirmAndExecute()'s own overall
     // zero-total branch already uses above, so a calculated-zero part is visually consistent with a
@@ -1355,6 +1374,7 @@ class BolusWizard @Inject constructor(
         consecutiveUnsafeChecks: Int = 0
     ) {
         if (remainingResidual <= 0) return
+        setSplitPendingRemaining(remainingResidual)
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         aapsLogger.debug(LTag.CORE, "ReducedSplitBolus: scheduling next part in ${delayMs / 1000}s, remaining residual ${remainingResidual}U, deliverAt=${dateUtil.timeString(deliverAt)}")
@@ -1362,27 +1382,32 @@ class BolusWizard @Inject constructor(
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: bolus was stopped — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "bolus stopped")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superseded by a newer bolus/carbs entry — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "superseded by newer entry")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "profile switch to $pct%")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (pumpUnavailable()) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: pump suspended — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "pump suspended")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superbolus active — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "superbolus active")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
@@ -1395,6 +1420,7 @@ class BolusWizard @Inject constructor(
             if (dateUtil.now() > retryDeadline) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (60min) exhausted — cancelling remaining ${remainingResidual}U")
                 cancelDoseNote(remainingResidual, "retry timeout exceeded")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
@@ -1448,6 +1474,7 @@ class BolusWizard @Inject constructor(
                     "ReducedSplitBolus: BG unsafe check 3/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U"
                 )
                 cancelDoseNote(remainingResidual, "BG safety check failed 3 consecutive intervals")
+                setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
@@ -1486,6 +1513,8 @@ class BolusWizard @Inject constructor(
                             val newResidual = remainingResidual - thisDose
                             if (newResidual > 0.0)
                                 scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
+                            else
+                                setSplitPendingRemaining(0.0)
                         }
                     }
                 })
@@ -1519,27 +1548,32 @@ class BolusWizard @Inject constructor(
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): bolus was stopped — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: bolus stopped")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): superseded by a newer bolus/carbs entry — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: superseded by newer entry")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): profile switch at $pct% (scheduled at $schedulingPct%) — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: profile switch to $pct%")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             if (pumpUnavailable()) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): pump suspended — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: pump suspended")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): superbolus active — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: superbolus active")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
@@ -1551,6 +1585,7 @@ class BolusWizard @Inject constructor(
             if (!bgOk) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta}) — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: BG safety check failed")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
@@ -1562,6 +1597,7 @@ class BolusWizard @Inject constructor(
                     dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
                 ))
                 cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
+                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
@@ -1575,6 +1611,7 @@ class BolusWizard @Inject constructor(
                     note = notes,
                     listValues = listOf(ValueWithUnit.Insulin(thisDose))
                 )
+                decrementWarsawPendingRemaining(dose)
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
                         calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
