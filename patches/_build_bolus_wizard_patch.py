@@ -22,6 +22,7 @@ FULL_COPY = [
     "plugins/main/src/main/res/layout/dialog_quick_wizard_max_bolus.xml",
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt",
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt",
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt",
 ]
 
 
@@ -77,6 +78,30 @@ def apply_surgical(staging: Path) -> None:
         '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
         "BooleanKey",
     )
+    # Separate feature from WizardDelayedBolusEnabled above: "Split bolus when over max" (wizard
+    # split-every-N-min row), used by WizardDialog.kt's own split-bolus-when-over-max logic. Missing
+    # from an earlier generation of this script even though the FULL_COPY'd WizardDialog.kt already
+    # referenced it -- same class of bug as WizardActivitySteps.kt being absent from FULL_COPY.
+    t = must_replace(
+        t,
+        '    ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),\n',
+        '    ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),\n'
+        '    ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),\n',
+        "BooleanKey ApsAutoIsfSplitBolusEnabled",
+    )
+    write(staging, p, t)
+
+    # IntKey -- ApsAutoIsfSplitBolusInterval, depended on by ApsAutoIsfSplitBolusEnabled above.
+    # This file was never touched by an earlier generation of this script at all.
+    p = "core/keys/src/main/kotlin/app/aaps/core/keys/IntKey.kt"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        '    ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),\n',
+        '    ApsAutoIsfIobThPercent("iob_threshold_percent", 100, 10, 100, defaultedBySM = true),\n'
+        '    ApsAutoIsfSplitBolusInterval("split_bolus_interval", 7, 1, 10, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfSplitBolusEnabled),\n',
+        "IntKey ApsAutoIsfSplitBolusInterval",
+    )
     write(staging, p, t)
 
     # LongKey
@@ -86,7 +111,8 @@ def apply_surgical(staging: Path) -> None:
         t,
         '    AppStart("app_start_time", 0, defaultedBySM = true),\n',
         '    AppStart("app_start_time", 0, defaultedBySM = true),\n'
-        '    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),\n',
+        '    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),\n'
+        '    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),\n',
         "LongKey",
     )
     write(staging, p, t)
@@ -733,6 +759,7 @@ def main() -> None:
 
         surgical = [
             "core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt",
+            "core/keys/src/main/kotlin/app/aaps/core/keys/IntKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt",
             "core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt",
             "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt",
