@@ -949,10 +949,9 @@ class BolusWizard @Inject constructor(
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
                                         val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else if (recent50Triggered) "recent50Triggered" else "walkingSoon"
-                                        // originalCarbs/originalIob (added 2026-08-26): captured HERE, at the moment of the
-                                        // original bolus, so DelayedBolusWorker can later tell how much of this carb estimate
-                                        // and pre-existing IOB has already been covered by the time it actually fires -- see
-                                        // that worker's own class doc for the full reasoning.
+                                        // originalCarbs (added 2026-08-26): captured HERE so DelayedBolusWorker can scale the
+                                        // remainder by leftover COB. originalIob is still passed for in-flight jobs and is
+                                        // not subtracted from the remainder (2026-09-15; see DelayedBolusWorker).
                                         val originalIob = iobCobCalculator.calculateIobFromBolus().iob +
                                             iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().basaliob
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")

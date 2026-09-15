@@ -2058,9 +2058,14 @@ class DetermineBasalAutoISF @Inject constructor(
                                 rT.reason.append("microBolus = microBolus * 0.65 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.653 for moderate fast rise 0.653 ")
                             } else if (bg <= 8.0 * 18 &&
-                                (microBolus > ThresholForFastRise ||
-                                    nowHour <= 8)
+                                microBolus > ThresholForFastRise
                             ) {
+                                // 2026-09-15: dropped the overnight-always `|| nowHour <= 8` half. That
+                                // forced *0.5 on every moderate rise before 08:00 even when the SMB was
+                                // already small. 15 Sep 03:02-05: FastRise 504 chopped Req 1.7-2.5U to
+                                // 0.10 SMB while the 00:00-04:00 0.6U/10min cap already binds cumulative
+                                // amount (the 6-7 Aug guard). Small overnight SMBs now take the 0.564
+                                // uncapped branch below, same as daytime.
                                 microBolus = microBolus * 0.5
                                 rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.5 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.504 for moderate fast rise 0.504 ")

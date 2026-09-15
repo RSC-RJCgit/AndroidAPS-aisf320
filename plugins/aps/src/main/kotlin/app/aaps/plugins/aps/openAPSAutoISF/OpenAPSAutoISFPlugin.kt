@@ -815,6 +815,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return -1
     }
 
+    // Running profile is in the Low family: Low Current, or any Low A/B/C ladder name.
+    // Bare original name -- see sourceRoleRung()'s 2026-09-14 getProfileName() vs (NNN%) note.
+    // 15 Sep 08:48 Live: running Profile100 (Low C) while Low Current was still Profile80, so
+    // `name == Low Current` made BasalUp think it was not on Low and it never reverted.
+    private fun runningOnLowLadder(): Boolean {
+        val name = profileFunction.getOriginalProfileName()
+        if (name.isBlank()) return false
+        if (name == preferences.get(StringKey.ApsAutoIsfLowProfileName)) return true
+        return ladderIndexOf(name, lowRoleLadder) >= 0
+    }
+
     // Added 2026-08-30 for MorningRoleSwapHigh/Normal. currentIndex is ladderIndexOf()'s result (-1 if
     // off-ladder). stepUp=true steps toward the ceiling (High), false toward the floor (Normal). Per
     // explicit spec: off-ladder + stepUp enters at the floor (rung 0); off-ladder + !stepUp returns -1
@@ -7029,15 +7040,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // Code port of "BasalUp": raises acce weight back to neutral (0.50) and switches to Current
-        // ProfileReal when glucose is stable/rising outside a pod/MJ/afternoon guard window, low
-        // activity, and currently on the Low profile. No live-pump gate: the original's Note field
-        // was empty.
+        // Code port of "BasalUp": raises acce weight back to neutral (0.50) and switches to
+        // Standard at the shared A/B/C letter when glucose is stable/rising outside a pod/MJ/
+        // afternoon guard window, low activity, and currently on ANY Low-family profile (Current
+        // or ladder A/B/C -- not only Low Current's name). No live-pump gate: the original's Note
+        // field was empty.
         if (readyToRun("BasalUp", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val podH = hoursSinceCurrentPodChange()
-            val onCurrentProfile = profileFunction.getProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val onLowFamily = runningOnLowLadder()
             val cannulaOrStateOk = (podH != null && (podH >= 72.0 || podH <= 6.0)) ||
                 checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
             if (g >= 81.1 /* 4.5 mmol */
@@ -7047,7 +7059,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
                 && isTimeBetween(7, 0, 0, 0)
-                && onCurrentProfile) {
+                && onLowFamily) {
                 switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.50)
                 sendSms("BasalUp Acce")
