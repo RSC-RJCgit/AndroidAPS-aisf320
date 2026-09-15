@@ -98,6 +98,8 @@ class QuickWizardEntry @Inject constructor(
             useTemptarget: 0
             usePercentage: string, // default, custom
             percentage: int,
+            protein: int,  // grams, fixed per button -- see protein()/fat()
+            fat: int,      // grams, fixed per button
         }
      */
     fun from(entry: JSONObject, position: Int): QuickWizardEntry {
@@ -168,6 +170,15 @@ class QuickWizardEntry @Inject constructor(
             carbTime(),
             quickWizard = true,
             positiveIOBOnly = uPositiveIOBOnly,
+            // Fixed per-button protein/fat (added 2026-09-16). Unlike split-bolus below, these ARE real
+            // doCalc() parameters -- doCalc() uses them internally to compute insulinFromProteinOnly/
+            // insulinFromFatOnly (protein*0.4/ic, fat*0.9/ic) itself, so they must go in here, not be set
+            // on the returned wizard afterward (that would be too late -- those two fields are already
+            // computed by the time doCalc() returns). Previously QuickWizard had no way to supply these
+            // at all, so the Warsaw-FPU extended series could never engage for a QuickWizard-triggered
+            // bolus regardless of BolusWizard's own logic.
+            protein = protein(),
+            fat = fat(),
             // "Always on" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.
             walkingSoon = useWalkingSoon() == YES &&
                 WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
@@ -191,6 +202,10 @@ class QuickWizardEntry @Inject constructor(
     fun buttonText(): String = safeGetString(storage, "buttonText", "")
 
     fun carbs(): Int = safeGetInt(storage, "carbs")
+
+    fun protein(): Int = safeGetInt(storage, "protein")
+
+    fun fat(): Int = safeGetInt(storage, "fat")
 
     fun validFromDate(): Long = dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(validFrom())
 

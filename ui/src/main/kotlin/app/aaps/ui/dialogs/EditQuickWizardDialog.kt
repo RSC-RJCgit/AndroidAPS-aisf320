@@ -127,6 +127,8 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("useWalkingSoon", checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
                     entry.storage.put("useSplitBolus", checkBoxToRadioNumbers(binding.splitBolusCheckbox.isChecked))
                     entry.storage.put("splitBolusIntervalMins", binding.splitBolusIntervalInput.value.toInt())
+                    entry.storage.put("protein", binding.proteinInput.value.toInt())
+                    entry.storage.put("fat", binding.fatInput.value.toInt())
                 } catch (e: JSONException) {
                     aapsLogger.error("Unhandled exception", e)
                 }
@@ -238,6 +240,16 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                 ?: 7.0, 1.0, 60.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
+        binding.proteinInput.setParams(
+            savedInstanceState?.getDouble("protein_input")
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+
+        binding.fatInput.setParams(
+            savedInstanceState?.getDouble("fat_input")
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+
         binding.correctionInput.value = entry.percentage().toDouble()
 
         toSeconds = entry.validTo()
@@ -283,6 +295,9 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.splitBolusIntervalInput.value = SafeParse.stringToDouble(entry.splitBolusIntervalMins().toString())
         processSplitBolus()
         binding.splitBolusCheckbox.setOnCheckedChangeListener { _, _ -> processSplitBolus() }
+
+        binding.proteinInput.value = SafeParse.stringToDouble(entry.protein().toString())
+        binding.fatInput.value = SafeParse.stringToDouble(entry.fat().toString())
 
         binding.useCob.setOnCheckedChangeListener { _, _ -> processCob() }
 
