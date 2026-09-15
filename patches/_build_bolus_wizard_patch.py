@@ -112,7 +112,8 @@ def apply_surgical(staging: Path) -> None:
         '    AppStart("app_start_time", 0, defaultedBySM = true),\n',
         '    AppStart("app_start_time", 0, defaultedBySM = true),\n'
         '    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),\n'
-        '    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),\n',
+        '    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n',
         "LongKey",
     )
     write(staging, p, t)
@@ -234,6 +235,18 @@ def apply_surgical(staging: Path) -> None:
         "            constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()\n"
         "        }",
         "OpenAPSAutoISFPlugin microBolusAllowed",
+    )
+    # Mirrors RT.insulinReq into a preference every cycle so DelayedBolusWorker (a lower module
+    # that can't reach into this plugin directly) can cap its delayed dose against the loop's
+    # CURRENT insulin requirement instead of only the wizard-time fullRequired estimate. See
+    # DelayedBolusWorker's own doc comment (2026-09-15 follow-up) for the full reasoning.
+    t = must_replace(
+        t,
+        "            lastAPSResult = determineBasalResult\n            lastAPSRun = now\n",
+        "            lastAPSResult = determineBasalResult\n"
+        "            lastAPSRun = now\n"
+        "            preferences.put(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU, Math.round((it.insulinReq ?: 0.0) * 1000))\n",
+        "OpenAPSAutoISFPlugin insulinReq mirror",
     )
     write(staging, p, t)
 

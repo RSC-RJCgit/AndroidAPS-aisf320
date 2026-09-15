@@ -35,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Delayed bolus (50%-profile wizard mechanism — NOT the equal-parts split bolus):
@@ -54,9 +55,19 @@ import kotlin.math.max
  * term (current total IOB − IOB at the wizard) treated 30 min of SMBs/TBR as already covering
  * the delayed remainder. Real 14 Sep Db30: remainder collapsed to 0.1U while BGL 6.1, COB 8.5,
  * live Req 1.62, IOB had grown ~1.3U. That is the loop doing its job, not the delayed top-up
- * being finished. Last-5-min IOBd5 would still have crushed it. Live Req/Tier3 is a different
- * feature. originalIob is still passed through from the wizard for in-flight WorkManager jobs
- * and is ignored in the dose math.
+ * being finished. Last-5-min IOBd5 would still have crushed it. originalIob is still passed
+ * through from the wizard for in-flight WorkManager jobs and is ignored in the dose math.
+ *
+ * 2026-09-15 (same day, follow-up): with no IOB term at all, a still-high cobFraction alone
+ * could in principle hand back the full remainder even after the loop's own current view of
+ * things has moved on from the ~80-min-old wizard-time fullRequired estimate. Capped rawDose
+ * against liveInsulinReq (RT.insulinReq, mirrored every cycle by OpenAPSAutoISFPlugin into
+ * LongKey.ApsAutoIsfLastCycleInsulinReqMilliU since this class can't see that plugin's own
+ * private field) -- the loop's CURRENT assessment of how much more insulin is actually still
+ * needed. This is the same 1.62U figure from the Db30 case above: a cap at that level would not
+ * have crushed it (1.62 comfortably exceeds any correctly-scaled remainder), unlike the discarded
+ * iobDelta/IOBd5 approaches. Only applied when the loop has run within the last 10 min
+ * (APS.lastAPSRun); a stalled loop must not silently zero-cap every delayed dose.
  */
 class DelayedBolusWorker(
     context: Context,
@@ -112,18 +123,23 @@ class DelayedBolusWorker(
         cobFraction: Double,
         remainder: Double,
         rawDose: Double,
+        liveInsulinReqCap: Double?,
+        cappedRawDose: Double,
         multiplier: Double,
         dbLabel: String
     ) {
         val profile = profileFunction.getProfile()
         val multiplierPct = (multiplier * 100).toInt()
+        val capNote = if (liveInsulinReqCap != null && cappedRawDose < rawDose)
+            " capped to live InsReq ${Round.roundTo(liveInsulinReqCap, 0.01)}U -> ${Round.roundTo(cappedRawDose, 0.01)}U"
+        else ""
         val note = "$dbLabel delayed bolus: ${Round.roundTo(delayedDose, 0.01)}U delivered\n" +
             "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
             "SD ${Round.roundTo(gs.shortAvgDelta / 18.0182, 0.01)}, LD ${Round.roundTo(gs.longAvgDelta / 18.0182, 0.01)} mmol/L\n" +
             "Full required ${Round.roundTo(fullRequired, 0.01)}U - initial ${Round.roundTo(originalDose, 0.01)}U " +
             "= ${Round.roundTo(remainder, 0.01)}U\n" +
             "COB ${Round.roundTo(currentCob, 0.1)}/${Round.roundTo(originalCarbs, 0.1)}g " +
-            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U; " +
+            "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U$capNote; " +
             "${if (multiplier < 1.0) "still moving" else "seated"} $multiplierPct%\n" +
             "Delayed sequence complete; no residual pending"
         persistenceLayer.insertOrUpdateBolusCalculatorResult(
@@ -246,24 +262,36 @@ class DelayedBolusWorker(
 
             val remainder = (fullRequired - originalDose).coerceAtLeast(0.0)
             val rawDose = remainder * cobFraction
+
+            // Live InsReq cap (see class doc comment): only trust it while the loop has actually run
+            // recently -- a stalled loop's stale cached value must never silently zero-cap a dose.
+            val liveInsulinReqAgeMs = now - activePlugin.activeAPS.lastAPSRun
+            val liveInsulinReqCap: Double? =
+                if (liveInsulinReqAgeMs in 0..T.mins(10).msecs())
+                    preferences.get(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU) / 1000.0
+                else null
+            val cappedRawDose = if (liveInsulinReqCap != null) min(rawDose, max(0.0, liveInsulinReqCap)) else rawDose
+
             val elapsedMin = attempt * 10
             val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)
             // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 70%.
             val multiplier = if (movingNow) WizardActivitySteps.MOVING_PERCENT / 100.0 else 1.0
-            val delayedDose = Round.roundTo(max(0.0, rawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
+            val delayedDose = Round.roundTo(max(0.0, cappedRawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
-                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
+                aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
                 addCheckNote("$dbLabel covered")
                 unblockSmb("covered by COB check")
                 return Result.success()
             }
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
             addCheckNote("$dbLabel ${delayedDose}U")
             unblockSmb("delivering")
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = delayedDose
-                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U, × cobFraction ${Round.roundTo(cobFraction, 0.01)} × ${(multiplier*100).toInt()}%)"
+                notes = "Delayed bolus attempt $attempt (full required ${fullRequired}U − given ${originalDose}U, × cobFraction ${Round.roundTo(cobFraction, 0.01)}" +
+                    (liveInsulinReqCap?.let { ", capped to live InsReq ${Round.roundTo(it, 0.01)}U" } ?: "") +
+                    ", × ${(multiplier*100).toInt()}%)"
                 uel.log(
                     action = Action.BOLUS,
                     source = Sources.WizardDialog,
@@ -285,6 +313,8 @@ class DelayedBolusWorker(
                                 cobFraction = cobFraction,
                                 remainder = remainder,
                                 rawDose = rawDose,
+                                liveInsulinReqCap = liveInsulinReqCap,
+                                cappedRawDose = cappedRawDose,
                                 multiplier = multiplier,
                                 dbLabel = dbLabel
                             )

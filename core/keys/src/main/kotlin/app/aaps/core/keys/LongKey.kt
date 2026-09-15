@@ -31,6 +31,14 @@ enum class LongKey(
     NsClientTokenFailNotifiedAt("nsclient_token_fail_notified_at", 0, defaultedBySM = true),
     SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
     DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
+    // Live RT.insulinReq (milliunits, x1000, since LongKey has no Double variant), refreshed every
+    // cycle by OpenAPSAutoISFPlugin right alongside its own private lastCycleInsulinReq (see that
+    // field's doc comment). DelayedBolusWorker lives in a lower module that can't see the plugin's
+    // private field directly, so this preference is how it reads the loop's CURRENT insulin
+    // requirement to cap the delayed dose -- added 2026-09-15 alongside removing the old iobDelta
+    // term from DelayedBolusWorker's own calc (see that class's doc comment for the Db30 case that
+    // motivated both changes).
+    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),
     // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.

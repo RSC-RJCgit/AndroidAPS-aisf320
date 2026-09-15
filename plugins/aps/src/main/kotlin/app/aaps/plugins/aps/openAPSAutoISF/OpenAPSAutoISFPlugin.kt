@@ -8777,6 +8777,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
             lastCycleInsulinReq = it.insulinReq   // raw RT, not the APSResult wrapper -- that doesn't expose insulinReq
+            // Mirrored into a preference (see LongKey.ApsAutoIsfLastCycleInsulinReqMilliU's own doc
+            // comment) so DelayedBolusWorker, in a lower module that can't see this private field, can
+            // still read the loop's current insulin requirement to cap its delayed dose.
+            preferences.put(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU, Math.round((it.insulinReq ?: 0.0) * 1000))
             lastAPSRun = now
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
