@@ -2750,10 +2750,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // (below) already does this unconditionally with no hasStateValues() guard, so this was a real,
     // live crash risk, not a hypothetical.
     //
-    // ensureStateDeclared() is purely additive and idempotent: it only calls setStateValues() when
-    // hasStateValues() is false, so it can never clobber a value list a user has customized on the
-    // States tab (setStateValues() itself would silently clear the current active value if it isn't in
-    // the new list -- see AutomationStateService.kt -- which is exactly the clobber this guard avoids).
+    // ensureStateDeclared() is purely additive and idempotent, in two layers: for a totally undeclared
+    // state it registers the full required value list; for an ALREADY-declared state (2026-09-16) it
+    // tops up any individual values this file now needs but that state's list doesn't have yet, leaving
+    // every existing value in its existing order untouched. Neither layer can clobber a value list a
+    // user has customized on the States tab: setStateValues() itself would silently clear the current
+    // active value if it isn't in the new list being set (see AutomationStateService.kt) -- the
+    // undeclared-state case can't trigger that (nothing is active yet), and the top-up case can't either,
+    // since it only ever appends, so anything already active stays present in the combined list.
     // Deliberately NOT gated on BooleanKey.AutomationStatesEnabled: declaring values is harmless (and
     // arguably desirable) even while the feature is toggled off, so everything a user needs is already
     // in place the moment they re-enable it after an import.
@@ -2813,7 +2817,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // keeps its existing meaning and every existing reader unchanged; AlarmHypo1/2 now additionally
         // write this alongside their existing LowBG write, and only this one is exclusive to them.
         "AlarmHypo" to RequiredAutomationState(listOf("AlarmRecent", "NoAlarmRecent"), defaultValue = "NoAlarmRecent"),
-        "Profile" to RequiredAutomationState(listOf("PP130", "C100", "AllOK", "Batt1%", "Bolus"), defaultValue = "AllOK"),
+        // "HnAM" added 2026-09-16 for the re-enabled HighNight00AM/OffHighProf tightened-exit pair (see
+        // those blocks' own doc comments). Named after HighNight00AM's own careportal/SMS code, not
+        // "TierB" or similar -- this automation only toggles Standard-vs-Low at the CURRENT shared tier
+        // (switchToStandardAtSharedTier), it does not step the tier ladder itself.
+        // "Batt1%" removed 2026-09-16 in the same cleanup pattern as the 2026-08-22 audit above: the
+        // battery-safety-profile guard now keys on the profile name itself (see its own comment, "This
+        // replaced the old guard which required checkAutomationState(\"Profile\",\"Batt1%\") -- a flag
+        // Battery1pc never set, so recovery never fired"), so nothing reads or writes this value anymore.
+        "Profile" to RequiredAutomationState(listOf("PP130", "C100", "AllOK", "Bolus", "HnAM"), defaultValue = "AllOK"),
         "Sleeping" to RequiredAutomationState(listOf("True"))
     )
 
@@ -2821,6 +2833,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (!automationStateService.hasStateValues(stateName)) {
             automationStateService.setStateValues(stateName, required.values)
             aapsLogger.info(LTag.APS, "Automation state \"$stateName\" was undeclared -- auto-registered with values ${required.values}")
+        } else {
+            // 2026-09-16: top up an ALREADY-declared state with any values this file now needs that
+            // aren't in its list yet (e.g. adding "HnAM" to "Profile" for the re-enabled HighNight00AM/
+            // OffHighProf pair) -- previously this only handled the totally-undeclared case, so any
+            // addition to an existing state's value list needed a manual edit on the in-app States tab.
+            // Safe to do unconditionally: AutomationStateService.setStateValues() only clears the
+            // CURRENT active value if it's missing from the new list being set (see its own
+            // implementation) -- appending onto the existing list can never do that, since anything
+            // already active stays present in the combined list. Existing values are kept in their
+            // existing order; new ones are appended, never reordered or removed.
+            val existing = automationStateService.getStateValues(stateName)
+            val missing = required.values.filter { it !in existing }
+            if (missing.isNotEmpty()) {
+                automationStateService.setStateValues(stateName, existing + missing)
+                aapsLogger.info(LTag.APS, "Automation state \"$stateName\" was missing values $missing -- added, existing list otherwise unchanged")
+            }
         }
         val default = required.defaultValue
         // getStateValues() re-check (not just required.values) on purpose: if this state already existed
@@ -5912,9 +5940,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // behaviour rather than silently withholding a back-off that might be warranted.
             val hpNow = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
             val hypoPredicted = hpNow == null || hpNow < 5.0
-            // Block 1: 01:00–06:00, g < 7.5 mmol, delta <= -0.05 mmol, pct >= 100, not on Current Profile
-            val ohb1 = isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9
-                && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
+            // Tightened exit for HighNight00AM's own escalation only (see that block's own doc comment):
+            // its entry now requires BGL>6.5mmol with ALL THREE deltas each >=0.1mmol rising, so reverting
+            // on this block's normal shared 7.5mmol/single-delta gate would overlap almost the entire entry
+            // range and flip-flop on ordinary CGM noise -- the exact pattern the EveningTH/NightIobCeiling
+            // regression note elsewhere in this file warns against repeating. Scoped to the "HnAM"
+            // automation-state tag so every OTHER caller of this block (NightAcce, MJrecentCurrProfAcce)
+            // keeps the original, untouched 7.5mmol/single-delta gate below.
+            val nightHighAmTag = checkAutomationState("Profile", "HnAM")
+            // Block 1: 01:00–06:00, not on Current Profile, pct >= 100 -- BG/delta gate depends on tag above
+            val ohb1 = if (nightHighAmTag) {
+                isTimeBetween(1, 0, 6, 0) && g < 117.1 /* 6.5 mmol */
+                    && d <= 0.0 && glucoseStatus.shortAvgDelta <= 0.0 && glucoseStatus.longAvgDelta <= 0.0
+                    && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
+            } else {
+                isTimeBetween(1, 0, 6, 0) && g < 135.1 && d <= -0.9 /* 0.05 mmol falling */
+                    && profile_percentage >= 100 && !onCurrentProfile && noTT && steroidOff
+            }
             // Block 2: 05:00–05:30, g <= 7.5 mmol, pct = 100, not on Current Profile
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
@@ -5926,6 +5968,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (!rescueActive) switchToLowAtSharedTier(30)
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+                if (nightHighAmTag) setAutomationState("Profile", "C100")
                 sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP2=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
                 addCarePortalNote("OffP-$ohBlock")
                 markRun("OffHighProf")
@@ -6049,42 +6092,42 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // --- HighNight00AM: overnight high BGL (>=7.0 mmol) — switch to ProfileReal, set hypo TT 4.2 ---
-        // Fires 01:00–05:45 when glucose elevated and gently rising/flat, iobTH<=50 OR old cannula + MJ state.
-        // Threshold lowered from 9.0 to 7.0 mmol (least-invasive first step on the overnight 6-6.5mmol
-        // plateau): NightAcce backs off at <=6.0mmol and OffHighProf reverts this automation's own
-        // ProfileReal switch once BG falls under 7.5mmol falling, so 7.0 sits with working room on both
-        // sides of that existing pair -- low enough to actually engage before BG settles into the
-        // 6.0-9.0mmol dead zone where nothing else in this file corrects, high enough to leave NightAcce's
-        // own floor and OffHighProf's own revert gate alone. Revisit the exact number after a few nights.
+        // --- HighNight00AM: overnight rising BGL (>6.5 mmol) -- switch to Standard at current tier ---
+        // Re-enabled 2026-09-16 in a NARROWER form than the original 2026-08/09 design. The original also
+        // raised iobTH to 51 and acce to 0.50 to let the higher Standard profile actually correct -- but
+        // that directly fought NightIobCeiling (added after the 6->7 Aug 2026 hypo, which LOWERS the same
+        // two knobs across the same hours), so it was disabled outright rather than left to lose that race
+        // every ~5 min (see git history for the original disabled block). This version drops the iobTH/acce
+        // override entirely -- it ONLY does the Standard-vs-Low profile toggle at the current shared tier
+        // (switchToStandardAtSharedTier, the same lever OffHighProf already reverts), so it no longer
+        // touches anything NightIobCeiling owns. Real evidence motivating the return: Client's overnight
+        // AIV log for 15/16 Sep showed BGL climb 6.7->7.9mmol over 02:40-03:21 with Req 0.2-0.5U every
+        // cycle and zero SMBs the whole time (iobTH pinned at its NightIobCeiling-capped 2.51U, all of the
+        // modest correction going out via TBR alone) -- a real instance of the "largely uncorrected"
+        // consequence the original disable comment accepted.
+        // Window narrowed to 02:00-04:00 (from 01:00-05:45) and entry raised to >6.5mmol with ALL THREE
+        // deltas (Delta/SDelta/LDelta) each >=0.1mmol confirming a genuine sustained rise, not the
+        // original's single-delta gate -- both changes explicitly chosen to keep real separation from
+        // OffHighProf's own revert condition and avoid the every-5-min flip-flop pattern documented in the
+        // EveningTH/NightIobCeiling regression note elsewhere in this file. Dropped from the original:
+        // the iobTH<=50/old-cannula branch2 alternate trigger, and the 4.2mmol temp-target-based dosing
+        // nudge (a separate escalation technique used elsewhere, e.g. HighOver6.0ok1) -- neither was part
+        // of this redesign; add back if wanted.
+        // Sets automation state Profile=HnAM while active so OffHighProf can apply a matching
+        // tightened exit (see that block's own doc comment) instead of its normal shared 7.5mmol/
+        // single-delta gate; OffHighProf clears the tag back to C100 when it reverts.
         // 60-min floor throttle added on top of the preconditions (see readyToRun() usage note).
-        // DISABLED. This block sets iobTH to 51 (and acce 0.50) between 01:00-05:45 to permit correcting a
-        // genuine overnight high -- which directly contradicts NightIobCeiling above, added after the
-        // 6->7 Aug 2026 hypo, which pins iobTH to 18 and acce to 0.35 across the same hours. With both
-        // active they would fight every cycle: this raises, that lowers ~5 min later. Turned off rather
-        // than left to lose that race, so the behaviour is explicit instead of emergent.
-        // Accepted consequence: overnight highs now go largely uncorrected between 01:00 and 05:45.
-        // Flip this back to true to restore it -- and if you do, reconsider NightIobCeiling at the same
-        // time, because the two cannot both be right.
-        val highNight00AmEnabled = false
-        if (highNight00AmEnabled && readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
-            val g       = glucoseStatus.glucose
-            val d       = glucoseStatus.delta
-            val sd      = glucoseStatus.shortAvgDelta
-            val ld      = glucoseStatus.longAvgDelta
-            val iobTH   = iobThresholdPercent
-            val cannulaH = hoursSinceCurrentPodChange()
-            val baseOk  = isTimeBetween(1, 0, 5, 45) && g >= 126.1 /* 7.0 mmol */
-                && d >= 0.0 && d <= 14.4 /* 0.8 mmol */ && sd >= 0.0 && ld >= 0.0 && ld <= 6.3 /* 0.35 mmol */
-            val branch1 = baseOk && iobTH <= 50
-            val branch2 = baseOk && checkAutomationState("MJ", "NOMJremains") && g >= 126.1 && cannulaH != null && cannulaH >= 60.0
-            if (branch1 || branch2) {
+        if (readyToRun("HighNight00AM", 60) && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")) {
+            val g  = glucoseStatus.glucose
+            val d  = glucoseStatus.delta
+            val sd = glucoseStatus.shortAvgDelta
+            val ld = glucoseStatus.longAvgDelta
+            val baseOk = isTimeBetween(2, 0, 4, 0) && g > 117.1 /* 6.5 mmol */
+                && d >= 1.8 /* 0.1 mmol */ && sd >= 1.8 /* 0.1 mmol */ && ld >= 1.8 /* 0.1 mmol */
+            if (baseOk) {
                 switchToStandardAtSharedTier(30)
-                preferences.put(IntKey.ApsAutoIsfIobThPercent, 51)
-                setBgAccelIsfWeight(0.50)
-                startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
-                setAutomationState("Profile", "C100")
-                sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=$iobTH")
+                setAutomationState("Profile", "HnAM")
+                sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} sd=${String.format(Locale.getDefault(), "%.2f", sd / 18.016)} ld=${String.format(Locale.getDefault(), "%.2f", ld / 18.016)}")
                 addCarePortalNote("HnAM")
                 markRun("HighNight00AM")
             }
