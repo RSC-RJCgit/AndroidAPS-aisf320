@@ -72,6 +72,12 @@ class DetermineBasalAutoISF @Inject constructor(
     // the flags above.
     var tier3FastCarbReboundObservedThisCycle: Boolean = false
 
+    // Observation-only, same no-I/O split as the flag above -- drives OpenAPSAutoISFPlugin.kt's
+    // CarePortal note for the "recent-low rebound guard" (search that name in this file), which
+    // previously only ever appended to rT.reason with no visible note, so it couldn't be checked from
+    // the AIV export without pulling raw device logs. Added 2026-09-16, per explicit request.
+    var recentLowReboundGuardFiredThisCycle: Boolean = false
+
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
 
@@ -502,6 +508,7 @@ class DetermineBasalAutoISF @Inject constructor(
         var uamBoostEnhancedCandidateThisCycle = false
         var uamBoostFinalIobAllowanceThisCycle: Double? = null
         tier3FastCarbReboundObservedThisCycle = false
+        recentLowReboundGuardFiredThisCycle = false
         consoleError.clear()
         consoleError.add(activity_consoleLog)
         consoleLog.clear()
@@ -2347,6 +2354,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (carbRebound || artifactRebound) {
                         val beforeLowGuard = microBolus
                         microBolus = microBolus * 0.5
+                        recentLowReboundGuardFiredThisCycle = true
                         val why = if (carbRebound)
                             "carb: recentLowBG=${round(recentLowBG, 0)}mg/dL, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
                         else

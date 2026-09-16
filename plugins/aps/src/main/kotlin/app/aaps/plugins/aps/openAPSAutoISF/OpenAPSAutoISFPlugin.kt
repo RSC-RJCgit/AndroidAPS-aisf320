@@ -8875,6 +8875,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("T3FastCarb")
         }
 
+        // Same no-I/O split as T3FastCarb above -- CarePortal note only for the "recent-low rebound
+        // guard" (DetermineBasalAutoISF.kt, halves microBolus after a recent low + carb/artifact
+        // rebound), which previously only appended to rT.reason with no visible note at all.
+        if (determineBasalAutoISF.recentLowReboundGuardFiredThisCycle) {
+            addCarePortalNote("LoReb")
+        }
+
         autoIsfValues.timestamp = now
         autoIsfValues.smbDeliveryRatio = smb_delivery_ratio
         autoIsfValues.iob = iobData.iob
