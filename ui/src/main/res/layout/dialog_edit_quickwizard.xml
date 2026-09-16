@@ -580,6 +580,15 @@
                 android:textColor="?attr/warningColor"
                 tools:ignore="HardcodedText" />
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="Pending delayed doses (this and carb-split) are lost with no note if AAPS restarts or updates before they fire."
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?attr/warningColor"
+                tools:ignore="HardcodedText" />
+
         </LinearLayout>
 
         <TableLayout
