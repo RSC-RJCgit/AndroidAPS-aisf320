@@ -537,6 +537,49 @@
 
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/warsaw_duration_row"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="start|center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:labelFor="@id/warsaw_duration_input"
+                    android:text="Protein+Fat duration"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/warsaw_duration_input"
+                    android:layout_width="100dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/unit_hour_short"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/warsaw_duration_warning"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="2dp"
+                android:paddingBottom="4dp"
+                android:text="Caps how many fixed hourly doses fire (only above 3 FPU) — insulin for hours beyond this cap is not delivered. Total given is reduced, not made up later."
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?attr/warningColor"
+                tools:ignore="HardcodedText" />
+
         </LinearLayout>
 
         <TableLayout

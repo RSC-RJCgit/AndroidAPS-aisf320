@@ -15,6 +15,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
+import app.aaps.core.utils.JsonHelper.safeGetDouble
 import app.aaps.core.utils.JsonHelper.safeGetInt
 import app.aaps.core.utils.JsonHelper.safeGetString
 import app.aaps.core.utils.MidnightUtils
@@ -100,6 +101,7 @@ class QuickWizardEntry @Inject constructor(
             percentage: int,
             protein: int,  // grams, fixed per button -- see protein()/fat()
             fat: int,      // grams, fixed per button
+            warsawDurationHours: double,  // protein+fat extended-series duration, default 5.0
         }
      */
     fun from(entry: JSONObject, position: Int): QuickWizardEntry {
@@ -190,6 +192,10 @@ class QuickWizardEntry @Inject constructor(
         // gets the same carb-split-into-repeated-doses behavior as a dialog bolus with the checkbox ticked.
         wizard.manualSplitBolusEnabled = useSplitBolus() == YES
         wizard.manualSplitBolusIntervalMins = splitBolusIntervalMins()
+        // Protein+fat extended-series duration (2026-09-16): a direct per-button setting, same
+        // reasoning/timing as split-bolus above -- warsawFpuPlan() only runs later, on demand, so this
+        // is safe to set post-doCalc() (unlike protein/fat themselves further up).
+        wizard.warsawDurationHours = warsawDurationHours()
         return wizard
     }
 
@@ -206,6 +212,8 @@ class QuickWizardEntry @Inject constructor(
     fun protein(): Int = safeGetInt(storage, "protein")
 
     fun fat(): Int = safeGetInt(storage, "fat")
+
+    fun warsawDurationHours(): Double = safeGetDouble(storage, "warsawDurationHours", 5.0)
 
     fun validFromDate(): Long = dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(validFrom())
 

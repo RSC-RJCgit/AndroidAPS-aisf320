@@ -129,6 +129,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("splitBolusIntervalMins", binding.splitBolusIntervalInput.value.toInt())
                     entry.storage.put("protein", binding.proteinInput.value.toInt())
                     entry.storage.put("fat", binding.fatInput.value.toInt())
+                    entry.storage.put("warsawDurationHours", binding.warsawDurationInput.value)
                 } catch (e: JSONException) {
                     aapsLogger.error("Unhandled exception", e)
                 }
@@ -250,6 +251,11 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                 ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
+        binding.warsawDurationInput.setParams(
+            savedInstanceState?.getDouble("warsaw_duration_input")
+                ?: 5.0, 0.0, 24.0, 0.5, DecimalFormat("0.0"), false, binding.okcancel.ok, textWatcher
+        )
+
         binding.correctionInput.value = entry.percentage().toDouble()
 
         toSeconds = entry.validTo()
@@ -298,6 +304,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
 
         binding.proteinInput.value = SafeParse.stringToDouble(entry.protein().toString())
         binding.fatInput.value = SafeParse.stringToDouble(entry.fat().toString())
+        binding.warsawDurationInput.value = entry.warsawDurationHours()
 
         binding.useCob.setOnCheckedChangeListener { _, _ -> processCob() }
 

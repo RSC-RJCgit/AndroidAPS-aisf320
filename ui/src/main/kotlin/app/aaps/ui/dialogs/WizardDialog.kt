@@ -154,6 +154,7 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("carbs_input", binding.carbsInput.value)
         savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
         savedInstanceState.putDouble("fat_input", binding.fatInput.value)
+        savedInstanceState.putDouble("warsaw_duration_input", binding.warsawDurationInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
     }
@@ -225,6 +226,13 @@ class WizardDialog : DaggerDialogFragment() {
         binding.fatInput.setParams(
             savedInstanceState?.getDouble("fat_input")
                 ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+        // Protein+fat extended-series duration (2026-09-16): a direct per-bolus setting (see
+        // BolusWizard.warsawDurationHours's own doc comment), not derived from FPU any more. Default
+        // 5h; only meaningful when protein or fat is entered (warsawFpuPlan() returns null otherwise).
+        binding.warsawDurationInput.setParams(
+            savedInstanceState?.getDouble("warsaw_duration_input")
+                ?: 5.0, 0.0, 24.0, 0.5, DecimalFormat("0.0"), false, binding.okcancel.ok, textWatcher
         )
 
         // If there is no BG using % lower that 100% leads to high BGs
@@ -614,6 +622,9 @@ class WizardDialog : DaggerDialogFragment() {
         )
 
         wizard?.let { wizard ->
+            // Set before anything below reads warsawFpuPlan() (the live preview does, further down) --
+            // see BolusWizard.warsawDurationHours's own doc comment.
+            wizard.warsawDurationHours = binding.warsawDurationInput.value
             binding.bg.text = rh.gs(R.string.format_bg_isf, valueToUnitsToString(profileUtil.convertToMgdl(bg, profileFunction.getUnits()), profileFunction.getUnits().asText), wizard.sens)
             binding.bgInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromBG)
 
@@ -711,17 +722,20 @@ class WizardDialog : DaggerDialogFragment() {
             }
 
             // Combined protein+fat Warsaw-FPU series preview (see BolusWizard.warsawFpuPlan() — this
-            // calls that SAME function rather than re-deriving the FPU/duration formula here, so this
+            // calls that SAME function rather than re-deriving the fixed-table logic here, so this
             // preview can't drift out of sync with the real schedule). Projected amounts are the FULL
             // pre-IOB-delta figures; the actual delivered total across the series may end up lower (or
             // individual sub-doses skipped entirely) depending on how much IOB has risen by each one's
-            // own delivery time.
+            // own delivery time -- separate from, and on top of, the fixed-table capping below.
             val fpuPlan = wizard.warsawFpuPlan()
             if (fpuPlan != null) {
                 val hours = fpuPlan.durationMinutes / 60.0
+                val cappedNote = if (fpuPlan.capped)
+                    " -- CAPPED, full Warsaw tier is ${decimalFormatter.to2Decimal(fpuPlan.fullTierInsulin)}U/8h"
+                else ""
                 binding.proteinFatDelayInfo.text =
                     "Protein+Fat ${decimalFormatter.to2Decimal(fpuPlan.totalInsulin)}U over ${decimalFormatter.to2Decimal(hours)}h " +
-                        "(${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)}), less IOB rise"
+                        "(${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)})$cappedNote, less IOB rise"
                 binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
             } else {
                 binding.proteinFatDelayInfo.visibility = android.view.View.GONE

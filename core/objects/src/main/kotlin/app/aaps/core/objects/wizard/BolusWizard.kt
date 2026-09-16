@@ -67,9 +67,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class BolusWizard @Inject constructor(
     private val aapsLogger: AAPSLogger,
@@ -169,6 +169,13 @@ class BolusWizard @Inject constructor(
     // Per-bolus split bolus settings (set by WizardDialog before confirmAndExecute)
     var manualSplitBolusEnabled: Boolean = false
     var manualSplitBolusIntervalMins: Int = 7
+    // Per-bolus/per-QuickWizard-button HARD CAP on the top Warsaw-FPU tier (FPU>3, real duration 8h)
+    // only -- see warsawFpuPlan()'s own doc comment for the full fixed-table design and why this is a
+    // cap on fixed-size hourly doses (reducing total delivered insulin when set below 8h), not a
+    // redistribution of a fixed total. Has no effect on the FPU<=3 tiers, which are always their own
+    // fixed 3h/4h/5h duration. Set here, not a doCalc() parameter, because warsawFpuPlan() only runs
+    // later, on demand, same as manualSplitBolusEnabled above. Defaults to 5h.
+    var warsawDurationHours: Double = 5.0
     private var splitBolusScheduled = false  // guard against double-callback
     // Guard against double-callback for the combined protein+fat Warsaw-FPU extended dose series (see
     // warsawFpuPlan()/scheduleSplitProteinFatDoses()). Replaced 2026-09-12's separate
@@ -345,8 +352,8 @@ class BolusWizard @Inject constructor(
         // Divisors switched 2026-09-12 to the real Warsaw/Pankiewicz FPU carb-equivalent factors
         // (protein×0.4, fat×0.9 — equivalently protein/2.5, fat/1.111) from this fork's original
         // protein/25, fat/11 (protein×0.04, fat×0.091) — roughly 10x weaker than Warsaw. Only safe to
-        // strengthen this far because delivery is now ALSO spread over a Warsaw-FPU-scaled duration
-        // (see warsawExtendedDurationMinutes()) instead of one fixed-time dose per component — the two
+        // strengthen this far because delivery is now ALSO spread over a Warsaw-FPU tier duration
+        // (see warsawFpuPlan()) instead of one fixed-time dose per component — the two
         // changes are a pair, not independent: stronger divisors alone, still on a single fixed-time
         // dose, would front-load ~10x the insulin at one moment instead of matching the slow multi-hour
         // fat/protein-driven rise it's meant to cover.
@@ -512,9 +519,10 @@ class BolusWizard @Inject constructor(
             }
         }
         warsawFpuPlan()?.let { plan ->
+            val cappedNote = if (plan.capped) " [CAPPED, full tier=${decimalFormatter.to2Decimal(plan.fullTierInsulin)}U/8h]" else ""
             parts.add(
                 "Protein+Fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
-                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
+                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})$cappedNote"
             )
         }
         if (parts.isEmpty()) return ""
@@ -1021,42 +1029,43 @@ class BolusWizard @Inject constructor(
     // calls this SAME function instead of re-deriving the FPU/duration formula itself, which would
     // otherwise risk drifting out of sync with the real schedule exactly like splitProjectionNote()'s
     // own doc comment already warns about for the carb-split preview.
+    // totalInsulin: the ACTUAL amount that will be delivered by this plan (perDoseInsulin * numDoses) --
+    // less than fullTierInsulin whenever capped is true. fullTierInsulin: what the real, uncapped
+    // Warsaw tier would deliver (perDoseInsulin * tierHours) -- shown alongside totalInsulin so a
+    // capped plan's shortfall is visible, not just its own (already-reduced) total.
     data class WarsawFpuPlan(
-        val fpu: Double, val durationMinutes: Int, val numDoses: Int, val perDoseInsulin: Double, val totalInsulin: Double
+        val fpu: Double, val durationMinutes: Int, val numDoses: Int, val perDoseInsulin: Double,
+        val totalInsulin: Double, val fullTierInsulin: Double, val capped: Boolean
     )
 
+    // Fixed Warsaw/Pankiewicz step table (verified 2026-09-16 against the real published method --
+    // omnicalculator.com/health/warsaw-method, juiceboxpodcast.com/warcal, ezcalculator.net all agree):
+    // NON-proportional, a jump table, not the smooth interpolation this file used before verification.
+    // FPU picks a TIER; each tier's per-dose amount is FIXED at totalInsulin/tierHours (that tier's own
+    // real, full duration), one dose per hour -- confirmed against four worked examples (1/2/3/8 doses
+    // of equal size, one per hour, each stopping exactly at its own tier's hour count).
+    //
+    // Only the top tier (FPU>3, real duration 8h) is user-adjustable, via warsawDurationHours -- and
+    // per explicit request, that setting is a HARD CAP on how many of the FIXED-size hourly doses
+    // actually fire, not a redistribution: perDoseInsulin stays at totalInsulin/8 regardless of the
+    // cap, so hours beyond the cap (up to 8h) are simply never delivered. The total insulin actually
+    // given is therefore genuinely reduced when capped below 8h -- not repacked into fewer, bigger
+    // doses, and not made up later. Tiers 1-3 have no override -- always their own full fixed duration.
     fun warsawFpuPlan(): WarsawFpuPlan? {
-        val totalInsulin = insulinFromProteinOnly + insulinFromFatOnly
-        if (totalInsulin <= 0.0) return null
+        val totalRequiredInsulin = insulinFromProteinOnly + insulinFromFatOnly
+        if (totalRequiredInsulin <= 0.0) return null
         val fpu = (9 * fat + 4 * protein) / 100.0
-        val durationMinutes = warsawExtendedDurationMinutes(fpu)
-        val numDoses = max(1, (durationMinutes / 60.0).roundToInt())
-        return WarsawFpuPlan(fpu, durationMinutes, numDoses, totalInsulin / numDoses, totalInsulin)
-    }
-
-    // Classic Warsaw/Pankiewicz FPU→duration table, linearly interpolated between the reference points
-    // below so a meal's EXACT FPU (not just whole numbers) gets a proportionate duration instead of
-    // jumping in whole-FPU steps. Reference points (FPU to hours): 0→0 (no fat/protein: no extension),
-    // 1→3h, 2→4h, 3→5h, 4→6h, 5+→8h in the original widely-cited table.
-    // Rescaled 2026-09-16, proportionally, to cap the max at 5h instead of 8h (factor 5/8=0.625 applied
-    // to every reference point, shape preserved): 0→0, 1→1.875h, 2→2.5h, 3→3.125h, 4→3.75h, 5+→5h
-    // (capped). These breakpoints are the commonly-published version scaled down, not yet verified
-    // against this fork's own real device data (see this file's "evidence over guessing" practice) —
-    // watch actual post-meal outcomes once this has run for real before trusting the exact hours, and
-    // retune here if a different reference table or scale factor is preferred.
-    private fun warsawExtendedDurationMinutes(fpu: Double): Int {
-        val points = listOf(0.0 to 0.0, 1.0 to 1.875, 2.0 to 2.5, 3.0 to 3.125, 4.0 to 3.75, 5.0 to 5.0)
-        val hours = when {
-            fpu <= 0.0 -> 0.0
-            fpu >= 5.0 -> 5.0
-            else       -> {
-                val idx = points.indexOfLast { it.first <= fpu }
-                val (fpuLo, hLo) = points[idx]
-                val (fpuHi, hHi) = points[idx + 1]
-                hLo + (hHi - hLo) * (fpu - fpuLo) / (fpuHi - fpuLo)
-            }
+        val tierHours = when {
+            fpu <= 1.0 -> 3
+            fpu <= 2.0 -> 4
+            fpu <= 3.0 -> 5
+            else       -> 8
         }
-        return (hours * 60).roundToInt()
+        val perDoseInsulin = totalRequiredInsulin / tierHours
+        val numDoses = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0)).toInt() else tierHours
+        val fullTierInsulin = perDoseInsulin * tierHours
+        val deliveredTotal = perDoseInsulin * numDoses
+        return WarsawFpuPlan(fpu, numDoses * 60, numDoses, perDoseInsulin, deliveredTotal, fullTierInsulin, capped = numDoses < tierHours)
     }
 
     // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
@@ -1149,7 +1158,8 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(
                     LTag.CORE,
                     "DelayedDose(fpu): FPU=${plan.fpu} duration=${plan.durationMinutes}min split into " +
-                        "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose"
+                        "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose" +
+                        if (plan.capped) " [CAPPED at ${plan.numDoses}h, full tier=${plan.fullTierInsulin}U/8h]" else ""
                 )
                 preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round(plan.totalInsulin * 1000))
                 for (i in 1..plan.numDoses) {
