@@ -120,5 +120,10 @@ enum class LongKey(
     // coincidence -- a coincidence-based check would also exempt an unrelated 5.0mmol TT (e.g. a
     // manually-set one) that happened to appear in the same few minutes. 0 = none yet.
     ApsAutoIsfLastBmildTtCreatedAt("autoisf_last_bmild_tt_created_at", 0, defaultedBySM = true, exportable = false),
+    // Timestamp (ms) of the most recent AlarmHypo1/AlarmHypo2 firing -- persisted (unlike the in-memory
+    // lastRunTimestamps map) so a rolling "was there a genuine hypo alarm in the last 60 min" check
+    // survives an app restart. Used by bmildBasicCriteriaMet() to raise mealLeftoverRise's BG floor
+    // after a real alarm-tier hypo, not just any dip. 0 = never. Added 2026-09-16, per explicit request.
+    ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0, defaultedBySM = true),
 
 }
