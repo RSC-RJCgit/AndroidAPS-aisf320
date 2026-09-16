@@ -129,14 +129,16 @@ diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt b/core/keys
 index 5de6a0cc63..c760af0bce 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
-@@ -23,5 +23,8 @@ enum class LongKey(
+@@ -23,5 +23,10 @@ enum class LongKey(
      FslSmoothLastTimeRaw("fsl_last_time_raw", -1, -1, defaultedBySM = true),
      FslCalibrationStart("fsl_cal_start_time", -1, -1, defaultedBySM = true),
      AppStart("app_start_time", 0, defaultedBySM = true),
 +    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),
 +    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),
 +    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),
- 
++    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),
++    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),
+
  }
 \ No newline at end of file
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt

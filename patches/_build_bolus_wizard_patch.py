@@ -113,7 +113,9 @@ def apply_surgical(staging: Path) -> None:
         '    AppStart("app_start_time", 0, defaultedBySM = true),\n'
         '    DelayedBolusBlockSmbUntil("delayed_bolus_block_smb_until", 0, defaultedBySM = true),\n'
         '    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),\n'
-        '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n',
+        '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),\n',
         "LongKey",
     )
     write(staging, p, t)
