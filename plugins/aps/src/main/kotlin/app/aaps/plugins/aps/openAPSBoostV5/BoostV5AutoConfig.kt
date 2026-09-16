@@ -50,6 +50,34 @@ object BoostV5AutoConfig {
 
     /** History window for auto-config (also used by the plugin's data pulls). */
     const val LOOKBACK_DAYS = 14L
+
+    /**
+     * PERIODIC RE-DERIVATION (2026-08-03). Auto-config derives once at migration; a person drifts.
+     * The cadence grid over real history (backtesting/scripts/2026-08-autoconfig-redrive/
+     * CADENCE_GRID.md, 8 users) priced every window/step pair:
+     *
+     *   W/S    lag(d)  changes/6mo  travel:progress  moves surviving the deadband
+     *   14/7    10.5      15.9           5.0                 6.09
+     *   14/14   14         8.8           3.2                 4.10
+     *   28/7    17.5      13.4           3.9                 2.89
+     *   28/14   21         7.1           2.7                 2.40
+     *   28/28   28         4.1           3.0                 1.79
+     *
+     * 28 days is the window because 14 is noise-dominated: two independent 14-day derivations of
+     * the SAME fortnight differ by 0.69 U [0.30, 1.17] on confirmedCap. 7 days is the cadence
+     * because evaluating often is cheap once the deadband, not the schedule, decides whether to
+     * write. Effective lag is W/2 + S/2 ~ 17.5 d, which is immaterial against what is being
+     * tracked: TDD drift, whose 5-month drift-to-noise ratio is only 2.72 [1.15, 4.59].
+     */
+    /**
+     * Re-derivation persistence schema version. 2 = movement tracking with baselines (rev 2).
+     * A stored version below this means the last-run clock was written by a build whose
+     * re-derivation could never do anything, so it must not gate this one.
+     */
+    const val REDRIVE_SCHEMA_VERSION = 2
+
+    const val REDRIVE_INTERVAL_DAYS = 7L
+    const val REDRIVE_LOOKBACK_DAYS = 28L
     private const val SEV54_TARGET = 1.0      // % time <54 mg/dL
 
     /**

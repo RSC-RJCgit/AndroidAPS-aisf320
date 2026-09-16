@@ -152,6 +152,12 @@ data class V5PersistedState(
     val primerIobU: Double = 0.0,
     /** 2026-07-21 primer: epoch-ms the accumulator was last updated (for the decay). 0 = never. */
     val primerIobUpdatedMs: Long = 0L,
+    /**
+     * Wall clock of the last mlMealLikelyNullStreak increment. LAST in the list because this
+     * class is constructed positionally in several places and inserting mid-list silently
+     * rebinds arguments, which has bitten twice before. (2026-08-01)
+     */
+    val mlNullStreakLastMs: Long = 0L
 )
 
 /** Full per-cycle V5 output. Every field is reconstructable into the ~6 NS RT fields. */
@@ -276,7 +282,19 @@ class DetermineBasalBoostV5 @Inject constructor() {
 
         // Phase 1.a — meal_signal_score
         val nextNullStreak =
-            if (inputs.mlMealLikely == null) persisted.mlMealLikelyNullStreak + 1 else 0
+            if (inputs.mlMealLikely == null) {
+                // Count elapsed time rather than invocations, as the meal-state ages already do
+                // via AGE_TICK_MS. ML_MEAL_RENORMALIZE_AFTER_CYCLES=3 is meant to be about 15
+                // minutes of a missing model; unticked it is 3 minutes on a one-minute feed.
+                val tick = inputs.nowMs <= 0L || persisted.mlNullStreakLastMs <= 0L ||
+                    (inputs.nowMs - persisted.mlNullStreakLastMs) >= AGE_TICK_MS
+                if (tick) persisted.mlMealLikelyNullStreak + 1 else persisted.mlMealLikelyNullStreak
+            } else 0
+        val nextNullStreakMs =
+            if (inputs.mlMealLikely == null && inputs.nowMs > 0L &&
+                (persisted.mlNullStreakLastMs <= 0L ||
+                    (inputs.nowMs - persisted.mlNullStreakLastMs) >= AGE_TICK_MS)
+            ) inputs.nowMs else persisted.mlNullStreakLastMs
         val scoreResult = mealSignalScore(
             delta = inputs.delta,
             deltaAccl = inputs.deltaAccl,
@@ -340,6 +358,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
         // Phase 1.b — state machine step
         val newHypothesisState = step(
             current = resetState,
+            nowMs = inputs.nowMs,
             score = scoreResult.score,
             eventualBg = inputs.eventualBg,
             targetBg = inputs.targetBg,
@@ -577,6 +596,7 @@ class DetermineBasalBoostV5 @Inject constructor() {
             newPersistedState = V5PersistedState(
                 mealHypothesis = newHypothesisState,
                 mlMealLikelyNullStreak = nextNullStreak,
+                mlNullStreakLastMs = nextNullStreakMs,
                 lastCycleScore = scoreResult.score,
                 primerAppliedU = primerAppliedU,
                 primerNettingResidualU = primerNettingResidualU,
