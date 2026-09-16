@@ -166,10 +166,25 @@ def apply_surgical(staging: Path) -> None:
         t,
         "            quickWizard = true,\n            positiveIOBOnly = uPositiveIOBOnly\n        ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard\n    }",
         "            quickWizard = true,\n            positiveIOBOnly = uPositiveIOBOnly,\n"
-        "            walkingSoon = useWalkingSoon() == YES\n"
+        "            // Fixed per-button protein/fat (added 2026-09-16). Unlike split-bolus below, these ARE real\n"
+        "            // doCalc() parameters -- doCalc() uses them internally to compute insulinFromProteinOnly/\n"
+        "            // insulinFromFatOnly (protein*0.4/ic, fat*0.9/ic) itself, so they must go in here, not be set\n"
+        "            // on the returned wizard afterward (that would be too late -- those two fields are already\n"
+        "            // computed by the time doCalc() returns). Previously QuickWizard had no way to supply these\n"
+        "            // at all, so the Warsaw-FPU extended series could never engage for a QuickWizard-triggered\n"
+        "            // bolus regardless of BolusWizard's own logic.\n"
+        "            protein = protein(),\n"
+        "            fat = fat(),\n"
+        "            // \"Always on\" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.\n"
+        "            walkingSoon = useWalkingSoon() == YES &&\n"
+        "                WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())\n"
         "        ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard\n"
         "        wizard.manualSplitBolusEnabled = useSplitBolus() == YES\n"
         "        wizard.manualSplitBolusIntervalMins = splitBolusIntervalMins()\n"
+        "        // Protein+fat extended-series duration (2026-09-16): a direct per-button setting, same\n"
+        "        // reasoning/timing as split-bolus above -- warsawFpuPlan() only runs later, on demand, so this\n"
+        "        // is safe to set post-doCalc() (unlike protein/fat themselves further up).\n"
+        "        wizard.warsawDurationHours = warsawDurationHours()\n"
         "        return wizard\n    }",
         "QuickWizardEntry doCalc",
     )
@@ -178,6 +193,24 @@ def apply_surgical(staging: Path) -> None:
         "        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()\n        return bolusWizardProvider.get().doCalc(",
         "        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()\n        val wizard = bolusWizardProvider.get().doCalc(",
         "QuickWizardEntry val wizard",
+    )
+    # safeGetDouble import for warsawDurationHours() below (added 2026-09-16)
+    t = must_replace(
+        t,
+        "import app.aaps.core.utils.JsonHelper.safeGetInt\n",
+        "import app.aaps.core.utils.JsonHelper.safeGetDouble\nimport app.aaps.core.utils.JsonHelper.safeGetInt\n",
+        "QuickWizardEntry safeGetDouble import",
+    )
+    # Fixed per-button protein/fat/warsawDurationHours getters (added 2026-09-16) -- see doCalc()'s own
+    # comment above for why protein/fat are real doCalc() params while warsawDurationHours is set post-calc.
+    t = must_replace(
+        t,
+        '    fun carbs(): Int = safeGetInt(storage, "carbs")\n',
+        '    fun carbs(): Int = safeGetInt(storage, "carbs")\n\n'
+        '    fun protein(): Int = safeGetInt(storage, "protein")\n\n'
+        '    fun fat(): Int = safeGetInt(storage, "fat")\n\n'
+        '    fun warsawDurationHours(): Double = safeGetDouble(storage, "warsawDurationHours", 5.0)\n',
+        "QuickWizardEntry protein/fat/warsawDurationHours getters",
     )
     t = must_replace(
         t,
@@ -425,6 +458,9 @@ def apply_surgical(staging: Path) -> None:
         '                    entry.storage.put("useWalkingSoon", checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))\n'
         '                    entry.storage.put("useSplitBolus", checkBoxToRadioNumbers(binding.splitBolusCheckbox.isChecked))\n'
         '                    entry.storage.put("splitBolusIntervalMins", binding.splitBolusIntervalInput.value.toInt())\n'
+        '                    entry.storage.put("protein", binding.proteinInput.value.toInt())\n'
+        '                    entry.storage.put("fat", binding.fatInput.value.toInt())\n'
+        '                    entry.storage.put("warsawDurationHours", binding.warsawDurationInput.value)\n'
         "                } catch (e: JSONException) {",
         "EditQuickWizardDialog save",
     )
@@ -447,6 +483,21 @@ def apply_surgical(staging: Path) -> None:
                 ?: 7.0, 1.0, 60.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
+        binding.proteinInput.setParams(
+            savedInstanceState?.getDouble("protein_input")
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+
+        binding.fatInput.setParams(
+            savedInstanceState?.getDouble("fat_input")
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+
+        binding.warsawDurationInput.setParams(
+            savedInstanceState?.getDouble("warsaw_duration_input")
+                ?: 5.0, 0.0, 24.0, 0.5, DecimalFormat("0.0"), false, binding.okcancel.ok, textWatcher
+        )
+
         binding.correctionInput.value = entry.percentage().toDouble()
 """,
         "EditQuickWizardDialog setParams",
@@ -460,6 +511,9 @@ def apply_surgical(staging: Path) -> None:
         "        binding.splitBolusIntervalInput.value = SafeParse.stringToDouble(entry.splitBolusIntervalMins().toString())\n"
         "        processSplitBolus()\n"
         "        binding.splitBolusCheckbox.setOnCheckedChangeListener { _, _ -> processSplitBolus() }\n\n"
+        "        binding.proteinInput.value = SafeParse.stringToDouble(entry.protein().toString())\n"
+        "        binding.fatInput.value = SafeParse.stringToDouble(entry.fat().toString())\n"
+        "        binding.warsawDurationInput.value = entry.warsawDurationHours()\n\n"
         "        binding.useCob.setOnCheckedChangeListener { _, _ -> processCob() }",
         "EditQuickWizardDialog load",
     )
@@ -552,9 +606,130 @@ def apply_surgical(staging: Path) -> None:
 
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/protein_fat_row"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="start|center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:labelFor="@id/protein_input"
+                    android:text="Protein"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/protein_input"
+                    android:layout_width="100dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/shortgramm"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="12dp"
+                    android:labelFor="@id/fat_input"
+                    android:text="Fat"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/fat_input"
+                    android:layout_width="100dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/shortgramm"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/warsaw_duration_row"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="start|center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:labelFor="@id/warsaw_duration_input"
+                    android:text="Protein+Fat duration"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/warsaw_duration_input"
+                    android:layout_width="100dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/unit_hour_short"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/warsaw_duration_warning"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="2dp"
+                android:paddingBottom="4dp"
+                android:text="Caps how many fixed hourly doses fire (only above 3 FPU) — insulin for hours beyond this cap is not delivered. Total given is reduced, not made up later."
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?attr/warningColor"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="Pending delayed doses (this and carb-split) are lost with no note if AAPS restarts or updates before they fire."
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:textColor="?attr/warningColor"
+                tools:ignore="HardcodedText" />
+
         </LinearLayout>
 """,
         "dialog_edit_quickwizard.xml",
+    )
+    write(staging, p, t)
+
+    # ui strings.xml -- unit_hour_short, used by the new warsaw_duration_row/input unit labels in
+    # dialog_wizard.xml (FULL_COPY) and dialog_edit_quickwizard.xml above. Added 2026-09-16.
+    p = "ui/src/main/res/values/strings.xml"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        '    <string name="unit_minute_short">min</string>\n',
+        '    <string name="unit_minute_short">min</string>\n'
+        '    <string name="unit_hour_short">h</string>\n',
+        "ui strings.xml unit_hour_short",
     )
     write(staging, p, t)
 
@@ -783,6 +958,7 @@ def main() -> None:
             "plugins/main/src/main/kotlin/app/aaps/plugins/main/general/overview/OverviewFragment.kt",
             "ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt",
             "ui/src/main/res/layout/dialog_edit_quickwizard.xml",
+            "ui/src/main/res/values/strings.xml",
             "ui/src/main/kotlin/app/aaps/ui/dialogs/BolusProgressDialog.kt",
             "ui/src/main/kotlin/app/aaps/ui/dialogs/InsulinDialog.kt",
             "ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt",
