@@ -69,6 +69,11 @@ enum class BooleanKey(
     ApsAutoIsfMjKotlinButtonsEnabled("autoisf_mj_kotlin_buttons_enabled", true),
     // Shows the direct Kotlin Steroids-ON button on Overview. Independent of native Automation events.
     ApsAutoIsfSteroidKotlinButtonEnabled("autoisf_steroid_kotlin_button_enabled", true),
+    // VirtualPump only: use the loop phone's own step counts (parsed from its synced APSResult reason
+    // text, the same fallback AAPSCLIENT already relies on) instead of this device's local StepService
+    // sensor for every recentStepsXMinutes gate. Off by default -- Virtual keeps its own local sensor
+    // reading unless explicitly opted in. Added 2026-09-16, per explicit request.
+    ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", false),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),

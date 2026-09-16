@@ -35,6 +35,7 @@ import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -165,7 +166,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val exportPasswordDataStore: ExportPasswordDataStore,
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
     private val deltaCalculator: DeltaCalculator,
-    private val accelerationCalculator: AccelerationCalculator
+    private val accelerationCalculator: AccelerationCalculator,
+    private val loop: Loop
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -314,12 +316,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         iobThEffective = 0.0
     )
 
-    // Activity detection (steps)
-    private val recentSteps5Minutes; get() = StepService.getRecentStepCount5Min()
+    // Activity detection (steps). On VirtualPump, ApsAutoIsfUseLiveStepsOnVirtual (off by default) swaps
+    // every bucket except the 10-min one for the loop phone's own step counts, parsed from its synced
+    // APSResult reason text -- the exact same "StepsXM: <value> ;" text AutoIsfHistoryExporter.kt's
+    // stepsFromReason() already parses for AAPSCLIENT's historical export (see that function's own doc
+    // comment for why AAPSCLIENT never gets a local StepsCount row at all). Read live off loop.lastRun
+    // here instead of a stored APSResult, since this gates real dosing decisions, not a historical
+    // export. Only 5/15/30/60/180 are ever written to reason text (DetermineBasalAutoISF.kt computes a
+    // Steps10M but never appends it) so the 10-min bucket has no reason-text source and always stays on
+    // this device's own local sensor regardless of the preference.
+    private fun liveStepsRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
+    private val liveSteps5Regex = liveStepsRegex("[Ss]teps5")
+    private val liveSteps15Regex = liveStepsRegex("[Ss]teps15")
+    private val liveSteps30Regex = liveStepsRegex("[Ss]teps30")
+    private val liveSteps60Regex = liveStepsRegex("[Ss]teps60")
+    private val liveSteps180Regex = liveStepsRegex("[Ss]teps180")
+
+    private fun liveStepsFromLoopReason(regex: Regex): Int? {
+        val reason = (loop.lastRun?.request ?: loop.lastRun?.constraintsProcessed)?.reason ?: return null
+        val m = regex.find(reason) ?: return null
+        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+    }
+
+    private fun useLiveStepsOnVirtual() =
+        preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
+
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps5Regex) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = StepService.getRecentStepCount60Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps15Regex) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps30Regex) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps60Regex) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps180Regex) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
@@ -6880,7 +6907,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd  = glucoseStatus.shortAvgDelta
             val cob = mealData.mealCOB
             val steps60  = recentSteps60Minutes
-            val steps180 = StepService.getRecentStepCount180Min()
+            val steps180 = recentSteps180Minutes
             val iobTH = iobThresholdPercent
             // "iobTH==50" alone isn't proof the fall that caused it has actually stopped — Extra50%
             // (X50-N) can fire at any point up to 6.5mmol while still falling, which overlaps this
@@ -7132,7 +7159,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
             val existingConditionsMet = acceW <= 0.11
-                && StepService.getRecentStepCount180Min() <= 400
+                && recentSteps180Minutes <= 400
                 && recentSteps60Minutes <= 200
                 && checkAutomationState("MJ", "NOMJremains")
                 && isTimeBetween(10, 30, 22, 0)
@@ -8081,7 +8108,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ld = glucoseStatus.longAvgDelta
             val iobTH = iobThresholdPercent
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val stB1 = isTimeBetween(6, 0, 9, 0) && StepService.getRecentStepCount180Min() >= 10
+            val stB1 = isTimeBetween(6, 0, 9, 0) && recentSteps180Minutes >= 10
                 && activeTtMgdl() == null && iobTH <= 15 && checkAutomationState("Steroids", "Steroids Off")
             val stB2 = isTimeBetween(2, 0, 9, 0) && g >= 180.2 /* 10.0 mmol */ && acceW <= 0.025
                 && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")
@@ -9203,7 +9230,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 steps15min = recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes,
                 steps30min = recentSteps30Minutes,
                 steps60min = recentSteps60Minutes,
-                steps180min = StepService.getRecentStepCount180Min(),
+                steps180min = recentSteps180Minutes,
                 device = "Smartphone"
             )
             disposable += persistenceLayer.insertOrUpdateStepsCount(stepsCount).subscribe()
@@ -9291,9 +9318,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         hpMmol: Double? = null
     ): Double {
 
-        var steps180min = StepService.getRecentStepCount180Min()
-        var steps15min = StepService.getRecentStepCount15Min()
-        var steps5min = StepService.getRecentStepCount5Min()
+        var steps180min = recentSteps180Minutes
+        var steps15min = recentSteps15Minutes
+        var steps5min = recentSteps5Minutes
 
         //var steps180 = steps180min  // add this
         //var steps15 = steps15min  // add this
