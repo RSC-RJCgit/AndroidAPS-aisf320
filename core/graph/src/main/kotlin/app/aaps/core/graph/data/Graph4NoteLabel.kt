@@ -43,7 +43,13 @@ object Graph4NoteLabel {
         "OldPodBstOff" to "OPBOf",
         // Added 2026-09-12: AdbWirelessStarter's outcome pair both take(5) to "AdbSt".
         "AdbStOk" to "AdSOk",
-        "AdbStNg" to "AdSNg"
+        "AdbStNg" to "AdSNg",
+        // Added 2026-09-16: List1 "Set Standard+Low tier" A/B/C all take(5) to "TierS" -- same
+        // collision class as the families above, just not caught until now. Abbreviations match
+        // what the CarePortal Note Code reference doc already uses for these.
+        "TierSetA" to "TSetA",
+        "TierSetB" to "TSetB",
+        "TierSetC" to "TSetC"
     )
 
     fun display(full: String): String {
