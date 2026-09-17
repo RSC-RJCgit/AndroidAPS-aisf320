@@ -1416,11 +1416,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     // Raw CGM helpers — use gv.noise (Libre native signal), same source as graph "L=" annotation.
-    private fun rawGlucoseMgdl(): Double? {
-        val now = dateUtil.now()
-        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - 10 * 60 * 1000L, now, ascending = false).firstOrNull()?.noise
-    }
-
+    // rawGlucoseMgdl() removed 2026-09-17: its last two callers (ApsAutoIsfLibreOver12Ts latch, OldPod
+    // sustained-high check) switched to ukfRawMetrics().glucose instead, so a single noise spike/dip
+    // can't wrongly flip either detection. rawDelta1MinMgdl/rawDelta5MinMgdl are kept -- HP1
+    // (hypoPrediction1Mmol) and the FslUseUkfLibreSpecialSmoothing-gated SMB fallback still
+    // deliberately need the plain raw channel, for reasons documented at their own call sites.
     private fun rawDelta1MinMgdl(): Double? {
         val now = dateUtil.now()
         val r = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 3 * 60 * 1000L, now, ascending = false)
@@ -3795,26 +3795,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // checked every cycle like DelOff, so day
         // transitions revert promptly; both branches are idempotent so re-checking is harmless.
         //
-        // Last raw Libre >12.0 mmol — live write every cycle it is seen, BEFORE OldSensorAdj's
-        // SensorAge-off / LowRaw24 returns (those used to skip the write). If the live value is
-        // not high, a 48h retrospective scan of .noise can still set the latch (Virtual after 782
-        // with NS copies that include raw). MoreMJ's 48h OR-path needs this latch.
+        // Last UKF-smoothed raw Libre >12.0 mmol — live write every cycle it is seen, BEFORE
+        // OldSensorAdj's SensorAge-off / LowRaw24 returns (those used to skip the write). If the live
+        // value is not high, a 48h retrospective scan can still set the latch (Virtual after 782 with
+        // NS copies that include raw). MoreMJ's 48h OR-path needs this latch.
+        // Switched 2026-09-17 from plain raw .noise to ukfRawMetrics() (same smoothed channel BMild/
+        // Giv/bg3/HP2 already use) so a single noisy spike or dip can't wrongly flip a genuine-high
+        // detection either way -- this call's own doc comment above already promised this would happen.
         run {
-            val rawGForOver12 = rawGlucoseMgdl()
-            if (rawGForOver12 != null && rawGForOver12 > 216.2 /* 12.0 mmol raw */) {
+            val liveUkfG = ukfRawMetrics().glucose
+            if (liveUkfG != null && liveUkfG > 216.2 /* 12.0 mmol raw */) {
                 preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, dateUtil.now())
             } else {
                 // Retrospective: if the live latch never wrote (SensorAge-off skip before 782,
-                // or NS copy with .noise but no current high), scan the last 48h of raw Libre
-                // and adopt the newest reading >12.0. Throttled to 30 min while still empty.
+                // or NS copy with .noise but no current high), scan the last 48h of raw Libre,
+                // UKF-smooth the whole window in one pass, and adopt the newest smoothed point
+                // >12.0. Throttled to 30 min while still empty.
                 val existing = preferences.get(LongKey.ApsAutoIsfLibreOver12Ts)
                 val nowMs = dateUtil.now()
                 if ((existing == 0L || nowMs - existing > T.hours(48).msecs()) && readyToRun("LibreOver12Backfill", 30)) {
                     val threshold = 12.0 * Constants.MMOLL_TO_MGDL
-                    val hit = persistenceLayer
+                    val readings = persistenceLayer
                         .getBgReadingsDataFromTimeToTime(nowMs - T.hours(48).msecs(), nowMs, ascending = false)
-                        .firstOrNull { it.noise != null && it.noise!! > threshold }
-                    if (hit != null) preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, hit.timestamp)
+                        .filter { it.noise != null && it.noise!! > 10.0 }
+                    val smoothed = ukfSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+                    val hitIndex = smoothed.indices.firstOrNull { smoothed[it] > threshold }
+                    if (hitIndex != null) preferences.put(LongKey.ApsAutoIsfLibreOver12Ts, readings[hitIndex].timestamp)
                     markRun("LibreOver12Backfill")
                 }
             }
@@ -4003,7 +4009,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val cannulaH = hoursSinceCurrentPodChange()
             val podOld = cannulaH != null && cannulaH > 60.0
             val g = glucoseStatus.glucose
-            val rawG = rawGlucoseMgdl()
+            // Switched 2026-09-17 from plain raw .noise to ukfRawMetrics() -- same UKF-smoothed
+            // channel as the ApsAutoIsfLibreOver12Ts latch above, so a single noise spike/dip can't
+            // wrongly start or reset the 2h "sustained high" clock either.
+            val rawG = ukfRawMetrics().glucose
             val highNow = (rawG != null && rawG > 198.2 /* 11.0 mmol raw */) || g > 180.2 /* 10.0 mmol */
             var highSinceTs = preferences.get(LongKey.ApsAutoIsfOldPodHighSinceTs)
             if (highNow) {
@@ -6700,9 +6709,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // risk this TT was protecting against has passed. Cancelling here lets Mild actually fire
             // (delivery ratio + offset-zero) on the next loop cycle once activeTtMgdl() is clear.
             // Post-bolus/carb quiet window omitted 2026-09-01 to match bmildBasicCriteriaMet.
+            // Fixed 2026-09-17: this recheck had drifted from Mild's own block above, which switched to
+            // ukfRawMetrics() 2026-08-30 -- this copy was still reading the old raw/noise channel
+            // (rawDelta5MinMgdl/rawDelta1MinMgdl), meaning "reuses every guard from Mild's own block"
+            // wasn't actually true for the delta source. Now genuinely the same call.
             val mildIobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
-            val mildRawDelta5 = rawDelta5MinMgdl() ?: -9999.0
-            val mildRawDelta1 = rawDelta1MinMgdl() ?: -9999.0
+            val ukfRawForMildRecheck = ukfRawMetrics()
+            val mildRawDelta5 = ukfRawForMildRecheck.delta5 ?: -9999.0
+            val mildRawDelta1 = ukfRawForMildRecheck.delta1 ?: -9999.0
             val mildStackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val mildThresholdScale = deliveryBaseline / 0.17
             val mildRawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || mildRawDelta1 >= 4.5 * mildStackK

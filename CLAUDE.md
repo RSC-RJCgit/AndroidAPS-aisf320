@@ -142,6 +142,29 @@ Neutral buttons only stretch to 3 choices. An `Action` entry's `onSelect` runs d
 outer confirm wrapper (see `showTtCodesListDialog()`'s dispatch `when`), so build the full dialog
 (title/message/items/cancel) inside `onSelect` yourself.
 
+## Client is a pure mirror — diagnosing a Client/Virtual divergence
+
+Client never runs `invoke()`'s dosing/automation blocks at all — it only relays List1/List2
+commands to the loop phone and displays whatever NS sync brings it. So when Client's behavior
+differs from Live's, that is *expected*: Client isn't independently deciding not to do something,
+it structurally never runs the code that would.
+
+**Known gap (not yet fixed): `UserEntries_30h` export ≠ proof of what Client actually received.**
+That export (`ImportExportPrefsImpl.kt`'s `writeUserEntriesAivLocal`) reads the local `UserEntry`
+audit-log table, which is a separate table from `TherapyEvent`/`TempTarget`. `UserEntry` rows are
+created by the code path that *performs* an action locally — since Client never runs the automation
+blocks itself, it never creates a `UserEntry` row for an action Live performed, even when the real
+`TherapyEvent`/`TempTarget` record was correctly NS-synced into Client's own DB. **A gap in Client's
+`UserEntries_30h` export does NOT prove Client never received the underlying data** — check Client's
+actual `TherapyEvent`-backed data (combined AIV csv, `persistenceLayer.getTherapyEventDataFromTime`)
+instead before concluding a sync gap.
+
+**Wanted, not yet built**: when an automation's conditions are checked but DON'T fire on Live, there
+is currently no persisted record of *why not* — no snapshot of the settings/IOB/BGL/delta values
+that were evaluated at that moment. Worth keeping in mind as a design goal for future diagnostic
+work in this file: a real record of "conditions checked, this one was false" would have made this
+kind of Live-vs-Virtual/Client divergence question answerable directly instead of via log archaeology.
+
 ## AIV history / export
 
 `ui/.../dialogs/AutoIsfHistoryExporter.kt` and `AutoISFHistoryDialog.kt` read the persisted
