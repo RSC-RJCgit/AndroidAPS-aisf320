@@ -1361,6 +1361,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Same preference as Settings -> Automation -> Coded location arrival/exit messages.
         // Local pump builds toggle immediately; AAPSClient relays 5.198 to the pump phone.
         LOCATION_SMS_TOGGLE("Location SMS + CarePortal notes on/off", 5.198),
+        // Added 2026-09-17: on/off for ApsAutoIsfUseLiveStepsOnVirtual -- same toggle the
+        // Settings-screen AdaptiveSwitchPreference exposes, just reachable from List 2 too.
+        // Same EventAutoIsfDirectTtCode dispatch as UKF1_DOSING_TOGGLE/LOCATION_SMS_TOGGLE above.
+        LIVE_STEPS_ON_VIRTUAL_TOGGLE("Live steps on VirtualPump on/off", 5.206),
         // 5.204: loop phone stores its Build.MODEL as the only location-SMS sender. Pump/Virtual
         // apply immediately; Client relays the TT to Live (Client does not send location SMS).
         LOCATION_SMS_THIS_PHONE("Location SMS from the loop phone (model)", 5.204),
@@ -1558,7 +1562,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.LOCATION_SMS_THIS_PHONE,
                 BasalDirectAction.STAGE_AAPS333_NEWEST,
                 BasalDirectAction.INSTALL_AAPS333_SHIZUKU,
-                BasalDirectAction.ADB_START_ATTEMPT ->
+                BasalDirectAction.ADB_START_ATTEMPT,
+                BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
                 // Unreachable here -- the early-return guards above (action == ANYDESK_RESTART /
@@ -1597,6 +1602,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.PROFILE_BATCH_REVERT_C_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
         BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
+        BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
             if (config.AAPSCLIENT) {
                 val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]

@@ -88,6 +88,35 @@ notes, etc.) all follow the same pipeline:
    lagged behind Overview (missing annotations, wrong panel for a given `g==` index) and needed a
    catch-up pass this session.
 
+## In-app quick-action surfaces (List1 / List2)
+
+Two separate coded-quick-action dialogs, both unrelated to the standard Settings screen and both
+living in `OverviewFragment.kt`:
+
+- **List 1** = `ttCodesList()` (`OverviewFragment.kt`), opened by double-tapping the IOB graph area.
+  Rows are MJ-state / profile-role / tier-set actions (e.g. "Re-pick coded profiles", Tier A/B/C)
+  that relay coded fake-TT values (e.g. 5.148/5.150/5.216-5.220) via `applyTtControl()`.
+- **List 2** = the `BasalDirectAction` enum (`OverviewFragment.kt`), opened by double-tapping the
+  basal-rate icon area (`showBasalDirectActionListDialog()`). Rows are on/off toggles and one-shot
+  actions (AnyDesk restart, APK install/stage, UKF1-dosing toggle, location-SMS toggle, profile-batch
+  toggles, Tier-3-boost toggle, plus three stepped Boost-tuning rows). Each entry sends
+  `EventAutoIsfDirectTtCode(mmol)`, consumed either by the immediate local-toggle block near the top
+  of `OpenAPSAutoISFPlugin.kt`'s `EventAutoIsfDirectTtCode` subscription, or by an `activeTtNear(...)`
+  block later in the invoke() loop.
+
+**Adding a new List2 toggle for an existing Settings-screen `BooleanKey`** (the established pattern —
+see `TIER3_BOOST_TOGGLE`/`UKF1_DOSING_TOGGLE`/`LOCATION_SMS_TOGGLE` for precedent) needs four edits:
+1. A new `BasalDirectAction` entry with a free coded mmol value (the 5.1xx/5.2xx block is densely
+   packed — check for gaps before picking one).
+2. Add it to the shared `EventAutoIsfDirectTtCode`-dispatch branch in `runBasalDirectAction()`.
+3. Add its current-value line to `basalDirectActionCurrentValue()` (usually `mirroredOrLocalBoolean(...)`).
+4. Add the matching `else if (kotlin.math.abs(event.mmol - X) <= 0.0000001)` branch in
+   `OpenAPSAutoISFPlugin.kt`'s direct-event subscription, flipping the preference + SMS + CarePortal note.
+Client-side "Pump current" mirroring usually needs no extra wiring: `autoIsfSettingsSnapshot()`
+already includes every `BooleanKey` whose enum name contains `"AutoIsf"` generically — only keys
+whose name does NOT contain "AutoIsf" (e.g. `AutomationCodedLocationsEnabled`) need a manual
+snapshot line.
+
 ## AIV history / export
 
 `ui/.../dialogs/AutoIsfHistoryExporter.kt` and `AutoISFHistoryDialog.kt` read the persisted

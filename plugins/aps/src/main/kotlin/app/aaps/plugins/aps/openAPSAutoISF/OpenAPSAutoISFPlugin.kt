@@ -402,6 +402,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("Loc${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.206) <= 0.0000001) {
+                        // Like 5.196/5.198 above, this is a local preference toggle and must take effect
+                        // immediately from List 2 -- VirtualPump-only, no effect on any other pump type.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+                        preferences.put(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, newState)
+                        sendSms("Live steps on VirtualPump: ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("LSt${if (newState) "On" else "Off"}")
+                        aapsLogger.info(LTag.APS, "Applied local live-steps-on-Virtual toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("Live steps on VirtualPump toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
                         // Client List2 relays 5.204 here. This runs on the loop phone and writes that
                         // phone's Build.MODEL. Location SMS still originate on this loop phone.
@@ -10005,6 +10014,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             title = rh.gs(R.string.openaps_auto_isf)
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, summary = R.string.mj_kotlin_buttons_enabled_summary, title = R.string.mj_kotlin_buttons_enabled_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, summary = R.string.use_live_steps_on_virtual_summary, title = R.string.use_live_steps_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
