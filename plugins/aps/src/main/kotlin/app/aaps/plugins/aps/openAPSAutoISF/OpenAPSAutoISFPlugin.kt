@@ -355,12 +355,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
-    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
+    // Deliberately NOT falling back to StepService's own local sensor while the toggle is on (2026-09-17,
+    // per direct request): a local fallback here can silently mask a mirroring failure behind a small,
+    // plausible-looking non-zero number from Virtual's own physical sensor (e.g. the phone being picked
+    // up during testing) -- indistinguishable from a genuine mirrored reading without checking the raw
+    // logs. With the fallback removed, 0 unambiguously means "no mirrored value available right now",
+    // and any non-zero reading unambiguously proves the mirror worked.
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: 0 else StepService.getRecentStepCount5Min()
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps60Regex) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
-    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: 0 else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: 0 else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps60Regex) ?: 0 else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: 0 else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
