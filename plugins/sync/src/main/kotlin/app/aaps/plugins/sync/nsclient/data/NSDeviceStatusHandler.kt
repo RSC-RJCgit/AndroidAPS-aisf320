@@ -190,6 +190,18 @@ class NSDeviceStatusHandler @Inject constructor(
                         disposable += persistenceLayer.insertOrUpdateApsResult(apsResult).subscribe()
                     }
                     processedDeviceStatusData.openAPSData.suggested?.let { rt ->
+                        // Diagnostic added 2026-09-17: mirroredSteps() on the receiving side (Virtual)
+                        // showed MirroredAutoIsfSettings staying empty for a full 41-min session despite
+                        // confirmed-correct incoming JSON (raw "autoIsfSettingsSnapshot":"...steps60min
+                        // = X..." seen directly in the NS payload) -- this pinpoints whether that field
+                        // survives RT.deserialize() intact, or comes out null/blank here despite the raw
+                        // JSON having it.
+                        aapsLogger.debug(
+                            LTag.NSCLIENT,
+                            "updateOpenApsData: autoIsfSettingsSnapshot after RT.deserialize -- " +
+                                "isNull=${rt.autoIsfSettingsSnapshot == null} len=${rt.autoIsfSettingsSnapshot?.length ?: -1} " +
+                                "isBlank=${rt.autoIsfSettingsSnapshot?.isBlank()}"
+                        )
                         rt.autoIsfSettingsSnapshot?.takeIf { it.isNotBlank() }?.let { snapshot ->
                             preferences.put(StringNonKey.MirroredAutoIsfSettings, snapshot)
                             preferences.put(LongNonKey.MirroredAutoIsfSettingsTimestamp, clock)
