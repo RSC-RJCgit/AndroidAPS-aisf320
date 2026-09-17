@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.RT
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
@@ -89,7 +90,6 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
-import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -168,7 +168,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val ukfSmoothing: UnscentedKalmanFilterPlugin,
     private val deltaCalculator: DeltaCalculator,
     private val accelerationCalculator: AccelerationCalculator,
-    private val loop: Loop
+    private val loop: Loop,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -319,43 +320,47 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Activity detection (steps). On VirtualPump, ApsAutoIsfUseLiveStepsOnVirtual (off by default) swaps
     // every bucket except the 10-min one for the loop phone's own step counts.
-    // Fixed 2026-09-17: originally read loop.lastRun's reason text, on the theory that it held the
-    // loop phone's synced APSResult -- it doesn't. loop.lastRun (LoopPlugin.kt) is always THIS
-    // device's own last local computation, never a synced one, so on Virtual that read was
-    // self-referential (Virtual reading its own previous cycle back), not Live's data at all. Fixed
-    // by reading StringNonKey.MirroredAutoIsfSettings instead -- the same NS-mirrored settings-snapshot
-    // channel the MJ/Steroid event relays use, exclusively written by NSDeviceStatusHandler.kt from
-    // incoming NS data, never touched by Virtual's own local writes. The loop phone's own real
-    // steps5/15/30/60/180min values are added to autoIsfSettingsSnapshot() below specifically so this
-    // has something genuine to read back. Only 5/15/30/60/180 are included there (DetermineBasalAutoISF.kt
-    // computes a Steps10M but never appends it anywhere) so the 10-min bucket has no mirrored source and
-    // always stays on this device's own local sensor regardless of the preference.
-    private fun mirroredSteps(minutes: Int): Int? {
-        val prefix = "steps${minutes}min = "
-        val raw = preferences.get(StringNonKey.MirroredAutoIsfSettings)
-        val match = raw.lineSequence().firstOrNull { it.startsWith(prefix) }
-        // Diagnostic added 2026-09-17: steps60min was seen flapping between a genuine mirrored value
-        // and the local fallback within under a second, with no new incoming devicestatus in between --
-        // logged only for the 60-min bucket (paired with the existing "steps60min is ..." log a few
-        // lines below) so the two can be read side by side. rawLen/ageMs show whether the underlying
-        // string itself is going blank/stale between calls, or the string is fine and something else
-        // is the problem.
-        if (minutes == 60) {
-            val ageMs = dateUtil.now() - preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
-            consoleError.add("mirroredSteps(60): rawLen=${raw.length} ageMs=$ageMs match=${match ?: "none"}")
-        }
-        return match?.removePrefix(prefix)?.toIntOrNull()
+    // Fixed 2026-09-17 (first attempt): read loop.lastRun's reason text, on the theory that it held the
+    // loop phone's synced APSResult -- it doesn't. loop.lastRun (LoopPlugin.kt) is always THIS device's
+    // own last local computation, never a synced one, so on Virtual that read was self-referential.
+    // Fixed 2026-09-17 (second attempt): switched to StringNonKey.MirroredAutoIsfSettings (the
+    // autoIsfSettingsSnapshot channel) -- confirmed via real device logs that the raw incoming NS JSON
+    // genuinely carries "steps60min = X" inside that field every time (554/554 checked), yet the
+    // receiving side's mirrored preference stayed empty (rawLen=0) for a full 41-minute session. So
+    // that field isn't surviving RT.deserialize() intact on the receiving side, for reasons not yet
+    // found (a diagnostic is in NSDeviceStatusHandler.updateOpenApsData() for that, separately).
+    // Fixed 2026-09-17 (third attempt, this one): per direct request, abandoned that channel entirely
+    // in favour of the one Client's OWN working steps display already proves reliable --
+    // AutoIsfHistoryExporter.stepsFromReason() reads RT.reason (a completely different field on the
+    // same deserialized RT object), not autoIsfSettingsSnapshot. DetermineBasalAutoISF.kt already
+    // appends "Steps5M: X ;" / "Steps60M: X ;" etc. to that same reason text every cycle (see its own
+    // rT.reason.append() calls), so no sending-side change was needed here -- only where this reads
+    // from. processedDeviceStatusData.openAPSData.suggested is the exact same in-memory RT object
+    // NSDeviceStatusHandler populates from incoming NS data, so unlike the DB-backed APSResult table
+    // Client's exporter reads, there's no risk of it being polluted by Virtual's OWN local writes --
+    // Virtual's own invoke()/LoopPlugin never touches this object at all, only incoming NS data does.
+    private fun liveStepsRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
+    private val liveSteps5Regex = liveStepsRegex("[Ss]teps5")
+    private val liveSteps15Regex = liveStepsRegex("[Ss]teps15")
+    private val liveSteps30Regex = liveStepsRegex("[Ss]teps30")
+    private val liveSteps60Regex = liveStepsRegex("[Ss]teps60")
+    private val liveSteps180Regex = liveStepsRegex("[Ss]teps180")
+
+    private fun liveStepsFromMirroredReason(regex: Regex): Int? {
+        val reason = processedDeviceStatusData.openAPSData.suggested?.reason?.toString() ?: return null
+        val m = regex.find(reason) ?: return null
+        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
     }
 
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
-    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(5) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(15) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(30) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(60) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
-    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(180) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps60Regex) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
@@ -9130,18 +9135,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }
-        // This device's own real local step counts -- always the raw StepService reading, never routed
-        // through useLiveStepsOnVirtual()'s redirect, so a receiving device (Virtual, reading this back
-        // via MirroredAutoIsfSettings) gets THIS device's genuine local sensor value, not a re-relay of
-        // whatever it last mirrored from someone else. Added 2026-09-17 as the reliable replacement for
-        // liveStepsFromLoopReason()'s loop.lastRun read, which turned out to be self-referential on
-        // Virtual (loop.lastRun is always this device's OWN last computation, never a synced one) --
-        // see recentSteps5Minutes and friends below.
-        lines.add("steps5min = ${StepService.getRecentStepCount5Min()}")
-        lines.add("steps15min = ${StepService.getRecentStepCount15Min()}")
-        lines.add("steps30min = ${StepService.getRecentStepCount30Min()}")
-        lines.add("steps60min = ${StepService.getRecentStepCount60Min()}")
-        lines.add("steps180min = ${StepService.getRecentStepCount180Min()}")
         return lines.sorted().joinToString("\n")
     }
 

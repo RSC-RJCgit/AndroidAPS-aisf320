@@ -3,12 +3,14 @@ package app.aaps.plugins.aps.openAPSAutoISF
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
@@ -48,6 +50,11 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     // already provided (a real, non-mocked instance) by TestBaseWithProfile.
     @Mock lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
     @Mock lateinit var accelerationCalculator: AccelerationCalculator
+    // Added 2026-09-17 alongside processedDeviceStatusData -- loop was already a real constructor
+    // param (added at some earlier point) that this test had never been updated to pass, same gap
+    // as the 2026-08-26 comment above describes for the previous three.
+    @Mock lateinit var loop: Loop
+    @Mock lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
@@ -56,7 +63,8 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, uiInteraction, determineBasalSMB, profiler,
             GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator), apsResultProvider, tddCalculator,
-            context, importExportPrefs, exportPasswordDataStore, ukfSmoothing, deltaCalculator, accelerationCalculator
+            context, importExportPrefs, exportPasswordDataStore, ukfSmoothing, deltaCalculator, accelerationCalculator,
+            loop, processedDeviceStatusData
         )
         openAPSAutoISFPlugin.automationStateService = automationStateService
     }
