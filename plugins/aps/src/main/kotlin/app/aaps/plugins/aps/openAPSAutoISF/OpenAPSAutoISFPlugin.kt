@@ -7894,14 +7894,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Steroids Off, iobChange5 < 0.5):
                 //  - high (>= 9.0 mmol, 06:00-22:00 only): original plateaued-high brake -- TT 4.0,
                 //    SMBdel x2. After 22:00 this is night HiBrk's job, not ours.
-                //  - mid  (>  6.5 mmol, 08:30-01:30): stubborn plateau brake, only when MJ is
-                //    clear (NOMJremains) and no recent hypo (LowBG != 50recent). Same 4.0mmol TT
-                //    but gentler SMBdel x1.5 -- less headroom from 6.5 to 4.0 than from 9.0, and
-                //    the 22:00-01:30 stretch is the same clock window as the Jul/Aug stacking
-                //    incidents, so this stays the milder lever. Explicit mid-band clock is set
-                //    independently of the outer window and is narrower on BOTH ends (08:30 start,
-                //    01:30 end) so an outer-window change cannot quietly reopen 01:30-02:00 or the
-                //    06:00-08:30 dawn slot.
+                //  - mid  (>  6.5 mmol, 08:30-01:30): stubborn plateau brake, when MJ is clear
+                //    (NOMJremains) OR MJ3 (widened 2026-09-17, per explicit request -- a genuine
+                //    slow-but-sustained rise during MJ3 cleared every other gate here but was
+                //    excluded by the ordinary NOMJremains-only requirement; BMild/bg3's own delta
+                //    floors are 0.30/0.60mmol, well above the ~0.1-0.15mmol rate actually observed,
+                //    so neither of those would fire either -- this is deliberately the small,
+                //    self-limiting lever, not a substitute for a real BMild-strength boost during
+                //    MJ3, which was judged likely too strong unless separately tuned for it) and no
+                //    recent hypo (LowBG != 50recent). Same 4.0mmol TT but gentler SMBdel x1.5 --
+                //    less headroom from 6.5 to 4.0 than from 9.0, and the 22:00-01:30 stretch is the
+                //    same clock window as the Jul/Aug stacking incidents, so this stays the milder
+                //    lever. Explicit mid-band clock is set independently of the outer window and is
+                //    narrower on BOTH ends (08:30 start, 01:30 end) so an outer-window change cannot
+                //    quietly reopen 01:30-02:00 or the 06:00-08:30 dawn slot.
                 // Both bands share the time-dependent 10-min early-morning / 2-min otherwise throttle;
                 // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
@@ -7916,7 +7922,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 val midBand = !highBand && (isTimeBetween(8, 30, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
                     && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
-                    && checkAutomationState("MJ", "NOMJremains")
+                    && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3"))
                     && !checkAutomationState("LowBG", "50recent")
                 if (highBand || midBand) {
                     val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
