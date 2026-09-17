@@ -204,9 +204,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // lastRunTimestamps/lastTier3AcceIsfObservationTimestamp elsewhere in this file, just for a
     // condition rather than a throttle.
     private var cobSustainedSinceTimestamp: Long = 0L
-    private var steps180: Int = 0  // add this
-    private var steps15: Int = 0  // add this
-    private var steps5: Int = 0  // add this
     @Inject lateinit var automationStateService: AutomationStateInterface
     @Inject lateinit var smsCommunicator: SmsCommunicator
     @Inject lateinit var receiverStatusStore: app.aaps.core.interfaces.receivers.ReceiverStatusStore
@@ -331,7 +328,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(30) ?: 0 else StepService.getRecentStepCount30Min()
     private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(60) ?: 0 else StepService.getRecentStepCount60Min()
     private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(180) ?: 0 else StepService.getRecentStepCount180Min()
-    private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
+    private val phone_moved; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.hasDosingBuckets() == true else PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
         super.onStart()
@@ -1275,6 +1272,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var prevTs = -1L
         fun streakQualifies(endTs: Long): Boolean {
             if (streakStart < 0L || endTs - streakStart < needMs) return false
+            if (useLiveStepsOnVirtual()) {
+                return liveStepsMirror.noHighStepsDuring(
+                    series.filter { it.first in streakStart..endTs }.map { it.first }, maxSteps60
+                )
+            }
             return steps.none { it.timestamp in streakStart..endTs && it.steps60min > maxSteps60 }
         }
         for ((ts, mgdl) in series) {
@@ -3013,6 +3015,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
+        if (useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true) {
+            aapsLogger.debug(LTag.APS, "LiveStepsMirror: skipping Virtual loop; core step buckets missing or stale")
+            preferences.put(BooleanKey.ActivityMonitorStepsActive, false)
+            preferences.put(BooleanKey.ActivityMonitorStepsInactive, false)
+            preferences.put(DoubleKey.ActivityMonitorRatio, 1.0)
+            return
+        }
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
         val profile = profileFunction.getProfile()
         val pump = activePlugin.activePump
@@ -3146,7 +3155,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 mealData.mealCOB,
                 bgAcce
             )
-            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2)
+            variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2, liveStepsForCycle)
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -8102,7 +8111,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val now = dateUtil.now()
             val from = now - T.hours(12).msecs()
             val below4 = 72.1 /* 4.0 mmol */
-            val steps = persistenceLayer.getStepsCountFromTimeToTime(from, now)
+            val steps = if (useLiveStepsOnVirtual()) emptyList() else persistenceLayer.getStepsCountFromTimeToTime(from, now)
             val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
                 .map { it.timestamp to it.value }
             val ukf1Series = ukf1RecentHistory(12 * 60L).asReversed()
@@ -8881,9 +8890,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "auto_isf_consoleError" to consoleError.toList(),
                 "auto_isf_consoleLog" to consoleLog.toList(),
                 "bg_acce" to bgAcce,
-                "steps180M" to steps180,
-                "steps15M" to steps15,
-                "steps5M" to steps5,
+                "steps180M" to recentSteps180Minutes,
+                "steps15M" to recentSteps15Minutes,
+                "steps5M" to recentSteps5Minutes,
                 "smbInt5Sec" to replaySmbInt5Sec,
                 "smbBoostRecent" to replaySmbBoostRecent,
                 "uamBoostRecent" to replayUamBoostRecent,
@@ -8935,9 +8944,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog,
             bg_acce = bgAcce,
-            steps180M = steps180,
-            steps15M = steps15,
-            steps5M = steps5,
+            steps180M = recentSteps180Minutes,
+            steps15M = recentSteps15Minutes,
+            steps5M = recentSteps5Minutes,
             suppressStepsReasonText = useLiveStepsOnVirtual(),
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3, BMild, or
@@ -9382,8 +9391,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
-    fun activityMonitor(isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int, sDelta: Double): Double {
-        if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
+    fun activityMonitor(
+        isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int, sDelta: Double,
+        stepsSample: LiveStepsMirror.Sample? = liveStepsForCycle, persist: Boolean = true
+    ): Double {
+        val mirrored = useLiveStepsOnVirtual()
+        val recentSteps5Minutes = if (mirrored) stepsSample?.steps(5) ?: 0 else this.recentSteps5Minutes
+        val recentSteps10Minutes = if (mirrored) stepsSample?.steps(10) ?: 0 else this.recentSteps10Minutes
+        val recentSteps15Minutes = if (mirrored) stepsSample?.steps(15) ?: 0 else this.recentSteps15Minutes
+        val recentSteps30Minutes = if (mirrored) stepsSample?.steps(30) ?: 0 else this.recentSteps30Minutes
+        val recentSteps60Minutes = if (mirrored) stepsSample?.steps(60) ?: 0 else this.recentSteps60Minutes
+        val recentSteps180Minutes = if (mirrored) stepsSample?.steps(180) ?: 0 else this.recentSteps180Minutes
+        if (persist && !mirrored && preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
             val nowMillis = System.currentTimeMillis()
             val stepsCount = SC(
                 duration = 0,
@@ -9399,7 +9418,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             disposable += persistenceLayer.insertOrUpdateStepsCount(stepsCount).subscribe()
         }
 
-        val phoneMoved = PhoneMovementDetector.phoneMoved()
+        val phoneMoved = if (useLiveStepsOnVirtual()) stepsSample?.hasDosingBuckets() == true else PhoneMovementDetector.phoneMoved()
         val lastAppStart = preferences.get(LongKey.AppStart)
         //val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart) / 60000
         val time_since_start = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -9419,7 +9438,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // signal with no consumer. Sleeping itself stays live (existSleepState/useSleepState above are
         // still load-bearing for the inactivity-detection gates below).
 
-        if (!activityDetection) {
+        if (useLiveStepsOnVirtual() && stepsSample?.hasDosingBuckets() != true) {
+            consoleLog.add("Activity monitor unavailable: missing or stale Live steps")
+        } else if (!activityDetection) {
             consoleLog.add("Activity monitor disabled in settings")
         } else if (isTempTarget) {
             consoleLog.add("Activity monitor disabled: tempTarget")
@@ -9460,7 +9481,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 consoleLog.add("Activity monitor detected neutral state")  //, sensitivity ratio unchanged: $activityRatio")
             }
         }
-        preferences.put(DoubleKey.ActivityMonitorRatio, activityRatio)
+        if (persist) preferences.put(DoubleKey.ActivityMonitorRatio, activityRatio)
         var activityMsg = "Activity Monitor json: {\"activity_scale_factor\":$activity_scale_factor,\"inactivity_scale_factor\":$inactivity_scale_factor"
         activityMsg += ",\"recentSteps5Minutes\":$recentSteps5Minutes,\"recentSteps10Minutes\":$recentSteps10Minutes,\"recentSteps15Minutes\":$recentSteps15Minutes"
         activityMsg += ",\"recentSteps30Minutes\":$recentSteps30Minutes,\"recentSteps60Minutes\":$recentSteps60Minutes"
@@ -9478,8 +9499,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         currentActivity: Double = 0.0,
         smbActivity: Double = 0.0,
         iob: Double = 0.0,
-        hpMmol: Double? = null
+        hpMmol: Double? = null,
+        stepsSample: LiveStepsMirror.Sample? = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
     ): Double {
+
+        // Non-loop callers take a fresh snapshot without changing the loop's captured sample.
+        val mirrored = useLiveStepsOnVirtual()
+        if (mirrored && stepsSample?.hasDosingBuckets() != true) {
+            aapsLogger.debug(LTag.APS, "LiveStepsMirror: variable ISF has no fresh steps; using profile ISF without activity adjustment")
+            return profile.getProfileIsfMgdl()
+        }
+        val recentSteps5Minutes = if (mirrored) stepsSample?.steps(5) ?: 0 else this.recentSteps5Minutes
+        val recentSteps15Minutes = if (mirrored) stepsSample?.steps(15) ?: 0 else this.recentSteps15Minutes
+        val recentSteps30Minutes = if (mirrored) stepsSample?.steps(30) ?: 0 else this.recentSteps30Minutes
+        val recentSteps60Minutes = if (mirrored) stepsSample?.steps(60) ?: 0 else this.recentSteps60Minutes
+        val recentSteps180Minutes = if (mirrored) stepsSample?.steps(180) ?: 0 else this.recentSteps180Minutes
 
         var steps180min = recentSteps180Minutes
         var steps15min = recentSteps15Minutes
@@ -9487,9 +9521,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         //var steps180 = steps180min  // add this
         //var steps15 = steps15min  // add this
-        this.steps180 = steps180min
-        this.steps15 = steps15min
-        this.steps5 = steps5min
         val nowHour = LocalDateTime.now().hour
         consoleError.add("steps5min is ${recentSteps5Minutes} ;;")
         consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
@@ -9507,9 +9538,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             isTempTarget = true
             target_bg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
         }
-        val activityRatio = preferences.get(DoubleKey.ActivityMonitorRatio)
-        val stepActivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsActive)
-        val stepInactivityDetected = preferences.get(BooleanKey.ActivityMonitorStepsInactive)
+        val activityRatio = if (mirrored && glucose_status != null) {
+            activityMonitor(isTempTarget, glucose_status.glucose, target_bg, nowHour, glucose_status.shortAvgDelta, stepsSample, persist = false)
+        } else preferences.get(DoubleKey.ActivityMonitorRatio)
+        val stepActivityDetected = if (mirrored) activityRatio < 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsActive)
+        val stepInactivityDetected = if (mirrored) activityRatio > 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsInactive)
         var sensitivityRatio = 1.0
         val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
         val resistanceModeActive = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens) && isTempTarget && target_bg < normalTarget

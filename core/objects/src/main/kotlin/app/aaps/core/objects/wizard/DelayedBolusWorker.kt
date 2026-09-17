@@ -33,6 +33,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.TimeUnit
+import app.aaps.core.objects.utils.StepCountSource
 import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.min
@@ -74,6 +75,7 @@ class DelayedBolusWorker(
     params: WorkerParameters
 ) : LoggingWorker(context, params, Dispatchers.Default) {
 
+    @Inject lateinit var stepCountSource: StepCountSource
     @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var commandQueue: CommandQueue
@@ -355,7 +357,13 @@ class DelayedBolusWorker(
             val pendingWarsaw = preferences.get(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU) / 1000.0
 
             val elapsedMin = attempt * 10
-            val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)
+            val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, now)
+            if (movingNow == null) {
+                aapsLogger.info(LTag.CORE, "Delayed bolus: Live steps unavailable; no automatic dose")
+                addCheckNote("$dbLabel Live steps unavailable")
+                unblockSmb("Live steps unavailable")
+                return Result.success()
+            }
             // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 70%.
             val multiplier = if (movingNow) WizardActivitySteps.MOVING_PERCENT / 100.0 else 1.0
             val delayedDose = Round.roundTo(max(0.0, cappedRawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)

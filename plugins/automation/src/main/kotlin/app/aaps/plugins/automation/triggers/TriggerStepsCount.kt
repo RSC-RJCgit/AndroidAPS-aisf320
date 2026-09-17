@@ -2,7 +2,10 @@ package app.aaps.plugins.automation.triggers
 
 import android.widget.LinearLayout
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.utils.JsonHelper
+import app.aaps.core.utils.LiveStepsMirror
 import app.aaps.plugins.automation.R
 import app.aaps.plugins.automation.elements.Comparator
 import app.aaps.plugins.automation.elements.InputDouble
@@ -14,8 +17,10 @@ import dagger.android.HasAndroidInjector
 import org.json.JSONObject
 import java.text.DecimalFormat
 import java.util.Optional
+import javax.inject.Inject
 
 class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
+    @Inject lateinit var stepCountSource: StepCountSource
     var measurementDuration: InputDropdownMenu = InputDropdownMenu(rh, "5")
     var stepsCount: InputDouble = InputDouble(100.0, 0.0, 20000.0, 10.0, DecimalFormat("1"))
     var comparator: Comparator = Comparator(rh).apply {
@@ -23,6 +28,13 @@ class TriggerStepsCount(injector: HasAndroidInjector) : Trigger(injector) {
     }
 
     override fun shouldRun(): Boolean {
+        if (preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && stepCountSource.isMirroring()) {
+            val minutes = measurementDuration.value.toIntOrNull()
+            val steps = minutes?.let { stepCountSource.latest(dateUtil.now(), LiveStepsMirror.MAX_AGE_MS)?.get(it) }
+            aapsLogger.info(LTag.AUTOMATION, "Steps count source=Live mirror minutes=$minutes value=${steps ?: "missing"}")
+            if (comparator.value == Comparator.Compare.IS_NOT_AVAILABLE) return steps == null
+            return steps?.let { comparator.value.check(it.toDouble(), stepsCount.value, 0.001) } ?: false
+        }
         if (comparator.value == Comparator.Compare.IS_NOT_AVAILABLE) {
             aapsLogger.info(LTag.AUTOMATION, "Steps count ready, no limit set ${friendlyDescription()}")
             return true

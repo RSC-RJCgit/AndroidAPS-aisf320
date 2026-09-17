@@ -37,7 +37,7 @@ class QuickWizardTest : TestBaseWithProfile() {
     @BeforeEach
     fun setup() {
         whenever(preferences.get(StringNonKey.QuickWizard)).thenReturn("[]")
-        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, bolusWizardProvider)
+        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, bolusWizardProvider, org.mockito.kotlin.mock<app.aaps.core.objects.utils.StepCountSource>())
         quickWizardEntry.time = mockedTime
         val quickWizardEntryProvider = Provider { quickWizardEntry }
         quickWizard = QuickWizard(preferences, quickWizardEntryProvider)

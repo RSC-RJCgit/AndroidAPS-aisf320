@@ -15,6 +15,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.utils.JsonHelper.safeGetDouble
 import app.aaps.core.utils.JsonHelper.safeGetInt
 import app.aaps.core.utils.JsonHelper.safeGetString
@@ -34,7 +35,8 @@ class QuickWizardEntry @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val dateUtil: DateUtil,
     private val glucoseStatusProvider: GlucoseStatusProvider,
-    private val bolusWizardProvider: Provider<BolusWizard>
+    private val bolusWizardProvider: Provider<BolusWizard>,
+    private val stepCountSource: StepCountSource
 ) {
 
     // for mock
@@ -183,7 +185,7 @@ class QuickWizardEntry @Inject constructor(
             fat = fat(),
             // "Always on" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.
             walkingSoon = useWalkingSoon() == YES &&
-                WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
+                (WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) == true)
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
         // Split-bolus (carb-split-over-max-bolus) isn't a doCalc() parameter -- it only affects later
         // scheduling (splitProjectionNote()/scheduleSplitProteinFatDoses(), both called from

@@ -50,6 +50,7 @@ import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardActivitySteps
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -68,6 +69,7 @@ import kotlin.math.min
 
 class WizardDialog : DaggerDialogFragment() {
 
+    @Inject lateinit var stepCountSource: StepCountSource
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var constraintChecker: ConstraintsChecker
@@ -513,10 +515,10 @@ class WizardDialog : DaggerDialogFragment() {
     // carbs/protein/fat unused here; kept so calculateInsulin can re-apply when those fields
     // change. Manual tick/untick wins for the rest of the dialog.
     @Suppress("UNUSED_PARAMETER")
-    private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean {
+    private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean? {
         val gs = glucoseStatusProvider.getGlucoseStatusData()
         val notRisingFast = (gs?.delta ?: 0.0) <= 0.9 /* +0.05 mmol/5min */
-        val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())
+        val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) ?: return null
         val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
         else gs?.glucose ?: 999.0
         val low = bgMgdl < 108.1 /* 6.0 mmol */
@@ -525,7 +527,7 @@ class WizardDialog : DaggerDialogFragment() {
 
     private fun applyWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double) {
         if (walkingSoonUserOverride || applyingWalkingSoonDefault) return
-        val want = computeWalkingSoonDefault(carbs, protein, fat, bgInput)
+        val want = computeWalkingSoonDefault(carbs, protein, fat, bgInput) ?: return
         if (binding.walkingSoonCheckbox.isChecked == want) return
         applyingWalkingSoonDefault = true
         binding.walkingSoonCheckbox.isChecked = want

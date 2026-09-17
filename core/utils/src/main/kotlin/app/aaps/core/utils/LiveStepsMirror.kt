@@ -15,6 +15,18 @@ class LiveStepsMirror @Inject constructor(private val preferences: Preferences) 
 
     data class Sample(val timestamp: Long, val source: String, val buckets: Map<Int, Int>) {
         fun steps(minutes: Int): Int? = buckets[minutes]
+
+        fun cumulativeBuckets(): Map<Int, Int> = buckets.toMutableMap().apply {
+            remove(10)
+            remove(15)
+            val s5 = steps(5)
+            val s10 = steps(10)
+            val s15 = steps(15)
+            if (s5 != null && s10 != null) put(10, s5 + s10)
+            if (s5 != null && s10 != null && s15 != null) put(15, s5 + s10 + s15)
+        }
+
+        fun hasDosingBuckets(): Boolean = listOf(5, 15, 30, 60, 180).all { steps(it) != null }
     }
 
     private var history: List<Sample>? = null
@@ -69,6 +81,13 @@ class LiveStepsMirror @Inject constructor(private val preferences: Preferences) 
     fun at(timestamp: Long): Sample? = samples().firstOrNull {
         it.timestamp <= timestamp && timestamp - it.timestamp <= MAX_AGE_MS
     }
+
+    /** Require known steps throughout a historical BG episode, not merely absence of high SC rows. */
+    @Synchronized
+    fun noHighStepsDuring(timestamps: List<Long>, maxSteps60: Int): Boolean =
+        timestamps.isNotEmpty() && timestamps.all { timestamp ->
+            at(timestamp)?.steps(60)?.let { it <= maxSteps60 } == true
+        }
 
     companion object {
         const val MAX_AGE_MS = 20 * 60_000L

@@ -1,8 +1,7 @@
 package app.aaps.core.objects.wizard
 
-import app.aaps.core.data.model.SC
-import app.aaps.core.data.time.T
-import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.objects.utils.StepCountSource
+import app.aaps.core.utils.LiveStepsMirror
 
 /**
  * Wizard "still moving now" vs leftover hour-bucket steps.
@@ -32,13 +31,13 @@ object WizardActivitySteps {
         return minOf(standingPct, MOVING_PERCENT)
     }
 
-    fun latestStepsSample(persistenceLayer: PersistenceLayer, now: Long): SC? {
-        val samples = persistenceLayer.getStepsCountFromTimeToTime(now - T.mins(15).msecs(), now)
-        return samples.maxByOrNull { it.timestamp }
-    }
-
-    fun stillMovingNow(persistenceLayer: PersistenceLayer, now: Long): Boolean {
-        val sample = latestStepsSample(persistenceLayer, now) ?: return false
-        return stillMovingNow(sample.steps5min, sample.steps30min)
+    fun stillMovingNow(source: StepCountSource, now: Long): Boolean? {
+        val mirrored = source.isMirroring()
+        val values = source.latest(now, if (mirrored) LiveStepsMirror.MAX_AGE_MS else 15 * 60_000L)
+            ?: return if (mirrored) null else false
+        val s5 = values[5]
+        val s30 = values[30]
+        if ((s5 != null && s5 >= STILL_NOW_S5) || (s30 != null && s30 >= STILL_NOW_S30)) return true
+        return if (s5 != null && s30 != null) false else null
     }
 }
