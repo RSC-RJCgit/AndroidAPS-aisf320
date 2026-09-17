@@ -353,6 +353,17 @@ class DetermineBasalAutoISF @Inject constructor(
         steps180M: Int,
         steps15M: Int,
         steps5M: Int,
+        // Added 2026-09-17: true when steps180M/15M/5M (and profile.recent_steps_30/60_minutes) came
+        // from Virtual's live-steps-on-Virtual mirror, not a real local sensor. Suppresses the
+        // Steps5M/15M/30M/60M/180M reason.append lines below only -- the actual dosing math (the
+        // microBolus scaling gates further down) still reads the same Steps5M/etc. local vals
+        // unconditionally, so this changes NOTHING about what gets dosed. Purpose is purely to stop
+        // Virtual's own APSResult row from carrying a Steps60M-style token at all: any DB-based
+        // "nearest APSResult with a steps token" lookup (AutoIsfHistoryExporter.stepsFromReason(),
+        // or a future live-dosing fallback) can otherwise match Virtual's own row -- which may itself
+        // be a stale/broken mirrored read -- and confidently return the wrong number instead of
+        // correctly finding nothing and falling through. Default false preserves callers/tests.
+        suppressStepsReasonText: Boolean = false,
         smbInt5Sec: Double = 9999.0,  // avg secs between SMBs over last 5 min; <=70 = rapid stacking. Default 9999 = no stacking
         // BolusGiven bg1/2/3 / BMild / Tier 3 UAM Boost within 30 min, or COB>=9 -> skip fast-rise caps.
         // Tier 3 folded in 2026-09-13 (via the caller's own uamBoostRecent, same value passed below) --
@@ -1083,11 +1094,13 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("delta_accl: " + round(delta_accl, 1).withoutZeros() + " ; ")
         consoleError.add("bg_acce: ${round(bg_acce, 2)} ;")
         consoleError.add("profile_percentage: ${profile_percentage} ;")
-        rT.reason.append("Steps5M: ${Steps5M} ;")
-        rT.reason.append("Steps15M: ${Steps15M} ;")
-        rT.reason.append("Steps30M: ${Steps30M} ;")
-        rT.reason.append("Steps60M: ${Steps60M} ;")
-        rT.reason.append("Steps180M: ${Steps180M} ;")
+        if (!suppressStepsReasonText) {
+            rT.reason.append("Steps5M: ${Steps5M} ;")
+            rT.reason.append("Steps15M: ${Steps15M} ;")
+            rT.reason.append("Steps30M: ${Steps30M} ;")
+            rT.reason.append("Steps60M: ${Steps60M} ;")
+            rT.reason.append("Steps180M: ${Steps180M} ;")
+        }
         rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")

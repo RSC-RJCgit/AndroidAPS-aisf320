@@ -8991,6 +8991,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps180M = steps180,
             steps15M = steps15,
             steps5M = steps5,
+            suppressStepsReasonText = useLiveStepsOnVirtual(),
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3, BMild, or
             // Tier 3) fired within the last 30 min, or while meal COB is still >= 9 g.
