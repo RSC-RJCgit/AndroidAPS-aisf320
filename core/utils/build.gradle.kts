@@ -19,6 +19,8 @@ android {
 
 dependencies {
 
+    implementation(project(":core:keys"))
+
     api(libs.net.danlew.android.joda)
 
     //Firebase

@@ -19,7 +19,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
-import app.aaps.core.interfaces.nsclient.LiveStepsMirror
+import app.aaps.core.utils.LiveStepsMirror
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.utils.DateUtil
@@ -842,21 +842,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val steps60Regex = stepsRegex("[Ss]teps60")
     private val steps180Regex = stepsRegex("[Ss]teps180")
 
-    /** Step count parsed from the nearest APSResult's reason text within 15 min, or null if no
-     *  match/no result close enough. Used as a fallback when the local StepsCount lookup is empty.
-     *
-     *  Fixed 2026-09-18: was checking only the single nearest-by-time APSResult and giving up if
-     *  THAT ONE didn't match, rather than searching further -- on Virtual, the single nearest row is
-     *  frequently Virtual's own (correctly token-less since DetermineBasalAutoISF.kt's
-     *  suppressStepsReasonText, added 2026-09-17, stops Virtual's own rows from carrying a Steps
-     *  token at all while live-steps mirroring is on), so it kept returning null and falling through
-     *  to the stale/zero local StepsCount instead of finding Live's real mirrored row one or two
-     *  cycles away -- confirmed via real device data (883): Live's ground truth Steps60M=18/
-     *  Steps180M=347 while the exported table still showed 0/0 for the matching row. Now walks
-     *  outward from nearest, skipping any row with no match (that's how a token-less Virtual-own row
-     *  is now recognised -- see suppressStepsReasonText's own doc comment), same pattern as
-     *  OpenAPSAutoISFPlugin.liveStepsFromDbFallback(). Still bounded to rows within 15 min of
-     *  [timestamp], same as before. */
+    /** Client/non-mirror fallback: nearest reason containing the requested token within 15 min. */
     private fun stepsFromReason(timestamp: Long, apsResults: List<APSResult>, regex: Regex): Int? {
         val candidates = apsResults
             .filter { kotlin.math.abs(it.date - timestamp) < TimeUnit.MINUTES.toMillis(15) }
@@ -868,20 +854,8 @@ class AutoIsfHistoryExporter @Inject constructor(
         return null
     }
 
-    /** SC's stepXmin if a local record is close enough, else the reason-text fallback.
-     *  `bucketMinutes` selects the window: 5, 15, 30, 60 or 180.
-     *
-     *  Priority flipped 2026-09-17 when Virtual's live-steps mirroring is on (same
-     *  `virtualPump.isEnabled() && !config.AAPSCLIENT` idiom as [hideLiveUamBoostEchoes] above):
-     *  local SC rows only exist on Virtual when ActivityMonitorShowStepsFromSmartphone was
-     *  separately turned on, and a stale SC row from BEFORE the mirroring fix (or from a period
-     *  the toggle was later switched off) sits in the DB for up to 15 min and silently overrides
-     *  the now-correct mirrored reason value with old/wrong data -- confirmed via real device data
-     *  (Virtual's own persisted APSResult reason tracked Live's Steps60/180M exactly cycle-for-cycle,
-     *  while the exported table for the same timestamps still showed the stale SC 0). The mirrored
-     *  reason is authoritative in this case, so it now wins outright; local SC is only the fallback
-     *  when no APSResult is close enough to parse. Everywhere else (Client, or Virtual with the
-     *  mirroring toggle off) keeps the original SC-first behavior. */
+    /** Mirror mode uses the same timestamped NS history as dosing. Missing means unknown,
+     * never a local sensor fallback. Other modes retain their original SC/reason lookup. */
     fun stepsValue(sc: SC?, timestamp: Long, apsResults: List<APSResult>, bucketMinutes: Int): Int? {
         val (field, regex) = when (bucketMinutes) {
             5    -> SC::steps5min to steps5Regex

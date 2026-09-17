@@ -10,7 +10,7 @@ import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
-import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.utils.LiveStepsMirror
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
@@ -54,7 +54,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     // param (added at some earlier point) that this test had never been updated to pass, same gap
     // as the 2026-08-26 comment above describes for the previous three.
     @Mock lateinit var loop: Loop
-    @Mock lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
+    @Mock lateinit var liveStepsMirror: LiveStepsMirror
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
@@ -64,7 +64,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             bgQualityCheck, uiInteraction, determineBasalSMB, profiler,
             GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator), apsResultProvider, tddCalculator,
             context, importExportPrefs, exportPasswordDataStore, ukfSmoothing, deltaCalculator, accelerationCalculator,
-            loop, processedDeviceStatusData
+            loop, liveStepsMirror
         )
         openAPSAutoISFPlugin.automationStateService = automationStateService
     }
