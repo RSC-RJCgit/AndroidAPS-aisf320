@@ -159,18 +159,20 @@ blocks itself, it never creates a `UserEntry` row for an action Live performed, 
 actual `TherapyEvent`-backed data (combined AIV csv, `persistenceLayer.getTherapyEventDataFromTime`)
 instead before concluding a sync gap.
 
-**For "what did Live actually do/have at time X", check Client's dated AIV export, not Live's own.**
-Live has no per-day dated combined AIV file at all (no `Live_SMA366BdatedAIV` folder) — only
-`combinedLive_SMA366B_rebuilt.txt`, which has **no date column** and spans ~5+ days, so it can't be
-safely filtered to one specific day+time. Client's `Client_SMF731BdatedAIV\combinedClient_SMF731B
-<YYYYMMDD>.txt`, by contrast, mirrors Live's real per-cycle RT payload (BG, IOB, MJ/automation
-state, Notes — everything, not just the Notes column) into a genuine dated file, because
-`NSDeviceStatusHandler.kt` builds Client's own AIV rows straight from Live's incoming NS device
-status. So for a "what was Live's real state at this specific timestamp" question, Client's dated
-file is actually the MORE usable source, precisely because Live itself lacks one. Real example: this
-mirrored data directly showed Live's MJ state was `MJ2` (not `NOMJremains`) during a window where
-`HighDaytimeBrake` fired on Virtual but not Live — explaining the divergence outright, no guessing
-needed, once the right column was actually read.
+**For "what did Live actually do/have at time X" — Live DOES have real dated data, enumerate its
+own folder first.** `Live_SMA366B\` has no per-day *combined* file (no `Live_SMA366BdatedAIV`
+folder, and the plain `combinedLive_SMA366B_rebuilt.txt` has no date column and spans ~5+ days —
+unsafe to filter by time-of-day alone). But `Live_SMA366B\` itself directly holds real per-cycle
+dated files, `AutoISF_Live_SMA366B_<YYYYMMDD>_<HHMMSS>.csv/.txt`, each a rolling dump of several
+hours' rows going backward from its own filename timestamp — pick the file whose timestamp is
+shortly AFTER the moment you need, and it will contain that moment's row directly. Client's mirrored
+`Client_SMF731BdatedAIV\combinedClient_SMF731B<YYYYMMDD>.txt` is a good cross-check (built by
+`NSDeviceStatusHandler.kt` straight from Live's NS device status) but is not a substitute for
+checking Live's own folder — go there first. Real example: Live's own per-cycle CSV directly showed
+MJ=`MJ2` (not `NOMJremains`) 5:10-5:29 PM on 9/15, explaining why `HighDaytimeBrake` fired on
+Virtual but not Live that day — Client's mirror showed the identical thing, but Live's own file
+should have been the first one checked, not skipped in favor of a "no dated Live file exists"
+assumption made without actually listing `Live_SMA366B\`.
 
 **Wanted, not yet built**: when an automation's conditions are checked but DON'T fire on Live, there
 is currently no persisted record of *why not* — no snapshot of the settings/IOB/BGL/delta values
