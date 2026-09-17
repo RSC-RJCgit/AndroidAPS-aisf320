@@ -186,6 +186,19 @@ class NSDeviceStatusHandler @Inject constructor(
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
                     processedDeviceStatusData.openAPSData.clockSuggested = clock
+                    // Diagnostic added 2026-09-17: OpenAPSAutoISFPlugin's own read of
+                    // processedDeviceStatusData.openAPSData.suggested was consistently null (36/36
+                    // samples, no flapping) even though this write always succeeds -- that shape (always
+                    // null, never intermittent) points at a DI-instance mismatch rather than a
+                    // visibility race. Logs identityHashCode of both the processedDeviceStatusData
+                    // instance and its openAPSData object on the WRITE side; compare against the matching
+                    // log on the READ side (OpenAPSAutoISFPlugin.logLiveStepsMirrorDiagnostic()) -- if
+                    // they ever differ, that's conclusive proof of two separate instances.
+                    aapsLogger.debug(
+                        LTag.NSCLIENT,
+                        "updateOpenApsData WRITE identity: processedDeviceStatusData=${System.identityHashCode(processedDeviceStatusData)} " +
+                            "openAPSData=${System.identityHashCode(processedDeviceStatusData.openAPSData)} clock=$clock"
+                    )
                     processedDeviceStatusData.getAPSResult()?.let { apsResult ->
                         disposable += persistenceLayer.insertOrUpdateApsResult(apsResult).subscribe()
                     }

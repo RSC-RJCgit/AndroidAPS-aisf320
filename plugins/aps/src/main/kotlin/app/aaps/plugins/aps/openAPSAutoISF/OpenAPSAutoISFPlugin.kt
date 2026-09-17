@@ -377,6 +377,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "reasonNull=${reason == null} reasonLen=${reason?.length ?: -1} steps60Matched=$matched60 " +
                 "reasonTail=${reason?.takeLast(150)}"
         )
+        // Identity check added 2026-09-17: compare against NSDeviceStatusHandler's matching
+        // "updateOpenApsData WRITE identity" log line -- if processedDeviceStatusData or its
+        // openAPSData differ between here and there, that's a DI-instance mismatch, not a
+        // visibility/staleness bug (see that write-side log's own doc comment).
+        aapsLogger.debug(
+            LTag.APS,
+            "liveStepsMirrorDiagnostic READ identity: processedDeviceStatusData=${System.identityHashCode(processedDeviceStatusData)} " +
+                "openAPSData=${System.identityHashCode(processedDeviceStatusData.openAPSData)}"
+        )
     }
 
     // Deliberately NOT falling back to StepService's own local sensor while the toggle is on (2026-09-17,
