@@ -7277,8 +7277,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val podH = hoursSinceCurrentPodChange()
             val onLowFamily = runningOnLowLadder()
+            // Widened 2026-09-17 (same MJ3 gap as HighDaytimeBrake's mid band, same day): MJ3 no
+            // longer blocks BasalUp outright. Didn't change the outcome for the slow-rise episode
+            // that prompted the HighDaytimeBrake fix -- that rise's delta (~0.1-0.15mmol/5min) sat
+            // below BasalUp's own d>=0.2mmol floor below, so BasalUp still wouldn't have fired there
+            // regardless of MJ state. Kept anyway for a future case where delta does clear 0.2mmol
+            // during MJ3.
             val cannulaOrStateOk = (podH != null && (podH >= 72.0 || podH <= 6.0)) ||
-                checkAutomationState("MJ", "NOMJremains") || isTimeBetween(12, 0, 18, 0)
+                checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3") || isTimeBetween(12, 0, 18, 0)
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && recentSteps60Minutes <= 1000
