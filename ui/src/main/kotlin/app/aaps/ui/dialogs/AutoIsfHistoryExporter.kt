@@ -841,12 +841,29 @@ class AutoIsfHistoryExporter @Inject constructor(
     private val steps180Regex = stepsRegex("[Ss]teps180")
 
     /** Step count parsed from the nearest APSResult's reason text within 15 min, or null if no
-     *  match/no result close enough. Used as a fallback when the local StepsCount lookup is empty. */
+     *  match/no result close enough. Used as a fallback when the local StepsCount lookup is empty.
+     *
+     *  Fixed 2026-09-18: was checking only the single nearest-by-time APSResult and giving up if
+     *  THAT ONE didn't match, rather than searching further -- on Virtual, the single nearest row is
+     *  frequently Virtual's own (correctly token-less since DetermineBasalAutoISF.kt's
+     *  suppressStepsReasonText, added 2026-09-17, stops Virtual's own rows from carrying a Steps
+     *  token at all while live-steps mirroring is on), so it kept returning null and falling through
+     *  to the stale/zero local StepsCount instead of finding Live's real mirrored row one or two
+     *  cycles away -- confirmed via real device data (883): Live's ground truth Steps60M=18/
+     *  Steps180M=347 while the exported table still showed 0/0 for the matching row. Now walks
+     *  outward from nearest, skipping any row with no match (that's how a token-less Virtual-own row
+     *  is now recognised -- see suppressStepsReasonText's own doc comment), same pattern as
+     *  OpenAPSAutoISFPlugin.liveStepsFromDbFallback(). Still bounded to rows within 15 min of
+     *  [timestamp], same as before. */
     private fun stepsFromReason(timestamp: Long, apsResults: List<APSResult>, regex: Regex): Int? {
-        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return null
-        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return null
-        val m = regex.find(nearest.reason) ?: return null
-        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+        val candidates = apsResults
+            .filter { kotlin.math.abs(it.date - timestamp) < TimeUnit.MINUTES.toMillis(15) }
+            .sortedBy { kotlin.math.abs(it.date - timestamp) }
+        for (candidate in candidates) {
+            val m = regex.find(candidate.reason) ?: continue
+            return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+        }
+        return null
     }
 
     /** SC's stepXmin if a local record is close enough, else the reason-text fallback.
