@@ -2313,17 +2313,24 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             currentValue = { "Effect: exports+uploads AIV data (csv/txt/settings + UserEntries 30h), then zips logs and sends everything to cloud storage if configured, else email (same as Maintenance screen's Send logs button)" }
         ),
         TtCode.Single("Tog Graph5 (main clone) on/off", 5.142, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) "ON" else "OFF"}" }),
-        // Stepped rather than two Single rows: the two codes are alternative values of one setting (the
-        // MJ state), so they belong behind one label as a mutually-exclusive checkbox pair — same shape
-        // as the -0.1/+0.1 rows above, just with named states instead of a numeric delta. downLabel/
-        // upLabel are the states themselves, matching MjStateNoMjTT/MjStateMj3TT in OpenAPSAutoISFPlugin.kt.
-        TtCode.Stepped(
-            "MJ state (manual override)", 5.144, 5.146, "NOMJremains", "MJ3",
-            // Real current state value (not just an equality check against one candidate) -- MJ has more
-            // values than just the two this row toggles between (e.g. "MJ active", "MJ2"), so this can
-            // show something other than either checkbox label.
-            currentValue = { "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}" }
-        ),
+        // Was a Stepped 2-way checkbox pair (NOMJremains/MJ3 only, 5.144/5.146) until 2026-09-17 --
+        // widened to all four real MJ states via a 4-item setItems() list, since AlertDialog's
+        // Positive/Negative/Neutral buttons only stretch to three choices. New codes 5.222 (MJ active)
+        // and 5.224 (MJ2) match MjStateActiveTT/MjStateMj2TT in OpenAPSAutoISFPlugin.kt; the original
+        // two codes are unchanged so nothing that already relays 5.144/5.146 needs to change.
+        TtCode.Action("MJ state (manual override)") {
+            val current = if (config.AAPSCLIENT) mirroredListSetting("automation_state_MJ")
+            else "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}"
+            val options = arrayOf("MJ active", "MJ2", "MJ3", "NOMJremains")
+            val codes = doubleArrayOf(5.222, 5.224, 5.146, 5.144)
+            androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("MJ state (manual override)")
+                .setMessage(current)
+                .setItems(options) { _, which -> applyTtControl(codes[which], origin = "List 1 MJ state") }
+                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                .setOnCancelListener { showTtCodesListDialog() }
+                .show()
+        },
         // "Profile (manual override)" -- removed 2026-08-23 as redundant with switching profiles
         // directly, then reinstated the same day once that removal turned out to have thrown away a
         // real, separate need (immediately switching the ACTIVE profile to whichever one fills a role

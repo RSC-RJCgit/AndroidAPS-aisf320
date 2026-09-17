@@ -2732,13 +2732,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         rxBus.send(EventRefreshOverview("ExportSettingsPodActivation"))
     }
 
-    // Not yet called anywhere; ready for later conditions. Mirrors TriggerAutomationState: exact string
-    // equality (state values are names, not numbers), gated the same way — false when states are disabled.
-    // Not affected by the fuzzy-equals tolerance noted below, since that only applies to Double comparisons.
+    // Mirrors TriggerAutomationState: exact string equality (state values are names, not numbers),
+    // gated the same way -- false when states are disabled. Not affected by the fuzzy-equals tolerance
+    // noted below, since that only applies to Double comparisons.
     private fun checkAutomationState(stateName: String, stateValue: String): Boolean {
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return false
         return automationStateService.inState(stateName, stateValue)
     }
+
+    private fun useLiveMjStateOnVirtual() =
+        preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual) && activePlugin.activePump is VirtualPump
 
     // True only when MJ is literally the "MJ active" state — the state right after the native button
     // press, before the timed native automations advance it to MJ2/MJ3. Deliberately narrower than
@@ -3555,6 +3558,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // never receives a SetRole Note doesn't re-scan the same 2-day window every cycle. This fork
             // writes careportal Notes continuously, so the cursor tracks forward from the first invoke.
             notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfSetRoleNoteHandledAt, it.timestamp) }
+        }
+
+        // --- MJ button-press event relay (Note channel): same shape as SetRole (Note channel) above,
+        // gated by ApsAutoIsfUseLiveMjStateOnVirtual instead of isRealLoopPhone() -- VirtualPump only.
+        // handleDirectMjUserAction's START/RESTORE branches already write a plain "MJ active"/
+        // "NOMJremains" Note on whichever device the real button was pressed on (see that function
+        // above); this just watches for those same Notes arriving via normal NS sync and applies the
+        // identical local setAutomationState() call once per Note, exactly as if that button had been
+        // pressed on THIS device. Deliberately a one-time seed, not a continuous mirror: after this call,
+        // Virtual's own existing automations (MJ2old/MJ3old/MJ4/MJ5/MJ6/MoreMJ etc.) evolve the state
+        // independently from there, same as always. Does not touch the AIV "MJ" column's own recording
+        // path at all -- that is unrelated to this block.
+        run {
+            if (!useLiveMjStateOnVirtual()) return@run
+            val handledAt = preferences.get(LongKey.ApsAutoIsfMjButtonNoteHandledAt)
+            val searchFrom = if (handledAt > 0L) handledAt + 1L else dateUtil.now() - T.days(2).msecs()
+            val notes = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, true)
+                .filter { it.isValid && it.timestamp > handledAt }
+            for (te in notes) {
+                val newState = when (te.note.orEmpty()) {
+                    "MJ active"   -> "MJ active"
+                    "NOMJremains" -> "NOMJremains"
+                    else          -> null
+                } ?: continue
+                setAutomationState("MJ", newState)
+                sendSms("MJ event relay: $newState")
+            }
+            notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfMjButtonNoteHandledAt, it.timestamp) }
         }
 
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
@@ -4709,6 +4740,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             sendSms("MJstate: MJ3")
             addCarePortalNote("MJs3")
             markRun("MjStateMj3TT")
+        }
+
+        // MjStateActiveTT / MjStateMj2TT (5.222/5.224) -- added 2026-09-17, same unconditional
+        // manual-override shape as MjStateNoMjTT/MjStateMj3TT above, completing the MJ-state row on
+        // List1 to all four real states (MJ active/MJ2/MJ3/NOMJremains) instead of just two.
+        if (readyToRun("MjStateActiveTT", 2) && activeTtNear(5.222, 0.0001)) {
+            setAutomationState("MJ", "MJ active")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ active")
+            addCarePortalNote("MJsAc")
+            markRun("MjStateActiveTT")
+        }
+
+        if (readyToRun("MjStateMj2TT", 2) && activeTtNear(5.224, 0.0001)) {
+            setAutomationState("MJ", "MJ2")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ2")
+            addCarePortalNote("MJs2")
+            markRun("MjStateMj2TT")
         }
 
         // ProfileStandardTT/ProfileLowTT (5.148/5.150) -- re-added 2026-08-23. Removed earlier the same
@@ -10015,6 +10065,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, summary = R.string.mj_kotlin_buttons_enabled_summary, title = R.string.mj_kotlin_buttons_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, summary = R.string.use_live_steps_on_virtual_summary, title = R.string.use_live_steps_on_virtual_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, summary = R.string.use_live_mj_state_on_virtual_summary, title = R.string.use_live_mj_state_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))

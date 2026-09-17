@@ -117,6 +117,31 @@ already includes every `BooleanKey` whose enum name contains `"AutoIsf"` generic
 whose name does NOT contain "AutoIsf" (e.g. `AutomationCodedLocationsEnabled`) need a manual
 snapshot line.
 
+**"Use live X on VirtualPump" toggles** cover two genuinely different shapes — don't conflate them:
+- **Continuous mirror** (precedent: `ApsAutoIsfUseLiveStepsOnVirtual`): Virtual's own reads are
+  redirected to the loop phone's real value every cycle, for as long as the toggle is on. Steps are
+  parsed out of `loop.lastRun`'s reason text via a regex — see `liveStepsFromLoopReason()`.
+- **One-time event seed** (precedent: `ApsAutoIsfUseLiveMjStateOnVirtual`): Virtual is NOT continuously
+  reading the loop phone's ongoing state — `checkAutomationState()`/`setAutomationState()` are
+  untouched, and this deliberately does not affect the AIV "MJ" column's own separate recording path.
+  Instead, the real button-press event itself (the plain CarePortal Note
+  `handleDirectMjUserAction()`'s START/RESTORE branches already write, e.g. "MJ active"/"NOMJremains")
+  is watched for via the same cursor-tracked Note-channel pattern as `SetRole (Note channel)`, and on
+  first sight, the identical local `setAutomationState()` call is made once on Virtual — after that,
+  Virtual's own existing automations (MJ2old/MJ3old/MJ4/MJ5/MJ6/MoreMJ etc.) evolve the state
+  independently, exactly as if the button had been pressed on Virtual itself.
+Before building a new "use live X" toggle, ask which shape is actually wanted — the two look similar
+but have very different blast radii (one substitutes a value continuously; the other seeds a starting
+point once and lets local logic run forward).
+
+**Widening a List1 `Stepped` 2-way row to more than 2 options** (precedent: "MJ state (manual
+override)", widened from NOMJremains/MJ3 to all four MJ states): switch the `TtCode` entry from
+`Stepped` to `Action` and build the dialog by hand with `setItems(options) { _, which -> ... }`
+instead of relying on `Stepped`'s built-in 2-way confirm dialog — `AlertDialog`'s Positive/Negative/
+Neutral buttons only stretch to 3 choices. An `Action` entry's `onSelect` runs directly with no
+outer confirm wrapper (see `showTtCodesListDialog()`'s dispatch `when`), so build the full dialog
+(title/message/items/cancel) inside `onSelect` yourself.
+
 ## AIV history / export
 
 `ui/.../dialogs/AutoIsfHistoryExporter.kt` and `AutoISFHistoryDialog.kt` read the persisted
