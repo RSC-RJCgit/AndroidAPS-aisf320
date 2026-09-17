@@ -733,9 +733,14 @@ class WizardDialog : DaggerDialogFragment() {
                 val cappedNote = if (fpuPlan.capped)
                     " -- CAPPED, full Warsaw tier is ${decimalFormatter.to2Decimal(fpuPlan.fullTierInsulin)}U/8h"
                 else ""
+                // "unless setting changed above" added 2026-09-17: this duration reflects
+                // binding.warsawDurationInput's CURRENT value at calc time, not necessarily the
+                // QuickWizard button's own stored warsawDurationHours (WizardDialog has no knowledge of
+                // that entry) -- so a value that looks surprising (e.g. an uncapped 8h top-tier default)
+                // is still just what the input above is currently set to, and changing it recalculates.
                 binding.proteinFatDelayInfo.text =
                     "Protein+Fat ${decimalFormatter.to2Decimal(fpuPlan.totalInsulin)}U over ${decimalFormatter.to2Decimal(hours)}h " +
-                        "(${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)})$cappedNote, less IOB rise"
+                        "unless setting changed above (${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)})$cappedNote, less IOB rise"
                 binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
             } else {
                 binding.proteinFatDelayInfo.visibility = android.view.View.GONE

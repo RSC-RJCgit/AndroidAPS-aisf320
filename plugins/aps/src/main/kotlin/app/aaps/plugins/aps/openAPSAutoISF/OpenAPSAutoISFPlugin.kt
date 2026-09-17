@@ -3944,7 +3944,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add(
                 "SensorAge check: sensorAgeDays=${sensorAgeDays?.let { round(it, 3) } ?: "null"} " +
                     "oldSensorTier=${oldSensorTier?.first ?: "none"} oldSensorEnabled=$oldSensorEnabled " +
-                    "recentHighBglSeen=$recentHighBglSeen (rawGForOver12=${rawGForOver12?.let { round(it / 18.0182, 2) } ?: "null"}mmol) " +
+                    "recentHighBglSeen=$recentHighBglSeen (liveUkfG=${liveUkfG?.let { round(it / 18.0182, 2) } ?: "null"}mmol) " +
                     "oldSensorActiveNow=$oldSensorActiveNow currentFslCalSlope=${round(preferences.get(DoubleKey.FslCalSlope), 2)}"
             )
             // Sensor-age calibration is otherwise independent of cannula/pod age (see NewDay2's pod-age
