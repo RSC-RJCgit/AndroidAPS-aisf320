@@ -89,6 +89,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -317,36 +318,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     )
 
     // Activity detection (steps). On VirtualPump, ApsAutoIsfUseLiveStepsOnVirtual (off by default) swaps
-    // every bucket except the 10-min one for the loop phone's own step counts, parsed from its synced
-    // APSResult reason text -- the exact same "StepsXM: <value> ;" text AutoIsfHistoryExporter.kt's
-    // stepsFromReason() already parses for AAPSCLIENT's historical export (see that function's own doc
-    // comment for why AAPSCLIENT never gets a local StepsCount row at all). Read live off loop.lastRun
-    // here instead of a stored APSResult, since this gates real dosing decisions, not a historical
-    // export. Only 5/15/30/60/180 are ever written to reason text (DetermineBasalAutoISF.kt computes a
-    // Steps10M but never appends it) so the 10-min bucket has no reason-text source and always stays on
-    // this device's own local sensor regardless of the preference.
-    private fun liveStepsRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
-    private val liveSteps5Regex = liveStepsRegex("[Ss]teps5")
-    private val liveSteps15Regex = liveStepsRegex("[Ss]teps15")
-    private val liveSteps30Regex = liveStepsRegex("[Ss]teps30")
-    private val liveSteps60Regex = liveStepsRegex("[Ss]teps60")
-    private val liveSteps180Regex = liveStepsRegex("[Ss]teps180")
-
-    private fun liveStepsFromLoopReason(regex: Regex): Int? {
-        val reason = (loop.lastRun?.request ?: loop.lastRun?.constraintsProcessed)?.reason ?: return null
-        val m = regex.find(reason) ?: return null
-        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+    // every bucket except the 10-min one for the loop phone's own step counts.
+    // Fixed 2026-09-17: originally read loop.lastRun's reason text, on the theory that it held the
+    // loop phone's synced APSResult -- it doesn't. loop.lastRun (LoopPlugin.kt) is always THIS
+    // device's own last local computation, never a synced one, so on Virtual that read was
+    // self-referential (Virtual reading its own previous cycle back), not Live's data at all. Fixed
+    // by reading StringNonKey.MirroredAutoIsfSettings instead -- the same NS-mirrored settings-snapshot
+    // channel the MJ/Steroid event relays use, exclusively written by NSDeviceStatusHandler.kt from
+    // incoming NS data, never touched by Virtual's own local writes. The loop phone's own real
+    // steps5/15/30/60/180min values are added to autoIsfSettingsSnapshot() below specifically so this
+    // has something genuine to read back. Only 5/15/30/60/180 are included there (DetermineBasalAutoISF.kt
+    // computes a Steps10M but never appends it anywhere) so the 10-min bucket has no mirrored source and
+    // always stays on this device's own local sensor regardless of the preference.
+    private fun mirroredSteps(minutes: Int): Int? {
+        val prefix = "steps${minutes}min = "
+        return preferences.get(StringNonKey.MirroredAutoIsfSettings)
+            .lineSequence()
+            .firstOrNull { it.startsWith(prefix) }
+            ?.removePrefix(prefix)
+            ?.toIntOrNull()
     }
 
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
-    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps5Regex) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(5) ?: StepService.getRecentStepCount5Min() else StepService.getRecentStepCount5Min()
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps15Regex) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps30Regex) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps60Regex) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
-    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromLoopReason(liveSteps180Regex) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(15) ?: StepService.getRecentStepCount15Min() else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(30) ?: StepService.getRecentStepCount30Min() else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(60) ?: StepService.getRecentStepCount60Min() else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) mirroredSteps(180) ?: StepService.getRecentStepCount180Min() else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
@@ -2743,6 +2744,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun useLiveMjStateOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual) && activePlugin.activePump is VirtualPump
 
+    private fun useLiveSteroidEventsOnVirtual() =
+        preferences.get(BooleanKey.ApsAutoIsfUseLiveSteroidEventsOnVirtual) && activePlugin.activePump is VirtualPump
+
     // True only when MJ is literally the "MJ active" state — the state right after the native button
     // press, before the timed native automations advance it to MJ2/MJ3. Deliberately narrower than
     // "any non-NOMJremains value": MJ2/MJ3 do NOT block here, only "MJ active" does.
@@ -3586,6 +3590,60 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("MJ event relay: $newState")
             }
             notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfMjButtonNoteHandledAt, it.timestamp) }
+        }
+
+        // --- Steroid button-press event relay (Note channel): same shape as the MJ button-press relay
+        // above, gated by ApsAutoIsfUseLiveSteroidEventsOnVirtual -- VirtualPump only.
+        // handleDirectSteroidUserAction's branches already write a plain Note on whichever device the
+        // real button was pressed on: "SteroidsON"/"SteroidsOff" for START_110/TURN_OFF (these two also
+        // change the "Steroids" automation state), and "Steroids130"/"Steroids150"/"Steroids190"/
+        // "Steroids250" for the INCREASE_x escalation steps -- those four do NOT touch automation state
+        // at all (Steroids stays "SteroidsON" the whole ladder); which tier is active is encoded purely
+        // by which profile is running. So the on/off pair seeds automation state, same as MJ, while the
+        // escalation notes seed a profile switch instead -- the "state" each event actually carries.
+        // Deliberately one-time seeds, not a continuous mirror: Virtual's own logic (its own
+        // conditionStillMatches rechecks, profile-based tier reads, etc.) continues independently after
+        // each seed, same as the MJ relay.
+        run {
+            if (!useLiveSteroidEventsOnVirtual()) return@run
+            val handledAt = preferences.get(LongKey.ApsAutoIsfSteroidButtonNoteHandledAt)
+            val searchFrom = if (handledAt > 0L) handledAt + 1L else dateUtil.now() - T.days(2).msecs()
+            val notes = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, true)
+                .filter { it.isValid && it.timestamp > handledAt }
+            for (te in notes) {
+                when (te.note.orEmpty()) {
+                    "SteroidsON" -> {
+                        setAutomationState("Steroids", "SteroidsON")
+                        sendSms("Steroid event relay: SteroidsON")
+                    }
+
+                    "SteroidsOff" -> {
+                        setAutomationState("Steroids", "Steroids Off")
+                        sendSms("Steroid event relay: Steroids Off")
+                    }
+
+                    "Steroids130" -> {
+                        switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
+                        sendSms("Steroid event relay: profile -> 130")
+                    }
+
+                    "Steroids150" -> {
+                        switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
+                        sendSms("Steroid event relay: profile -> 150")
+                    }
+
+                    "Steroids190" -> {
+                        switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
+                        sendSms("Steroid event relay: profile -> 190")
+                    }
+
+                    "Steroids250" -> {
+                        switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName))
+                        sendSms("Steroid event relay: profile -> 250")
+                    }
+                }
+            }
+            notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfSteroidButtonNoteHandledAt, it.timestamp) }
         }
 
         // Reverse-direction remote command: the sending device writes the exact Note "ADesk" to its NS;
@@ -9064,6 +9122,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         REQUIRED_AUTOMATION_STATES.keys.sorted().forEach { stateName ->
             lines.add("automation_state_$stateName = ${automationStateService.getState(stateName)}")
         }
+        // This device's own real local step counts -- always the raw StepService reading, never routed
+        // through useLiveStepsOnVirtual()'s redirect, so a receiving device (Virtual, reading this back
+        // via MirroredAutoIsfSettings) gets THIS device's genuine local sensor value, not a re-relay of
+        // whatever it last mirrored from someone else. Added 2026-09-17 as the reliable replacement for
+        // liveStepsFromLoopReason()'s loop.lastRun read, which turned out to be self-referential on
+        // Virtual (loop.lastRun is always this device's OWN last computation, never a synced one) --
+        // see recentSteps5Minutes and friends below.
+        lines.add("steps5min = ${StepService.getRecentStepCount5Min()}")
+        lines.add("steps15min = ${StepService.getRecentStepCount15Min()}")
+        lines.add("steps30min = ${StepService.getRecentStepCount30Min()}")
+        lines.add("steps60min = ${StepService.getRecentStepCount60Min()}")
+        lines.add("steps180min = ${StepService.getRecentStepCount180Min()}")
         return lines.sorted().joinToString("\n")
     }
 
@@ -10080,6 +10150,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, summary = R.string.mj_kotlin_buttons_enabled_summary, title = R.string.mj_kotlin_buttons_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, summary = R.string.use_live_steps_on_virtual_summary, title = R.string.use_live_steps_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, summary = R.string.use_live_mj_state_on_virtual_summary, title = R.string.use_live_mj_state_on_virtual_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveSteroidEventsOnVirtual, summary = R.string.use_live_steroid_events_on_virtual_summary, title = R.string.use_live_steroid_events_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))

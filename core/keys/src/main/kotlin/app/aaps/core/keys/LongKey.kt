@@ -126,5 +126,6 @@ enum class LongKey(
     // after a real alarm-tier hypo, not just any dip. 0 = never. Added 2026-09-16, per explicit request.
     ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0, defaultedBySM = true),
     ApsAutoIsfMjButtonNoteHandledAt("autoisf_mj_button_note_handled_at", 0, defaultedBySM = true),
+    ApsAutoIsfSteroidButtonNoteHandledAt("autoisf_steroid_button_note_handled_at", 0, defaultedBySM = true),
 
 }

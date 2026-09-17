@@ -121,15 +121,22 @@ snapshot line.
 - **Continuous mirror** (precedent: `ApsAutoIsfUseLiveStepsOnVirtual`): Virtual's own reads are
   redirected to the loop phone's real value every cycle, for as long as the toggle is on. Steps are
   parsed out of `loop.lastRun`'s reason text via a regex — see `liveStepsFromLoopReason()`.
-- **One-time event seed** (precedent: `ApsAutoIsfUseLiveMjStateOnVirtual`): Virtual is NOT continuously
-  reading the loop phone's ongoing state — `checkAutomationState()`/`setAutomationState()` are
-  untouched, and this deliberately does not affect the AIV "MJ" column's own separate recording path.
-  Instead, the real button-press event itself (the plain CarePortal Note
-  `handleDirectMjUserAction()`'s START/RESTORE branches already write, e.g. "MJ active"/"NOMJremains")
-  is watched for via the same cursor-tracked Note-channel pattern as `SetRole (Note channel)`, and on
-  first sight, the identical local `setAutomationState()` call is made once on Virtual — after that,
-  Virtual's own existing automations (MJ2old/MJ3old/MJ4/MJ5/MJ6/MoreMJ etc.) evolve the state
-  independently, exactly as if the button had been pressed on Virtual itself.
+- **One-time event seed** (precedent: `ApsAutoIsfUseLiveMjStateOnVirtual`, `ApsAutoIsfUseLive
+  SteroidEventsOnVirtual`): Virtual is NOT continuously reading the loop phone's ongoing state —
+  `checkAutomationState()`/`setAutomationState()` are untouched, and this deliberately does not
+  affect the AIV columns' own separate recording path. Instead, the real button-press event itself
+  (a plain CarePortal Note the handler already writes, e.g. `handleDirectMjUserAction()`'s "MJ
+  active"/"NOMJremains", or `handleDirectSteroidUserAction()`'s "SteroidsON"/"SteroidsOff"/
+  "Steroids130".."Steroids250") is watched for via the same cursor-tracked Note-channel pattern as
+  `SetRole (Note channel)`, and on first sight, the SAME kind of local call the real button press
+  would have made is made once on Virtual — after that, Virtual's own existing automations/rechecks
+  evolve independently, exactly as if the button had been pressed on Virtual itself. **The thing
+  seeded is whatever that event actually carries, not always `setAutomationState()`**: MJ and
+  Steroid ON/OFF each have their own automation-state value to seed, but Steroid's 110→130→150→190→
+  250 escalation notes carry NO automation-state change at all (Steroids stays "SteroidsON" the
+  whole ladder) — which tier is active is encoded purely by which profile is running, so those four
+  notes seed a `switchProfileIfNeeded()` call instead. Check what the real handler actually writes/
+  changes for a given event before assuming it's always an automation-state seed.
 Before building a new "use live X" toggle, ask which shape is actually wanted — the two look similar
 but have very different blast radii (one substitutes a value continuously; the other seeds a starting
 point once and lets local logic run forward).

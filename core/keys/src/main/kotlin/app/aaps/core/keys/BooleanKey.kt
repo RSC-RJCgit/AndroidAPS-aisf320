@@ -75,6 +75,7 @@ enum class BooleanKey(
     // reading unless explicitly opted in. Added 2026-09-16, per explicit request.
     ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", false),
     ApsAutoIsfUseLiveMjStateOnVirtual("autoisf_use_live_mj_state_on_virtual", false),
+    ApsAutoIsfUseLiveSteroidEventsOnVirtual("autoisf_use_live_steroid_events_on_virtual", false),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),
