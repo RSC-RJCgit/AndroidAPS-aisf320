@@ -1096,6 +1096,7 @@ class DetermineBasalAutoISF @Inject constructor(
         consoleError.add("profile_percentage: ${profile_percentage} ;")
         if (!suppressStepsReasonText) {
             rT.reason.append("Steps5M: ${Steps5M} ;")
+            rT.reason.append("Steps10M: ${Steps10M} ;")
             rT.reason.append("Steps15M: ${Steps15M} ;")
             rT.reason.append("Steps30M: ${Steps30M} ;")
             rT.reason.append("Steps60M: ${Steps60M} ;")
@@ -2590,4 +2591,3 @@ class DetermineBasalAutoISF @Inject constructor(
         }
     }
 }
-
