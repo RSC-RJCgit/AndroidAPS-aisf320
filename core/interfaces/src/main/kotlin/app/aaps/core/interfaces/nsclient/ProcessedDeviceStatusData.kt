@@ -46,10 +46,18 @@ interface ProcessedDeviceStatusData {
 
     class OpenAPSData {
 
-        var clockSuggested = 0L
-        var clockEnacted = 0L
-        var suggested: RT? = null
-        var enacted: RT? = null
+        // @Volatile added 2026-09-17: suggested/clockSuggested are written exclusively by
+        // NSDeviceStatusHandler.updateOpenApsData() on the async NS event thread, and read from
+        // invoke()'s own thread by any consumer wanting the loop phone's live-mirrored steps/state
+        // (see OpenAPSAutoISFPlugin.recentStepsXMinutes). Without a memory barrier, a plain var gives
+        // no guarantee the reading thread ever sees the writer's update promptly or consistently --
+        // real device logs showed exactly that symptom: the loop phone's steps value (confirmed
+        // stable and re-uploaded every ~60-90s at the source) intermittently read back as stale/absent
+        // on the very next invoke() cycle, with no other writer and no data gap to explain it.
+        @Volatile var clockSuggested = 0L
+        @Volatile var clockEnacted = 0L
+        @Volatile var suggested: RT? = null
+        @Volatile var enacted: RT? = null
     }
 
     var openAPSData: OpenAPSData
