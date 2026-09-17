@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.nsclient.LiveStepsMirror
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.utils.DateUtil
@@ -70,7 +71,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     // ImportExportPrefsImpl -> MaintenancePlugin -> AutoIsfHistoryExporter -> ImportExportPrefs.
     // The preference exporter is only needed when an export is actually run, not while this
     // object graph is being constructed.
-    private val importExportPrefs: Provider<ImportExportPrefs>
+    private val importExportPrefs: Provider<ImportExportPrefs>,
+    private val liveStepsMirror: LiveStepsMirror
 ) {
 
     private val df1 = DecimalFormat("0.0")
@@ -890,7 +892,7 @@ class AutoIsfHistoryExporter @Inject constructor(
         }
         val liveMirrorActive = virtualPump.isEnabled() && !config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
         val result = if (liveMirrorActive) {
-            stepsFromReason(timestamp, apsResults, regex) ?: sc?.let(field)
+            liveStepsMirror.at(timestamp)?.steps(bucketMinutes)
         } else {
             sc?.let(field) ?: stepsFromReason(timestamp, apsResults, regex)
         }

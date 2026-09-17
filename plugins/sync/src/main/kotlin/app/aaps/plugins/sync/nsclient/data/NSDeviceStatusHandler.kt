@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclient.data
 
+import android.os.Build
 import app.aaps.core.data.model.AIV
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -7,11 +8,15 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.nsclient.LiveStepsMirror
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -22,6 +27,7 @@ import app.aaps.core.utils.JsonHelper
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 /*
@@ -88,7 +94,9 @@ class NSDeviceStatusHandler @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val overviewData: OverviewData,
     private val calculationWorkflow: CalculationWorkflow,
-    private val profileUtil: ProfileUtil
+    private val profileUtil: ProfileUtil,
+    private val activePlugin: Provider<ActivePlugin>,
+    private val liveStepsMirror: LiveStepsMirror
 ) {
 
     private val disposable = CompositeDisposable()
@@ -113,6 +121,13 @@ class NSDeviceStatusHandler @Inject constructor(
         var configurationDetected = false
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
+            // Full-app Virtual does not enter the Client-only updateOpenApsData path below.
+            // Import only remote steps here; do not replace local APS/pump/configuration state.
+            if (config.APS && !config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+                activePlugin.get().activePump is VirtualPump
+            ) {
+                receiveLiveSteps(nsDeviceStatus)
+            }
             if (config.AAPSCLIENT) {
                 updatePumpData(nsDeviceStatus)
                 updateDeviceData(nsDeviceStatus)
@@ -131,6 +146,20 @@ class NSDeviceStatusHandler @Inject constructor(
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
             }
         }
+    }
+
+    private fun receiveLiveSteps(deviceStatus: NSDeviceStatus) {
+        val suggested = deviceStatus.openaps?.suggested ?: return
+        val timestamp = suggested.optString("timestamp").takeIf { it.isNotBlank() } ?: return
+        val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
+        // Configuration may be absent on incremental updates. Reject explicit Virtual senders
+        // as well as this phone's own device identifier (checked by the mirror).
+        if (deviceStatus.configuration?.pump?.contains("virtual", ignoreCase = true) == true) return
+        val sample = liveStepsMirror.receive(
+            deviceStatus.device, "openaps://${Build.MANUFACTURER} ${Build.MODEL}", clock,
+            suggested.optString("reason"), dateUtil.now()
+        ) ?: return
+        aapsLogger.debug(LTag.NSCLIENT, "LiveStepsMirror received source=${sample.source} timestamp=${sample.timestamp} buckets=${sample.buckets}")
     }
 
     private fun updateDeviceData(deviceStatus: NSDeviceStatus) {

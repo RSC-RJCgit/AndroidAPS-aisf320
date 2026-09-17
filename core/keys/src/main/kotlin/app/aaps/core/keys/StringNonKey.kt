@@ -17,5 +17,6 @@ enum class StringNonKey(
     ActivePumpSerialNumber(key = "active_pump_serial_number", defaultValue = ""),
     SmsOtpSecret("smscommunicator_otp_secret", defaultValue = ""),
     TotalBaseBasal("TBB", defaultValue = "10.00"),
-    MirroredAutoIsfSettings("mirrored_autoisf_settings", defaultValue = "", exportable = false)
+    MirroredAutoIsfSettings("mirrored_autoisf_settings", defaultValue = "", exportable = false),
+    LiveStepsHistory("live_steps_history", defaultValue = "[]", exportable = false)
 }

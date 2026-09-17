@@ -38,7 +38,7 @@ import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.aps.RT
-import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.nsclient.LiveStepsMirror
 import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
@@ -169,7 +169,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val deltaCalculator: DeltaCalculator,
     private val accelerationCalculator: AccelerationCalculator,
     private val loop: Loop,
-    private val processedDeviceStatusData: ProcessedDeviceStatusData
+    private val liveStepsMirror: LiveStepsMirror
 ) : PluginBase(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -318,114 +318,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         iobThEffective = 0.0
     )
 
-    // Activity detection (steps). On VirtualPump, ApsAutoIsfUseLiveStepsOnVirtual (off by default) swaps
-    // every bucket except the 10-min one for the loop phone's own step counts.
-    // Fixed 2026-09-17 (first attempt): read loop.lastRun's reason text, on the theory that it held the
-    // loop phone's synced APSResult -- it doesn't. loop.lastRun (LoopPlugin.kt) is always THIS device's
-    // own last local computation, never a synced one, so on Virtual that read was self-referential.
-    // Fixed 2026-09-17 (second attempt): switched to StringNonKey.MirroredAutoIsfSettings (the
-    // autoIsfSettingsSnapshot channel) -- confirmed via real device logs that the raw incoming NS JSON
-    // genuinely carries "steps60min = X" inside that field every time (554/554 checked), yet the
-    // receiving side's mirrored preference stayed empty (rawLen=0) for a full 41-minute session. So
-    // that field isn't surviving RT.deserialize() intact on the receiving side, for reasons not yet
-    // found (a diagnostic is in NSDeviceStatusHandler.updateOpenApsData() for that, separately).
-    // Fixed 2026-09-17 (third attempt, this one): per direct request, abandoned that channel entirely
-    // in favour of the one Client's OWN working steps display already proves reliable --
-    // AutoIsfHistoryExporter.stepsFromReason() reads RT.reason (a completely different field on the
-    // same deserialized RT object), not autoIsfSettingsSnapshot. DetermineBasalAutoISF.kt already
-    // appends "Steps5M: X ;" / "Steps60M: X ;" etc. to that same reason text every cycle (see its own
-    // rT.reason.append() calls), so no sending-side change was needed here -- only where this reads
-    // from. processedDeviceStatusData.openAPSData.suggested is the exact same in-memory RT object
-    // NSDeviceStatusHandler populates from incoming NS data, so unlike the DB-backed APSResult table
-    // Client's exporter reads, there's no risk of it being polluted by Virtual's OWN local writes --
-    // Virtual's own invoke()/LoopPlugin never touches this object at all, only incoming NS data does.
-    private fun liveStepsRegex(label: String) = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
-    private val liveSteps5Regex = liveStepsRegex("[Ss]teps5")
-    private val liveSteps15Regex = liveStepsRegex("[Ss]teps15")
-    private val liveSteps30Regex = liveStepsRegex("[Ss]teps30")
-    private val liveSteps60Regex = liveStepsRegex("[Ss]teps60")
-    private val liveSteps180Regex = liveStepsRegex("[Ss]teps180")
-
-    private fun liveStepsFromMirroredReason(regex: Regex): Int? {
-        val reason = processedDeviceStatusData.openAPSData.suggested?.reason?.toString() ?: return null
-        val m = regex.find(reason) ?: return null
-        return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
-    }
-
-    // Fallback added 2026-09-17, same day as the identity-hash diagnostic on the live in-memory path
-    // (processedDeviceStatusData.openAPSData.suggested), because that path was reading null 36/36
-    // times on real device data and chasing the root cause through repeated APK build/upload cycles
-    // was too slow to leave dosing broken in the meantime. This reuses Client's already-proven
-    // mechanism (AutoIsfHistoryExporter.stepsFromReason() reads persisted APSResult rows via
-    // persistenceLayer.getApsResults() -- reliable for Client because Client never writes competing
-    // rows) but adapted for Virtual, where competing rows ARE a real risk: unlike a single
-    // nearest-only lookup, this walks OUTWARD from nearest-to-now until it finds a row whose reason
-    // actually has the token, skipping any that don't. That skip is now safe specifically because
-    // DetermineBasalAutoISF.kt's determine_basal() suppresses the Steps5M/15M/30M/60M/180M reason
-    // tokens on Virtual's own rows while this same mirroring toggle is on (suppressStepsReasonText) --
-    // so a row with no token is known to be Virtual's own, never a genuine miss, and skipping it can
-    // only skip past Virtual's own data, never past a real mirrored reading. 20-min window is
-    // generous against the invoke()/NS-upload cadence (~1/min each); returns the first (nearest) match
-    // or null if nothing in the window has the token at all (e.g. NS hasn't sent anything all session).
-    private fun liveStepsFromDbFallback(regex: Regex): Int? {
-        val now = dateUtil.now()
-        val candidates = persistenceLayer.getApsResults(now - T.mins(20).msecs(), now)
-            .sortedBy { kotlin.math.abs(it.date - now) }
-        for (candidate in candidates) {
-            val m = regex.find(candidate.reason) ?: continue
-            return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
-        }
-        return null
-    }
-
+    // Use one timestamped NS sample for the whole invocation. Never use local steps or an
+    // unlabelled APSResult as a substitute while mirroring. Missing buckets stay null in the
+    // sample and diagnostics; legacy numeric dosing inputs receive 0 when unavailable.
+    private var liveStepsForCycle: LiveStepsMirror.Sample? = null
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
-    // Diagnostic added 2026-09-17: real device data (878) showed Virtual's own invoke() reading
-    // recentStepsXMinutes as 0 while Live's real Steps60M was 305 ten seconds after Live's correct
-    // reason text had already landed in openAPSData.suggested (confirmed via NSDeviceStatusHandler's
-    // own "autoIsfSettingsSnapshot after RT.deserialize" debug line, no exception) -- so the write
-    // side is known-good, but something between that write and this read is still failing. Pins down
-    // exactly where: is suggested null (never received / cleared), how stale is clockSuggested (a
-    // second update overwriting with something reason-less?), does the raw reason text even contain
-    // a Steps60 token, and does the regex actually match it. Logged once per cycle only (piggybacks
-    // recentSteps60Minutes, the same bucket "invoke found step counts" already summarizes) --
-    // deliberately not per-bucket to avoid 5x-per-cycle spam.
-    private fun logLiveStepsMirrorDiagnostic() {
-        val suggested = processedDeviceStatusData.openAPSData.suggested
-        val clockSuggested = processedDeviceStatusData.openAPSData.clockSuggested
-        val ageMs = if (clockSuggested != 0L) dateUtil.now() - clockSuggested else -1L
-        val reason = suggested?.reason?.toString()
-        val matched60 = reason?.let { liveSteps60Regex.find(it) } != null
-        aapsLogger.debug(
-            LTag.APS,
-            "liveStepsMirrorDiagnostic: suggestedNull=${suggested == null} clockSuggestedAgeMs=$ageMs " +
-                "reasonNull=${reason == null} reasonLen=${reason?.length ?: -1} steps60Matched=$matched60 " +
-                "reasonTail=${reason?.takeLast(150)}"
-        )
-        // Identity check added 2026-09-17: compare against NSDeviceStatusHandler's matching
-        // "updateOpenApsData WRITE identity" log line -- if processedDeviceStatusData or its
-        // openAPSData differ between here and there, that's a DI-instance mismatch, not a
-        // visibility/staleness bug (see that write-side log's own doc comment).
-        aapsLogger.debug(
-            LTag.APS,
-            "liveStepsMirrorDiagnostic READ identity: processedDeviceStatusData=${System.identityHashCode(processedDeviceStatusData)} " +
-                "openAPSData=${System.identityHashCode(processedDeviceStatusData.openAPSData)}"
-        )
-    }
-
-    // Deliberately NOT falling back to StepService's own local sensor while the toggle is on (2026-09-17,
-    // per direct request): a local fallback here can silently mask a mirroring failure behind a small,
-    // plausible-looking non-zero number from Virtual's own physical sensor (e.g. the phone being picked
-    // up during testing) -- indistinguishable from a genuine mirrored reading without checking the raw
-    // logs. With the fallback removed, 0 unambiguously means "no mirrored value available right now",
-    // and any non-zero reading unambiguously proves the mirror worked.
-    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: liveStepsFromDbFallback(liveSteps5Regex) ?: 0 else StepService.getRecentStepCount5Min()
-    private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: liveStepsFromDbFallback(liveSteps15Regex) ?: 0 else StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: liveStepsFromDbFallback(liveSteps30Regex) ?: 0 else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) { logLiveStepsMirrorDiagnostic(); liveStepsFromMirroredReason(liveSteps60Regex) ?: liveStepsFromDbFallback(liveSteps60Regex) ?: 0 } else StepService.getRecentStepCount60Min()
-    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: liveStepsFromDbFallback(liveSteps180Regex) ?: 0 else StepService.getRecentStepCount180Min()
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(5) ?: 0 else StepService.getRecentStepCount5Min()
+    private val recentSteps10Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(10) ?: 0 else StepService.getRecentStepCount10Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(15) ?: 0 else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(30) ?: 0 else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(60) ?: 0 else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsForCycle?.steps(180) ?: 0 else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
@@ -3099,6 +3004,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
+        liveStepsForCycle = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
+        if (useLiveStepsOnVirtual()) {
+            val sample = liveStepsForCycle
+            aapsLogger.debug(LTag.APS, "LiveStepsMirror dosing source=${sample?.source ?: "missing"} " +
+                "timestamp=${sample?.timestamp} ageMs=${sample?.let { dateUtil.now() - it.timestamp }} " +
+                "buckets=${sample?.buckets} missing=${listOf(5, 10, 15, 30, 60, 180).filter { sample?.steps(it) == null }}")
+        }
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
