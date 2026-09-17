@@ -332,11 +332,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // always stays on this device's own local sensor regardless of the preference.
     private fun mirroredSteps(minutes: Int): Int? {
         val prefix = "steps${minutes}min = "
-        return preferences.get(StringNonKey.MirroredAutoIsfSettings)
-            .lineSequence()
-            .firstOrNull { it.startsWith(prefix) }
-            ?.removePrefix(prefix)
-            ?.toIntOrNull()
+        val raw = preferences.get(StringNonKey.MirroredAutoIsfSettings)
+        val match = raw.lineSequence().firstOrNull { it.startsWith(prefix) }
+        // Diagnostic added 2026-09-17: steps60min was seen flapping between a genuine mirrored value
+        // and the local fallback within under a second, with no new incoming devicestatus in between --
+        // logged only for the 60-min bucket (paired with the existing "steps60min is ..." log a few
+        // lines below) so the two can be read side by side. rawLen/ageMs show whether the underlying
+        // string itself is going blank/stale between calls, or the string is fine and something else
+        // is the problem.
+        if (minutes == 60) {
+            val ageMs = dateUtil.now() - preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
+            consoleError.add("mirroredSteps(60): rawLen=${raw.length} ageMs=$ageMs match=${match ?: "none"}")
+        }
+        return match?.removePrefix(prefix)?.toIntOrNull()
     }
 
     private fun useLiveStepsOnVirtual() =
