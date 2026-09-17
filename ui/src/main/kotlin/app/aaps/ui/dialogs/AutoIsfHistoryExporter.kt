@@ -889,11 +889,29 @@ class AutoIsfHistoryExporter @Inject constructor(
             else -> SC::steps180min to steps180Regex
         }
         val liveMirrorActive = virtualPump.isEnabled() && !config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
-        return if (liveMirrorActive) {
+        val result = if (liveMirrorActive) {
             stepsFromReason(timestamp, apsResults, regex) ?: sc?.let(field)
         } else {
             sc?.let(field) ?: stepsFromReason(timestamp, apsResults, regex)
         }
+        // Diagnostic added 2026-09-18, bucketMinutes==60 only (avoid 5x-per-row spam), logged only on
+        // a null/zero outcome while mirroring is active -- the walk-outward fix in stepsFromReason()
+        // still tested as not working on real device data (883/884: Live's Steps60M=18/Steps180M=347
+        // vs the exported table's 0/0), despite the DAO having no row limit and the 6h export window
+        // comfortably covering the tested timestamp -- so this pins down whether the candidate list
+        // itself is empty/small (a query-side problem) or non-empty but none actually match the regex
+        // (a parsing-side problem), which the earlier reasoning couldn't distinguish from outside.
+        if (bucketMinutes == 60 && liveMirrorActive && (result == null || result == 0)) {
+            val candidates = apsResults.filter { kotlin.math.abs(it.date - timestamp) < TimeUnit.MINUTES.toMillis(15) }
+            aapsLogger.debug(
+                LTag.UI,
+                "stepsValue diagnostic: timestamp=$timestamp totalApsResults=${apsResults.size} " +
+                    "candidatesWithin15min=${candidates.size} candidateReasonLens=${candidates.map { it.reason.length }} " +
+                    "anyCandidateHasSteps60Token=${candidates.any { steps60Regex.find(it.reason) != null }} " +
+                    "scNull=${sc == null} result=$result"
+            )
+        }
+        return result
     }
 
     /** Nearest StepsCount record within 15 min of `timestamp`, or null if none close enough. */
