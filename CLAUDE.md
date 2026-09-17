@@ -159,6 +159,19 @@ blocks itself, it never creates a `UserEntry` row for an action Live performed, 
 actual `TherapyEvent`-backed data (combined AIV csv, `persistenceLayer.getTherapyEventDataFromTime`)
 instead before concluding a sync gap.
 
+**For "what did Live actually do/have at time X", check Client's dated AIV export, not Live's own.**
+Live has no per-day dated combined AIV file at all (no `Live_SMA366BdatedAIV` folder) — only
+`combinedLive_SMA366B_rebuilt.txt`, which has **no date column** and spans ~5+ days, so it can't be
+safely filtered to one specific day+time. Client's `Client_SMF731BdatedAIV\combinedClient_SMF731B
+<YYYYMMDD>.txt`, by contrast, mirrors Live's real per-cycle RT payload (BG, IOB, MJ/automation
+state, Notes — everything, not just the Notes column) into a genuine dated file, because
+`NSDeviceStatusHandler.kt` builds Client's own AIV rows straight from Live's incoming NS device
+status. So for a "what was Live's real state at this specific timestamp" question, Client's dated
+file is actually the MORE usable source, precisely because Live itself lacks one. Real example: this
+mirrored data directly showed Live's MJ state was `MJ2` (not `NOMJremains`) during a window where
+`HighDaytimeBrake` fired on Virtual but not Live — explaining the divergence outright, no guessing
+needed, once the right column was actually read.
+
 **Wanted, not yet built**: when an automation's conditions are checked but DON'T fire on Live, there
 is currently no persisted record of *why not* — no snapshot of the settings/IOB/BGL/delta values
 that were evaluated at that moment. Worth keeping in mind as a design goal for future diagnostic
