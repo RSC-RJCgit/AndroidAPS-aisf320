@@ -850,7 +850,19 @@ class AutoIsfHistoryExporter @Inject constructor(
     }
 
     /** SC's stepXmin if a local record is close enough, else the reason-text fallback.
-     *  `bucketMinutes` selects the window: 5, 15, 30, 60 or 180. */
+     *  `bucketMinutes` selects the window: 5, 15, 30, 60 or 180.
+     *
+     *  Priority flipped 2026-09-17 when Virtual's live-steps mirroring is on (same
+     *  `virtualPump.isEnabled() && !config.AAPSCLIENT` idiom as [hideLiveUamBoostEchoes] above):
+     *  local SC rows only exist on Virtual when ActivityMonitorShowStepsFromSmartphone was
+     *  separately turned on, and a stale SC row from BEFORE the mirroring fix (or from a period
+     *  the toggle was later switched off) sits in the DB for up to 15 min and silently overrides
+     *  the now-correct mirrored reason value with old/wrong data -- confirmed via real device data
+     *  (Virtual's own persisted APSResult reason tracked Live's Steps60/180M exactly cycle-for-cycle,
+     *  while the exported table for the same timestamps still showed the stale SC 0). The mirrored
+     *  reason is authoritative in this case, so it now wins outright; local SC is only the fallback
+     *  when no APSResult is close enough to parse. Everywhere else (Client, or Virtual with the
+     *  mirroring toggle off) keeps the original SC-first behavior. */
     fun stepsValue(sc: SC?, timestamp: Long, apsResults: List<APSResult>, bucketMinutes: Int): Int? {
         val (field, regex) = when (bucketMinutes) {
             5    -> SC::steps5min to steps5Regex
@@ -859,7 +871,12 @@ class AutoIsfHistoryExporter @Inject constructor(
             60   -> SC::steps60min to steps60Regex
             else -> SC::steps180min to steps180Regex
         }
-        return sc?.let(field) ?: stepsFromReason(timestamp, apsResults, regex)
+        val liveMirrorActive = virtualPump.isEnabled() && !config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+        return if (liveMirrorActive) {
+            stepsFromReason(timestamp, apsResults, regex) ?: sc?.let(field)
+        } else {
+            sc?.let(field) ?: stepsFromReason(timestamp, apsResults, regex)
+        }
     }
 
     /** Nearest StepsCount record within 15 min of `timestamp`, or null if none close enough. */
