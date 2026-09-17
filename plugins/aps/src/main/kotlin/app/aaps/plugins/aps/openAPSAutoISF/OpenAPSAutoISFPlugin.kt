@@ -352,6 +352,32 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
     }
 
+    // Fallback added 2026-09-17, same day as the identity-hash diagnostic on the live in-memory path
+    // (processedDeviceStatusData.openAPSData.suggested), because that path was reading null 36/36
+    // times on real device data and chasing the root cause through repeated APK build/upload cycles
+    // was too slow to leave dosing broken in the meantime. This reuses Client's already-proven
+    // mechanism (AutoIsfHistoryExporter.stepsFromReason() reads persisted APSResult rows via
+    // persistenceLayer.getApsResults() -- reliable for Client because Client never writes competing
+    // rows) but adapted for Virtual, where competing rows ARE a real risk: unlike a single
+    // nearest-only lookup, this walks OUTWARD from nearest-to-now until it finds a row whose reason
+    // actually has the token, skipping any that don't. That skip is now safe specifically because
+    // DetermineBasalAutoISF.kt's determine_basal() suppresses the Steps5M/15M/30M/60M/180M reason
+    // tokens on Virtual's own rows while this same mirroring toggle is on (suppressStepsReasonText) --
+    // so a row with no token is known to be Virtual's own, never a genuine miss, and skipping it can
+    // only skip past Virtual's own data, never past a real mirrored reading. 20-min window is
+    // generous against the invoke()/NS-upload cadence (~1/min each); returns the first (nearest) match
+    // or null if nothing in the window has the token at all (e.g. NS hasn't sent anything all session).
+    private fun liveStepsFromDbFallback(regex: Regex): Int? {
+        val now = dateUtil.now()
+        val candidates = persistenceLayer.getApsResults(now - T.mins(20).msecs(), now)
+            .sortedBy { kotlin.math.abs(it.date - now) }
+        for (candidate in candidates) {
+            val m = regex.find(candidate.reason) ?: continue
+            return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+        }
+        return null
+    }
+
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
@@ -394,12 +420,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // up during testing) -- indistinguishable from a genuine mirrored reading without checking the raw
     // logs. With the fallback removed, 0 unambiguously means "no mirrored value available right now",
     // and any non-zero reading unambiguously proves the mirror worked.
-    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: 0 else StepService.getRecentStepCount5Min()
+    private val recentSteps5Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps5Regex) ?: liveStepsFromDbFallback(liveSteps5Regex) ?: 0 else StepService.getRecentStepCount5Min()
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
-    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: 0 else StepService.getRecentStepCount15Min()
-    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: 0 else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) { logLiveStepsMirrorDiagnostic(); liveStepsFromMirroredReason(liveSteps60Regex) ?: 0 } else StepService.getRecentStepCount60Min()
-    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: 0 else StepService.getRecentStepCount180Min()
+    private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: liveStepsFromDbFallback(liveSteps15Regex) ?: 0 else StepService.getRecentStepCount15Min()
+    private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: liveStepsFromDbFallback(liveSteps30Regex) ?: 0 else StepService.getRecentStepCount30Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) { logLiveStepsMirrorDiagnostic(); liveStepsFromMirroredReason(liveSteps60Regex) ?: liveStepsFromDbFallback(liveSteps60Regex) ?: 0 } else StepService.getRecentStepCount60Min()
+    private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: liveStepsFromDbFallback(liveSteps180Regex) ?: 0 else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
     override fun onStart() {
