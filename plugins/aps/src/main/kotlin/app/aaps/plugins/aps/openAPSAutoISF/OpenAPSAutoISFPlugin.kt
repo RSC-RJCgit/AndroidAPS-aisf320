@@ -7351,7 +7351,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
             // state still allowing it -- ignores all the other existingConditionsMet checks above.
             val noRecentHighTrigger = !recentLibreOver12(48) && checkAutomationState("MJ", "NOMJremains")
-            if (existingConditionsMet || noRecentHighTrigger) {
+            // Split 2026-09-17, per explicit request: existingConditionsMet is specifically the
+            // hypoalarm-triggered path (requires AlarmHypo=AlarmRecent) -- MJ3 unlocks fuller dosing
+            // eligibility (e.g. HighDaytimeBrake's mid-band SMB boost, widened to MJ3 the same day),
+            // which is the wrong direction to escalate to right after a genuine hypo. Lands at MJ2
+            // instead -- more cautious than MJ3, still past plain NOMJremains. noRecentHighTrigger
+            // (unrelated to any hypo -- just "no evidence a real high still justifies staying off")
+            // keeps landing at MJ3 exactly as before. If both happen to be true at once, the
+            // hypoalarm path's more cautious MJ2 takes priority.
+            if (existingConditionsMet) {
+                sendSms("MoreMJ2 (hypoalarm)")
+                setAutomationState("MJ", "MJ2")
+                addCarePortalNote("MoreMJ2")
+                markRun("MoreMJ")
+            } else if (noRecentHighTrigger) {
                 sendSms("MoreMJ")
                 setAutomationState("MJ", "MJ3")
                 addCarePortalNote("MoreMJ")

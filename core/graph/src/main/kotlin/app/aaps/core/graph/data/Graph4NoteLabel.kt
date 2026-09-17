@@ -49,7 +49,12 @@ object Graph4NoteLabel {
         // what the CarePortal Note Code reference doc already uses for these.
         "TierSetA" to "TSetA",
         "TierSetB" to "TSetB",
-        "TierSetC" to "TSetC"
+        "TierSetC" to "TSetC",
+        // Added 2026-09-17: MoreMJ2 (new hypoalarm->MJ2 path) would otherwise truncate to "MoreM",
+        // identical to plain MoreMJ (the noRecentHighTrigger->MJ3 path) -- same collision shape as
+        // the TierSetA/B/C fix above.
+        "MoreMJ" to "MoreM",
+        "MoreMJ2" to "MorM2"
     )
 
     fun display(full: String): String {
