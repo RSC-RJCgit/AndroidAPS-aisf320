@@ -119,8 +119,12 @@ snapshot line.
 
 **"Use live X on VirtualPump" toggles** cover two genuinely different shapes — don't conflate them:
 - **Continuous mirror** (precedent: `ApsAutoIsfUseLiveStepsOnVirtual`): Virtual's own reads are
-  redirected to the loop phone's real value every cycle, for as long as the toggle is on. Steps are
-  parsed out of `loop.lastRun`'s reason text via a regex — see `liveStepsFromLoopReason()`.
+  redirected to the loop phone's real value every cycle, for as long as the toggle is on. `loop.lastRun`
+  was tried first and is a dead end — it's always the local device's own last computation, never a
+  synced one, so it's self-referential on Virtual. Steps are now parsed out of
+  `processedDeviceStatusData.openAPSData.suggested.reason` (the NS-mirrored RT) via a regex — see
+  `liveStepsFromMirroredReason()`. As of 17 Sep 2026 this is still unconfirmed working end-to-end —
+  see the verification note below before trusting a "looks correct" log read.
 - **One-time event seed** (precedent: `ApsAutoIsfUseLiveMjStateOnVirtual`, `ApsAutoIsfUseLive
   SteroidEventsOnVirtual`): Virtual is NOT continuously reading the loop phone's ongoing state —
   `checkAutomationState()`/`setAutomationState()` are untouched, and this deliberately does not
@@ -180,6 +184,24 @@ MJ=`MJ2` (not `NOMJremains`) 5:10-5:29 PM on 9/15, explaining why `HighDaytimeBr
 Virtual but not Live that day — Client's mirror showed the identical thing, but Live's own file
 should have been the first one checked, not skipped in favor of a "no dated Live file exists"
 assumption made without actually listing `Live_SMA366B\`.
+
+**Verifying what Virtual's own dosing actually used — don't trust `insertOrUpdateApsResult` log
+lines by themselves.** `PersistenceLayerImpl$insertOrUpdateApsResult` has TWO call sites on Virtual
+that log the identical "Inserted APSResult ..." line: `NSDeviceStatusHandler.updateOpenApsData()`
+(re-inserts Live's own mirrored RT into Virtual's local APSResult table every time a new NS
+devicestatus event arrives — this is the "Virtual writes its own rows into that table too" gap) and
+`LoopPlugin`'s own post-`invoke()` "store calculations to DB" (Virtual's actual computed RT, once
+per cycle). Grepping the DB-insert line alone, with no way to tell which call site produced it, risks
+comparing Live's mirrored data against a copy of itself rather than against what Virtual actually
+computed — this happened for real on 17 Sep 2026: a steps-mirroring fix looked "confirmed working"
+because NS-mirror-insert timestamps happened to land within milliseconds of each WS event and
+naturally matched Live's own ground truth, while the SAME cycle's actual dosing input —
+`recentStepsXMinutes`, visible only via `OpenAPSAutoISFPlugin.invoke()`'s own "invoke found step
+counts 5m:...,60m:..." debug line, or the `reason=` text on invoke()'s own "Result: RT(" line — was
+still reading 0 ten-plus seconds after Live's correct data had already landed. To verify what
+Virtual's own dosing actually used, anchor to a log line only invoke() itself can produce ("invoke
+found step counts", or invoke()'s own "Result: RT(...reason=...)" line), never a bare
+`insertOrUpdateApsResult` insert.
 
 **Wanted, not yet built**: when an automation's conditions are checked but DON'T fire on Live, there
 is currently no persisted record of *why not* — no snapshot of the settings/IOB/BGL/delta values

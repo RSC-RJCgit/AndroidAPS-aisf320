@@ -355,6 +355,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
+    // Diagnostic added 2026-09-17: real device data (878) showed Virtual's own invoke() reading
+    // recentStepsXMinutes as 0 while Live's real Steps60M was 305 ten seconds after Live's correct
+    // reason text had already landed in openAPSData.suggested (confirmed via NSDeviceStatusHandler's
+    // own "autoIsfSettingsSnapshot after RT.deserialize" debug line, no exception) -- so the write
+    // side is known-good, but something between that write and this read is still failing. Pins down
+    // exactly where: is suggested null (never received / cleared), how stale is clockSuggested (a
+    // second update overwriting with something reason-less?), does the raw reason text even contain
+    // a Steps60 token, and does the regex actually match it. Logged once per cycle only (piggybacks
+    // recentSteps60Minutes, the same bucket "invoke found step counts" already summarizes) --
+    // deliberately not per-bucket to avoid 5x-per-cycle spam.
+    private fun logLiveStepsMirrorDiagnostic() {
+        val suggested = processedDeviceStatusData.openAPSData.suggested
+        val clockSuggested = processedDeviceStatusData.openAPSData.clockSuggested
+        val ageMs = if (clockSuggested != 0L) dateUtil.now() - clockSuggested else -1L
+        val reason = suggested?.reason?.toString()
+        val matched60 = reason?.let { liveSteps60Regex.find(it) } != null
+        aapsLogger.debug(
+            LTag.APS,
+            "liveStepsMirrorDiagnostic: suggestedNull=${suggested == null} clockSuggestedAgeMs=$ageMs " +
+                "reasonNull=${reason == null} reasonLen=${reason?.length ?: -1} steps60Matched=$matched60 " +
+                "reasonTail=${reason?.takeLast(150)}"
+        )
+    }
+
     // Deliberately NOT falling back to StepService's own local sensor while the toggle is on (2026-09-17,
     // per direct request): a local fallback here can silently mask a mirroring failure behind a small,
     // plausible-looking non-zero number from Virtual's own physical sensor (e.g. the phone being picked
@@ -365,7 +389,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val recentSteps10Minutes; get() = StepService.getRecentStepCount10Min()
     private val recentSteps15Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps15Regex) ?: 0 else StepService.getRecentStepCount15Min()
     private val recentSteps30Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps30Regex) ?: 0 else StepService.getRecentStepCount30Min()
-    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps60Regex) ?: 0 else StepService.getRecentStepCount60Min()
+    private val recentSteps60Minutes; get() = if (useLiveStepsOnVirtual()) { logLiveStepsMirrorDiagnostic(); liveStepsFromMirroredReason(liveSteps60Regex) ?: 0 } else StepService.getRecentStepCount60Min()
     private val recentSteps180Minutes; get() = if (useLiveStepsOnVirtual()) liveStepsFromMirroredReason(liveSteps180Regex) ?: 0 else StepService.getRecentStepCount180Min()
     private val phone_moved; get() = PhoneMovementDetector.phoneMoved()
 
