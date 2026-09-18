@@ -354,7 +354,13 @@ class PrepareTreatmentsDataWorker(
         val stepsCounts = if (realStepsCounts.isNotEmpty() || !stepCountSource.isMirroring()) {
             realStepsCounts
         } else {
-            val now = endTime
+            // Real wall-clock time, NOT endTime -- endTime is the graph's own right-edge padding
+            // (rounded up to the next hour, plus up to 1h more for an active prediction line), so it
+            // can sit up to ~2h ahead of actual now. LiveStepsMirror.at()/StepCountSource.latest()
+            // both enforce a 20-min freshness window against whatever timestamp they're given, so
+            // passing endTime made this synthetic point (and its freshness check) fail almost every
+            // time regardless of how current the mirrored data actually was.
+            val now = System.currentTimeMillis()
             val buckets = stepCountSource.latest(now, T.mins(20).msecs())
             if (buckets == null) emptyList() else listOf(
                 SC(
