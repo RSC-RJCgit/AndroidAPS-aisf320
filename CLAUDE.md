@@ -9,12 +9,49 @@ session assigned it. Do not make version-only `NNNnext` commits.
 
 Real device/incident data for tuning decisions lives outside this repo at `C:\backup\AAPS`
 (`aiv_Regan\*.csv` exports, `aiv_Regan\output\combinedRegan.txt`, `ZFlip5_Logs1\AutoISF_dated_*`
-text logs pulled from the phone) and `C:\backup\AAPS\aapsLogs\AutoISF_settings_*.txt` (exported
-preference snapshots). **Always check real numbers there before tuning a threshold** — this
-project's established practice is evidence over guessing (e.g. the SMB-stacking caps and the
+text logs pulled from the phone). **Always check real numbers there before tuning a threshold** —
+this project's established practice is evidence over guessing (e.g. the SMB-stacking caps and the
 `OvernightDuraRescue` thresholds were both set from measured percentiles, not round numbers).
 A companion Windows batch script at `C:\Users\arjay\OneDrive\Desktop\aaps.bat` pulls this data off
 the phone via `adb` (incremental, marker-file-based; DCIM is `.jpg`-only).
+
+**Per-device data paths — named explicitly, not as a `<Name>`/`*` pattern, because the wrong-depth
+sibling below has bitten repeatedly.** Current (check these first, spelled out per device):
+- `C:\backup\AAPS\aapsLogs\Live_SMA366B\`
+- `C:\backup\AAPS\aapsLogs\Client_SMF731B\`
+- `C:\backup\AAPS\aapsLogs\Virtual_SMF731B\`
+
+Each holds per-cycle `AutoISF_<name>_<timestamp>.csv/.txt`, `AutoISF_settings_<name>_<timestamp>.txt`,
+`UKFcheck_*`/`UserEntries_*`, plus an `output\` subfolder duplicating all of it.
+
+**NOT** `C:\backup\AAPS\Live_SMA366B\`, `C:\backup\AAPS\Client_SMF731B\`, or
+`C:\backup\AAPS\Virtual_SMF731B\` — same three names, one level shallower, stale. This exact
+depth confusion has caused real wrong answers more than once (e.g. calling Virtual's data "3 days
+stale" from this path while `aapsLogs\Virtual_SMF731B\` was current to the hour).
+
+Raw app log zips are a sibling one level up from `aapsLogs\`, not inside it:
+- `C:\backup\AAPS\logs_Live_SMA366B\AndroidAPS_LOG_*.log.zip`
+- `C:\backup\AAPS\logs_Client_SMF731B\AndroidAPS_LOG_*.log.zip`
+- `C:\backup\AAPS\logs_Virtual\AndroidAPS_LOG_*.log.zip` (no `_SMF731B` suffix for Virtual specifically)
+
+A separate legacy root, `C:\backup\aapsLogs\` (no `AAPS\` segment), is mostly stale but not
+uniformly — it occasionally holds real zips (e.g. `C:\backup\aapsLogs\logs_Virtual\`) the current
+tree lacks, so check it too rather than assuming it's dead.
+
+**`ls`/`find` do not recurse into siblings by default in this environment.** Before concluding a
+device's data is missing or stale, glob/list the parent directory broadly
+(`C:\backup\AAPS\aapsLogs\*` AND `C:\backup\aapsLogs\*`) — do not check one guessed path depth and
+stop there. When an investigation names one device (Virtual or Client), pull its mirror counterpart
+too by default for comparison, and Live as well when relevant (see the Client-mirror section below).
+
+Manual/CarePortal doc conventions: when finding "the most recent" version, exclude any filename
+containing `Latest` or `DELL17` — those are stale/lockfile copies, not the true newest. Revising
+one of these manuals = a new file in `C:\winword\aaa\`, never an overwrite; bump date + version +
+time together, e.g. `AutoISF Operations BRIEF Manual Sep 19 26 mydoc v26 0913.docx`, keeping the
+prior version alongside it.
+
+**Never edit code or docs without describing the change and getting an explicit yes first — every
+time**, including mid-session after a plan has already been agreed to.
 
 ## Core dosing files
 
