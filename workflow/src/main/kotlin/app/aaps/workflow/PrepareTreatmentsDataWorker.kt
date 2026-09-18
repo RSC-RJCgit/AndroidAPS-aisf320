@@ -34,6 +34,7 @@ import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.CodedAutomationNames
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +55,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var config: Config
+    @Inject lateinit var stepCountSource: StepCountSource
 
     class PrepareTreatmentsData(
         val overviewData: OverviewData
@@ -337,42 +339,28 @@ class PrepareTreatmentsDataWorker(
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.heartRateColor) }
 
         val realStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(fromTime, endTime)
-        val liveStepsMirrorActive = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT &&
-            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
-        // Synthetic current-value fallback added 2026-09-18: real StepsCount rows only exist when
-        // ActivityMonitorShowStepsFromSmartphone is separately turned on (off tonight, per the
-        // steps-mirroring investigation), so realStepsCounts is empty while Virtual's live-steps
-        // mirroring is on and graph1's steps row goes blank. Confirmed this row was never a
-        // historical trend even on Client -- just a current-value indicator -- so one synthetic
-        // point is the right fix, not a per-timestamp series. Walks outward from "now" through
-        // apsResultsList (already queried above for fastRiseRegex, no extra DB hit) using the same
-        // reason-text regex as OpenAPSAutoISFPlugin.liveStepsFromDbFallback()/
-        // AutoIsfHistoryExporter.stepsFromReason() -- a candidate with no matching token is
-        // Virtual's own row (DetermineBasalAutoISF.kt's suppressStepsReasonText stops Virtual's own
-        // rows carrying one while this mirroring is on), so skipping to the next candidate is safe.
-        val stepsCounts = if (realStepsCounts.isNotEmpty() || !liveStepsMirrorActive) {
+        // Synthetic current-value fallback added 2026-09-18, reworked to use StepCountSource (the
+        // shared "source selection for non-loop consumers" helper, core/objects/utils/StepCountSource.kt)
+        // instead of a hand-rolled reason-text regex -- that duplicated logic risked its own bugs
+        // independent of whatever was wrong with the mirroring pipeline itself, and this worker is
+        // exactly the kind of "non-loop consumer" that class exists for. realStepsCounts only has
+        // rows when ActivityMonitorShowStepsFromSmartphone is separately turned on (off tonight), so
+        // it's empty while Virtual's live-steps mirroring is on and graph1's steps row goes blank.
+        // This row was never a historical trend even on Client -- just a current-value indicator --
+        // so one synthetic point (StepCountSource.latest() at "now") is the right fix, not a
+        // per-timestamp series. StepCountSource.isMirroring() itself decides whether this device
+        // should be reading the mirror at all (Client is Client's own separate, already-working
+        // stepsFromReason()-via-APSResult path -- see that class's own doc comment -- not this one).
+        val stepsCounts = if (realStepsCounts.isNotEmpty() || !stepCountSource.isMirroring()) {
             realStepsCounts
         } else {
             val now = endTime
-            val candidates = apsResultsList
-                .filter { kotlin.math.abs(it.date - now) < T.mins(20).msecs() }
-                .sortedBy { kotlin.math.abs(it.date - now) }
-            fun matchFor(label: String): Int? {
-                val regex = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
-                for (c in candidates) {
-                    val m = regex.find(c.reason) ?: continue
-                    return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
-                }
-                return null
-            }
-            val s5 = matchFor("[Ss]teps5")
-            if (s5 == null) emptyList() else listOf(
+            val buckets = stepCountSource.latest(now, T.mins(20).msecs())
+            if (buckets == null) emptyList() else listOf(
                 SC(
-                    duration = 0, timestamp = now, steps5min = s5,
-                    steps10min = s5, steps15min = matchFor("[Ss]teps15") ?: s5,
-                    steps30min = matchFor("[Ss]teps30") ?: 0,
-                    steps60min = matchFor("[Ss]teps60") ?: 0,
-                    steps180min = matchFor("[Ss]teps180") ?: 0,
+                    duration = 0, timestamp = now,
+                    steps5min = buckets[5] ?: 0, steps10min = buckets[10] ?: 0, steps15min = buckets[15] ?: 0,
+                    steps30min = buckets[30] ?: 0, steps60min = buckets[60] ?: 0, steps180min = buckets[180] ?: 0,
                     device = "Mirror"
                 )
             )
