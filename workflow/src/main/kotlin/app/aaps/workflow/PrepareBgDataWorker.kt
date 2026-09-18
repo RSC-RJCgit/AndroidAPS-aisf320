@@ -43,6 +43,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
@@ -67,6 +68,7 @@ class PrepareBgDataWorker(
     @Inject lateinit var config: Config
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var automationStateService: AutomationStateInterface
+    @Inject lateinit var stepCountSource: StepCountSource
     // Display-only smoothing for the Raw BG line below -- see UnscentedKalmanFilterPlugin.smoothForDisplay().
     // Injected directly (not via activePlugin.activeSmoothing) since we want UKF specifically here
     // regardless of which smoothing algorithm the user has selected for the real BG pipeline.
@@ -277,8 +279,27 @@ class PrepareBgDataWorker(
         // AutoISFHistoryDialog.kt's stepsValue()/stepsFromReason(), reconstructed per-result here since
         // this needs a max-over-window rather than a single nearest-timestamp lookup.
         val recentApsResults = persistenceLayer.getApsResults(stepsWindowFrom, toTime)
-        val stepsCountList = rawStepsCountList.ifEmpty {
-            stepsFromReason(recentApsResults)
+        // Virtual+mirroring (ApsAutoIsfUseLiveStepsOnVirtual) is a THIRD case, distinct from both branches
+        // above: rawStepsCountList is empty (no real local pedometer) same as a client build, but the
+        // reason-text fallback below can't help either -- DetermineBasalAutoISF.kt deliberately suppresses
+        // its own Steps5M/etc. reason-text lines here (suppressStepsReasonText = useLiveStepsOnVirtual(),
+        // see that flag's own doc comment) specifically so a stale/broken mirrored read never gets
+        // confidently misreported as real. Reading StepCountSource/LiveStepsMirror directly -- the same
+        // authoritative source dosing itself already uses -- avoids the suppressed field entirely, so this
+        // row doesn't need to loosen that safety suppression to work.
+        val stepsCountList = if (rawStepsCountList.isEmpty() && stepCountSource.isMirroring()) {
+            val now = System.currentTimeMillis()
+            val buckets = stepCountSource.latest(now, T.mins(20).msecs())
+            if (buckets == null) emptyList() else listOf(
+                SC(
+                    duration = 0, timestamp = now,
+                    steps5min = buckets[5] ?: 0, steps10min = buckets[10] ?: 0, steps15min = buckets[15] ?: 0,
+                    steps30min = buckets[30] ?: 0, steps60min = buckets[60] ?: 0, steps180min = buckets[180] ?: 0,
+                    device = "Mirror"
+                )
+            )
+        } else {
+            rawStepsCountList.ifEmpty { stepsFromReason(recentApsResults) }
         }
         val latestSteps = stepsCountList.maxByOrNull { it.timestamp }
         // Same client-sync-fallback pattern as steps above: DR=/acWt=/Lslope= must come from the synced
