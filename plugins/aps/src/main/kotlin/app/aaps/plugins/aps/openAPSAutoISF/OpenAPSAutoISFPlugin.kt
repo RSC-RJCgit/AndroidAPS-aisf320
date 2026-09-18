@@ -319,6 +319,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // unlabelled APSResult as a substitute while mirroring. Missing buckets stay null in the
     // sample and diagnostics; legacy numeric dosing inputs receive 0 when unavailable.
     private var liveStepsForCycle: LiveStepsMirror.Sample? = null
+
+    // Published text belongs to an invocation, never to a later NS update or UI refresh.
+    @Volatile var stepsCalculationSummary: String = ""
+        private set
     private fun useLiveStepsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && activePlugin.activePump is VirtualPump
 
@@ -3006,7 +3010,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
-        liveStepsForCycle = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
+        val stepsCapturedAt = dateUtil.now()
+        liveStepsForCycle = if (useLiveStepsOnVirtual()) liveStepsMirror.at(stepsCapturedAt) else null
+        val stepsSourceForDisplay = if (useLiveStepsOnVirtual())
+            liveStepsForCycle?.source ?: "Live (no fresh sample)" else "Local step sensor"
+        val stepsAgeForDisplay = liveStepsForCycle?.let { (stepsCapturedAt - it.timestamp) / 1000 }
+        val missingStepsForDisplay = if (useLiveStepsOnVirtual())
+            listOf(5, 10, 15, 30, 60, 180).filter { liveStepsForCycle?.steps(it) == null } else emptyList()
+        stepsCalculationSummary = "Attempt: ${dateUtil.dateAndTimeString(stepsCapturedAt)}\nSource: $stepsSourceForDisplay\nNo completed calculation yet."
         if (useLiveStepsOnVirtual()) {
             val sample = liveStepsForCycle
             aapsLogger.debug(LTag.APS, "LiveStepsMirror dosing source=${sample?.source ?: "missing"} " +
@@ -3020,6 +3031,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ActivityMonitorStepsActive, false)
             preferences.put(BooleanKey.ActivityMonitorStepsInactive, false)
             preferences.put(DoubleKey.ActivityMonitorRatio, 1.0)
+            stepsCalculationSummary += "\nCalculation skipped: Live steps missing or older than 20 minutes.\nMissing buckets: ${missingStepsForDisplay.joinToString()} min"
+            rxBus.send(EventResetOpenAPSGui("Live steps missing or stale; calculation skipped"))
             return
         }
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
@@ -3133,6 +3146,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val calendar = Calendar.getInstance()
         val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
         val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
+        val activityOutcomeForDisplay = consoleLog.lastOrNull { it.startsWith("Activity monitor") }
+        var steps180ForDisplay = 0
+        var steps15ForDisplay = 0
+        var steps5ForDisplay = 0
         val activityLog = if (consoleLog.size == 0) "Activity Monitor skipped" else consoleLog[0]
         consoleLog.clear()
         var stepActivityDetected = false
@@ -7907,6 +7924,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    lever. Explicit mid-band clock is set independently of the outer window and is
                 //    narrower on BOTH ends (08:30 start, 01:30 end) so an outer-window change cannot
                 //    quietly reopen 01:30-02:00 or the 06:00-08:30 dawn slot.
+                //    2026-09-18: considered widening this start to 04:30 to cover a real 04:30-08:00
+                //    high plateau, but the 08:30 start exists specifically because a 06:14 fire once
+                //    stacked IOB into a later low (see 7 Sep history two lines above) -- reverted, and
+                //    a separate EarlyDawnSlowRise automation was built instead (narrower entry: a
+                //    genuinely sustained slow rise, not just flat/high) so this block's own guard
+                //    against repeating that incident stays intact.
                 // Both bands share the time-dependent 10-min early-morning / 2-min otherwise throttle;
                 // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
@@ -7945,6 +7968,59 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     } else {
                         consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
                     }
+                }
+            }
+        }
+
+        // --- EarlyDawnSlowRise: added 2026-09-18 at explicit request. Real 04:30-08:00 device data
+        // showed a genuine early climb (~04:15-05:20, 5.3->7.4mmol) followed by an oscillating 6-8mmol
+        // plateau (06:00-08:00) getting almost no correction (Req/SMB near 0 the whole window) because
+        // HighDaytimeBrake's own mid band doesn't open until 08:30 -- that start was deliberately
+        // pulled there on 7 Sep 2026 after a 06:14 fire once stacked IOB into a later low (see
+        // HighDaytimeBrake's own doc comment above), so widening it back was rejected in favor of this
+        // separate, narrower trigger instead.
+        //
+        // Entry requires delta/shortAvgDelta/longAvgDelta ALL positive and small (0-0.15mmol)
+        // simultaneously -- deliberately narrower than "just high and flat": longAvgDelta's own
+        // ~40-45min lookback (standard OpenAPS convention) is what actually enforces "sustained", not
+        // a literal 30-min scan, and the later oscillating plateau flips delta's sign too often to
+        // hold all three positive at once for long, so this should only catch the genuine early climb,
+        // not the later back-and-forth.
+        //
+        // Action is a deliberately stronger lever than HighDaytimeBrake's TT+multiplier (explicit
+        // request, judged appropriate specifically because this window otherwise gets no correction at
+        // all): SMBdel +0.5 and a 30-min switch to whichever profile fills the TierC slot for the
+        // currently-running role (Standard vs Low, same resolution HighOldPod above uses).
+        // switchProfileIfNeeded()'s own duration param reverts the profile natively -- no custom revert
+        // logic needed. The 30-min TT alongside it is what makes the SMBdel boost itself revert too,
+        // via the existing DelOff "no active TT" mechanism (see BMild's own doc comment for that
+        // pattern) -- without a TT there would be nothing to trigger DelOff's reset and the boost would
+        // stay applied indefinitely.
+        run {
+            if (readyToRun("EarlyDawnSlowRise", 30) && isTimeBetween(4, 30, 8, 0)) {
+                val g = glucoseStatus.glucose
+                val d = glucoseStatus.delta
+                val sd = glucoseStatus.shortAvgDelta
+                val ld = glucoseStatus.longAvgDelta
+                val slowSustainedRise = d > 0.0 && d < 2.7 /* < 0.15 mmol */ &&
+                    sd > 0.0 && sd < 2.7 &&
+                    ld > 0.0 && ld < 2.7
+                if (g > 126.1 /* 7.0 mmol */ && slowSustainedRise) {
+                    val currentProfileName = profileFunction.getOriginalProfileName()
+                    val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                    val tierCTarget = if (currentProfileName == currentLow) {
+                        preferences.get(StringKey.ApsAutoIsfLow90ProfileName)
+                    } else {
+                        preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+                    }
+                    val preBoostDeliveryRatio = smb_delivery_ratio
+                    val boostedDeliveryRatio = (preBoostDeliveryRatio + 0.5).coerceAtMost(smb_delivery_ratio_max)
+                    setSmbDeliveryRatio(boostedDeliveryRatio)
+                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 30)
+                    if (tierCTarget.isNotBlank()) switchProfileIfNeeded(tierCTarget, 30)
+                    sendSms("EarlyDawnSlowRise: TT 4.0mmol@30min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, profile->TierC 30min, g=${convert_bg(g)}")
+                    addCarePortalNote("EDSR")
+                    markRun("EarlyDawnSlowRise")
                 }
             }
         }
@@ -8944,9 +9020,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog,
             bg_acce = bgAcce,
-            steps180M = recentSteps180Minutes,
-            steps15M = recentSteps15Minutes,
-            steps5M = recentSteps5Minutes,
+            steps180M = recentSteps180Minutes.also { steps180ForDisplay = it },
+            steps15M = recentSteps15Minutes.also { steps15ForDisplay = it },
+            steps5M = recentSteps5Minutes.also { steps5ForDisplay = it },
             suppressStepsReasonText = useLiveStepsOnVirtual(),
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3, BMild, or
@@ -9011,6 +9087,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             determineBasalResult.oapsProfileAutoIsf = oapsProfile
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
+            stepsCalculationSummary = buildString {
+                append("Calculation: ${dateUtil.dateAndTimeString(now)}\nSource: $stepsSourceForDisplay")
+                stepsAgeForDisplay?.let { age -> append("\nSample age at capture: ${age}s") }
+                append("\nSteps 5 / 10 / 15 / 30 / 60 / 180 min:\n")
+                append(listOf(steps5ForDisplay, oapsProfile.recent_steps_10_minutes,
+                    steps15ForDisplay, oapsProfile.recent_steps_30_minutes,
+                    oapsProfile.recent_steps_60_minutes, steps180ForDisplay).joinToString(" / "))
+                if (missingStepsForDisplay.isNotEmpty())
+                    append("\nWarning: ${missingStepsForDisplay.joinToString()} min missing; calculation substituted 0.")
+                append("\n${activityOutcomeForDisplay ?: "Activity outcome unavailable"}")
+                append("\nActivity sensitivity ratio: $activityRatio (1.0 = no activity adjustment)")
+                append("\nCalculation completed; this does not confirm insulin delivery.")
+            }
             lastCycleInsulinReq = it.insulinReq   // raw RT, not the APSResult wrapper -- that doesn't expose insulinReq
             // Mirrored into a preference (see LongKey.ApsAutoIsfLastCycleInsulinReqMilliU's own doc
             // comment) so DelayedBolusWorker, in a lower module that can't see this private field, can

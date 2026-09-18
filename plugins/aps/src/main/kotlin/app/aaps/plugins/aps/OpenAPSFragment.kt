@@ -27,6 +27,7 @@ import app.aaps.core.utils.HtmlHelper
 import app.aaps.plugins.aps.databinding.OpenapsFragmentBinding
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
+import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -138,6 +139,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     private fun updateGUI() {
         if (_binding == null) return
         val openAPSPlugin = activePlugin.activeAPS
+        updateStepsSummary()
         val exportStatuses = ExportScriptDebugStatus.snapshot()
         binding.scriptdebugdata.text = exportStatuses.joinToString("\n")
         openAPSPlugin.lastAPSResult?.let { lastAPSResult ->
@@ -160,6 +162,7 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
     @Synchronized
     private fun resetGUI(text: String) {
         if (_binding == null) return
+        updateStepsSummary()
         binding.result.text = text
         binding.glucosestatus.text = ""
         binding.currenttemp.text = ""
@@ -171,6 +174,15 @@ class OpenAPSFragment : DaggerFragment(), MenuProvider {
         binding.request.text = ""
         binding.lastrun.text = ""
         binding.swipeRefresh.isRefreshing = false
+    }
+
+    private fun updateStepsSummary() {
+        val plugin = activePlugin.activeAPS as? OpenAPSAutoISFPlugin
+        binding.stepsSummary.visibility = if (plugin == null) View.GONE else View.VISIBLE
+        binding.stepsSummary.text = plugin?.let {
+            rh.gs(R.string.steps_used_in_calculation) + "\n" +
+                it.stepsCalculationSummary.ifBlank { rh.gs(R.string.steps_no_calculation) }
+        }
     }
 
     private fun Any.dataClassToHtml(): Spanned =
