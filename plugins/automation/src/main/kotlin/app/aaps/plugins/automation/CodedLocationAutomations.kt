@@ -8,10 +8,13 @@ import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAnyDeskLaunchRequested
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
@@ -50,7 +53,9 @@ class CodedLocationAutomations @Inject constructor(
     private val profileFunction: ProfileFunction,
     private val dateUtil: DateUtil,
     private val rxBus: RxBus,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val config: Config,
+    private val activePlugin: ActivePlugin
 ) {
 
     internal data class Spec(
@@ -110,7 +115,18 @@ class CodedLocationAutomations @Inject constructor(
         return designated.equals(currentPhoneModel(), ignoreCase = true)
     }
 
+    // Virtual short-circuit added 2026-09-18 at explicit request: this whole feature (GPS-triggered
+    // arrival/exit SMS, CarePortal notes, AnyDesk requests) exists for the real loop phone travelling
+    // with the person -- Virtual is a stationary test rig with no meaningful location of its own.
+    // Even when thisPhoneSendsLocationNotifications() already suppresses the actual SMS/note/AnyDesk
+    // send (Virtual's phone model won't match AutomationLocationSmsDeviceModel), evaluate() still ran
+    // on every GPS fix -- tracking/persisting SlotState for no purpose. Client is NOT included here:
+    // its own device-model mismatch already makes it a no-op the same way, but it has no equivalent
+    // "this device is fundamentally the wrong kind of device" reason the way Virtual does.
+    private fun isVirtual(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
+
     fun onLocation(location: Location) {
+        if (isVirtual()) return
         if (!preferences.get(BooleanKey.AutomationCodedLocationsEnabled)) {
             reset()
             return

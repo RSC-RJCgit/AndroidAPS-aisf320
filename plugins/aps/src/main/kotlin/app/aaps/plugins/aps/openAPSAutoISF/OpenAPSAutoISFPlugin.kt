@@ -3674,6 +3674,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // this device's secondary-NS worker records that server revision, and this launches AnyDesk
         // once per revision via launchAnyDeskDirect() (bring to front, no kill, no Tasker).
         // Receipt notes do not claim a remote session is up.
+        // Virtual skip added 2026-09-18 at explicit request: Virtual never launches AnyDesk anyway
+        // (isRealLoopPhone() already excludes it), so its own receipt note ("AcNS.../AcLT...") was
+        // pure noise -- nothing was ever going to happen on this device as a result. Cursor (
+        // ApsAutoIsfAnyDeskTaskerHandledAt) still advances unconditionally so Virtual doesn't
+        // needlessly re-scan the same command every cycle; it just never writes anything about it.
         run {
             val commandRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskSecondaryCommandAt)
             val handledRevision = preferences.get(LongKey.ApsAutoIsfAnyDeskTaskerHandledAt)
@@ -3683,24 +3688,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val localTest = localCommandRevision == commandRevision
                 if (localCommandRevision != 0L && localCommandRevision <= commandRevision)
                     preferences.put(LongKey.ApsAutoIsfAnyDeskLocalCommandAt, 0L)
-                val deviceRole = when {
-                    config.AAPSCLIENT -> "C"
-                    activePlugin.activePump is VirtualPump -> "V"
-                    else -> "R"
-                }
-                // Receipt/dispatch Note only: this handler accepted the command. AdOn/AdMs report
-                // whether AAPS itself resolved and launched AnyDesk. The first five graph characters
-                // preserve both route and receiving device role.
-                val receiptNote = if (localTest)
-                    "AcLT$deviceRole local-test receipt"
-                else
-                    "AcNS$deviceRole secondary-NS receipt"
-                addCarePortalNote(receiptNote)
-                if (isRealLoopPhone()) {
-                    launchAnyDeskDirect()
-                    aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
-                } else {
-                    aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+                if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
+                    val deviceRole = when {
+                        config.AAPSCLIENT -> "C"
+                        activePlugin.activePump is VirtualPump -> "V"
+                        else -> "R"
+                    }
+                    // Receipt/dispatch Note only: this handler accepted the command. AdOn/AdMs report
+                    // whether AAPS itself resolved and launched AnyDesk. The first five graph characters
+                    // preserve both route and receiving device role.
+                    val receiptNote = if (localTest)
+                        "AcLT$deviceRole local-test receipt"
+                    else
+                        "AcNS$deviceRole secondary-NS receipt"
+                    addCarePortalNote(receiptNote)
+                    if (isRealLoopPhone()) {
+                        launchAnyDeskDirect()
+                        aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+                    } else {
+                        aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+                    }
                 }
             }
         }
@@ -5012,18 +5019,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Access is accepting connections.
         if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
             cancelCurrentTempTarget()
-            val deviceRole = when {
-                config.AAPSCLIENT -> "C"
-                activePlugin.activePump is VirtualPump -> "V"
-                else -> "R"
-            }
-            val receiptNote = "AcTT$deviceRole relay-TT receipt"
-            addCarePortalNote(receiptNote)
-            if (isRealLoopPhone()) {
-                launchAnyDeskDirect()
-                aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
-            } else {
-                aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+            // Virtual skip added 2026-09-18 at explicit request: same reasoning as the secondary-NS
+            // receiver above -- Virtual never launches AnyDesk (isRealLoopPhone() already excludes
+            // it), so its own "AcTTV relay-TT receipt" note was pure noise. cancelCurrentTempTarget()
+            // and markRun() still run unconditionally so the relayed TT gets consumed properly.
+            if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
+                val deviceRole = when {
+                    config.AAPSCLIENT -> "C"
+                    activePlugin.activePump is VirtualPump -> "V"
+                    else -> "R"
+                }
+                val receiptNote = "AcTT$deviceRole relay-TT receipt"
+                addCarePortalNote(receiptNote)
+                if (isRealLoopPhone()) {
+                    launchAnyDeskDirect()
+                    aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+                } else {
+                    aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+                }
             }
             markRun("AnyDeskRestartActionTT")
         }
