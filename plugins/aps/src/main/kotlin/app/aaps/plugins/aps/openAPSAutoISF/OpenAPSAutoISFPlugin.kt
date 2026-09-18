@@ -7958,8 +7958,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         val preBoostDeliveryRatio = smb_delivery_ratio
                         if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
                             // Halved for MJ3 (0.075 vs the normal 0.15) -- see applyBMildOutcomeFactors()'s
-                            // own doc comment for the real-data incident this responds to.
-                            val boostIncrement = if (checkAutomationState("MJ", "NOMJremains")) 0.15 else 0.075
+                            // own doc comment for the real-data incident this responds to. Halved again
+                            // (0.0375) when already running Standard TierC (added 2026-09-18, same request):
+                            // TierC is itself the most-escalated Standard rung (StuckHighTierC/manual List1
+                            // pick), so stacking the ordinary MJ3 increment on top of an already more
+                            // aggressive profile risks compounding, same shape of concern as the MJ3 case
+                            // itself. Checked independently of MJ state -- TierC alone is reason enough to
+                            // take the lowest tier, regardless of NOMJremains/MJ3.
+                            val onStandardTierC = profileFunction.getOriginalProfileName() ==
+                                preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+                            val boostIncrement = when {
+                                onStandardTierC -> 0.0375
+                                !checkAutomationState("MJ", "NOMJremains") -> 0.075
+                                else -> 0.15
+                            }
                             applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false, deliveryBoostIncrement = boostIncrement)
                             startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
                             sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)} (+$boostIncrement), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
