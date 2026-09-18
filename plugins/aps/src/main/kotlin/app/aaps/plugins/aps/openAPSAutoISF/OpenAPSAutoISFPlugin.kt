@@ -2437,13 +2437,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
     }
 
-    // BMild *outcome* set only — not its entry criteria. SMBdel = mildBase+0.15 and ppWeight high.
-    // setTt=true (BMild/Failsafe): 2-min 5.0 TT is the DelOff timer. HiBrk passes setTt=false and
-    // keeps its own 4.0@5min so HiBrkCut still sees the original TT. Offset-zero only binds
-    // below 5.9; a HiBrk fire at BGL > 7.0 never hits it. Callers keep their own note / markRun.
-    private fun applyBMildOutcomeFactors(gMgdl: Double, setTt: Boolean = true) {
+    // BMild *outcome* set only — not its entry criteria. SMBdel = mildBase+deliveryBoostIncrement
+    // (0.15 default) and ppWeight high. setTt=true (BMild/Failsafe): 2-min 5.0 TT is the DelOff
+    // timer. HiBrk passes setTt=false and keeps its own 4.0@5min so HiBrkCut still sees the
+    // original TT. Offset-zero only binds below 5.9; a HiBrk fire at BGL > 7.0 never hits it.
+    // Callers keep their own note / markRun.
+    // deliveryBoostIncrement added 2026-09-18 at explicit request: real device data showed
+    // HighDaytimeBrake's mid-band (BGL>7.0 sub-branch, this function's own MJ3-widened caller)
+    // re-firing repeatedly during MJ3 (12:37-01:22 PM, IOB climbing 2.1U->3.19U) followed by a
+    // steep BG fall (8.8->5.0mmol within the hour, sustained -0.5 to -0.65mmol/5min delta) --
+    // consistent with the full 0.15 increment being too strong when this keeps re-arming under
+    // MJ3. Default 0.15 preserves every other caller (BMild's own entry, HighEveNightBrake)
+    // unchanged; only HighDaytimeBrake's own call site passes a smaller value for MJ3.
+    private fun applyBMildOutcomeFactors(gMgdl: Double, setTt: Boolean = true, deliveryBoostIncrement: Double = 0.15) {
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-        setSmbDeliveryRatio(mildBase + 0.15)
+        setSmbDeliveryRatio(mildBase + deliveryBoostIncrement)
         // Stash the exact creation timestamp of the TT just started (if it actually was -- this no-ops
         // like any other startTempTargetIfNeeded call if a TT was already active) so
         // bmildOwnFiveTtActive() can later prove ownership of THIS SPECIFIC TT by exact timestamp
@@ -7867,7 +7875,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // a genuinely persistent daytime/evening plateau can re-arm promptly after the 5-minute TT.
         // SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
         run {
-            val highDaytimeBrakeRearmMinutes = if (isTimeBetween(2, 0, 7, 0)) 10 else 2
+            // Daytime floor raised 2->5 min on 2026-09-18 at explicit request, alongside the MJ3
+            // delivery-increment halving above -- same real incident (12:37-01:22 PM repeated
+            // re-fires stacking IOB to 3.19U before a steep fall) argued for slowing the max
+            // re-fire rate too, not just softening each individual fire.
+            val highDaytimeBrakeRearmMinutes = if (isTimeBetween(2, 0, 7, 0)) 10 else 5
             // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
             // time-of-day on the old cut-short) not HiBrkDayCut, but this daytime sibling had the
@@ -7945,9 +7957,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     if (iobChange5 < 0.5) {
                         val preBoostDeliveryRatio = smb_delivery_ratio
                         if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
-                            applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false)
+                            // Halved for MJ3 (0.075 vs the normal 0.15) -- see applyBMildOutcomeFactors()'s
+                            // own doc comment for the real-data incident this responds to.
+                            val boostIncrement = if (checkAutomationState("MJ", "NOMJremains")) 0.15 else 0.075
+                            applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false, deliveryBoostIncrement = boostIncrement)
                             startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                            sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                            sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)} (+$boostIncrement), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                         } else {
                             // SMBdel boost (x1.5 mid 6.5-7.0); relies on the global "DelOff" no-active-TT
                             // reset to revert once this TT ends, early or on time.

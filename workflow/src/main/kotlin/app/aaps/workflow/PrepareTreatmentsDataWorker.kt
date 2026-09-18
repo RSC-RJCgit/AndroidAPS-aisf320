@@ -6,6 +6,7 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BolusDataPoint
@@ -335,8 +336,49 @@ class PrepareTreatmentsDataWorker(
                 .map { hr -> HeartRateDataPoint(hr, rh) }
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.heartRateColor) }
 
+        val realStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(fromTime, endTime)
+        val liveStepsMirrorActive = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+        // Synthetic current-value fallback added 2026-09-18: real StepsCount rows only exist when
+        // ActivityMonitorShowStepsFromSmartphone is separately turned on (off tonight, per the
+        // steps-mirroring investigation), so realStepsCounts is empty while Virtual's live-steps
+        // mirroring is on and graph1's steps row goes blank. Confirmed this row was never a
+        // historical trend even on Client -- just a current-value indicator -- so one synthetic
+        // point is the right fix, not a per-timestamp series. Walks outward from "now" through
+        // apsResultsList (already queried above for fastRiseRegex, no extra DB hit) using the same
+        // reason-text regex as OpenAPSAutoISFPlugin.liveStepsFromDbFallback()/
+        // AutoIsfHistoryExporter.stepsFromReason() -- a candidate with no matching token is
+        // Virtual's own row (DetermineBasalAutoISF.kt's suppressStepsReasonText stops Virtual's own
+        // rows carrying one while this mirroring is on), so skipping to the next candidate is safe.
+        val stepsCounts = if (realStepsCounts.isNotEmpty() || !liveStepsMirrorActive) {
+            realStepsCounts
+        } else {
+            val now = endTime
+            val candidates = apsResultsList
+                .filter { kotlin.math.abs(it.date - now) < T.mins(20).msecs() }
+                .sortedBy { kotlin.math.abs(it.date - now) }
+            fun matchFor(label: String): Int? {
+                val regex = Regex("""\b${label}min\s+is\s+([0-9]+)\b|\b${label}M\s*[:=]\s*([0-9]+)\b""", RegexOption.IGNORE_CASE)
+                for (c in candidates) {
+                    val m = regex.find(c.reason) ?: continue
+                    return (m.groupValues[1].ifEmpty { m.groupValues[2] }).toIntOrNull()
+                }
+                return null
+            }
+            val s5 = matchFor("[Ss]teps5")
+            if (s5 == null) emptyList() else listOf(
+                SC(
+                    duration = 0, timestamp = now, steps5min = s5,
+                    steps10min = s5, steps15min = matchFor("[Ss]teps15") ?: s5,
+                    steps30min = matchFor("[Ss]teps30") ?: 0,
+                    steps60min = matchFor("[Ss]teps60") ?: 0,
+                    steps180min = matchFor("[Ss]teps180") ?: 0,
+                    device = "Mirror"
+                )
+            )
+        }
         data.overviewData.stepsCountGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
-            persistenceLayer.getStepsCountFromTimeToTime(fromTime, endTime)
+            stepsCounts
                 .map { steps -> StepsDataPoint(steps, rh) }
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.stepsColor) }
 
