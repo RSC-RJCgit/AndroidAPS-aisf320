@@ -79,6 +79,27 @@ class LiveStepsMirrorTest {
         assertThat(saved).isEqualTo(before)
     }
 
+    @Test fun `cumulative counts require every contributing bin`() {
+        val partial = LiveStepsMirror.Sample(now, live, mapOf(5 to 13, 15 to 7, 30 to 40, 60 to 64, 180 to 90))
+        assertThat(partial.hasDosingBuckets()).isTrue()
+        assertThat(partial.cumulativeBuckets()[10]).isNull()
+        assertThat(partial.cumulativeBuckets()[15]).isNull()
+        val complete = partial.copy(buckets = partial.buckets + (10 to 20))
+        assertThat(complete.cumulativeBuckets()[10]).isEqualTo(33)
+        assertThat(complete.cumulativeBuckets()[15]).isEqualTo(40)
+        assertThat(complete.cumulativeBuckets()[60]).isEqualTo(64)
+    }
+
+    @Test fun `historical missing steps cannot prove inactivity`() {
+        assertThat(mirror.noHighStepsDuring(listOf(now), 1000)).isFalse()
+        mirror.receive(live, virtual, now, "Steps60M: 0 ;", now)
+        assertThat(mirror.noHighStepsDuring(listOf(now, now + 60_000), 1000)).isTrue()
+        assertThat(mirror.noHighStepsDuring(listOf(now - 1, now), 1000)).isFalse()
+        assertThat(mirror.noHighStepsDuring(listOf(now, now + LiveStepsMirror.MAX_AGE_MS + 1), 1000)).isFalse()
+        mirror.receive(live, virtual, now + 60_000, "Steps60M: 1001 ;", now + 60_000)
+        assertThat(mirror.noHighStepsDuring(listOf(now, now + 60_000), 1000)).isFalse()
+    }
+
     @Test fun `corrupt cache recovers when a valid NS sample arrives`() {
         saved = "broken JSON"
         assertThat(mirror.at(now)).isNull()
