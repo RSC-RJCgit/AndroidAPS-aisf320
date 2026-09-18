@@ -6639,8 +6639,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // right when a rise was passing those marks -- a poorly-defined SMB-ratio change exactly when
             // it mattered. Now one value on every fire; retune the single number (or ApsAutoIsfMildBoostRatio
             // itself) later. A relative bump on the configurable base, not an absolute.
-            applyBMildOutcomeFactors(g)
-            sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)}")
+            // Same three-factor reduction as HighDaytimeBrake added 2026-09-18 (MJ3 / Standard TierC /
+            // recentSteps30Minutes > 200 -> 0.075 instead of 0.15) -- see that call site's own doc
+            // comment for the full reasoning; extended here at explicit request since this is the
+            // exact same applyBMildOutcomeFactors() call with the same risk factors.
+            val onStandardTierC = profileFunction.getOriginalProfileName() ==
+                preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+            val anyCautionFactor = !checkAutomationState("MJ", "NOMJremains") || onStandardTierC || recentSteps30Minutes > 200
+            val boostIncrement = if (anyCautionFactor) 0.075 else 0.15
+            applyBMildOutcomeFactors(g, deliveryBoostIncrement = boostIncrement)
+            sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} (+$boostIncrement)")
             addCarePortalNote("BMild")
             markRun("BolusGivenMild")
         }
