@@ -3184,6 +3184,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
+        // Tier 3 UAM Boost caution reduction added 2026-09-18 at explicit request, same
+        // MJ3/TierC/activity factor as HighDaytimeBrake/BMild/Giv3 -- applied here at the profile
+        // construction site (halving boost_scale itself) rather than inside DetermineBasalAutoISF.kt,
+        // since boost_scale already arrives there as a plain parameter with no other caution logic to
+        // hook into.
+        val tier3CautionFactor = !checkAutomationState("MJ", "NOMJremains") ||
+            profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName) ||
+            recentSteps30Minutes > 200
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
             min_5m_carbimpact = 0.0, // not used
@@ -3259,7 +3267,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             boostActive = uamBoostActive,
             boost_max = uamBoostMaxBolus,
             boostMaxIOBPercent = uamBoostMaxIobPercent,
-            boost_scale = uamBoostScale,
+            boost_scale = if (tier3CautionFactor) uamBoostScale / 2.0 else uamBoostScale,
             Boost_InsulinReq = uamBoostInsulinReqPct
         )
         var sensitivityRatio = 1.0
@@ -6593,12 +6601,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("Giv-$bBlock")
                 setAutomationState("Profile", "Bolus")
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                // Bg3-only caution reduction added 2026-09-18 at explicit request, same
+                // MJ3/TierC/activity factor as HighDaytimeBrake/BMild -- bg1/bg2 (post-manual-bolus,
+                // a different trigger shape) are deliberately left at their normal strength.
+                val bg3CautionFactor = bBlock == "3" && (
+                    !checkAutomationState("MJ", "NOMJremains") ||
+                        profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName) ||
+                        recentSteps30Minutes > 200
+                    )
                 // "Strong" boost ratio is derived from the mild-boost base, not set independently —
-                // see ApsAutoIsfMildBoostRatio's doc comment.
-                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.03)
+                // see ApsAutoIsfMildBoostRatio's doc comment. Halved (0.015 vs 0.03) for bg3 under the
+                // caution factor.
+                val giv3Increment = if (bg3CautionFactor) 0.015 else 0.03
+                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + giv3Increment)
                                             // strengthen SMB delivery during the post-bolus boost;
                                             // recovery/protective autos restore it to baseline (see below)
-                startProfilePercentFor(110, 2, preferences.get(StringKey.ApsAutoIsfStandardProfileName))//WAS duration = 10,
+                // +10% profile boost skipped under the same bg3 caution factor -- a second, independent
+                // strengthening layer on top of the delivery-ratio bump above.
+                if (!bg3CautionFactor) startProfilePercentFor(110, 2, preferences.get(StringKey.ApsAutoIsfStandardProfileName))//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
         }
