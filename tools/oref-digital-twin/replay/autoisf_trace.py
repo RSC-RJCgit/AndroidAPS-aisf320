@@ -28,7 +28,7 @@ REQUIRED_PARAMETER_KEYS = {
     "smbInt5Sec", "smbBoostRecent", "rawDelta5Mgdl", "immediateRawDelta5Mgdl",
     "rawDelta1Mgdl", "aapsDelta1Mgdl", "rawDelta15Mgdl", "recentLowActive",
     "smbSum10Min", "smbSum30Min", "sub75HeavyDeliveryCooldown",
-    "basalUpOffsetZeroActive", "fastRiseSlopeCompensationRatio", "lastBolusMinutes",
+    "fastRiseSlopeCompensationRatio", "lastBolusMinutes",
     "lastCarbMinutes", "iobChange5Min", "recentLowBG", "bmildBasicCriteriaMet",
     "acceIsfValue",
 }

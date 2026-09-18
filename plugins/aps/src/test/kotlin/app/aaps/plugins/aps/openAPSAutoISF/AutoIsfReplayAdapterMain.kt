@@ -121,7 +121,6 @@ object AutoIsfReplayAdapterMain {
             smbSum10Min = parameters.doubleValue("smbSum10Min"),
             smbSum30Min = parameters.doubleValue("smbSum30Min"),
             sub75HeavyDeliveryCooldown = parameters.booleanValue("sub75HeavyDeliveryCooldown"),
-            basalUpOffsetZeroActive = parameters.booleanValue("basalUpOffsetZeroActive"),
             fastRiseSlopeCompensationRatio = parameters.doubleValue("fastRiseSlopeCompensationRatio"),
             lastBolusMinutes = parameters.intValue("lastBolusMinutes"),
             lastCarbMinutes = parameters.intValue("lastCarbMinutes"),

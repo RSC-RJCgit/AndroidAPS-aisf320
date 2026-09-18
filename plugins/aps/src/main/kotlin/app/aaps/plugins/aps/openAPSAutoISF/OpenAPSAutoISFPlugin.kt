@@ -7295,12 +7295,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
                 markRun("BasalUp")
-                // Arms a 5-min window (see determine_basal()'s basalUpOffsetZeroActive param) that lets
-                // DetermineBasalAutoISF.kt force varOffset to 0 on cycles within it where bg is still under
-                // targetBgOffset -- armed unconditionally here since BasalUp already requires g>=4.5mmol,
-                // and the "under targetOffset" check itself needs determine_basal()'s own accurate
-                // time-of-day-dependent value, not a re-derived approximation here.
-                markRun("BasalUpOffsetZero")
             }
         }
 
@@ -8912,7 +8906,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val replaySmbSum10Min = smbSum10Min()
         val replaySmbSum30Min = smbSum30Min()
         val replaySub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
-        val replayBasalUpOffsetZeroActive = !readyToRun("BasalUpOffsetZero", 5)
         val replayFastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
         val replayLastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
         val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
@@ -8983,7 +8976,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "smbSum10Min" to replaySmbSum10Min,
                 "smbSum30Min" to replaySmbSum30Min,
                 "sub75HeavyDeliveryCooldown" to replaySub75HeavyDeliveryCooldown,
-                "basalUpOffsetZeroActive" to replayBasalUpOffsetZeroActive,
                 "fastRiseSlopeCompensationRatio" to replayFastRiseSlopeCompensationRatio,
                 "lastBolusMinutes" to replayLastBolusMinutes,
                 "lastCarbMinutes" to replayLastCarbMinutes,
@@ -9055,7 +9047,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smbSum10Min = replaySmbSum10Min,
             smbSum30Min = replaySmbSum30Min,
             sub75HeavyDeliveryCooldown = replaySub75HeavyDeliveryCooldown,
-            basalUpOffsetZeroActive = replayBasalUpOffsetZeroActive,
             fastRiseSlopeCompensationRatio = replayFastRiseSlopeCompensationRatio,
             // Tier 3's own stacking-type criteria, added 2026-08-23 -- same source calls BMild/Bg3 already
             // use (see DetermineBasalAutoISF.kt's own param doc comments for why each matters there).
