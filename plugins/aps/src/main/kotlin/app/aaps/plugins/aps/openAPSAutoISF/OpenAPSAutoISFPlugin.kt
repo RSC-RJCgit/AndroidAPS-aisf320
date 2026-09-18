@@ -7957,21 +7957,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     if (iobChange5 < 0.5) {
                         val preBoostDeliveryRatio = smb_delivery_ratio
                         if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
-                            // Halved for MJ3 (0.075 vs the normal 0.15) -- see applyBMildOutcomeFactors()'s
-                            // own doc comment for the real-data incident this responds to. Halved again
-                            // (0.0375) when already running Standard TierC (added 2026-09-18, same request):
-                            // TierC is itself the most-escalated Standard rung (StuckHighTierC/manual List1
-                            // pick), so stacking the ordinary MJ3 increment on top of an already more
-                            // aggressive profile risks compounding, same shape of concern as the MJ3 case
-                            // itself. Checked independently of MJ state -- TierC alone is reason enough to
-                            // take the lowest tier, regardless of NOMJremains/MJ3.
+                            // Three independent risk factors, any one of which halves the 0.15 base to
+                            // 0.075 -- not compounded, and not tiered by factor (reworked 2026-09-18 at
+                            // explicit request; an earlier version gave TierC its own extra-conservative
+                            // 0.0375, but that wasn't backed by anything the way the 0.075 MJ3 value is --
+                            // see below -- so all three now share the same single reduced value).
+                            // MJ3: see applyBMildOutcomeFactors()'s own doc comment for the real
+                            // 12:37-01:22 PM incident (IOB 2.1U->3.19U, then BGL 8.8->5.0mmol) this
+                            // responds to.
+                            // Standard TierC: the most-escalated Standard rung (StuckHighTierC/manual
+                            // List1 pick) -- already a more aggressive profile, its own reason for caution.
+                            // High recent activity (recentSteps30Minutes > 200): real movement is its own
+                            // independent reason for caution. Relies on the steps-mirroring pipeline (see
+                            // this session's own investigation); if that reads incorrectly, this factor
+                            // just doesn't apply and the other two still work normally.
                             val onStandardTierC = profileFunction.getOriginalProfileName() ==
                                 preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
-                            val boostIncrement = when {
-                                onStandardTierC -> 0.0375
-                                !checkAutomationState("MJ", "NOMJremains") -> 0.075
-                                else -> 0.15
-                            }
+                            val anyCautionFactor = !checkAutomationState("MJ", "NOMJremains") || onStandardTierC || recentSteps30Minutes > 200
+                            val boostIncrement = if (anyCautionFactor) 0.075 else 0.15
                             applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false, deliveryBoostIncrement = boostIncrement)
                             startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
                             sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)} (+$boostIncrement), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
