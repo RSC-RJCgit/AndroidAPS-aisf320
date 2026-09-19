@@ -85,6 +85,11 @@ class DetermineBasalAutoISF @Inject constructor(
     // the AIV export without pulling raw device logs. Added 2026-09-16, per explicit request.
     var recentLowReboundGuardFiredThisCycle: Boolean = false
 
+    // Kill switch for the recent-low rebound guard ("LoReb": halves microBolus after a recent low). OFF since
+    // 2026-09-20 at explicit request ("for now"); set true to restore it. While off it never fires, so no LoReb note
+    // and LastLoRebAppliedAt is no longer refreshed (only StuckRisingSlowly reads that, as a recent-event exclusion).
+    private val recentLowReboundGuardEnabled = false
+
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
 
@@ -2341,7 +2346,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // while longAvgDelta still reflects the fall), COB 0, and BG still in the recovery band
                 // (< 9.4mmol). Boost's velocity override releases it once the rise is a genuine spike
                 // (delta > 15mg/dL/5min AND already > target+20). Same 0.5 factor as the carb branch.
-                if (microBolus > 0.0) {
+                if (recentLowReboundGuardEnabled && microBolus > 0.0) {
                     val uciGrams = if (csf > 0.0) uci / csf else 0.0
                     // 2026-09-09: was `recentLowActive` (checkAutomationState("LowBG","50recent")).
                     // That latch is not a time window -- it clears only when the profile returns to

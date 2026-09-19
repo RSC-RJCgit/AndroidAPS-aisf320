@@ -11,7 +11,7 @@ from docx.enum.section import WD_SECTION
 
 ROOT = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 18 26 current code registry DRAFT for review.docx")
-SCRIPT_VERSION = 9
+SCRIPT_VERSION = 10
 
 # Codes for keys whose note is NOT a literal string in their own block (computed codes, String.format,
 # graph announcements, sibling-branch notes), taken from the full CarePortal code list
@@ -108,6 +108,14 @@ for _k in ("0002", "0204", "0406", "0609", "0912", "1218", "1822", "2200"):
 #     whose trigger is picked from a separate criteria helper (BolusGivenMild/Bg3, UamBst ...).
 # v9: remaining blank Abbrev Note cells filled from the full CarePortal code list (REFERENCE_FILL,
 #     marked with a trailing dagger); keys with no entry in that list stay blank.
+# v10: new "Actions" column (what the automation DOES when it fires): the state-changing calls found in the
+#     automation's own block -- and in the brace block around its markRun() for keys whose trigger sits in a
+#     criteria helper -- in source order, de-duplicated: acce weight, iobTH, other preferences, SMB delivery ratio,
+#     temp targets, profile switches, automation states, graph announcements, SMS/notification text, and named
+#     helper calls (applyBMildOutcomeFactors ...). Branch conditions are NOT shown (that is the Triggers column);
+#     an automation with several branches lists every branch's actions together. Rebuilt from the plugin as of
+#     19 Sep 2026 (HighDaytimeBrake/HighEveNightBrake: all-deltas-above-0 + raw UKF + HP>=6.5 gates, shared 30-min
+#     lockout, TT-only (2 min) + pp weight action, mid band 7.5-9.0).
 OUTPUT = Path(
     rf"C:\winword\aaa\AutoISF Automations List mydoc {datetime.now():%b %d %y %H%M} "
     rf"code registry triggers v{SCRIPT_VERSION}.docx"
@@ -162,15 +170,17 @@ def extract_if_condition(text: str, start_idx: int):
     depth = 0
     i = start_idx
     n = len(text)
+    # v10: `//` line comments are stripped from the RETURNED condition (positions are unaffected) so comment
+    # words sitting between conditions never reach the Triggers column.
     while i < n:
         if text[i] == "(":
             depth += 1
         elif text[i] == ")":
             depth -= 1
             if depth == 0:
-                return text[start_idx + 1:i], i + 1
+                return re.sub(r'(?<![:"\'])//[^\n]*', '', text[start_idx + 1:i]), i + 1
         i += 1
-    return text[start_idx + 1:], n
+    return re.sub(r'(?<![:"\'])//[^\n]*', '', text[start_idx + 1:]), n
 
 
 def find_enclosing_if(text: str, occurrence_idx: int):
@@ -200,7 +210,7 @@ BOOLEAN_LOOKING_RE = re.compile(
 
 
 def clean_expr(text: str) -> str:
-    return re.sub(r'//.*$', '', text).strip()
+    return re.sub(r'//.*$', '', text, flags=re.M).strip()   # v10: MULTILINE -- v9 left every non-final // comment in the bullets
 
 
 def find_val_defs_in_range(text: str, start: int, end: int) -> dict:
@@ -670,6 +680,240 @@ def notes_from_markrun_blocks(text: str, key: str, helper_notes) -> list:
     return codes
 
 
+# ---- v10: Actions column ---------------------------------------------------------------------------------------
+ACTION_VERBS = ("set", "apply", "switch", "start", "cancel", "escalate", "revert", "launch", "install", "stage",
+                "keep", "restore", "handle", "enable", "disable", "reset", "create", "remember", "try")
+ACTION_NEVER = {"setIfSmaller", "setState", "setStateValues", "setBgAccelIsfWeight", "setSmbDeliveryRatio",
+                "startTempTargetIfNeeded", "startTempTargetIfNeededAt", "setAutomationState", "readyToRun",
+                "markRun", "handleDirectMjUserAction", "handleDirectSteroidUserAction"}
+BOOKKEEPING_PREF = re.compile(r"(Ts|At|HandledAt|Timestamp|SinceTs|CreatedAt|Latched|Seen|Handled|Until)$")
+
+
+def pretty_key(name: str) -> str:
+    name = re.sub(r"^ApsAutoIsf", "", name)
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).strip()
+
+
+def read_call_args(text: str, open_idx: int):
+    """Balanced-paren argument text of the call whose '(' is at open_idx, and the index after ')'."""
+    depth, i, n = 0, open_idx, len(text)
+    in_str = False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx + 1:i], i + 1
+        i += 1
+    return text[open_idx + 1:], n
+
+
+def split_top_args(args: str):
+    out, depth, cur, in_str = [], 0, "", False
+    i = 0
+    while i < len(args):
+        ch = args[i]
+        if in_str:
+            cur += ch
+            if ch == "\\" and i + 1 < len(args):
+                cur += args[i + 1]
+                i += 1
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+            cur += ch
+        elif ch in "([{":
+            depth += 1
+            cur += ch
+        elif ch in ")]}":
+            depth -= 1
+            cur += ch
+        elif ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+        i += 1
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def pretty_val(v: str) -> str:
+    v = v.strip()
+    m = re.fullmatch(r"preferences\.get\(\s*\w+\.(\w+)\s*\)", v)
+    if m:
+        return f"its {pretty_key(m.group(1))} value"
+    c = re.search(r"/\*\s*([^*]+?)\s*\*/", v)
+    base = re.sub(r"/\*.*?\*/", "", v).strip()
+    base = re.sub(r"preferences\.get\(\s*\w+\.(\w+)\s*\)", lambda mm: pretty_key(mm.group(1)), base)
+    base = re.sub(r"\$\{[^}]*\}?", "..", base)
+    base = re.sub(r"\$\w+", "..", base)
+    base = base.strip('"')
+    base = re.sub(r"\s+", " ", base)
+    if len(base) > 60:
+        base = base[:57] + "..."
+    return f"{base} ({c.group(1)})" if c and base else base
+
+
+def sms_text(arg: str) -> str:
+    a = arg.strip()
+    m = re.match(r'"([^"$\\]*)(\$?)', a)   # literal prefix up to the first interpolation
+    s = (m.group(1) + (".." if m.group(2) else "")) if m else a
+    s = re.sub(r"\s+", " ", s).strip()
+    return s if len(s) <= 70 else s[:67] + "..."
+
+
+def tt_mmol(arg0: str) -> str:
+    c = re.search(r"/\*\s*([\d.]+)\s*mmol\s*\*/", arg0)
+    if c:
+        return f"{c.group(1)} mmol"
+    m = re.match(r"\s*(\d+(?:\.\d+)?)", arg0)
+    if m:
+        return f"{float(m.group(1)) / 18.0182:.1f} mmol"
+    return arg0.strip()
+
+
+def describe_action(name: str, args: str, fun_names):
+    a = split_top_args(args)
+    if name == "setBgAccelIsfWeight" and a:
+        return f"acce weight -> {pretty_val(a[0])}"
+    if name == "setSmbDeliveryRatio" and a:
+        return f"SMB delivery ratio -> {pretty_val(a[0])}"
+    if name in ("startTempTargetIfNeeded", "startTempTargetIfNeededAt") and len(a) >= 2:
+        return f"start TT {tt_mmol(a[0])} for {pretty_val(a[1])} min"
+    if name == "cancelCurrentTempTarget":
+        return "cancel the current TT"
+    if name == "setAutomationState" and len(a) >= 2:
+        return f"automation state {pretty_val(a[0])} = {pretty_val(a[1])}"
+    if name == "switchToLowAtSharedTier":
+        return "profile -> Low role (shared tier)"
+    if name == "switchToStandardAtSharedTier":
+        return "profile -> Standard role (shared tier)"
+    if name == "switchProfileIfNeeded" and a:
+        m = re.search(r"\w+Key\.(\w+)", a[0])
+        return f"profile -> {pretty_key(m.group(1)) if m else pretty_val(a[0])}"
+    if name == "applyCurrentProfileAt100":
+        return "profile back to 100%"
+    if name == "startProfilePercentFor" and len(a) >= 2:
+        return f"profile {pretty_val(a[0])}% for {pretty_val(a[1])} min"
+    if name == "applyBMildOutcomeFactors":
+        return "BMild outcome: SMB delivery ratio = mild base + increment, pp weight high (optional short 5.0 TT)"
+    if name in ("sendSms", "sendSmsToNumbers") and a:
+        return f'SMS "{sms_text(a[-1] if name == "sendSmsToNumbers" else a[0])}"'
+    if name == "addNotification":
+        tm = re.search(r'text\s*=\s*("(?:[^"\\]|\\.)*)', args)
+        return f'notification "{sms_text(tm.group(1) + chr(34)) if tm else "..."}"'
+    if name == "addGraphAnnouncement" and a:
+        return f'graph announcement "{sms_text(a[0])}"'
+    if name == "handleDirectMjUserAction":
+        return "MJ button action (handleDirectMjUserAction)"
+    if name == "handleDirectSteroidUserAction":
+        return "Steroid button action (handleDirectSteroidUserAction)"
+    if name in fun_names and name.startswith(ACTION_VERBS) and name not in ACTION_NEVER:
+        short = ", ".join(pretty_val(x) for x in a[:3])
+        return f"calls {name}({short})" if short else f"calls {name}()"
+    return None
+
+
+def actions_in_region(region: str, fun_names):
+    """Ordered, de-duplicated action descriptions found in `region` (source text)."""
+    region = re.sub(r"(?<![:\"'])//[^\n]*", "", region)   # ignore words that only appear inside line comments
+    found = []  # (position, text)
+    bookkeeping = 0
+    names = ["setBgAccelIsfWeight", "setSmbDeliveryRatio", "startTempTargetIfNeeded", "startTempTargetIfNeededAt",
+             "cancelCurrentTempTarget", "setAutomationState", "switchToLowAtSharedTier", "switchToStandardAtSharedTier",
+             "switchProfileIfNeeded", "applyCurrentProfileAt100", "startProfilePercentFor", "applyBMildOutcomeFactors",
+             "sendSms", "sendSmsToNumbers", "addGraphAnnouncement", "addNotification", "handleDirectMjUserAction",
+             "handleDirectSteroidUserAction"]
+    generic = sorted(n for n in fun_names if n.startswith(ACTION_VERBS) and n not in ACTION_NEVER and n not in names)
+    for m in re.finditer(r"\b(" + "|".join(re.escape(n) for n in names + generic) + r")\s*\(", region):
+        prev = region[max(0, m.start() - 5):m.start()]
+        if "fun " in region[max(0, m.start() - 6):m.start()]:
+            continue
+        args, _ = read_call_args(region, m.end() - 1)
+        d = describe_action(m.group(1), args, fun_names)
+        if d:
+            found.append((m.start(), d))
+    for m in re.finditer(r"preferences\.put\(", region):
+        args, _ = read_call_args(region, m.end() - 1)
+        a = split_top_args(args)
+        if len(a) < 2:
+            continue
+        km = re.fullmatch(r"(\w+Key)\.(\w+)", a[0])
+        if not km:
+            continue
+        if BOOKKEEPING_PREF.search(km.group(2)):
+            bookkeeping += 1
+            continue
+        kname = km.group(2)
+        val = pretty_val(a[1])
+        if kname == "ApsAutoIsfIobThPercent":
+            d = f"iobTH -> {val}%"
+        elif kname == "ApsAutoIsfPpWeight":
+            d = f"pp weight -> {val}"
+        else:
+            d = f"{pretty_key(kname)} -> {val}"
+        found.append((m.start(), d))
+    found.sort()
+    out = []
+    for _, d in found:
+        if d not in out:
+            out.append(d)
+    if bookkeeping:
+        out.append(f"(+{bookkeeping} latch/timestamp bookkeeping writes)")
+    return out
+
+
+def markrun_block_spans(text: str, key: str):
+    spans = []
+    for m in re.finditer(r'markRun\("' + re.escape(key) + r'"\)', text):
+        depth, i = 0, m.start()
+        lo = max(0, m.start() - 6000)
+        while i > lo:
+            i -= 1
+            if text[i] == "}":
+                depth += 1
+            elif text[i] == "{":
+                if depth == 0:
+                    break
+                depth -= 1
+        else:
+            continue
+        depth, j, n = 0, i, min(len(text), i + 6000)
+        while j < n:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        else:
+            continue
+        spans.append((i, j + 1))
+    return spans
+
+
+def gather_actions(text: str, occ: int, own_end: int, key: str, fun_names):
+    out = list(actions_in_region(text[occ:own_end], fun_names))
+    for i, j in markrun_block_spans(text, key):
+        for d in actions_in_region(text[i:j], fun_names):
+            if d not in out and not d.startswith("(+"):
+                out.append(d)
+    return out
+
+
 def set_cell_width(cell, width):
     tc_pr = cell._tc.get_or_add_tcPr()
     tc_w = tc_pr.find(qn("w:tcW"))
@@ -790,6 +1034,7 @@ def build():
     # markRun("OldPod2") nowhere in source. Without this check, the extractor has no real block
     # to bound itself against and sweeps in dozens of unrelated automations' content instead.
     helper_notes = build_helper_note_map(text)
+    fun_names = set(re.findall(r'\bfun\s+(?:[A-Za-z_][\w.<>]*\.)?([A-Za-z_]\w*)\s*\(', text))
     markrun_keys = set(re.findall(r'markRun\("([^"]+)"\)', text))
 
     # Locate each key's primary readyToRun/markRun occurrence as a character index into `text`.
@@ -883,15 +1128,15 @@ def build():
         "\"Status\" flags DISABLED when the automation's own trigger resolves to a literal \"false\" "
         "(a hard-coded kill switch left in source, e.g. Bolus2's `val bolus2Enabled = false`) -- a real, "
         "still-registered automation that simply never fires, not an extraction failure. This is a "
-        "In the Abbrev Note column a trailing * marks a code written by a helper function the block calls "
+        "The Actions column lists what the automation DOES, mechanically, in source order: the state-changing calls in its own block (and in the block around its markRun()) -- acce weight, iobTH, other settings, SMB delivery ratio, temp targets, profile switches, automation states, graph announcements, SMS text and named helper calls. Branch conditions are not shown there (see Triggers), so an automation with several branches lists every branch's actions together; a blank Actions cell means the extractor found no such call in the block (e.g. a note-only or helper-driven automation -- see its note codes). In the Abbrev Note column a trailing * marks a code written by a helper function the block calls "
         "(the helper may write it only on some paths), not by the block itself. A trailing † marks a code "
         "not visible in the block at all (computed/String.format code, graph announcement, sibling branch) that was "
         "matched from the full CarePortal code list by key name or family instead. "
         "This is a mechanical, best-effort extraction -- verify against source before relying on any single row."
     )
 
-    table = doc.add_table(rows=1, cols=4)
-    headers = ["#", "Coded key", "Triggers (enumerated)", "Abbrev Note"]
+    table = doc.add_table(rows=1, cols=5)
+    headers = ["#", "Coded key", "Triggers (enumerated)", "Actions", "Abbrev Note"]
     for cell, value in zip(table.rows[0].cells, headers):
         cell.text = value
 
@@ -914,6 +1159,7 @@ def build():
             set_key_cell(row[1], key)
             set_cell_bullets(row[2], ["Occurrence not found by extractor -- inspect source"], numbered=True)
             row[3].text = ""
+            row[4].text = ""
             continue
         if key not in markrun_keys:
             set_key_cell(row[1], key, "DEAD/VESTIGIAL?")
@@ -927,6 +1173,7 @@ def build():
                 numbered=True,
             )
             row[3].text = ""
+            row[4].text = ""
             continue
         next_occ = next_true_occurrence_after(occ)
         block_end = next_occ if next_occ is not None else min(len(text), occ + 8000)
@@ -968,12 +1215,14 @@ def build():
         # Reversion signals found in this same block go in as their own REVERSION lines, like PATHs.
         triggers.extend(f"REVERSION: {r}" for r in reversion)
         set_cell_bullets(row[2], triggers, numbered=True)
-        row[3].text = ", ".join(abbrev_notes)
-        for para in row[3].paragraphs:
+        actions = gather_actions(text, occ, own_end, key, fun_names)
+        set_cell_bullets(row[3], actions, numbered=True, blank_if_empty=True)
+        row[4].text = ", ".join(abbrev_notes)
+        for para in row[4].paragraphs:
             for run in para.runs:
                 run.font.size = Pt(7.2)
 
-    configure_table(table, [562, 2127, 5953, 1418])
+    configure_table(table, [470, 1500, 3500, 3400, 1190])
     add_page_numbers(doc)
     doc.save(OUTPUT)
     return len(keys)

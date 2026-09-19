@@ -2501,6 +2501,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // True while THIS fork's HiBrk 4.0 mmol TT is live: own markRun within 6 min (5-min TT plus one
     // cycle of slop) and the active TT is 4.0, not RecPod/Giv 4.2. Shared by both HiBrk cut-shorts
     // and the UamBst-on-HiBrk quiet-rise suppress so those three cannot drift apart.
+    // Kill switches for the two plateau brakes, OFF since 2026-09-20 at explicit request ("turn off HiBrkDay and
+    // evening ... for now"). Set true to re-enable. While off neither fires (no TT, no HiBrk/HiBrkDay/HiBrkDayMid notes);
+    // their cut-short branches only act on their own TT, so they simply stay idle.
+    private val highEveNightBrakeEnabled = false
+    private val highDaytimeBrakeEnabled = false
+
     // True only when the independent raw/noise UKF's 5-min AND 15-min deltas are both above 0. Entry gate for
     // HighDaytimeBrake / HighEveNightBrake (2026-09-19). False when UKF data is unavailable, so the brakes do
     // not fire blind.
@@ -7874,7 +7880,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkCut")
                 }
-            } else if (readyToRun("HighEveNightBrake", 30)   // was 2 min; never more than one fire per 30 min (2026-09-19)
+            } else if (highEveNightBrakeEnabled && readyToRun("HighEveNightBrake", 30)   // was 2 min; never more than one fire per 30 min (2026-09-19)
                 && readyToRun("HighDaytimeBrake", 30)        // shared lockout: neither brake fires within 30 min of the other
                 && isTimeBetween(22, 0, 6, 0)
                 // Raised 2026-08-29 from 135.1 (7.5mmol) to 162.2 (9.0mmol) at explicit request -- 7.5mmol
@@ -7973,7 +7979,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkDayCut")
                 }
-            } else if (readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
+            } else if (highDaytimeBrakeEnabled && readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
                 && readyToRun("HighEveNightBrake", 30)   // shared lockout with the night brake (2026-09-19)
                 && isTimeBetween(6, 0, 1, 30)
                 && checkAutomationState("Steroids", "Steroids Off")
