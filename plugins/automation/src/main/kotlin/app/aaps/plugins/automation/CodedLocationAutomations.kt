@@ -189,7 +189,12 @@ class CodedLocationAutomations @Inject constructor(
         rxBus.send(EventAnyDeskLaunchRequested(reason))
     }
 
+    // Airport slots only (automation_airport_1..5). Home/Netball/Cheer etc. (automation_address_*) no
+    // longer send the SMS or write the Nightscout CarePortal note (2026-09-19, explicit request) -- the
+    // local AnyDesk restart is a separate call in evaluate() (requestAnyDesk) and does not depend on
+    // either, so it still fires for every slot.
     private fun send(spec: Spec, note: String, arriving: Boolean) {
+        if (!spec.id.startsWith("automation_airport_")) return
         val movement = if (arriving) "arrival" else "exit"
         val text = "$note: ${spec.label} $movement"
         smsCommunicator.sendNotificationToAllNumbers(text)

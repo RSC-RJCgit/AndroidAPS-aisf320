@@ -1430,9 +1430,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     // Every List2 AnyDesk click records the same "ADesk" command Note on the device where it was
     // pressed. Client clicks can upload it to NS; local-test execution does not depend on that sync.
-    // Has no repeat-interval guard of its own. Client also uses relay TT 5.178 only when no temporary
-    // target is active; otherwise this Note is deliberately the sole transport so the real TT is
-    // preserved.
+    // Has no repeat-interval guard of its own. Client also queues relay TT 5.178; while a real
+    // temporary target is active it waits (setRelayTt's 5-min retry) rather than replacing it, so the
+    // Note is the only transport until then.
     private fun saveAnyDeskRestartCommandNote(
         allowLocalTest: Boolean = false,
         onSaved: () -> Unit
@@ -1483,18 +1483,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return
         }
         if (action == BasalDirectAction.ANYDESK_RESTART) {
-            // Never cancel/replace a real temporary target merely to carry this command. If a TT is
-            // active after the ADesk Note has been saved, secondary NS is the only transport. Re-check
-            // here (not only in the confirmation text) because the active TT can change while the
-            // confirmation dialog or asynchronous Note insert is in progress.
-            val relayAllowed = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) == null
+            // The ADesk Note goes out immediately, always. The relay TT is always handed to
+            // setRelayTt(), which never cancels/replaces a real temporary target: if one is active it
+            // queues the relay and retries every 5 min until the slot is free (changed 2026-09-19 at
+            // explicit request -- previously an active TT meant Note-only and the relay TT was dropped).
             saveAnyDeskRestartCommandNote {
-                if (relayAllowed && persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) == null) {
-                    setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
-                } else {
-                    aapsLogger.info(LTag.CORE, "ADesk sent by NS Note only; existing temporary target preserved")
-                    rxBus.send(EventRefreshOverview("AnyDesk NS-only; active TT preserved", true))
-                }
+                setRelayTt(action.clientRelayMmol, "AnyDesk restart double-tap action")
             }
             return
         }
@@ -1698,7 +1692,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         return if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
             "An active temporary target exists and will be preserved.\n\n" +
-                "Send the AnyDesk restart by ADesk NS Note only? No relay TT will be created."
+                "Send the AnyDesk restart by ADesk NS Note now? The 5-minute relay TT will wait (retrying every 5 minutes) until the active target has ended."
         } else {
             "No active temporary target exists.\n\n" +
                 "Send the AnyDesk restart by ADesk NS Note and a 5-minute relay TT?\n\n" +

@@ -32,7 +32,19 @@ stale" from this path while `aapsLogs\Virtual_SMF731B\` was current to the hour)
 Raw app log zips are a sibling one level up from `aapsLogs\`, not inside it:
 - `C:\backup\AAPS\logs_Live_SMA366B\AndroidAPS_LOG_*.log.zip`
 - `C:\backup\AAPS\logs_Client_SMF731B\AndroidAPS_LOG_*.log.zip`
-- `C:\backup\AAPS\logs_Virtual\AndroidAPS_LOG_*.log.zip` (no `_SMF731B` suffix for Virtual specifically)
+- `C:\backup\AAPS\logs_Virtual\AndroidAPS_LOG_*.log.zip` (no `_SMF731B` suffix for Virtual specifically) — **STALE
+  since 9 Sep, do not use.**
+
+**Virtual's (and Client's) current raw logs are here, phone-local saves pulled by `aaps.bat` — a fourth place
+that was missed repeatedly:**
+- `C:\backup\AAPS\logs\Virtual_SMF731B\AndroidAPS_LOG_*.log.zip`
+- `C:\backup\AAPS\logs\Client_SMF731B\AndroidAPS_LOG_*.log.zip`
+
+Virtual's Google-Drive log/AIV upload route does not deliver anything to the PC (Drive is unreachable from that
+phone; there is no `logs_Virtual_SMF731B` folder on Drive at all), so this folder is the ONLY place its raw logs
+exist. It is only as fresh as the last USB pull — a per-cycle upload at 16:09 does not mean the log zips are
+newer than the previous pull. Each zip holds nested hourly `.log.zip` files; unzip twice before grepping. The
+loose `AndroidAPS.log` / hourly zips at the top of `C:\backup\aapsLogs\` belong to Client (no dosing lines).
 
 A separate legacy root, `C:\backup\aapsLogs\` (no `AAPS\` segment), is mostly stale but not
 uniformly — it occasionally holds real zips (e.g. `C:\backup\aapsLogs\logs_Virtual\`) the current
