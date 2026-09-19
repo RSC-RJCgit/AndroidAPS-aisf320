@@ -7977,9 +7977,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && readyToRun("HighEveNightBrake", 30)   // shared lockout with the night brake (2026-09-19)
                 && isTimeBetween(6, 0, 1, 30)
                 && checkAutomationState("Steroids", "Steroids Off")
-                && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
-                && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
-                && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
+                // 2026-09-19: all three deltas must be above 0 (was SD > -0.1, D >= 0, LD >= -0.2 mmol); upper
+                // bounds unchanged. Same gate as HighEveNightBrake. (Missed on the first pass -- only the day
+                // block's cut-short and throttle had been changed; fixed at review.)
+                && glucoseStatus.shortAvgDelta > 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.delta > 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
+                && glucoseStatus.longAvgDelta > 0.0 && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
                 && activeTtMgdl() == null
                 && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
