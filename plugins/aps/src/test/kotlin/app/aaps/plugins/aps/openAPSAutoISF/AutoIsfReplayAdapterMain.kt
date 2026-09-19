@@ -126,6 +126,7 @@ object AutoIsfReplayAdapterMain {
             lastCarbMinutes = parameters.intValue("lastCarbMinutes"),
             iobChange5Min = parameters.doubleValue("iobChange5Min"),
             recentLowBG = parameters.doubleValue("recentLowBG"),
+            recentLowBG30 = parameters.get("recentLowBG30")?.takeIf { it.isJsonPrimitive }?.asDouble,
             bmildBasicCriteriaMet = parameters.booleanValue("bmildBasicCriteriaMet"),
             bg3BasicCriteriaMet = parameters.get("bg3BasicCriteriaMet")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean

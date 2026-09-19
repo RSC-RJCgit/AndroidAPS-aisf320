@@ -562,12 +562,12 @@ class BolusWizard @Inject constructor(
             // fullRequired mirrors DelayedBolusWorker's own formula exactly (see the real
             // determination in commonProcessing()'s success callback) -- on the profile-50% path IC
             // itself is already halved by the profile switch, so normal IC = 2x ic; on the other two
-            // paths ic was never touched. Schedule (10min x 8 attempts, up to 80min) is
+            // paths ic was never touched. Schedule (5min x 16 attempts, up to 80min) is
             // DelayedBolusWorker's own fixed poll -- see its companion object.
             val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else "walkingSoon"
             val normalIc = if (delayedProfilePctPreview == 50) ic / 2.0 else ic
             val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
-            "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 10min up to 80min)"
+            "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 5min up to 80min)"
         }
         // IC/Profile% reporting -- added 2026-08-30 per explicit request: ic itself (set in doCalc()) is
         // already "recovered" back to its base-100 value whenever the active profile is boosted above
@@ -950,9 +950,9 @@ class BolusWizard @Inject constructor(
                                         // was manually halved above), so ic is already the normal one.
                                         val normalIc = if (delayedProfilePct == 50) ic / 2.0 else ic
                                         val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
-                                        // Block SMBs for the whole delayed-check window (8 × 10 min + margin).
+                                        // Block SMBs for the whole delayed-check window (16 × 5 min + margin).
                                         // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
-                                        // Must stay in lock-step with DelayedBolusWorker's own max-attempts (8):
+                                        // Must stay in lock-step with DelayedBolusWorker's own max-attempts (MAX_ATTEMPTS = 16 x POLL_MINUTES = 5):
                                         // if this were shorter, SMBs would resume mid-window while the delayed
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
@@ -964,7 +964,7 @@ class BolusWizard @Inject constructor(
                                             iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().basaliob
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1, originalCarbs = carbs, originalIob = originalIob)
-                                        // Careportal marker: delayed-bolus onset (checks follow as Db10/Db20/.../Db80)
+                                        // Careportal marker: delayed-bolus onset (checks follow as Db5/Db10/.../Db80)
                                         // NoteTimestampAllocator.next() — see its own doc comment: guards against
                                         // this note silently losing a same-millisecond dedup race to some other
                                         // note created in the same cycle (insertPumpTherapyEventIfNewByTimestamp
@@ -1165,7 +1165,7 @@ class BolusWizard @Inject constructor(
                 for (i in 1..plan.numDoses) {
                     val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
                     else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
-                    scheduleSingleDelayedDose(plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken)
+                    scheduleSingleDelayedDose(plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken, isLast = i == plan.numDoses)
                 }
                 totalProjectedFutureSplitDoses += plan.totalInsulin
                 noteDetails.add(
@@ -1549,7 +1549,10 @@ class BolusWizard @Inject constructor(
     // entirely (no partial delivery, no retry) — for just this call, other sub-doses are unaffected.
     private fun scheduleSingleDelayedDose(
         dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
-        deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs()
+        deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs(),
+        // Only the LAST sub-dose of the FPU series writes a 0U bolus marker when it calculates to <=0
+        // (2026-09-19, explicit request); earlier ones just log and write their cancel note.
+        isLast: Boolean = true
     ) {
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
@@ -1587,7 +1590,7 @@ class BolusWizard @Inject constructor(
                 return@postDelayed
             }
             if (dateUtil.now() < deliverAt) {
-                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt)
+                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast)
                 return@postDelayed
             }
             val gs = glucoseStatusProvider.glucoseStatusData
@@ -1603,9 +1606,11 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
-                insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
-                    dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
-                ))
+                if (isLast) {
+                    insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
+                        dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
+                    ))
+                }
                 cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed

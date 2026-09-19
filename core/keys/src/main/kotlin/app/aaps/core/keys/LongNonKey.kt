@@ -8,6 +8,9 @@ enum class LongNonKey(
     override val exportable: Boolean = true
 ) : LongNonPreferenceKey {
 
+    LastDelayedBolusDeliveredAt("last_delayed_bolus_delivered_at", 0L, exportable = false),
+    LastLoRebAppliedAt("last_loreb_applied_at", 0L, exportable = false),
+
     LocalProfileLastChange("local_profile_last_change", 0L),
     BtWatchdogLastBark("bt_watchdog_last", 0L),
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),

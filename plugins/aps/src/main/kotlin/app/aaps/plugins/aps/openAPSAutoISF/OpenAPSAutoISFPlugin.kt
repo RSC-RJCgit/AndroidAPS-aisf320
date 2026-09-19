@@ -138,6 +138,26 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
+internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long, loRebAppliedAt: Long): Boolean =
+    delayedDeliveredAt > 0 && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L &&
+        loRebAppliedAt > 0 && loRebAppliedAt <= now && now - loRebAppliedAt <= 30 * 60_000L
+
+/** Native slow-rise numeric conditions with strict step limits; glucose inputs are mg/dL. */
+internal fun slowRiseCriteriaMet(
+    bg: Double, delta: Double, shortDelta: Double, longDelta: Double,
+    cob: Double, iob: Double, steps60: Int?, steps180: Int?,
+    bolusAgeMinutes: Int?, carbAgeMinutes: Int?
+): Boolean {
+    if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
+    if (bg !in (7.0 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
+    if (steps60 == null || steps60 !in 0 until 600 || steps180 == null || steps180 !in 0 until 1000) return false
+    if (bolusAgeMinutes?.let { it >= 40 } != true && carbAgeMinutes?.let { it >= 40 } != true) return false
+    // All deltas must fit one common band, not independently fit the full 0.15–0.35 range.
+    return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
+        listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
+    }
+}
+
 @Singleton
 open class OpenAPSAutoISFPlugin @Inject constructor(
     aapsLogger: AAPSLogger,
@@ -2328,14 +2348,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
     }
 
-    // UKFboost branch only: lowest calibrated BG (mg/dL) seen in the last 60 minutes -- feeds
-    // tier3BoostReferenceComparison()'s ported fast-carb-rebound detection (Boost-in-AAPS_3.4's own
-    // profile.recentLowBG, which our OapsProfileAutoIsf has no equivalent field for). 999.0 = "no recent
-    // low known", matching that function's own default and keeping its lowTriggered branch false.
-    private fun recentLowBgMgdl(): Double {
-        val now = dateUtil.now()
-        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = false)
-            .minOfOrNull { it.value } ?: 999.0
+    // Lowest stored BG in the requested window. The shared rebound input remains 60 minutes;
+    // LoReb additionally receives 30 minutes. Null preserves the distinction from a known minimum.
+    private fun recentLowBgMgdl(minutes: Long = 60, at: Long = dateUtil.now()): Double? {
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(at - T.mins(minutes).msecs(), at, ascending = false)
+            .minOfOrNull { it.value }
     }
 
     // Average gap in seconds between SMBs delivered in the last 5 minutes. Returns a large sentinel
@@ -8037,6 +8054,29 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // Code replacement for the native StuckRisingSlowly screenshot. Own five-minute throttle;
+        // preserves the shared delta bands and bolus-age OR carb-age condition. No boost/profile action.
+        if (readyToRun("StuckRisingSlowly", 5) && isTimeBetween(8, 0, 20, 0)
+            && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")
+            && slowRiseRecentEvents(dateUtil.now(),
+                preferences.get(LongNonKey.LastDelayedBolusDeliveredAt),
+                preferences.get(LongNonKey.LastLoRebAppliedAt))
+        ) {
+            val mirroredSteps = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
+            val steps60 = if (useLiveStepsOnVirtual()) mirroredSteps?.steps(60) else recentSteps60Minutes
+            val steps180 = if (useLiveStepsOnVirtual()) mirroredSteps?.steps(180) else recentSteps180Minutes
+            if (slowRiseCriteriaMet(
+                    glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta,
+                    glucoseStatus.longAvgDelta, mealData.mealCOB, totalIobAt(dateUtil.now()),
+                    steps60, steps180, minutesSinceLastNormalBolus(), minutesSinceLastCarbs()
+                ) && startTempTargetIfNeeded(4.2 * 18.0, 5)
+            ) {
+                markRun("StuckRisingSlowly")
+                sendSms("StuckRisingSlowly Acce")
+                aapsLogger.debug(LTag.APS, "StuckRisingSlowly: requested TT 4.2mmol@5min, S60=$steps60 S180=$steps180")
+            }
+        }
+
         // --- EarlyDawnSlowRise: added 2026-09-18 at explicit request. Real 04:30-08:00 device data
         // showed a genuine early climb (~04:15-05:20, 5.3->7.4mmol) followed by an oscillating 6-8mmol
         // plateau (06:00-08:00) getting almost no correction (Req/SMB near 0 the whole window) because
@@ -8981,7 +9021,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val replayLastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
         val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
         val replayIobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-        val replayRecentLowBG = recentLowBgMgdl()
+        val lowBgSnapshotAt = dateUtil.now()
+        val replayRecentLowBG = recentLowBgMgdl(at = lowBgSnapshotAt) ?: 999.0
+        val replayRecentLowBG30 = recentLowBgMgdl(minutes = 30, at = lowBgSnapshotAt)
         // Fixed 2026-08-27: reuse bmildFiredThisCycle (captured once, above the BolusGivenMild block)
         // instead of calling bmildBasicCriteriaMet() fresh here -- see that val's own doc comment for
         // why a second call in the same cycle always returned false.
@@ -9052,6 +9094,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "lastCarbMinutes" to replayLastCarbMinutes,
                 "iobChange5Min" to replayIobChange5Min,
                 "recentLowBG" to replayRecentLowBG,
+                "recentLowBG30" to replayRecentLowBG30,
                 "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
                 "bg3BasicCriteriaMet" to replayBg3BasicCriteriaMet,
                 "daytimeGateBypassOk" to daytimeGateBypassOk(glucoseStatus.glucose),
@@ -9127,6 +9170,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // UKFboost branch only -- feeds tier3BoostReferenceComparison()'s fast-carb-rebound
             // detection, see recentLowBgMgdl()'s own doc comment.
             recentLowBG = replayRecentLowBG,
+            recentLowBG30 = replayRecentLowBG30,
             // Two Tier 3 UAM Boost entry triggers (BMild and BolusGiven bg3), replacing its own former
             // delta/ratio/acceleration gate entirely -- see determine_basal()'s own bmildBasicCriteriaMet
             // / bg3BasicCriteriaMet param doc comments. Snapshots captured once above, before each
@@ -9195,6 +9239,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // guard" (DetermineBasalAutoISF.kt, halves microBolus after a recent low + carb/artifact
         // rebound), which previously only appended to rT.reason with no visible note at all.
         if (determineBasalAutoISF.recentLowReboundGuardFiredThisCycle) {
+            preferences.put(LongNonKey.LastLoRebAppliedAt, dateUtil.now())
             addCarePortalNote("LoReb")
         }
 

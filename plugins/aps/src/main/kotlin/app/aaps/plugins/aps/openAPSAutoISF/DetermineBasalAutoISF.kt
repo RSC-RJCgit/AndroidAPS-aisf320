@@ -31,6 +31,13 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+// Inputs are mg/dL (deltas per five minutes), matching determine_basal's native units.
+internal fun loRebLookbackMinutes(bg: Double, delta: Double, shortDelta: Double, minimum30: Double?): Int =
+    if (bg.isFinite() && delta.isFinite() && shortDelta.isFinite() &&
+        bg > 6.0 * 18.0 && delta > 0.10 * 18.0 && shortDelta > 0.10 * 18.0 &&
+        minimum30 != null && minimum30.isFinite() && minimum30 > 0.0
+    ) 30 else 60
+
 @Singleton
 class DetermineBasalAutoISF @Inject constructor(
     private val profileUtil: ProfileUtil
@@ -467,13 +474,11 @@ class DetermineBasalAutoISF @Inject constructor(
         // still-modest BG, the exact pattern behind the two real hypos that guard was originally added
         // for on BMild's side.
         iobChange5Min: Double = 0.0,
-        // UKFboost branch only: the most recent BG (mg/dL) seen under 100mg/dL within roughly the last
-        // hour, used solely by tier3BoostReferenceComparison()'s ported fast-carb-rebound detection
-        // (Boost-in-AAPS_3.4's own profile.recentLowBG, which doesn't exist on our OapsProfileAutoIsf).
-        // Default 999.0 = "no recent low known" -> that detector's lowTriggered branch is trivially
-        // false for callers that don't pass it (tests, replay), same convention as the other optional
-        // params above. Never read by real production dosing -- see that function's own doc comment.
+        // Minimum BG over 60 minutes, shared by Tier 3 rebound checks and default LoReb.
+        // Default 999.0 preserves legacy callers without history.
         recentLowBG: Double = 999.0,
+        // LoReb only: missing 30-min history retains the original 60-min guard.
+        recentLowBG30: Double? = null,
         // Added 2026-08-24: one of two Tier 3 UAM Boost entry triggers, replacing its own former
         // delta/ratio/throttle/quiet-window gate entirely (see that gate's own doc comment for why).
         // Pass the live result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same
@@ -2342,15 +2347,16 @@ class DetermineBasalAutoISF @Inject constructor(
                     // That latch is not a time window -- it clears only when the profile returns to
                     // 100% with BG rising, so after the 8->9 Sep hypo it stayed armed ~7h (still
                     // halving SMBs at 08:48 for a 9->8.5 descent). Boost's Fast-Carb Rebound Protection
-                    // never used a state; it keys off profile.recentLowBG. Match that: recentLowBG is
-                    // the 60-min BG minimum and < 100mg/dL is Boost's own lowTriggered bar (see line
-                    // ~278), so this self-clears ~60 min after BG recovers above 5.6mmol and still
-                    // catches the 28 Jul pattern (fell to 5.6, carbs, rebound).
-                    val carbRebound = recentLowBG < 100.0 /* 5.6 mmol, 60-min min */ && (COB > 0.0 || uciGrams >= 0.3)
+                    // uses a BG lookback. LoReb alone now uses 30 minutes when BG >6.0mmol and
+                    // both Delta/SDelta >0.10mmol; otherwise it retains 60 minutes. This is
+                    // re-evaluated each cycle, not a latched timer or a delayed-bolus exemption.
+                    val loRebMinutes = loRebLookbackMinutes(bg, glucose_status.delta, glucose_status.shortAvgDelta, recentLowBG30)
+                    val loRebMinimum = if (loRebMinutes == 30) recentLowBG30!! else recentLowBG
+                    val carbRebound = loRebMinimum < 100.0 && (COB > 0.0 || uciGrams >= 0.3)
                     val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
                         glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
                     val artifactRebound = COB == 0.0
-                        && recentLowBG < 81.1 /* 4.5 mmol */
+                        && loRebMinimum < 81.1 /* 4.5 mmol */
                         && reversalScore > 30.0
                         && bg < 170.0 /* 9.4 mmol */
                         && !(glucose_status.delta > 15 && bg > target_bg + 20)
@@ -2359,9 +2365,9 @@ class DetermineBasalAutoISF @Inject constructor(
                         microBolus = microBolus * 0.5
                         recentLowReboundGuardFiredThisCycle = true
                         val why = if (carbRebound)
-                            "carb: recentLowBG=${round(recentLowBG, 0)}mg/dL, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
+                            "carb: recentLowBG=${round(loRebMinimum, 0)}mg/dL, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
                         else
-                            "artifact: recentLowBG=${round(recentLowBG, 0)}mg/dL rev=${round(reversalScore, 0)} COB=0"
+                            "artifact: recentLowBG=${round(loRebMinimum, 0)}mg/dL window=${loRebMinutes}min rev=${round(reversalScore, 0)} COB=0"
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} ($why) ")
                     }
                 }

@@ -219,6 +219,14 @@ blocks itself, it never creates a `UserEntry` row for an action Live performed, 
 actual `TherapyEvent`-backed data (combined AIV csv, `persistenceLayer.getTherapyEventDataFromTime`)
 instead before concluding a sync gap.
 
+**Client's AIV (CSV / dated combined files) IS Live's per-cycle data, mirrored — check it first for most
+"what did Live see/do" questions.** BGL, Delta/SDelta/LDelta, IOB, COB, SMB, MJ, profile/tier changes and the
+Notes column (Db10..Db80 delayed-bolus checks, TT/tier codes, AdOn, etc.) all arrive on Client from Live's NS
+device status. Real example (19 Sep 2026): the whole Db0→Db40 delayed-bolus timeline, including the exact BG and
+deltas at each check, was readable straight from Client's `AutoISF_Client_SMF731B_*.csv`, when the question had
+been answered wrongly from code alone. Only fall back to raw logs for what the CSV cannot show (e.g. gate
+internals, carb-split lines, anything Client's own device did).
+
 **For "what did Live actually do/have at time X" — Live DOES have real dated data, enumerate its
 own folder first.** `Live_SMA366B\` has no per-day *combined* file (no `Live_SMA366BdatedAIV`
 folder, and the plain `combinedLive_SMA366B_rebuilt.txt` has no date column and spans ~5+ days —

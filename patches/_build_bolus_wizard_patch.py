@@ -10,8 +10,12 @@ import tempfile
 from pathlib import Path
 
 OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
-BASE = Path(r"C:\Users\arjay\StudioProjects\AndroidAPS-3426")
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.patch"
+# BASE must be a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663). The AndroidAPS-3426 clone's HEAD has earlier
+# versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
+# extraction of the needed paths instead of the clone itself.
+BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.4.patch"
+STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt",
@@ -24,6 +28,32 @@ FULL_COPY = [
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt",
 ]
+
+PATCH_DESCRIPTION = """\
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .4, 2026-09-19)
+
+Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
+  git apply --check bolus-calculator-on-3426-aisf321.4.patch
+  git apply bolus-calculator-on-3426-aisf321.4.patch
+(git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
+50%-profile / Walking soon top-up path.
+
+Changes since patch .3 (2026-09-16):
+- Delayed bolus criteria (DelayedBolusWorker): BG > 5.0, D > 0.10, SD > 0.10, LD > 0 (mmol/L). Was BG > 4.5,
+  D > 0.10, (SD >= 0.15 or BG > 5.5), LD > 0.05. Real case: a rising 5.3 mmol waited a further 10 min because LD
+  sat exactly on the old 0.05 limit. The old "SD bypass above BG 5.5" is removed.
+- Delayed bolus polling: every 5 min for up to 16 checks (5..80 min), was every 10 min for 8 checks. CarePortal
+  check notes are now Db5, Db10, Db15 ... Db80 (elapsed minutes; suffixes wait / covered / end / <dose>U). The
+  85-min SMB block still covers the whole window.
+- Delayed bolus while still moving: keeps 80% of the remaining gap via a new DELAYED_MOVING_PERCENT. The wizard's
+  immediate walking-soon cut stays at the shared MOVING_PERCENT (70%).
+- Warsaw/FPU series: only the LAST sub-dose writes a 0U bolus marker when it calculates to <= 0. Earlier sub-doses
+  still log and write their cancel note but no longer add repeated zero markers to the graphs.
+- WizardDialog: FPU preview text now says "unless setting changed above" (the duration shown is the dialog input's
+  current value).
+Not in this patch: the fork's StepCountSource / LiveStepsMirror steps mirroring. The patch keeps the plain
+persisted-steps "still moving" check (WizardActivitySteps.stillMovingNow(persistenceLayer, now)).
+"""
 
 
 def rel(p: str) -> Path:
@@ -62,6 +92,54 @@ def copy_base(staging: Path, p: str) -> None:
     shutil.copy2(src, dest)
     raw = dest.read_text(encoding="utf-8")
     dest.write_text(raw.replace("\r\n", "\n"), encoding="utf-8", newline="\n")
+
+
+def revert_steps_source(staging: Path) -> None:
+    """The fork's wizard files (since aisf321UK_889next) read steps through StepCountSource/LiveStepsMirror,
+    which the clean base does not have. Keep the plain persisted-steps check in the patch payload instead."""
+    p = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt"
+    old = subprocess.run(
+        ["git", "show", f"{STEPS_MIRROR_COMMIT}~1:{p}"], cwd=OURS, capture_output=True, text=True, encoding="utf-8", check=True
+    ).stdout.replace("\r\n", "\n")
+    write(staging, p, old)
+
+    p = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt"
+    t = read(staging, p)
+    t = must_replace(t, "import app.aaps.core.objects.utils.StepCountSource\n", "", "DBW import")
+    t = must_replace(t, "    @Inject lateinit var stepCountSource: StepCountSource\n", "", "DBW inject")
+    t = must_replace(
+        t,
+        """            val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, now)
+            if (movingNow == null) {
+                aapsLogger.info(LTag.CORE, "Delayed bolus: Live steps unavailable; no automatic dose")
+                addCheckNote("$dbLabel Live steps unavailable")
+                unblockSmb("Live steps unavailable")
+                return Result.success()
+            }
+""",
+        "            val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)\n",
+        "DBW movingNow",
+    )
+    write(staging, p, t)
+
+    p = "ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt"
+    t = read(staging, p)
+    t = must_replace(t, "import app.aaps.core.objects.utils.StepCountSource\n", "", "WD import")
+    t = must_replace(t, "    @Inject lateinit var stepCountSource: StepCountSource\n", "", "WD inject")
+    t = must_replace(t, "bgInput: Double): Boolean? {", "bgInput: Double): Boolean {", "WD sig")
+    t = must_replace(
+        t,
+        "WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) ?: return null",
+        "WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())",
+        "WD moving",
+    )
+    t = must_replace(
+        t,
+        "computeWalkingSoonDefault(carbs, protein, fat, bgInput) ?: return\n",
+        "computeWalkingSoonDefault(carbs, protein, fat, bgInput)\n",
+        "WD want",
+    )
+    write(staging, p, t)
 
 
 def apply_surgical(staging: Path) -> None:
@@ -979,6 +1057,8 @@ def main() -> None:
                 copy_base(old, p)
             copy_ours(new, p)
 
+        revert_steps_source(new)
+
         # Strip unused IntKey import from BolusWizard in the patch payload
         bw = new / rel("core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt")
         bw.write_text(
@@ -1000,16 +1080,8 @@ def main() -> None:
                 chunks.append(chunk)
         if not chunks:
             raise SystemExit("empty patch")
-        header = (
-            "From: bolus-calculator extract\n"
-            "Subject: Bolus calculator: max bolus, checkboxes, initial size, subsequent dosing\n"
-            "\n"
-            "Apply on a fresh 3.4.2.6+aisf3.2.1 tree (AndroidAPS-3426 / tobias aisf 3.2.1 on AAPS 3.4.2.6):\n"
-            "  git apply --check bolus-calculator-on-3426-aisf321.patch\n"
-            "  git apply bolus-calculator-on-3426-aisf321.patch\n"
-            "\n"
-        )
-        OUT.write_text("".join(chunks), encoding="utf-8", newline="\n")
+        header = PATCH_DESCRIPTION.rstrip("\n") + "\n\n"
+        OUT.write_text(header + "".join(chunks), encoding="utf-8", newline="\n")
         print(f"wrote {OUT} ({OUT.stat().st_size} bytes, {len(chunks)} files)")
         for relpath in relpaths:
             print(" ", relpath)
