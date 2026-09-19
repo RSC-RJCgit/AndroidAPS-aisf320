@@ -2501,6 +2501,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // True while THIS fork's HiBrk 4.0 mmol TT is live: own markRun within 6 min (5-min TT plus one
     // cycle of slop) and the active TT is 4.0, not RecPod/Giv 4.2. Shared by both HiBrk cut-shorts
     // and the UamBst-on-HiBrk quiet-rise suppress so those three cannot drift apart.
+    // True only when the independent raw/noise UKF's 5-min AND 15-min deltas are both above 0. Entry gate for
+    // HighDaytimeBrake / HighEveNightBrake (2026-09-19). False when UKF data is unavailable, so the brakes do
+    // not fire blind.
+    private fun ukfRawDeltasPositive(): Boolean {
+        val m = ukfRawMetrics()
+        val d5 = m.delta5 ?: return false
+        val d15 = m.delta15 ?: return false
+        return d5 > 0.0 && d15 > 0.0
+    }
+
     private fun hiBrkOwnFourTtActive(): Boolean {
         val ttIsFour = activeTtMgdl()?.let { kotlin.math.abs(it - mmolToMgdl(4.0)) <= mmolToMgdl(0.08) } == true
         if (!ttIsFour) return false
@@ -7851,25 +7861,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // these signals are not directly inflated by our own delivery, so leaving any of the
                 // plateau ranges means the reason for the TT no longer holds.
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */
+                // 2026-09-19: lower bounds are now the same "all three deltas above 0" as the entry gate
+                // (was -0.1/0.0/-0.2 mmol), so the TT is cut as soon as any delta stops rising. UKF deltas
+                // are entry-only here -- they flip sign too often to be a useful cancel trigger.
+                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > 0.0
                     && glucoseStatus.shortAvgDelta < 1.8 /* < 0.1 mmol */
-                    && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
-                    && glucoseStatus.longAvgDelta >= -3.6 /* >= -0.2 mmol */
+                    && glucoseStatus.delta > 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
+                    && glucoseStatus.longAvgDelta > 0.0
                     && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
                 if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
                     sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
                     addCarePortalNote("HiBrkCut")
                 }
-            } else if (readyToRun("HighEveNightBrake", 2)
+            } else if (readyToRun("HighEveNightBrake", 30)   // was 2 min; never more than one fire per 30 min (2026-09-19)
+                && readyToRun("HighDaytimeBrake", 30)        // shared lockout: neither brake fires within 30 min of the other
                 && isTimeBetween(22, 0, 6, 0)
                 // Raised 2026-08-29 from 135.1 (7.5mmol) to 162.2 (9.0mmol) at explicit request -- 7.5mmol
                 // was firing on real data at ~8.0-8.1mmol readings that felt too low a bar for this brake.
                 && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
                 && checkAutomationState("Steroids", "Steroids Off")
-                && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
-                && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
-                && glucoseStatus.longAvgDelta >= -3.6 /* -0.2 mmol */ && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
+                // 2026-09-19: all three deltas must be above 0 (was a plateau band reaching slightly below 0:
+                // SD > -0.1, D >= 0, LD >= -0.2 mmol); upper bounds unchanged. Raw UKF delta5 AND delta15 must
+                // also be above 0 (checked last -- it reads the BG history). Real 19 Sep 19:57/20:10 fires had
+                // SDelta -0.02/-0.05 and raw UKF15 -0.19/-0.15 and ended in a low.
+                && glucoseStatus.shortAvgDelta > 0.0 && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
+                && glucoseStatus.delta > 0.0 && glucoseStatus.delta < 1.8 /* 0.0-0.1 mmol */
+                && glucoseStatus.longAvgDelta > 0.0 && glucoseStatus.longAvgDelta < 5.4 /* 0.3 mmol */
                 && activeTtMgdl() == null
                 // Added 2026-08-29 at explicit request: only fire when duraISF is genuinely the dominant
                 // adaptation factor behind finalISF, not acce/bg/pp -- same "duraIsf is the largest
@@ -7879,32 +7897,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // intervention, not asked for here.
                 && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
+                && ukfRawDeltasPositive()
+                // 2026-09-19, explicit request: no fire when live HP1 (same formula as the AIV "HP" column) is
+                // under 6.5 mmol. Missing HP (no raw delta window) also blocks -- same "don't fire blind" as UKF.
+                // Real data: 22 of 29 post-fire lows had HP under 6.0.
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                 if (iobChange5 < 0.5) {
-                    if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
-                        // BMild SMBdel/ppWeight only. Keep original 4.0@5min so HiBrkCut still binds.
-                        // Night bar is >=9.0, so this is the only night path. DelOff restores when the TT ends.
-                        val preBoostDeliveryRatio = smb_delivery_ratio
-                        applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false)
-                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                        sendSms("HighEveNightBrake: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                    } else {
-                        // Added 2026-08-29 at explicit request: on top of the lowered TT itself, double the
-                        // current SMB delivery ratio for this same 5-min window -- gives the brake actual
-                        // dosing teeth rather than relying solely on the lower target. Reuses the existing
-                        // global "no active TT" delivery-ratio reset (search "DelOff" a few hundred lines up)
-                        // to revert automatically once this TT ends, whether that's the natural 5-min expiry
-                        // or the early HiBrkCut branch above cancelling it -- no separate revert logic needed
-                        // here. Doubles whatever the ratio currently IS (not the configured baseline), since
-                        // another boost could already be active; clamped to the ratio's own configured max.
-                        val preBoostDeliveryRatio = smb_delivery_ratio
-                        val boostedDeliveryRatio = (preBoostDeliveryRatio * 2.0).coerceAtMost(smb_delivery_ratio_max)
-                        setSmbDeliveryRatio(boostedDeliveryRatio)
-                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                        sendSms("HighEveNightBrake: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                    }
+                    // 2026-09-19, explicit request: TT + pp-weight raise only. The SMB-delivery-ratio boost (BMild
+                    // +0.15/+0.075, and the old x2 branch below 7.0, unreachable at the >=9.0 night bar) is removed;
+                    // the pp weight is still raised to its "high" value, as applyBMildOutcomeFactors() always did.
+                    // The 4.0 mmol TT is 2 min, and HiBrkCut can still cancel it early.
+                    preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 2)
+                    sendSms("HighEveNightBrake: TT 4.0mmol@2min + ppWeight high, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                     addCarePortalNote("HiBrk")
                     markRun("HighEveNightBrake")
                 } else {
@@ -7928,16 +7936,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 6.5-9.0 dawn plateau is left to the ordinary loop. Same cut-short / duraISF / flat-BG
         // gates; mid still also requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
         // re-arm floor were removed 5 Sep 2026: a meal bolus was locking the whole 16:00-16:34
-        // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. Fire throttle is
-        // 10 min from 02:00-07:00 to prevent closely repeated early-morning boosts, otherwise 2 min so
-        // a genuinely persistent daytime/evening plateau can re-arm promptly after the 5-minute TT.
+        // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. UPDATE 2026-09-19:
+        // fire throttle is now a flat 30 min (never more than one fire per 30 min), and entry needs all
+        // three deltas plus raw UKF delta5/delta15 above 0 -- see the gate and highDaytimeBrakeRearmMinutes
+        // below. (Earlier history: 10 min 02:00-07:00 otherwise 2, later 5, min re-arm.)
         // SDelta floor loosened 2026-09-02 with night HiBrk: > -0.1 mmol (was >= 0).
         run {
             // Daytime floor raised 2->5 min on 2026-09-18 at explicit request, alongside the MJ3
             // delivery-increment halving above -- same real incident (12:37-01:22 PM repeated
             // re-fires stacking IOB to 3.19U before a steep fall) argued for slowing the max
             // re-fire rate too, not just softening each individual fire.
-            val highDaytimeBrakeRearmMinutes = if (isTimeBetween(2, 0, 7, 0)) 10 else 5
+            // 2026-09-19: now a flat 30 minutes (was 10 min 02:00-07:00, else 5) -- never more than one fire
+            // per 30 min, same as HighEveNightBrake. An early cut-short still starts that 30-minute wait.
+            val highDaytimeBrakeRearmMinutes = 30
             // Same 4.0-only + own-markRun identity as HighEveNightBrake's cut-short above -- RecPod /
             // Giv-1 4.2mmol TTs are not ours. The 15:34 meal note was HiBrkCut (night block, no
             // time-of-day on the old cut-short) not HiBrkDayCut, but this daytime sibling had the
@@ -7949,10 +7960,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // HighEveNightBrake's own doc comment above (fixed 2026-08-30) for the full reasoning;
                 // this is where the actual self-cancelling pattern was first spotted in real data.
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */
+                // 2026-09-19: lower bounds are now the same "all three deltas above 0" as the entry gate
+                // (was -0.1/0.0/-0.2 mmol), so the TT is cut as soon as any delta stops rising. UKF deltas
+                // are entry-only here -- they flip sign too often to be a useful cancel trigger.
+                val deltasStillPlateaued = glucoseStatus.shortAvgDelta > 0.0
                     && glucoseStatus.shortAvgDelta < 1.8 /* < 0.1 mmol */
-                    && glucoseStatus.delta >= 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
-                    && glucoseStatus.longAvgDelta >= -3.6 /* >= -0.2 mmol */
+                    && glucoseStatus.delta > 0.0 && glucoseStatus.delta < 1.8 /* 0.0..<0.1 mmol */
+                    && glucoseStatus.longAvgDelta > 0.0
                     && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
                 if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
@@ -7960,6 +7974,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addCarePortalNote("HiBrkDayCut")
                 }
             } else if (readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
+                && readyToRun("HighEveNightBrake", 30)   // shared lockout with the night brake (2026-09-19)
                 && isTimeBetween(6, 0, 1, 30)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.shortAvgDelta > -1.8 /* > -0.1 mmol */ && glucoseStatus.shortAvgDelta < 1.8 /* 0.1 mmol */
@@ -7969,6 +7984,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
+                && ukfRawDeltasPositive()
+                // 2026-09-19, explicit request: no fire when live HP1 is under 6.5 mmol (same gate as
+                // HighEveNightBrake; missing HP also blocks).
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
             ) {
                 // Two entry BGL bands, both with every gate above (flat-BG bands, duraISF-dominant,
                 // Steroids Off, iobChange5 < 0.5):
@@ -7997,7 +8016,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Both bands share the time-dependent 10-min early-morning / 2-min otherwise throttle;
                 // active TT still blocks overlap.
                 // When BGL > 7.0 at fire (high band always; mid band above 7.0), BMild SMBdel/ppWeight
-                // replace x2/x1.5; TT stays 4.0@5min so HiBrkDayCut still binds. Mid 6.5-7.0 keeps x1.5.
+                // replace x2/x1.5; TT stays 4.0 (now 2 min) so HiBrkDayCut still binds. Mid 6.5-7.0 keeps x1.5.
                 // 2026-09-13, per explicit request: the 06:00-08:30 dawn slot above IS now reopened,
                 // but only via daytimeGateBypassOk() -- i.e. only once Usual2forTH has already
                 // confirmed a genuine rise (or the existing new-pod+BG>9 case) -- never unconditionally,
@@ -8006,45 +8025,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // sat at 8.5-9.0mmol for an hour with nothing eligible to help because this slot was
                 // closed and HiBrkDay's own high band doesn't open until 9.0mmol.
                 val highBand = isTimeBetween(6, 0, 22, 0) && glucoseStatus.glucose >= 162.2 /* 9.0 mmol */
+                // 2026-09-19: floor raised 6.5 -> 7.5 mmol at explicit request (real data: 14 of 31 mid fires at
+                // 6.5-7.0 and 9 of 35 at 7.0-7.5 ended below 5.0mmol, vs 1 of 33 above 7.5), and a 9.0 cap added
+                // so this band never overlaps HighEveNightBrake's >=9.0 after 22:00 (the night brake owns >=9.0
+                // from 22:00; the day high band owns it before that). The 6.5-7.0 "x1.5" branch below is now
+                // unreachable but left in place.
                 val midBand = !highBand && (isTimeBetween(8, 30, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
-                    && glucoseStatus.glucose > 117.1 /* 6.5 mmol */
+                    && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.glucose < 162.2 /* 9.0 mmol */
                     && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3"))
                     && !checkAutomationState("LowBG", "50recent")
                 if (highBand || midBand) {
                     val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
                     if (iobChange5 < 0.5) {
-                        val preBoostDeliveryRatio = smb_delivery_ratio
-                        if (glucoseStatus.glucose > 126.1 /* 7.0 mmol */) {
-                            // Three independent risk factors, any one of which halves the 0.15 base to
-                            // 0.075 -- not compounded, and not tiered by factor (reworked 2026-09-18 at
-                            // explicit request; an earlier version gave TierC its own extra-conservative
-                            // 0.0375, but that wasn't backed by anything the way the 0.075 MJ3 value is --
-                            // see below -- so all three now share the same single reduced value).
-                            // MJ3: see applyBMildOutcomeFactors()'s own doc comment for the real
-                            // 12:37-01:22 PM incident (IOB 2.1U->3.19U, then BGL 8.8->5.0mmol) this
-                            // responds to.
-                            // Standard TierC: the most-escalated Standard rung (StuckHighTierC/manual
-                            // List1 pick) -- already a more aggressive profile, its own reason for caution.
-                            // High recent activity (recentSteps30Minutes > 200): real movement is its own
-                            // independent reason for caution. Relies on the steps-mirroring pipeline (see
-                            // this session's own investigation); if that reads incorrectly, this factor
-                            // just doesn't apply and the other two still work normally.
-                            val onStandardTierC = profileFunction.getOriginalProfileName() ==
-                                preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
-                            val anyCautionFactor = !checkAutomationState("MJ", "NOMJremains") || onStandardTierC || recentSteps30Minutes > 200
-                            val boostIncrement = if (anyCautionFactor) 0.075 else 0.15
-                            applyBMildOutcomeFactors(glucoseStatus.glucose, setTt = false, deliveryBoostIncrement = boostIncrement)
-                            startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                            sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "6.5"}]: TT 4.0mmol@5min, BMild SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(smb_delivery_ratio, 2)} (+$boostIncrement), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                        } else {
-                            // SMBdel boost (x1.5 mid 6.5-7.0); relies on the global "DelOff" no-active-TT
-                            // reset to revert once this TT ends, early or on time.
-                            val boostFactor = 1.5
-                            val boostedDeliveryRatio = (preBoostDeliveryRatio * boostFactor).coerceAtMost(smb_delivery_ratio_max)
-                            setSmbDeliveryRatio(boostedDeliveryRatio)
-                            startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
-                            sendSms("HighDaytimeBrake [6.5]: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)} (x$boostFactor), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
-                        }
+                        // 2026-09-19, explicit request: TT + pp-weight raise only. The SMB-delivery-ratio boost (BMild +0.15,
+                        // halved to +0.075 by the caution factors; the x1.5 branch below 7.0, unreachable since the 7.5
+                        // floor) is removed; the pp weight is still raised to its "high" value, as applyBMildOutcomeFactors()
+                        // always did. The 4.0 mmol TT is 2 min; HiBrkDayCut can still cancel it.
+                        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 2)
+                        sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "7.5"}]: TT 4.0mmol@2min + ppWeight high, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                         addCarePortalNote(if (highBand) "HiBrkDay" else "HiBrkDayMid")
                         markRun("HighDaytimeBrake")
                     } else {
