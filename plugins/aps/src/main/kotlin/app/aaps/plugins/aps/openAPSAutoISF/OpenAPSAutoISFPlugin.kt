@@ -2501,11 +2501,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // True while THIS fork's HiBrk 4.0 mmol TT is live: own markRun within 6 min (5-min TT plus one
     // cycle of slop) and the active TT is 4.0, not RecPod/Giv 4.2. Shared by both HiBrk cut-shorts
     // and the UamBst-on-HiBrk quiet-rise suppress so those three cannot drift apart.
-    // Kill switches for the two plateau brakes, OFF since 2026-09-20 at explicit request ("turn off HiBrkDay and
-    // evening ... for now"). Set true to re-enable. While off neither fires (no TT, no HiBrk/HiBrkDay/HiBrkDayMid notes);
-    // their cut-short branches only act on their own TT, so they simply stay idle.
-    private val highEveNightBrakeEnabled = false
-    private val highDaytimeBrakeEnabled = false
+    // Kill switches for the two plateau brakes. Were turned OFF 2026-09-20 ("for now") and RESTORED (true) the same day at
+    // explicit request. Set false to disable again: neither would fire (no TT, no HiBrk/HiBrkDay/HiBrkDayMid notes); their
+    // cut-short branches only act on their own TT, so they would simply stay idle.
+    private val highEveNightBrakeEnabled = true
+    private val highDaytimeBrakeEnabled = true
 
     // True only when the independent raw/noise UKF's 5-min AND 15-min deltas are both above 0. Entry gate for
     // HighDaytimeBrake / HighEveNightBrake (2026-09-19). False when UKF data is unavailable, so the brakes do
