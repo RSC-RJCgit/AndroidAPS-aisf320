@@ -7921,6 +7921,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             } else if (highEveNightBrakeEnabled && readyToRun("HighEveNightBrake", 30)   // was 2 min; never more than one fire per 30 min (2026-09-19)
                 && readyToRun("HighDaytimeBrake", 30)        // shared lockout: neither brake fires within 30 min of the other
+                && readyToRun("HiBrkTwilight", 30)
                 && isTimeBetween(22, 0, 6, 0)
                 // Raised 2026-08-29 from 135.1 (7.5mmol) to 162.2 (9.0mmol) at explicit request -- 7.5mmol
                 // was firing on real data at ~8.0-8.1mmol readings that felt too low a bar for this brake.
@@ -8020,6 +8021,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             } else if (highDaytimeBrakeEnabled && readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
                 && readyToRun("HighEveNightBrake", 30)   // shared lockout with the night brake (2026-09-19)
+                && readyToRun("HiBrkTwilight", 30)
                 && isTimeBetween(6, 0, 1, 30)
                 && checkAutomationState("Steroids", "Steroids Off")
                 // 2026-09-19: all three deltas must be above 0 (was SD > -0.1, D >= 0, LD >= -0.2 mmol); upper
@@ -8100,6 +8102,47 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             }
         }
+
+        // HiBrkTwilight: a TT-only dawn variant. Keep HP >=6.5 and the existing HiBrk
+        // plateau/raw/IOB guards; no SMB-ratio, pp-weight or profile action.
+        /*run {
+            val twilightNow = dateUtil.now()
+            val activeTarget = persistenceLayer.getTemporaryTargetActiveAt(twilightNow)
+            val ownTimestamp = preferences.get(LongNonKey.LastHiBrkTwilightTtAt)
+            val ownTarget = ownTimestamp > 0L && activeTarget?.timestamp == ownTimestamp
+            val deltasInRange = glucoseStatus.delta > 0.0 && glucoseStatus.delta < 1.8 &&
+                glucoseStatus.shortAvgDelta > 0.0 && glucoseStatus.shortAvgDelta < 1.8 &&
+                glucoseStatus.longAvgDelta > 0.0 && glucoseStatus.longAvgDelta < 5.4
+            val iobChange5 = totalIobAt(twilightNow) - totalIobAt(twilightNow - 5 * 60_000L)
+            if (ownTarget) {
+                // Exact TT ownership prevents cancelling an unrelated manual target.
+                // Match the existing HiBrk early-exit conditions; raw deltas are entry-only.
+                if (!deltasInRange || iobChange5 >= 1.0) {
+                    cancelCurrentTempTarget()
+                    sendSms("HiBrkTwilight: TT cut short (iobChange5=${round(iobChange5, 2)}, deltasInRange=$deltasInRange)")
+                    addCarePortalNote("HiBrkTwilightCut")
+                }
+            } else if (isTimeBetween(4, 0, 7, 0) && activeTarget == null
+                && readyToRun("HiBrkTwilight", 30)
+                && readyToRun("HighEveNightBrake", 30) && readyToRun("HighDaytimeBrake", 30)
+                && checkAutomationState("Steroids", "Steroids Off")
+                && glucoseStatus.glucose > 6.5 * 18.0 && glucoseStatus.glucose < 9.0 * 18.0
+                && deltasInRange && iobChange5 < 0.5
+                && autoIsfValues.duraIsf >= autoIsfValues.acceIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
+                && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
+                && ukfRawDeltasPositive()
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
+            ) {
+                startTempTargetIfNeededAt(4.4 * 18.0, 2)?.let { createdAt ->
+                    preferences.put(LongNonKey.LastHiBrkTwilightTtAt, createdAt)
+                    markRun("HiBrkTwilight")
+                    sendSms("HiBrkTwilight: TT 4.4mmol@2min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    addCarePortalNote("HiBrkTwilight")
+                    aapsLogger.debug(LTag.APS, "HiBrkTwilight: TT 4.4mmol@2min requested; ratio and ppWeight unchanged")
+                }
+            }
+        }*/
 
         // Code replacement for the native StuckRisingSlowly screenshot. Own five-minute throttle;
         // preserves the shared delta bands and bolus-age OR carb-age condition. No boost/profile action.
@@ -8211,10 +8254,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // "Select coded profiles" popup, so stepping through unconfigured rungs stays a safe no-op.
         run {
             if (isTimeBetween(3, 0, 7, 0) && checkAutomationState("Steroids", "Steroids Off") && readyToRun("MorningRoleSwap", 240)) {
-                val hp = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
+                // Morning role review uses HP (not HP2); retain the existing prediction thresholds.
+                val hp = hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB)
                 val highMatch = hp != null && hp > 6.0 &&
                     checkAutomationState("MJ", "NOMJremains") &&
-                    allRecentBgInRange(8, minMgdl = 108.1 /* 6.0 mmol */, maxMgdl = null)
+                    allRecentBgInRange(8, minMgdl = 90.0 /* 5.0 mmol */, maxMgdl = null)
                 val normalMatch = hp != null && hp < 5.0 &&
                     !checkAutomationState("MJ", "NOMJremains") &&
                     allRecentBgInRange(8, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = 126.1 /* 7.0 mmol */)
