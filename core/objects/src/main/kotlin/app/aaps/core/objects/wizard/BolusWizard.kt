@@ -1290,6 +1290,14 @@ class BolusWizard @Inject constructor(
         preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round((current - amountU).coerceAtLeast(0.0) * 1000))
     }
 
+    // A carb-split part that calculated to 0U because IOB rose; written (by writeLastSkippedZero) only if it turns out to be
+    // the last thing the split did.
+    private class SkippedZero(val iobIncrease: Double, val calculation: BCR)
+
+    private fun writeLastSkippedZero(skipped: SkippedZero?) {
+        skipped?.let { insertZeroDoseTreatment("Carb split", it.iobIncrease, it.calculation) }
+    }
+
     // Explicit 0U bolus treatment for a split/delayed dose that calculated out to <=0 (IOB rose enough
     // to fully absorb it) — same "record a visible 0U entry" pattern confirmAndExecute()'s own overall
     // zero-total branch already uses above, so a calculated-zero part is visually consistent with a
@@ -1381,9 +1389,21 @@ class BolusWizard @Inject constructor(
         remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
         retryDeadline: Long = dateUtil.now() + T.mins(60).msecs(),
-        consecutiveUnsafeChecks: Int = 0
+        consecutiveUnsafeChecks: Int = 0,
+        // Most recent skipped part (IOB rose enough that it calculated to 0U) that has NOT been written yet. Carb-split zeros
+        // are deferred (2026-09-20, explicit request): only the LAST one is written, and only if the split then ends without
+        // delivering anything more. Dropped when a later part is delivered.
+        lastSkippedZero: SkippedZero? = null
     ) {
-        if (remainingResidual <= 0) return
+        // Rounding fix (2026-09-20): 5.2 - 5.0 is 0.20000000000000018 in floating point, so after the 0.2 part was delivered
+        // a ~1.7e-16 U "remainder" still passed `> 0`, kept scheduling checks every interval, and each one wrote a 0.00U
+        // treatment + calc + note until the 60-min deadline. Anything under half a pump step is finished, not pending.
+        val pumpStepForResidual = activePlugin.activePump.pumpDescription.bolusStep
+        if (remainingResidual < pumpStepForResidual / 2.0) {
+            if (remainingResidual > 0.0) aapsLogger.info(LTag.CORE, "ReducedSplitBolus: remainder ${remainingResidual}U is under half a pump step -- treating the split as finished")
+            setSplitPendingRemaining(0.0)
+            return
+        }
         setSplitPendingRemaining(remainingResidual)
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
@@ -1391,12 +1411,14 @@ class BolusWizard @Inject constructor(
         Handler(Looper.getMainLooper()).postDelayed({
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: bolus was stopped — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "bolus stopped")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superseded by a newer bolus/carbs entry — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "superseded by newer entry")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
@@ -1404,18 +1426,21 @@ class BolusWizard @Inject constructor(
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "profile switch to $pct%")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (pumpUnavailable()) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: pump suspended — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "pump suspended")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superbolus active — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "superbolus active")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
@@ -1423,12 +1448,13 @@ class BolusWizard @Inject constructor(
             if (dateUtil.now() < deliverAt) {
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
-                    deliverAt, retryDeadline, consecutiveUnsafeChecks
+                    deliverAt, retryDeadline, consecutiveUnsafeChecks, lastSkippedZero
                 )
                 return@postDelayed
             }
             if (dateUtil.now() > retryDeadline) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (60min) exhausted — cancelling remaining ${remainingResidual}U")
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "retry timeout exceeded")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
@@ -1445,7 +1471,7 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: no fresh glucose data — retrying in 2min, remaining ${remainingResidual}U")
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
-                    dateUtil.now() + T.mins(2).msecs(), retryDeadline, consecutiveUnsafeChecks
+                    dateUtil.now() + T.mins(2).msecs(), retryDeadline, consecutiveUnsafeChecks, lastSkippedZero
                 )
                 return@postDelayed
             }
@@ -1475,7 +1501,8 @@ class BolusWizard @Inject constructor(
                         myScheduleToken,
                         dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
                         retryDeadline,
-                        unsafeCheckNumber
+                        unsafeCheckNumber,
+                        lastSkippedZero
                     )
                     return@postDelayed
                 }
@@ -1483,6 +1510,7 @@ class BolusWizard @Inject constructor(
                     LTag.CORE,
                     "ReducedSplitBolus: BG unsafe check 3/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U"
                 )
+                writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "BG safety check failed 3 consecutive intervals")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
@@ -1492,11 +1520,17 @@ class BolusWizard @Inject constructor(
             val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
-                insertZeroDoseTreatment("Carb split", iobIncrease, followUpCalculation(
+                // Deferred (2026-09-20): nothing is written for a skip now; the latest one is remembered and written once,
+                // only if the split ends without delivering (see writeLastSkippedZero / terminal paths above).
+                val skippedCalc = followUpCalculation(
                     dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
                     "No insulin delivered. Remaining ${decimalFormatter.to2Decimal(remainingResidual)}U; retry in ${intervalMins}min."
-                ))
-                scheduleReducedPartsSplitBolus(remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken, dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline)
+                )
+                scheduleReducedPartsSplitBolus(
+                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
+                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline,
+                    lastSkippedZero = SkippedZero(iobIncrease, skippedCalc)
+                )
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
@@ -1520,7 +1554,9 @@ class BolusWizard @Inject constructor(
                         if (!result.success)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                         else {
-                            val newResidual = remainingResidual - thisDose
+                            // Rounded to 0.001 so floating-point dust (5.2 - 5.0 - 0.2 = 1.7e-16) is not mistaken for a remainder;
+                            // the guard at the top of this function then finishes anything under half a pump step.
+                            val newResidual = Round.roundTo(remainingResidual - thisDose, 0.001)
                             if (newResidual > 0.0)
                                 scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else
