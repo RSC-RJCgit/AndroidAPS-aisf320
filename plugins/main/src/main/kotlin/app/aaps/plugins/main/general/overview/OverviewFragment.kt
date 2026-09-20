@@ -1365,6 +1365,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Settings-screen AdaptiveSwitchPreference exposes, just reachable from List 2 too.
         // Same EventAutoIsfDirectTtCode dispatch as UKF1_DOSING_TOGGLE/LOCATION_SMS_TOGGLE above.
         LIVE_STEPS_ON_VIRTUAL_TOGGLE("Live steps on VirtualPump on/off", 5.206),
+        // Added 2026-09-20 (test toggles, also Settings switches): FastRise size tiers and the post-low rebound guard
+        // (LoReb). Same EventAutoIsfDirectTtCode dispatch as the toggles above; Client relays 5.226 / 5.228.
+        FAST_RISE_TOGGLE("FastRise SMB tiers on/off (test)", 5.226),
+        LOW_REBOUND_GUARD_TOGGLE("Post-low rebound guard LoReb on/off (test)", 5.228),
         // 5.204: loop phone stores its Build.MODEL as the only location-SMS sender. Pump/Virtual
         // apply immediately; Client relays the TT to Live (Client does not send location SMS).
         LOCATION_SMS_THIS_PHONE("Location SMS from the loop phone (model)", 5.204),
@@ -1557,6 +1561,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.STAGE_AAPS333_NEWEST,
                 BasalDirectAction.INSTALL_AAPS333_SHIZUKU,
                 BasalDirectAction.ADB_START_ATTEMPT,
+                BasalDirectAction.FAST_RISE_TOGGLE,
+                BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE,
                 BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
@@ -1597,6 +1603,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
         BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
         BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+        BasalDirectAction.FAST_RISE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfFastRiseEnabled)
+        BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
             if (config.AAPSCLIENT) {
                 val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]

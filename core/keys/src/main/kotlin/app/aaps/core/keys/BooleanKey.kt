@@ -76,6 +76,12 @@ enum class BooleanKey(
     ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", false),
     ApsAutoIsfUseLiveMjStateOnVirtual("autoisf_use_live_mj_state_on_virtual", false),
     ApsAutoIsfUseLiveSteroidEventsOnVirtual("autoisf_use_live_steroid_events_on_virtual", false),
+    // Test toggles added 2026-09-20 at explicit request (Settings + List 2 rows 5.226 / 5.228).
+    // FastRise: the Libre FAST RISE size tiers in DetermineBasalAutoISF (default ON = unchanged behaviour).
+    ApsAutoIsfFastRiseEnabled("autoisf_fast_rise_enabled", true),
+    // LoReb: the recent-low rebound guard (halves microBolus after a recent low). Default OFF, matching the
+    // hard-coded off state it replaced on 2026-09-20.
+    ApsAutoIsfLowReboundGuardEnabled("autoisf_low_rebound_guard_enabled", false),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),

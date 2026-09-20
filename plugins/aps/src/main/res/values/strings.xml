@@ -18,6 +18,10 @@
     <string name="mj_kotlin_buttons_enabled_summary">Show the direct Start/Restore MJ button on Overview. This does not use native Automation entries.</string>
     <string name="use_live_steps_on_virtual_title">Use loop phone\'s steps on VirtualPump</string>
     <string name="use_live_steps_on_virtual_summary">VirtualPump only — has no effect on any other pump type. When on, Virtual\'s step-count gates (BasalUp, MoreMJ, etc.) use the loop phone\'s own step counts instead of this device\'s local sensor.</string>
+    <string name="fast_rise_enabled_title">FastRise SMB size tiers (test)</string>
+    <string name="fast_rise_enabled_summary">On (default) = the Libre FAST RISE tiers cut the SMB by x0.2-x0.9 depending on the rise. Off = those tiers are skipped (sensor-glitch guards, the late FastRise taper and the cumulative SMB cap stay active). For testing.</string>
+    <string name="low_rebound_guard_enabled_title">Post-low rebound guard, LoReb (test)</string>
+    <string name="low_rebound_guard_enabled_summary">On = after a recent low, a carb/artifact rebound halves the SMB (LoReb note). Off (default) = the guard never fires. For testing.</string>
     <string name="use_live_mj_state_on_virtual_title">Adopt loop phone\'s MJ button events on VirtualPump</string>
     <string name="use_live_mj_state_on_virtual_summary">VirtualPump only — has no effect on any other pump type. When on, a real MJ-injection or MJ-restore button press on the loop phone (via its CarePortal note) is applied once to Virtual\'s own MJ automation state too, as if the same button had been pressed here. Virtual\'s own existing automations then evolve the state independently from there — this is a one-time seed, not an ongoing mirror.</string>
     <string name="use_live_steroid_events_on_virtual_title">Adopt loop phone\'s Steroid button events on VirtualPump</string>

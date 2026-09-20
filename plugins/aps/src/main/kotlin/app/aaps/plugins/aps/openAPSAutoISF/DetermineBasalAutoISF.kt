@@ -85,10 +85,12 @@ class DetermineBasalAutoISF @Inject constructor(
     // the AIV export without pulling raw device logs. Added 2026-09-16, per explicit request.
     var recentLowReboundGuardFiredThisCycle: Boolean = false
 
-    // Kill switch for the recent-low rebound guard ("LoReb": halves microBolus after a recent low). OFF since
-    // 2026-09-20 at explicit request ("for now"); set true to restore it. While off it never fires, so no LoReb note
+    // Switch for the recent-low rebound guard ("LoReb": halves microBolus after a recent low), from the setting
+    // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
+    // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
     // and LastLoRebAppliedAt is no longer refreshed (only StuckRisingSlowly reads that, as a recent-event exclusion).
-    private val recentLowReboundGuardEnabled = false
+    private val recentLowReboundGuardEnabled: Boolean
+        get() = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
 
     private val consoleError = mutableListOf<String>()
     private val consoleLog = mutableListOf<String>()
@@ -1783,6 +1785,12 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
+                // Test toggle (2026-09-20, ApsAutoIsfFastRiseEnabled; Settings + List 2 5.226): gates the three Libre
+                // FAST RISE size-tier conditions below (main tier cascade, early-rise tier, higher-BG tier). Off skips
+                // just those; sensor-glitch guards, the early-AM/twilight limits, the late FastRise taper and the
+                // cumulative SMB cap are untouched.
+                val fastRiseTiersEnabled = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
+                if (!fastRiseTiersEnabled) rT.reason.append("FastRise tiers OFF (test) ")
                 val LibreTrue = if (libreActive) 1.0 else 1.0
 
                 val high_SMB2 = profile.smb_delivery_ratio_max
@@ -2046,6 +2054,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     // delta) is kept -- it passed at both real events and still gives a raw-signal check
                     // independent of the smoothed AAPS delta.
                     if (
+                        fastRiseTiersEnabled &&
                         bg > 6.0 * 18 &&
                         bg < 12.0 * 18 &&
                         COB <= 25 &&
@@ -2116,7 +2125,7 @@ class DetermineBasalAutoISF @Inject constructor(
                                 rT.reason.append("smbUn 0.707 for 0.025 * profile.max_iob microBolus = ${round(microBolus, 2)} ")
                             }
                         }
-                    } else if (Delta >= 0.25 * 18 &&
+                    } else if (fastRiseTiersEnabled && Delta >= 0.25 * 18 &&
                         SDelta >= 0.10 * 18 &&
                         Delta < 0.35 * 18 &&
                         rawDelta5Mgdl >= 0.25 * 18 && aapsDelta1Mgdl >= 0.25 * 18
@@ -2133,7 +2142,7 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // HIGHER BG FAST RISE
 // =====================================================
-                    } else if (Delta >= 0.9 * 18 &&
+                    } else if (fastRiseTiersEnabled && Delta >= 0.9 * 18 &&
                         SDelta >= 0.7 * 18 &&
                         bg > 11.5 * 18 &&
                         bg < 13.5 * 18 &&
@@ -2346,6 +2355,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // while longAvgDelta still reflects the fall), COB 0, and BG still in the recovery band
                 // (< 9.4mmol). Boost's velocity override releases it once the rise is a genuine spike
                 // (delta > 15mg/dL/5min AND already > target+20). Same 0.5 factor as the carb branch.
+                if (!recentLowReboundGuardEnabled) rT.reason.append("LoReb OFF (test) ")
                 if (recentLowReboundGuardEnabled && microBolus > 0.0) {
                     val uciGrams = if (csf > 0.0) uci / csf else 0.0
                     // 2026-09-09: was `recentLowActive` (checkAutomationState("LowBG","50recent")).
