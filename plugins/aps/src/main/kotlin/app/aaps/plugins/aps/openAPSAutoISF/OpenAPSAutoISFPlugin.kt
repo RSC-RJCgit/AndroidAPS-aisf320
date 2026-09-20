@@ -4076,8 +4076,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 (sensorAgeDays != null && sensorAgeDays >= 1.0 && sensorAgeDays < 2.0)
                     || newDay2ByPodAge                                                 -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
                 sensorAgeDays != null && sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
-                // Start calendar day 12 after 11 full days; use the same mild adjustment as day 13.
-                sensorAgeDays != null && sensorAgeDays >= 11.0 && sensorAgeDays < 13.0  -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                // Start calendar day 10 after 9 full days (was day 12 / 11.0); same mild adjustment as day 13.
+                sensorAgeDays != null && sensorAgeDays >= 9.0 && sensorAgeDays < 13.0   -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
                 sensorAgeDays != null && sensorAgeDays >= 13.0 && sensorAgeDays < 14.0  -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
                 sensorAgeDays != null && sensorAgeDays >= 14.0 && sensorAgeDays < 15.0  -> Triple("3", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
                 else -> null
