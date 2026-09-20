@@ -8,6 +8,8 @@ import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.nssdk.localmodel.entry.Direction
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
@@ -47,6 +49,7 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
     @Mock lateinit var storeDataForDb: StoreDataForDb
     @Mock lateinit var profileSource: ProfileSource
     @Mock lateinit var uiInteraction: UiInteraction
+    @Mock lateinit var ukfSmoothing: app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
 
     @BeforeEach
     fun setUp() {
@@ -64,12 +67,14 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
             preferences = preferences,
             rxBus = rxBus,
             dateUtil = dateUtil,
+            profileUtil = profileUtil,
             activePlugin = activePlugin,
             storeDataForDb = storeDataForDb,
             config = config,
             profileStoreProvider = profileStoreProvider,
             profileSource = profileSource,
-            uiInteraction = uiInteraction
+            uiInteraction = uiInteraction,
+            ukfSmoothing = ukfSmoothing
         )
     }
 
@@ -119,6 +124,42 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
                 get(0).value == 130.0 &&
                 get(0).timestamp == sgvTime &&
                 get(0).trendArrow == TrendArrow.FORTY_FIVE_UP
+        })
+    }
+
+    @Test
+    fun `NS smoothing preserves upstream raw channels and derives only missing channels`() {
+        whenever(preferences.get(BooleanKey.FslApplySmoothing)).thenReturn(true)
+        whenever(preferences.get(DoubleKey.FslCalSlope)).thenReturn(1.1)
+        whenever(preferences.get(DoubleKey.FslCalOffset)).thenReturn(0.0)
+        whenever(preferences.get(DoubleKey.FslSmoothAlpha)).thenReturn(1.0)
+        whenever(preferences.get(IntKey.FslMaxSmoothGap)).thenReturn(10)
+        whenever(preferences.get(DoubleKey.FslLastSmooth)).thenReturn(0.0)
+        val channels = listOf(132.25 to 131.75, null to null, 132.25 to null, null to 131.75)
+        val entries = channels.mapIndexed { index, (filtered, unfiltered) ->
+            NSSgvV3(
+                device = "Libre",
+                date = now - T.mins(4 - index.toLong()).msecs(),
+                identifier = "raw-$index",
+                utcOffset = null,
+                isValid = true,
+                units = NsUnits.MG_DL,
+                sgv = 130.0,
+                direction = Direction.FLAT,
+                noise = null,
+                filtered = filtered,
+                unfiltered = unfiltered
+            )
+        }
+        assertTrue(processor.processSgvs(entries, doFullSync = false))
+        verify(storeDataForDb).addToGlucoseValues(argThat {
+            size == 4 && indices.all { index ->
+                val (filtered, unfiltered) = channels[index]
+                kotlin.math.abs(get(index).value - 143.0) < 0.000001 &&
+                    kotlin.math.abs((get(index).raw ?: -1.0) - (filtered ?: 143.0)) < 0.000001 &&
+                    get(index).noise == (unfiltered ?: 130.0) &&
+                    get(index).timestamp == entries[index].date
+            }
         })
     }
 

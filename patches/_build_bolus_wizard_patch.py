@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.5.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.6.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -30,13 +30,18 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .5, 2026-09-20)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .6, 2026-09-20)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.5.patch
-  git apply bolus-calculator-on-3426-aisf321.5.patch
+  git apply --check bolus-calculator-on-3426-aisf321.6.patch
+  git apply bolus-calculator-on-3426-aisf321.6.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .6 (2026-09-20):
+- Restore Overview settings "Split bolus when over max" and "Split bolus interval (min)".
+  Enable the switch to make the wizard's split controls available under their existing conditions.
+- Retains all patch .5 changes below.
 
 Changes since patch .4 (2026-09-19), i.e. patch .5 (2026-09-20) adds:
 - Carb split (BolusWizard.scheduleReducedPartsSplitBolus): rounding-leftover fix. The residual 5.2 - 5.0 is 0.20000000000000018 in
@@ -334,6 +339,8 @@ def apply_surgical(staging: Path) -> None:
         "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))\n            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))",
         "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))\n"
         "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDelayedBolusEnabled, summary = R.string.wizard_split_bolus_summary, title = R.string.wizard_split_bolus_title))\n"
+        "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSplitBolusEnabled, summary = R.string.split_bolus_enabled_summary, title = R.string.split_bolus_enabled_title))\n"
+        "            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsAutoIsfSplitBolusInterval, dialogMessage = R.string.split_bolus_interval_summary, title = R.string.split_bolus_interval_title))\n"
         "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))",
         "OverviewPlugin pref",
     )
@@ -350,6 +357,10 @@ def apply_surgical(staging: Path) -> None:
         '    <string name="quick_wizard_max_bolus_not_saved">This temporary limit is restored after this Quick Wizard attempt.</string>\n'
         '    <string name="quick_wizard_max_bolus_summary">Calculated: %1$.2f U\\nAllowed now: %2$.2f U</string>\n'
         '    <string name="wizard_split_bolus_title">Enable delayed bolus</string>\n'
+        '    <string name="split_bolus_enabled_title">Split bolus when over max</string>\n'
+        '    <string name="split_bolus_enabled_summary">When profile is 100% and the wizard result exceeds max bolus, show the split-every-N-min controls.</string>\n'
+        '    <string name="split_bolus_interval_title">Split bolus interval (min)</string>\n'
+        '    <string name="split_bolus_interval_summary">Default minutes between split parts (1–10). The wizard can still change this per bolus.</string>\n'
         '    <string name="wizard_split_bolus_summary">When profile is 50%: deliver the remaining gap ×90% at +10/20/30 min once BGL rising criteria are met. SMBs are blocked during the check window.</string>\n'
         '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
         "strings.xml",

@@ -198,8 +198,11 @@ class NsIncomingDataProcessor @Inject constructor(
                         preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
                         aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated libreSpecial=$libreSpecial smooth=$smooth alpha=$effectiveAlpha")
                     }
-                    gv.noise = gv.value     // preserve pre-calibration mgdl as raw reference
-                    gv.raw = calibrated     // calibrated but unsmoothed
+                    // Keep the upstream channels (NS unfiltered/filtered), including Live's
+                    // Libre reference and calibrated unsmoothed values. Derive local fallbacks
+                    // only when that channel was absent from the incoming entry.
+                    gv.noise = gv.noise ?: gv.value
+                    gv.raw = gv.raw ?: calibrated
                     gv.value = smooth       // final smoothed value
                 }
             }
