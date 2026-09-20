@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.4.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.5.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -30,15 +30,25 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .4, 2026-09-19)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .5, 2026-09-20)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.4.patch
-  git apply bolus-calculator-on-3426-aisf321.4.patch
+  git apply --check bolus-calculator-on-3426-aisf321.5.patch
+  git apply bolus-calculator-on-3426-aisf321.5.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
 
-Changes since patch .3 (2026-09-16):
+Changes since patch .4 (2026-09-19), i.e. patch .5 (2026-09-20) adds:
+- Carb split (BolusWizard.scheduleReducedPartsSplitBolus): rounding-leftover fix. The residual 5.2 - 5.0 is 0.20000000000000018 in
+  floating point, so after the 0.2 part was delivered a ~1.7e-16 U "remainder" kept scheduling a check every interval, each writing a
+  0.00U bolus + calc row + S0.00 note until the 60-min deadline. The new remainder is rounded to 0.001 and anything under half a pump
+  step finishes the split (log line only).
+- Carb split zeros are deferred: a part skipped because IOB rose (calculated 0U) no longer writes its 0U bolus / calc row / S0.00 note
+  at once. Only the LAST skip is written, once, and only if the split then ends without delivering (deadline, stop, superseded, profile
+  switch, pump suspended, superbolus, or 3 unsafe BG checks). A later delivered part discards the remembered skip.
+- FPU series unchanged: only the last sub-dose writes its zero marker.
+
+Changes in patch .4 (2026-09-19), kept for reference:
 - Delayed bolus criteria (DelayedBolusWorker): BG > 5.0, D > 0.10, SD > 0.10, LD > 0 (mmol/L). Was BG > 4.5,
   D > 0.10, (SD >= 0.15 or BG > 5.5), LD > 0.05. Real case: a rising 5.3 mmol waited a further 10 min because LD
   sat exactly on the old 0.05 limit. The old "SD bypass above BG 5.5" is removed.
@@ -119,6 +129,19 @@ def revert_steps_source(staging: Path) -> None:
 """,
         "            val movingNow = WizardActivitySteps.stillMovingNow(persistenceLayer, now)\n",
         "DBW movingNow",
+    )
+    # 2026-09-20: fork-only key LongNonKey.LastDelayedBolusDeliveredAt (feeds the fork's StuckRisingSlowly automation, not the
+    # bolus calculator) does not exist on the clean base -- keep it out of the patch payload.
+    t = must_replace(t, "import app.aaps.core.keys.LongNonKey\n", "", "DBW LongNonKey import")
+    t = must_replace(
+        t,
+        """                        // Only pump-reported delivery qualifies, including a partial delivery.
+                        // A request, waiting note, or failed zero-dose attempt must not arm slow-rise.
+                        if (result.bolusDelivered > 0.0)
+                            preferences.put(LongNonKey.LastDelayedBolusDeliveredAt, dateUtil.now())
+""",
+        "",
+        "DBW LastDelayedBolusDeliveredAt",
     )
     write(staging, p, t)
 
