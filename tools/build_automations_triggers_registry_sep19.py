@@ -11,7 +11,7 @@ from docx.enum.section import WD_SECTION
 
 ROOT = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 18 26 current code registry DRAFT for review.docx")
-SCRIPT_VERSION = 10
+SCRIPT_VERSION = 11
 
 # Codes for keys whose note is NOT a literal string in their own block (computed codes, String.format,
 # graph announcements, sibling-branch notes), taken from the full CarePortal code list
@@ -116,6 +116,8 @@ for _k in ("0002", "0204", "0406", "0609", "0912", "1218", "1822", "2200"):
 #     an automation with several branches lists every branch's actions together. Rebuilt from the plugin as of
 #     19 Sep 2026 (HighDaytimeBrake/HighEveNightBrake: all-deltas-above-0 + raw UKF + HP>=6.5 gates, shared 30-min
 #     lockout, TT-only (2 min) + pp weight action, mid band 7.5-9.0).
+# v11: rebuilt from the plugin as of 20 Sep 2026 -- adds FastRiseToggleTT (List 2 5.226) and LowReboundGuardToggleTT (5.228);
+#     HiBrk day/night blocks now sit behind the highDaytimeBrakeEnabled / highEveNightBrakeEnabled switches (both true).
 OUTPUT = Path(
     rf"C:\winword\aaa\AutoISF Automations List mydoc {datetime.now():%b %d %y %H%M} "
     rf"code registry triggers v{SCRIPT_VERSION}.docx"
