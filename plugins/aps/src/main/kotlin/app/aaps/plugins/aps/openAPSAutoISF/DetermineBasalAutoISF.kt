@@ -88,7 +88,7 @@ class DetermineBasalAutoISF @Inject constructor(
     // Switch for the recent-low rebound guard ("LoReb": halves microBolus after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
-    // and LastLoRebAppliedAt is no longer refreshed (only StuckRisingSlowly reads that, as a recent-event exclusion).
+    // and LastLoRebAppliedAt is no longer refreshed. StuckRisingSlowly no longer reads that stamp.
     private val recentLowReboundGuardEnabled: Boolean
         get() = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
 

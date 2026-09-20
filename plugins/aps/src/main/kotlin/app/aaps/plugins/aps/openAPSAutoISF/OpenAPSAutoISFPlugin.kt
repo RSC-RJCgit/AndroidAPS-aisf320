@@ -138,9 +138,8 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long, loRebAppliedAt: Long): Boolean =
-    delayedDeliveredAt > 0 && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L &&
-        loRebAppliedAt > 0 && loRebAppliedAt <= now && now - loRebAppliedAt <= 30 * 60_000L
+internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long): Boolean =
+    delayedDeliveredAt > 0 && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L
 
 /** Native slow-rise numeric conditions with strict step limits; glucose inputs are mg/dL. */
 internal fun slowRiseCriteriaMet(
@@ -149,7 +148,7 @@ internal fun slowRiseCriteriaMet(
     bolusAgeMinutes: Int?, carbAgeMinutes: Int?
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
-    if (bg !in (7.0 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
+    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
     if (steps60 == null || steps60 !in 0 until 600 || steps180 == null || steps180 !in 0 until 1000) return false
     if (bolusAgeMinutes?.let { it >= 40 } != true && carbAgeMinutes?.let { it >= 40 } != true) return false
     // All deltas must fit one common band, not independently fit the full 0.15–0.35 range.
@@ -8104,11 +8103,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // Code replacement for the native StuckRisingSlowly screenshot. Own five-minute throttle;
         // preserves the shared delta bands and bolus-age OR carb-age condition. No boost/profile action.
-        if (readyToRun("StuckRisingSlowly", 5) && isTimeBetween(8, 0, 20, 0)
+        // 2026-09-21: window 08:00-01:00 (wraps midnight), BG floor 6.5-9.0. LoReb last-30-min
+        // stamp dropped — LoReb off never refreshes it, so that gate could not be left in place.
+        if (readyToRun("StuckRisingSlowly", 5) && isTimeBetween(8, 0, 1, 0)
             && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")
             && slowRiseRecentEvents(dateUtil.now(),
-                preferences.get(LongNonKey.LastDelayedBolusDeliveredAt),
-                preferences.get(LongNonKey.LastLoRebAppliedAt))
+                preferences.get(LongNonKey.LastDelayedBolusDeliveredAt))
         ) {
             val mirroredSteps = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
             val steps60 = if (useLiveStepsOnVirtual()) mirroredSteps?.steps(60) else recentSteps60Minutes
