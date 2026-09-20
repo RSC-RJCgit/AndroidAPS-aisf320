@@ -268,7 +268,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             stepsValue(sc, r.timestamp, apsResults, 60)?.toString() ?: "",
             stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "",
             mjStateStr(r.timestamp, carePortalNotes),
-            carePortalNotesStr(r.timestamp, carePortalNotes, allRecords),
+            notesWithRawTag(r.timestamp, carePortalNotes, allRecords, rawReadings),
             ukf1AcceStr(r.timestamp, apsResults),
             ukf1AcceIsfStr(r.timestamp, apsResults)
         )
@@ -1168,6 +1168,24 @@ class AutoIsfHistoryExporter @Inject constructor(
             .toList()
             .asReversed()
             .joinToString("|")
+    }
+
+    /** "RawMiss" tag for the Notes column, VirtualPump only (added 2026-09-20 at explicit request). The fork's
+     *  raw-dependent automations (BMild, bg3, Tier 3's entry gate, HP1, the HiBrk UKF/HP gates) all read the raw value
+     *  the BG source piggybacks in GlucoseValue.noise (must be > 10, same filter as ukfRawMetrics()). When Virtual's BG
+     *  source stops delivering it (e.g. an xDrip broadcast with no Extras.Raw: rawBGL 0.0, RawUKF5 "--") those
+     *  automations silently cannot fire, so the row says so. Empty elsewhere. `rawReadings` must be newest-first. */
+    fun rawMissingTag(timestamp: Long, rawReadings: List<GV>): String {
+        if (!virtualPump.isEnabled() || config.AAPSCLIENT) return ""
+        val noise = rawReadings.firstOrNull { it.timestamp in (timestamp - 3 * 60_000L)..timestamp }?.noise
+        return if (noise == null || noise <= 10.0) "RawMiss" else ""
+    }
+
+    /** Notes-column text: the CarePortal notes for the row plus the [rawMissingTag] when it applies. */
+    fun notesWithRawTag(timestamp: Long, notes: List<TE>, allRecords: List<AIV>, rawReadings: List<GV>): String {
+        val base = carePortalNotesStr(timestamp, notes, allRecords)
+        val tag = rawMissingTag(timestamp, rawReadings)
+        return if (tag.isEmpty()) base else if (base.isEmpty()) tag else "$base|$tag"
     }
 
     /** RFC-4180-compatible CSV cell escaping for arbitrary CarePortal note text. */
