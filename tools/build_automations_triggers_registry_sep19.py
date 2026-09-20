@@ -10,8 +10,8 @@ from docx.shared import Pt
 from docx.enum.section import WD_SECTION
 
 ROOT = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
-BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 18 26 current code registry DRAFT for review.docx")
-SCRIPT_VERSION = 11
+BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 20 26 2144 code registry triggers v11.docx")
+SCRIPT_VERSION = 12
 
 # Codes for keys whose note is NOT a literal string in their own block (computed codes, String.format,
 # graph announcements, sibling-branch notes), taken from the full CarePortal code list
@@ -118,6 +118,8 @@ for _k in ("0002", "0204", "0406", "0609", "0912", "1218", "1822", "2200"):
 #     lockout, TT-only (2 min) + pp weight action, mid band 7.5-9.0).
 # v11: rebuilt from the plugin as of 20 Sep 2026 -- adds FastRiseToggleTT (List 2 5.226) and LowReboundGuardToggleTT (5.228);
 #     HiBrk day/night blocks now sit behind the highDaytimeBrakeEnabled / highEveNightBrakeEnabled switches (both true).
+# v12: table rows sorted alphabetically by coded key (was plugin source order). StuckRisingSlowly
+#     window/BG/LoReb-stamp changes from 21 Sep 2026 are in this rebuild.
 OUTPUT = Path(
     rf"C:\winword\aaa\AutoISF Automations List mydoc {datetime.now():%b %d %y %H%M} "
     rf"code registry triggers v{SCRIPT_VERSION}.docx"
@@ -1028,7 +1030,7 @@ def add_page_numbers(doc):
 def build():
     lines = SOURCE_PATH.read_text(encoding="utf-8").splitlines()
     text = SOURCE_PATH.read_text(encoding="utf-8")
-    keys = parse_true_keys_in_source_order(lines)
+    keys = sorted(parse_true_keys_in_source_order(lines), key=str.casefold)
     # A key that's never markRun()'d anywhere has no standalone action block of its own -- it's
     # only ever referenced as a readyToRun() guard term inside a DIFFERENT automation's "was X
     # recently active" check, which (since it's never marked) is permanently false/inert. Real
@@ -1120,7 +1122,7 @@ def build():
         "own SCRIPT_VERSION comment for exactly what changed in each version."
     )
     doc.add_paragraph(
-        "Generated 2026-09-19 from the Sep 18 26 current code registry (180 automations, source order). "
+        f"Generated {datetime.now():%Y-%m-%d} from OpenAPSAutoISFPlugin.kt ({len(keys)} automations, alphabetical by coded key). "
         "Triggers are extracted mechanically from each automation's own guarding if-condition(s) in "
         "OpenAPSAutoISFPlugin.kt, numbered one per top-level condition; named vals (e.g. \"eligible\", "
         "\"highEnough\") are resolved back to their own boolean definition rather than shown as a bare "
