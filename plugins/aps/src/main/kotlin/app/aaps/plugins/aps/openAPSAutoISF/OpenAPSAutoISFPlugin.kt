@@ -296,7 +296,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // tru[e]" -- before this preference existed): untested Tier 3 dosing logic must not be able to
     // fire on a real pump. That precondition -- "untested" -- no longer holds.
     private val uamBoostActive; get() = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
-    private val uamBoostMaxBolus; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
+    private val uamBoostMaxBolus
+        get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)
+            .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
     private val uamBoostMaxIobPercent; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent)
     private val uamBoostScale; get() = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)
     // Calculated, not a separate setting, 2026-08-18 per explicit request: the reference project's
@@ -5503,9 +5505,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BoostMaxDownTT / BoostMaxUpTT: remote ±0.25U nudge on ApsAutoIsfUamBoostMaxBolus (Tier 3's
-        // per-SMB boost_max ceiling, live default 2.5U) -- not real targets. Same pattern as above.
+        // per-SMB boost_max ceiling, default/max 1.0U) -- not real targets. Same pattern as above.
         if (readyToRun("BoostMaxDownTT", 2) && activeTtNear(5.186, 0.0001)) {
-            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25).coerceAtLeast(0.1)
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25)
+                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
             cancelCurrentTempTarget()
             sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U")
@@ -5514,7 +5517,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         if (readyToRun("BoostMaxUpTT", 2) && activeTtNear(5.188, 0.0001)) {
-            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) + 0.25).coerceAtMost(10.0)
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) + 0.25)
+                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
             cancelCurrentTempTarget()
             sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U")

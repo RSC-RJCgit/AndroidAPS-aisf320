@@ -85,7 +85,7 @@ data class OapsProfileAutoIsf(
     // default-valued so this stays backward compatible with the single existing constructor call site
     // if it's ever not updated in some future edit.
     var boostActive: Boolean = false,
-    var boost_max: Double = 2.5,
+    var boost_max: Double = 1.0,
     var boostMaxIOBPercent: Double = 10.0,
     var boost_scale: Double = 1.0,
     var Boost_InsulinReq: Double = 50.0

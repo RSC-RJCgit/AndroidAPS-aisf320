@@ -1424,7 +1424,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         ),
         TtCode.Stepped(
             "Boost max (boost_max, U)", 5.186, 5.188, "-0.25", "+0.25",
-            currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus))}U" }
+            currentValue = {
+                val cap = DoubleKey.ApsAutoIsfUamBoostMaxBolus
+                "Current: ${"%.2f".format(preferences.get(cap).coerceIn(cap.min, cap.max))}U"
+            }
         ),
         TtCode.Stepped(
             "Boost max IOB (% of max_iob)", 5.190, 5.192, "-5%", "+5%",
