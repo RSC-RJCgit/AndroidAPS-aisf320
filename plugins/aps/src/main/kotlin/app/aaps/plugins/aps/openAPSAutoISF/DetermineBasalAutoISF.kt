@@ -1800,12 +1800,28 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
+                // LoReb's own lookback (30 min when BG>6.0 and Delta/SDelta >0.10, else 60) plus the
+                // same carb/artifact predicates as the guard below. FastRise brake tiers stay off for
+                // that whole window so they cannot cut a post-low rebound LoReb is already covering.
+                val loRebMinutes = loRebLookbackMinutes(bg, glucose_status.delta, glucose_status.shortAvgDelta, recentLowBG30)
+                val loRebMinimum = if (loRebMinutes == 30) recentLowBG30!! else recentLowBG
+                val loRebUciGrams = if (csf > 0.0) uci / csf else 0.0
+                val loRebCarbRebound = loRebMinimum < 100.0 && (COB > 0.0 || loRebUciGrams >= 0.3)
+                val loRebReversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
+                    glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
+                val loRebArtifactRebound = COB == 0.0
+                    && loRebMinimum < 81.1 /* 4.5 mmol */
+                    && loRebReversalScore > 30.0
+                    && bg < 170.0 /* 9.4 mmol */
+                    && !(glucose_status.delta > 15 && bg > target_bg + 20)
+                val loRebWindowActive = recentLowReboundGuardEnabled && (loRebCarbRebound || loRebArtifactRebound)
                 // Test toggle (2026-09-20, ApsAutoIsfFastRiseEnabled; Settings + List 2 5.226): gates the three Libre
                 // FAST RISE size-tier conditions below (main tier cascade, early-rise tier, higher-BG tier). Off skips
                 // just those; sensor-glitch guards, the early-AM/twilight limits, the late FastRise taper and the
                 // cumulative SMB cap are untouched.
-                val fastRiseTiersEnabled = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
-                if (!fastRiseTiersEnabled) rT.reason.append("FastRise tiers OFF (test) ")
+                val fastRiseTiersEnabled = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled) && !loRebWindowActive
+                if (!preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)) rT.reason.append("FastRise tiers OFF (test) ")
+                else if (loRebWindowActive) rT.reason.append("FastRise tiers OFF (LoReb ${loRebMinutes}min) ")
                 val LibreTrue = if (libreActive) 1.0 else 1.0
 
                 val high_SMB2 = profile.smb_delivery_ratio_max
@@ -2373,32 +2389,16 @@ class DetermineBasalAutoISF @Inject constructor(
                 // 2026-09-21: leave SMB <=0.10U untouched. 0.10U < SMB <=0.25U is *0.75; above 0.25U is *0.5.
                 if (!recentLowReboundGuardEnabled) rT.reason.append("LoReb OFF (test) ")
                 if (recentLowReboundGuardEnabled && microBolus > 0.10) {
-                    val uciGrams = if (csf > 0.0) uci / csf else 0.0
-                    // 2026-09-09: was `recentLowActive` (checkAutomationState("LowBG","50recent")).
-                    // That latch is not a time window -- it clears only when the profile returns to
-                    // 100% with BG rising, so after the 8->9 Sep hypo it stayed armed ~7h (still
-                    // halving SMBs at 08:48 for a 9->8.5 descent). Boost's Fast-Carb Rebound Protection
-                    // uses a BG lookback. LoReb alone now uses 30 minutes when BG >6.0mmol and
-                    // both Delta/SDelta >0.10mmol; otherwise it retains 60 minutes. This is
-                    // re-evaluated each cycle, not a latched timer or a delayed-bolus exemption.
-                    val loRebMinutes = loRebLookbackMinutes(bg, glucose_status.delta, glucose_status.shortAvgDelta, recentLowBG30)
-                    val loRebMinimum = if (loRebMinutes == 30) recentLowBG30!! else recentLowBG
-                    val carbRebound = loRebMinimum < 100.0 && (COB > 0.0 || uciGrams >= 0.3)
-                    val reversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
-                        glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
-                    val artifactRebound = COB == 0.0
-                        && loRebMinimum < 81.1 /* 4.5 mmol */
-                        && reversalScore > 30.0
-                        && bg < 170.0 /* 9.4 mmol */
-                        && !(glucose_status.delta > 15 && bg > target_bg + 20)
-                    if (carbRebound || artifactRebound) {
+                    // Same 30/60-min lookback and carb/artifact predicates computed above for the
+                    // FastRise-tier skip. Still re-evaluated each cycle, not a latched timer.
+                    if (loRebWindowActive) {
                         val beforeLowGuard = microBolus
                         microBolus = if (microBolus <= 0.25) microBolus * 0.75 else microBolus * 0.5
                         recentLowReboundGuardFiredThisCycle = true
-                        val why = if (carbRebound)
-                            "carb: recentLowBG=${round(loRebMinimum, 0)}mg/dL, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
+                        val why = if (loRebCarbRebound)
+                            "carb: recentLowBG=${round(loRebMinimum, 0)}mg/dL, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(loRebUciGrams, 2)}g/5m"
                         else
-                            "artifact: recentLowBG=${round(loRebMinimum, 0)}mg/dL window=${loRebMinutes}min rev=${round(reversalScore, 0)} COB=0"
+                            "artifact: recentLowBG=${round(loRebMinimum, 0)}mg/dL window=${loRebMinutes}min rev=${round(loRebReversalScore, 0)} COB=0"
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} ($why) ")
                     }
                 }
