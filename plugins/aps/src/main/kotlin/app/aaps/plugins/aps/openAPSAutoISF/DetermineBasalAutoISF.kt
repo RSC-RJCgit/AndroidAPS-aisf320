@@ -1589,7 +1589,9 @@ class DetermineBasalAutoISF @Inject constructor(
                     rT.reason.append("T3anyTime new-pod>9 or Usual2forTH; ")
                 }
                 if (boostActive && tier3TimeAllowed) {
-                    val boost_max = profile.boost_max
+                    // Per-SMB size cap: min(boost_bolus_cap setting, 1.0U at max_iob 9.5).
+                    // 1/9.5 = 10.526...% (not 10.4%: that is 0.988U and floors to 0.95 at 0.05U steps).
+                    val boost_max = min(profile.boost_max, profile.max_iob / 9.5)
                     val boostMaxIOBPercent = profile.boostMaxIOBPercent
                     val boostMaxIOB = profile.max_iob * boostMaxIOBPercent / 100.0
                     val boostIobAllowance = (boostMaxIOB - iob_data.iob).coerceAtLeast(0.0)

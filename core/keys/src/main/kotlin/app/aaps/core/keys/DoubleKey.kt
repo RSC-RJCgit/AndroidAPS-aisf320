@@ -121,7 +121,7 @@ enum class DoubleKey(
     // calculation (ApsAutoIsfSmbDeliveryRatio * 100) instead of an independent setting, so it always
     // stays in lockstep with the existing base SMB delivery ratio rather than needing its own upkeep
     // -- see OpenAPSAutoISFPlugin.kt's uamBoostInsulinReqPct computed property.
-    ApsAutoIsfUamBoostMaxBolus("boost_bolus_cap", 1.0, 0.1, 1.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
+    ApsAutoIsfUamBoostMaxBolus("boost_bolus_cap", 2.5, 0.1, 10.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),
     // Percentage of profile.max_iob used as Tier 3's hard IOB ceiling. This deliberately uses a new
     // storage key: reinterpreting a legacy absolute value such as 1.0U as 1% would be unsafe.
     ApsAutoIsfUamBoostMaxIobPercent("boost_max_iob_percent", 10.0, 1.0, 100.0, defaultedBySM = true, dependency = BooleanKey.ApsAutoIsfUamBoostEnabled),

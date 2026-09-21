@@ -5505,7 +5505,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         // --- BoostMaxDownTT / BoostMaxUpTT: remote ±0.25U nudge on ApsAutoIsfUamBoostMaxBolus (Tier 3's
-        // per-SMB boost_max ceiling, default/max 1.0U) -- not real targets. Same pattern as above.
+        // per-SMB boost_bolus_cap setting). Dosing also min's with max_iob/9.5 (1.0U at max_iob 9.5).
+        // Not real targets. Same pattern as above.
         if (readyToRun("BoostMaxDownTT", 2) && activeTtNear(5.186, 0.0001)) {
             val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25)
                 .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
