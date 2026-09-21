@@ -2921,6 +2921,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
     }
 
+    // Rolling history stays full-scale (initRange). PRE on only grows endTime by up to 1h so
+    // prediction dots sit to the right of now. Never subtract that hour from fromTime — that is
+    // what emptied the 1h graph.
+    private fun extendEndTimeForPredictions() {
+        val menuChartSettings = overviewMenus.setting
+        if (menuChartSettings.isEmpty()) return
+        if (!menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal]) return
+        val predictionsAvailable = if (config.APS) loop.lastRun?.request?.hasPredictions == true else config.AAPSCLIENT
+        if (!predictionsAvailable) return
+        val apsResult = if (config.APS) loop.lastRun?.constraintsProcessed else processedDeviceStatusData.getAPSResult()
+        val latest = apsResult?.latestPredictionsTime ?: 0L
+        val maxEnd = overviewData.toTime + TimeUnit.HOURS.toMillis(1)
+        overviewData.endTime = if (latest > overviewData.toTime) min(latest, maxEnd) else maxEnd
+    }
+
     private fun updateGraph() {
         _binding ?: return
         // Refresh the rolling time window on every actual redraw, not just at plugin startup or when
@@ -2947,6 +2962,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
+        extendEndTimeForPredictions()
         graphData.addInRangeArea(
             overviewData.fromTime, overviewData.endTime,
             preferences.get(UnitDoubleKey.OverviewLowMark),

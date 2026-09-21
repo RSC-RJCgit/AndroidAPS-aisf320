@@ -193,6 +193,8 @@ class OverviewDataImpl @Inject constructor(
 
         toTime = roundedUpToNow + 100000 // a little bit more to avoid wrong rounding - GraphView specific
         fromTime = toTime - T.hours(rangeToDisplay.toLong()).msecs()
+        // endTime matches toTime here (PRE off). OverviewFragment.extendEndTimeForPredictions()
+        // may push endTime up to 1h past toTime when PRE is on, without moving fromTime.
         endTime = toTime
     }
 

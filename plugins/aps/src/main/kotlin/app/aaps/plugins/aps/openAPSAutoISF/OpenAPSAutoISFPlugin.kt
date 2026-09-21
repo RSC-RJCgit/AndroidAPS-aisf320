@@ -7976,10 +7976,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // lever for that gap, not a reopening of the night x2 bar. End pulled back 02:00→01:30 on
         // 6 Sep 2026 (explicit request); mid-band START pulled 06:00→08:30 on 7 Sep 2026 (explicit
         // request) after a 06:14 HiBrkDayMid fire on flat BG ~7.0 stacked IOB 0.3→1.1 and drove a
-        // 4.7 an hour later. Still clear of OvernightDuraRescue (02:00-04:00); 01:30-08:30 now stays
-        // HiBrk-only for the mid band -- HiBrk (>=9.0) covers 01:30-06:00, HiBrkDay's high band
-        // (>=9.0) covers 06:00-08:30, so genuine highs are still braked around the clock; only the
-        // 6.5-9.0 dawn plateau is left to the ordinary loop. Same cut-short / duraISF / flat-BG
+        // 4.7 an hour later. Mid start moved 08:30→07:00 on 21 Sep 2026 to abut HiBrkTwilight
+        // (04:00-07:00, 6.5-9.0, TT 4.4 only). Night HiBrk (>=9.0) still 22:00-06:00; day high
+        // (>=9.0) still 06:00-22:00. Same cut-short / duraISF / flat-BG
         // gates; mid still also requires NOMJremains and LowBG != 50recent. The 60-min no-bolus gate and the 30-min
         // re-arm floor were removed 5 Sep 2026: a meal bolus was locking the whole 16:00-16:34
         // dura climb, then the 30-min latch ate 16:42-17:12 while dura ran 3.4→4.7. UPDATE 2026-09-19:
@@ -8043,7 +8042,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Steroids Off, iobChange5 < 0.5):
                 //  - high (>= 9.0 mmol, 06:00-22:00 only): original plateaued-high brake -- TT 4.0,
                 //    SMBdel x2. After 22:00 this is night HiBrk's job, not ours.
-                //  - mid  (>  6.5 mmol, 08:30-01:30): stubborn plateau brake, when MJ is clear
+                //  - mid  (>  7.5 mmol, 07:00-01:30): stubborn plateau brake, when MJ is clear
                 //    (NOMJremains) OR MJ3 (widened 2026-09-17, per explicit request -- a genuine
                 //    slow-but-sustained rise during MJ3 cleared every other gate here but was
                 //    excluded by the ordinary NOMJremains-only requirement; BMild/bg3's own delta
@@ -8055,8 +8054,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    less headroom from 6.5 to 4.0 than from 9.0, and the 22:00-01:30 stretch is the
                 //    same clock window as the Jul/Aug stacking incidents, so this stays the milder
                 //    lever. Explicit mid-band clock is set independently of the outer window and is
-                //    narrower on BOTH ends (08:30 start, 01:30 end) so an outer-window change cannot
-                //    quietly reopen 01:30-02:00 or the 06:00-08:30 dawn slot.
+                //    narrower on BOTH ends (07:00 start, 01:30 end) so an outer-window change cannot
+                //    quietly reopen 01:30-02:00. 04:00-07:00 6.5-9.0 is HiBrkTwilight (TT 4.4 only).
                 //    2026-09-18: considered widening this start to 04:30 to cover a real 04:30-08:00
                 //    high plateau, but the 08:30 start exists specifically because a 06:14 fire once
                 //    stacked IOB into a later low (see 7 Sep history two lines above) -- reverted, and
@@ -8080,7 +8079,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // so this band never overlaps HighEveNightBrake's >=9.0 after 22:00 (the night brake owns >=9.0
                 // from 22:00; the day high band owns it before that). The 6.5-7.0 "x1.5" branch below is now
                 // unreachable but left in place.
-                val midBand = !highBand && (isTimeBetween(8, 30, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
+                val midBand = !highBand && (isTimeBetween(7, 0, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
                     && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.glucose < 162.2 /* 9.0 mmol */
                     && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3"))
                     && !checkAutomationState("LowBG", "50recent")
@@ -8105,7 +8104,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // HiBrkTwilight: a TT-only dawn variant. Keep HP >=6.5 and the existing HiBrk
         // plateau/raw/IOB guards; no SMB-ratio, pp-weight or profile action.
-        /*run {
+        // 2026-09-21: uncommented. 04:00-07:00, BG 6.5-9.0, TT 4.4@2min only. Night/day
+        // HiBrk still own >=9.0 (22:00-06:00 / 06:00-22:00). Day mid starts 07:00.
+        run {
             val twilightNow = dateUtil.now()
             val activeTarget = persistenceLayer.getTemporaryTargetActiveAt(twilightNow)
             val ownTimestamp = preferences.get(LongNonKey.LastHiBrkTwilightTtAt)
@@ -8142,7 +8143,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     aapsLogger.debug(LTag.APS, "HiBrkTwilight: TT 4.4mmol@2min requested; ratio and ppWeight unchanged")
                 }
             }
-        }*/
+        }
 
         // Code replacement for the native StuckRisingSlowly screenshot. Own five-minute throttle;
         // preserves the shared delta bands and bolus-age OR carb-age condition. No boost/profile action.
@@ -8183,17 +8184,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // hold all three positive at once for long, so this should only catch the genuine early climb,
         // not the later back-and-forth.
         //
-        // Action is a deliberately stronger lever than HighDaytimeBrake's TT+multiplier (explicit
-        // request, judged appropriate specifically because this window otherwise gets no correction at
-        // all): SMBdel +0.5 and a 30-min switch to whichever profile fills the TierC slot for the
-        // currently-running role (Standard vs Low, same resolution HighOldPod above uses).
-        // switchProfileIfNeeded()'s own duration param reverts the profile natively -- no custom revert
-        // logic needed. The 30-min TT alongside it is what makes the SMBdel boost itself revert too,
-        // via the existing DelOff "no active TT" mechanism (see BMild's own doc comment for that
-        // pattern) -- without a TT there would be nothing to trigger DelOff's reset and the boost would
-        // stay applied indefinitely.
+        // 2026-09-21: weakened. TT 4.4mmol@30min only -- no SMBdel change, no TierC/profile switch.
+        // Still no dura/HP/UKF/IOB-change gates. Yields if a TT is already active (so HiBrkTwilight's
+        // 4.4@2min in 04:00-07:00 is not stacked in the same cycle).
         run {
-            if (readyToRun("EarlyDawnSlowRise", 30) && isTimeBetween(4, 30, 8, 0)) {
+            if (readyToRun("EarlyDawnSlowRise", 30) && isTimeBetween(4, 30, 8, 0)
+                && activeTtMgdl() == null
+            ) {
                 val g = glucoseStatus.glucose
                 val d = glucoseStatus.delta
                 val sd = glucoseStatus.shortAvgDelta
@@ -8202,19 +8199,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     sd > 0.0 && sd < 2.7 &&
                     ld > 0.0 && ld < 2.7
                 if (g > 126.1 /* 7.0 mmol */ && slowSustainedRise) {
-                    val currentProfileName = profileFunction.getOriginalProfileName()
-                    val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
-                    val tierCTarget = if (currentProfileName == currentLow) {
-                        preferences.get(StringKey.ApsAutoIsfLow90ProfileName)
-                    } else {
-                        preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
-                    }
-                    val preBoostDeliveryRatio = smb_delivery_ratio
-                    val boostedDeliveryRatio = (preBoostDeliveryRatio + 0.5).coerceAtMost(smb_delivery_ratio_max)
-                    setSmbDeliveryRatio(boostedDeliveryRatio)
-                    startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 30)
-                    if (tierCTarget.isNotBlank()) switchProfileIfNeeded(tierCTarget, 30)
-                    sendSms("EarlyDawnSlowRise: TT 4.0mmol@30min, SMBdel ${round(preBoostDeliveryRatio, 2)}->${round(boostedDeliveryRatio, 2)}, profile->TierC 30min, g=${convert_bg(g)}")
+                    startTempTargetIfNeeded(4.4 * 18.0, 30)
+                    sendSms("EarlyDawnSlowRise: TT 4.4mmol@30min, g=${convert_bg(g)}")
                     addCarePortalNote("EDSR")
                     markRun("EarlyDawnSlowRise")
                 }

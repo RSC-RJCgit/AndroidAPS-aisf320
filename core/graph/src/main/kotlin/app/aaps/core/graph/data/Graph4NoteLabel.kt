@@ -12,6 +12,8 @@ object Graph4NoteLabel {
         "HiBrkDay" to "HBDay",
         "HiBrkDayMid" to "HBMid",
         "HiBrkDayCut" to "HBDCt",
+        "HiBrkTwilight" to "HBTwi",
+        "HiBrkTwilightCut" to "HBTCt",
         "ActTToff1" to "AcTf1",
         "ActTToff2" to "AcTf2",
         "BMildFS" to "BmFS",

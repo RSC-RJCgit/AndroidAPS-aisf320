@@ -38,7 +38,7 @@ object CodedAutomationNames {
         "BoostScaleUpTT", "BoostToggleTT", "CarbsStopTT1", "CarbsStopTT57", "CarbsTHoff", "CleanGraphTT",
         "CloudLogsUploadTT", "ConnectPod", "DuraWeightDownTT", "DuraWeightUpTT", "EarlyDawnSlowRise",
         "EveningIobCeiling", "EveningTH", "ExerciseLimitAcce",         "ExportSettingsPodActivation", "Extra50", "FastRiseToggleTT",
-        "GentleHypoRisk", "Graph2ToggleTT", "Graph5ToggleTT", "High6PP", "High6PPoff", "HighDaytimeBrake",
+        "GentleHypoRisk", "Graph2ToggleTT", "Graph5ToggleTT", "HiBrkTwilight", "High6PP", "High6PPoff", "HighDaytimeBrake",
         "HighEveNightBrake", "HighNight00AM", "HighOldPod", "HighPP130Off", "HigherIsfRangeWeightDownTT",
         "HigherIsfRangeWeightUpTT", "LibreOffsetDownTT", "LibreOffsetUpTT", "LibreOver12Backfill",
         "LibreSlopeDownTT", "LibreSlopeUpTT", "LibreSpecialShadowMetricsLog", "LibreUkf1ToggleTT",

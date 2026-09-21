@@ -10,9 +10,9 @@ import app.aaps.core.interfaces.graph.SeriesData
 interface OverviewData {
 
     var rangeToDisplay: Int // for graph
-    var toTime: Long  // current time rounded up to 1 hour
-    var fromTime: Long // toTime - range
-    var endTime: Long // toTime + predictions
+    var toTime: Long  // current time rounded up to the next minute (plus a small GraphView pad)
+    var fromTime: Long // toTime - range (full rolling history; never shortened for predictions)
+    var endTime: Long // toTime, or toTime + up to 1h when PRE is on
 
     fun reset()
     fun initRange()
