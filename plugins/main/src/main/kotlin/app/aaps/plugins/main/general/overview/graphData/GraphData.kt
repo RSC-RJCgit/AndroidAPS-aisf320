@@ -455,12 +455,11 @@ class GraphData @Inject constructor(
             fromTime = fromTime,
             endTime = endTime,
             numHorizontalLabels = 7,
-            staggerHorizontal = true
+            // 7 even-spaced HH:mm ticks collide on a 6h rolling window. Drop 2nd and 6th
+            // (keep 1st, 3rd, 4th, 5th, 7th) rather than stagger rows or truncate to "12:4".
+            hideTickIndices = setOf(1, 5)
         )
         graph.gridLabelRenderer.numHorizontalLabels = 7 // only 7 because of the space
-        // Two-row staggered HH:mm needs a second line of height; otherwise GraphView clips the upper row.
-        val textSize = graph.gridLabelRenderer.textSize
-        graph.gridLabelRenderer.setLabelHorizontalHeight((textSize * 2.2f).toInt() + graph.gridLabelRenderer.labelsSpace)
     }
 
     private fun addSeries(s: Series<*>) = series.add(s)

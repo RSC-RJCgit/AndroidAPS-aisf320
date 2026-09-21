@@ -205,6 +205,7 @@ class PrepareTreatmentsDataWorker(
         val hideLiveUamBoostEchoes = activePlugin.activePump is VirtualPump &&
             !config.AAPSCLIENT &&
             !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
+        val hideLiveAnyDeskLaunchEchoes = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
         // Careportal — split plain notes (graph2) from everything else (main graph, unchanged).
         persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), endTime).blockingGet()
             .map { TherapyEventDataPoint(it, rh, profileUtil, translator) }
@@ -213,6 +214,9 @@ class PrepareTreatmentsDataWorker(
                 if (hideLiveUamBoostEchoes &&
                     (CodedAutomationNames.isUamBoostNote(it.data.note) && it.data.type == TE.Type.NOTE ||
                         it.data.type == TE.Type.ANNOUNCEMENT && CodedAutomationNames.isUamBoostGraphAnnouncement(it.data.note))
+                ) return@forEach
+                if (hideLiveAnyDeskLaunchEchoes &&
+                    it.data.type == TE.Type.NOTE && CodedAutomationNames.isAnyDeskLaunchNote(it.data.note)
                 ) return@forEach
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
                 if (it.data.type == TE.Type.NOTE) {

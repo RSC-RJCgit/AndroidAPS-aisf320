@@ -23,10 +23,21 @@ object CodedAutomationNames {
     // PrepareTreatmentsDataWorker / StoreDataForDbImpl.
     const val UAM_BOOST_NOTE = "UamBst"
     const val UAM_BOOST_GRAPH_ANNOUNCEMENT = "B"
+    // Live writes these when launchAnyDeskDirect() succeeds/fails. Virtual never launches
+    // (isRealLoopPhone()), so any AdOn/AdMs on Virtual are Live NS echoes -- same filter sites
+    // as UamBst. Exact literals only (AIV can join several notes in a minute; the TE itself is
+    // still a single "AdOn" / "AdMs" row).
+    const val ANYDESK_LAUNCH_OK_NOTE = "AdOn"
+    const val ANYDESK_LAUNCH_MISS_NOTE = "AdMs"
 
     fun isUamBoostNote(note: String?): Boolean = note?.trim() == UAM_BOOST_NOTE
 
     fun isUamBoostGraphAnnouncement(note: String?): Boolean = note?.trim() == UAM_BOOST_GRAPH_ANNOUNCEMENT
+
+    fun isAnyDeskLaunchNote(note: String?): Boolean {
+        val t = note?.trim() ?: return false
+        return t == ANYDESK_LAUNCH_OK_NOTE || t == ANYDESK_LAUNCH_MISS_NOTE
+    }
 
     val KEYS: List<String> = listOf(
         "50SetRecent", "50pcMakes5.7", "AcceUp0.5", "AcceWeightDownTT", "AcceWeightHighDownTT", "AcceWeightHighUpTT",

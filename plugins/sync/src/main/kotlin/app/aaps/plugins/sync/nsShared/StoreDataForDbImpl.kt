@@ -579,15 +579,21 @@ class StoreDataForDbImpl @Inject constructor(
     // Virtual shares Live's NS site. Drop Live's UamBst NOTE / "B" ANNOUNCEMENT so they are
     // not stored here. Keep a marker that already exists locally (same type+timestamp) so a
     // Virtual fire coming back from NS can still receive its nsId. Client is unchanged.
+    // AdOn/AdMs: Virtual never launches AnyDesk, so keep-if-local is a no-op and Live's
+    // launch notes are dropped here too.
     private fun dropLiveUamBoostEchoes(incoming: List<TE>): MutableList<TE> {
         if (!virtualPump.isEnabled() || config.AAPSCLIENT) return incoming.toMutableList()
         return incoming.filterTo(mutableListOf()) { te ->
-            val marker = te.type == TE.Type.NOTE && CodedAutomationNames.isUamBoostNote(te.note) ||
+            val uamMarker = te.type == TE.Type.NOTE && CodedAutomationNames.isUamBoostNote(te.note) ||
                 te.type == TE.Type.ANNOUNCEMENT && CodedAutomationNames.isUamBoostGraphAnnouncement(te.note)
-            if (!marker) return@filterTo true
+            val anyDeskMarker = te.type == TE.Type.NOTE && CodedAutomationNames.isAnyDeskLaunchNote(te.note)
+            if (!uamMarker && !anyDeskMarker) return@filterTo true
             val local = persistenceLayer.getTherapyEventDataFromTime(te.timestamp, te.type, true)
                 .any { existing -> existing.timestamp == te.timestamp }
-            if (!local) aapsLogger.debug(LTag.NSCLIENT, "Ignoring Live UAM Boost echo on Virtual: ${te.type} ${te.note}")
+            if (!local) aapsLogger.debug(
+                LTag.NSCLIENT,
+                "Ignoring Live echo on Virtual: ${te.type} ${te.note}"
+            )
             local
         }
     }

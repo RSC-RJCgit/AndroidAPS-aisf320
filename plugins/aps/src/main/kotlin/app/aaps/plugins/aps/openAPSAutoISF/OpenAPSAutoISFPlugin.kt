@@ -9369,6 +9369,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // reliably survive the NS round-trip anyway), these always append exactly one line
                 // with a fixed format — same reliable pattern already used for bg_acce/Delta/SDelta.
                 rt.reason.append("SMB delivery ratio: ${round(autoIsfValues.smbDeliveryRatio, 2)} ;")
+                rt.reason.append("MildBst: ${round(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio), 2)} ;")
                 rt.reason.append("iobThEffectiveU: ${round(autoIsfValues.iobThEffective, 2)} ;")
                 rt.reason.append("FslCalSlope: ${round(preferences.get(DoubleKey.FslCalSlope), 2)} ;")
                 rt.reason.append("AcceIsfWeight: ${round(bgAccel_ISF_weight, 2)} ;")

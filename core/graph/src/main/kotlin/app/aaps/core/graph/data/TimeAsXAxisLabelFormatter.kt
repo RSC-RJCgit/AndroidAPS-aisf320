@@ -14,21 +14,19 @@ class TimeAsXAxisLabelFormatter(
     private val fromTime: Long = 0L,
     private val endTime: Long = 0L,
     private val numHorizontalLabels: Int = 0,
-    private val staggerHorizontal: Boolean = false
+    private val hideTickIndices: Set<Int> = emptySet()
 ) : DefaultLabelFormatter() {
 
     override fun formatLabel(value: Double, isValueX: Boolean): String =
         if (isValueX) {
             val dateFormat: DateFormat = SimpleDateFormat(format, Locale.getDefault())
             val time = dateFormat.format(value.toLong())
-            if (!staggerHorizontal || numHorizontalLabels < 2 || endTime <= fromTime) time
+            if (hideTickIndices.isEmpty() || numHorizontalLabels < 2 || endTime <= fromTime) time
             else {
                 val span = (endTime - fromTime).toDouble()
                 val idx = ((value - fromTime) / span * (numHorizontalLabels - 1))
                     .roundToInt().coerceIn(0, numHorizontalLabels - 1)
-                // GraphView already splits on '\n'. Even ticks on the upper row, odd on the lower,
-                // so HH:mm labels do not collide on a 6h/7-tick axis.
-                if (idx % 2 == 0) "$time\n " else "\n$time"
+                if (idx in hideTickIndices) "" else time
             }
         } else {
             try {

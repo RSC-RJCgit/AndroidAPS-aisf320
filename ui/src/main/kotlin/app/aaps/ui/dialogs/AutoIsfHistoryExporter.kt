@@ -145,12 +145,18 @@ class AutoIsfHistoryExporter @Inject constructor(
     fun carePortalNotesFrom(from: Long): List<TE> =
         persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
             .filterNot { hideLiveUamBoostEchoes() && CodedAutomationNames.isUamBoostNote(it.note) }
+            .filterNot { hideLiveAnyDeskLaunchEchoes() && CodedAutomationNames.isAnyDeskLaunchNote(it.note) }
 
     // Virtual shares Live's NS site, so Live's UamBst notes land here even when this phone's
     // Tier 3 toggle is off. Client must still see Live's own fires. Local Virtual fires only
     // exist while the toggle is on, so hiding UamBst while it is off does not drop a real one.
     private fun hideLiveUamBoostEchoes(): Boolean =
         virtualPump.isEnabled() && !config.AAPSCLIENT && !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
+
+    // Virtual never launches AnyDesk, so every AdOn/AdMs here is Live's launch result.
+    // Not toggle-gated. Client still shows Live's.
+    private fun hideLiveAnyDeskLaunchEchoes(): Boolean =
+        virtualPump.isEnabled() && !config.AAPSCLIENT
 
     /** MJ-only compatibility query retained for graph/history callers.
      *  "MJ active" (not bare "MJ") is what handleDirectMjUserAction's START branch actually writes --
@@ -165,7 +171,7 @@ class AutoIsfHistoryExporter @Inject constructor(
     // -----------------------------------------------------------------------------------------------
 
     val exportHeaders = listOf(
-        "Time", "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
+        "Time", "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci", "SMB", "FastRise", "SmbRatio", "MildBst", "SMBi5", "iobTH", "acWt", "ppWt", "Lslope",
         "acceBG",
         // delta_accl trio: the plain dosing value (already logged to RT.reason every cycle -- see
         // deltaAcceStr()'s doc comment) plus two new UKF-domain analogs (see deltaAcceUkfStr()/
@@ -222,6 +228,7 @@ class AutoIsfHistoryExporter @Inject constructor(
             df2.format(r.smbDelivered),
             exactFastRiseStr(r.timestamp, apsResults),
             df2.format(r.smbDeliveryRatio),
+            mildBstStr(r.timestamp, apsResults),
             smbInterval5SecStr(r.timestamp, smbBoluses),
             df2.format(r.iobThEffective),
             df2.format(r.acceIsfWeight),
@@ -727,6 +734,19 @@ class AutoIsfHistoryExporter @Inject constructor(
         val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
         if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
         val value = ppWeightRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+        return df2.format(value)
+    }
+
+    // "MildBst: <value> ;" written every cycle next to SMB delivery ratio (OpenAPSAutoISFPlugin.kt).
+    // This is ApsAutoIsfMildBoostRatio (List1 MildBst / Settings mild boost), not live SmbRatio.
+    private val mildBstRegex = Regex("""MildBst:\s*([0-9.]+)""")
+
+    /** Stored mild-boost base from the nearest APSResult within 15 min. "--" on rows from before
+     *  this reason line existed. */
+    fun mildBstStr(timestamp: Long, apsResults: List<APSResult>): String {
+        val nearest = apsResults.minByOrNull { kotlin.math.abs(it.date - timestamp) } ?: return "--"
+        if (kotlin.math.abs(nearest.date - timestamp) >= TimeUnit.MINUTES.toMillis(15)) return "--"
+        val value = mildBstRegex.find(nearest.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
         return df2.format(value)
     }
 
