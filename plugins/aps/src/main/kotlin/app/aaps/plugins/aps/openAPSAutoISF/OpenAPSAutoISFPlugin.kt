@@ -1071,7 +1071,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
-    // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.05) to role-tier
+    // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) to role-tier
     // band changes. Called from every auto that restores to TierA or escalates to TierB/C. No-op when
     // the band does not change (same pair rewrite, or B↔C).
     private fun applyRoleTierDeliveryNudge(previousBand: Int, newBand: Int) {
@@ -1080,14 +1080,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mild = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         if (previousBand == 0 && newBand == 1) {
             val newSmb = (smb + 0.01).coerceAtMost(0.5)
-            val newMild = (mild + 0.05).coerceAtMost(1.0)
+            val newMild = (mild + 0.25).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
             aapsLogger.info(LTag.APS, "RoleTierDelivery: elevate A→B/C smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
             addCarePortalNote(compactSettingNote("SM", newMild, 2, omitLeadingZero = true))
         } else if (previousBand == 1 && newBand == 0) {
             val newSmb = (smb - 0.01).coerceAtLeast(0.1)
-            val newMild = (mild - 0.05).coerceAtLeast(0.1)
+            val newMild = (mild - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
             aapsLogger.info(LTag.APS, "RoleTierDelivery: restore B/C→A smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
@@ -4318,7 +4318,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // both SMB delivery settings, clamped to each key's own max -- 0.5 for ApsAutoIsfSmbDeliveryBaseline,
         // 1.0 for ApsAutoIsfMildBoostRatio (widened 2026-08-29, see DoubleKey.kt; this combined block's own
         // ±0.01 step is untouched, unlike the dedicated MildBoostDownTT/UpTT pair below which now steps by
-        // 0.05). Same pattern and same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
+        // 0.25). Same pattern and same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
         if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.004, 0.0001)) {
             val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(1.0)
@@ -5451,13 +5451,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctUpTT")
         }
 
-        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.05 nudge on
+        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.25 nudge on
         // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
         // ApsAutoIsfSmbDeliveryBaseline, and stays at its own separate ±0.01 step), clamped to its own
-        // min of 0.1 — not a real target. Step 0.25 -> 0.05 on 2026-09-21 (List1 labels match).
-        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        // min of 0.1 — not a real target. Step widened 0.01 -> 0.05 -> 0.25 on 2026-08-29, alongside the
+        // key's own max widening 0.5->1.0 (see ApsAutoIsfMildBoostRatio in DoubleKey.kt). Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
         if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.05).coerceAtLeast(0.1)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
@@ -5465,11 +5466,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MildBoostDownTT")
         }
 
-        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.05 nudge on
-        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0. Floor remains 0.10.
+        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.25 nudge on
+        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0 (widened from 0.5 on 2026-08-29).
         // Same pattern as MildBoostDownTT above.
         if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.05).coerceAtMost(1.0)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
@@ -8241,7 +8242,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Both off + High enters the floor; both off + Normal is a no-op. Ceiling + High / floor
         // + Normal re-writes the same pair.
         // 2026-09-03: when the live roles actually change band, also nudge
-        // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.05) via
+        // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) via
         // applyRoleTierDeliveryNudge — TierA ↔ (TierB|TierC) once, never stacked on B↔C.
         // Same nudge is applied inside resetStandardAndLowTiersToA (HypoRevert / TierARst).
         //

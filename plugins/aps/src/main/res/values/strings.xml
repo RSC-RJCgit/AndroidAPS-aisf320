@@ -297,7 +297,7 @@
     <string name="autoisf_boost_automations_enabled_title">Enable boost automations (BolusGiven + Mild)</string>
     <string name="autoisf_boost_automations_enabled_summary">Master switch for both BolusGiven (bg1/bg2/bg3) and BolusGivenMild together. Turning this off disables both boost automations, not just one.</string>
     <string name="autoisf_mild_boost_ratio_title">Mild boost delivery ratio</string>
-    <string name="autoisf_mild_boost_ratio_summary">Default 0.15. Base ratio for BolusGivenMild\'s boost — its BGL tiers apply as +0.05/+0.02/+0 bumps on top of this value. BolusGiven bg3\'s (\"strong\") boost ratio is this value + 0.03, not set separately. List1/autos step ±0.05, floor 0.10.</string>
+    <string name="autoisf_mild_boost_ratio_summary">Default 0.20. Base ratio for BolusGivenMild\'s boost — its BGL tiers apply as +0.05/+0.02/+0 bumps on top of this value. BolusGiven bg3\'s (\"strong\") boost ratio is this value + 0.03, not set separately.</string>
     <string name="autoisf_profile_batch_auto_enabled_title">Profile batch auto (Toggle1)</string>
     <string name="autoisf_profile_batch_auto_enabled_summary">Default off. When on, one-step raise/lower of LowTier/StandardTier A/B/C (Steroids Off): up on exceptional rise without deceleration or BGL&gt;12 / ukfRaw&gt;14 for 2h; down on a second consecutive 03:00–07:00 MorningRoleSwap change or GentleHypoRisk. Does not use SteroidTier A–F.</string>
     <string name="autoisf_profile_batch_revert_enabled_title">Revert profile batch to basic (Toggle2)</string>
