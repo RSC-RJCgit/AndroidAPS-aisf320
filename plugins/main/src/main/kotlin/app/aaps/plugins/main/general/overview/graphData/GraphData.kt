@@ -450,8 +450,17 @@ class GraphData @Inject constructor(
         // HH:mm: GraphView even-spaces these 7 ticks across a rolling window, so they are rarely
         // on the clock hour. "HH" alone printed 09 on a 09:18 tick and made every BGL look ~15-20
         // min early. Minutes on the label match the actual X.
-        graph.gridLabelRenderer.labelFormatter = TimeAsXAxisLabelFormatter("HH:mm")
+        graph.gridLabelRenderer.labelFormatter = TimeAsXAxisLabelFormatter(
+            "HH:mm",
+            fromTime = fromTime,
+            endTime = endTime,
+            numHorizontalLabels = 7,
+            staggerHorizontal = true
+        )
         graph.gridLabelRenderer.numHorizontalLabels = 7 // only 7 because of the space
+        // Two-row staggered HH:mm needs a second line of height; otherwise GraphView clips the upper row.
+        val textSize = graph.gridLabelRenderer.textSize
+        graph.gridLabelRenderer.setLabelHorizontalHeight((textSize * 2.2f).toInt() + graph.gridLabelRenderer.labelsSpace)
     }
 
     private fun addSeries(s: Series<*>) = series.add(s)

@@ -263,6 +263,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var todOffsetNegClearSince: Long = 0L
     private var todOffsetPosClearSince: Long = 0L
     private var virtualPseudoWizardLastStatus: String = "never fired"
+    // Set in applyBMildOutcomeFactors / Giv3; Usual2/CarbsTHoff/NightAcce/SemiTwilight skip their
+    // same-cycle live-SMBdel restore so they do not undo a boost that just applied (TT not visible
+    // until the next loop). Hypo restores (Set50/Skittles) still force baseline.
+    private var smbDeliveryBoostedThisCycle: Boolean = false
     val autoIsfVersion = "3.2.1"
     val autoIsfWeights; get() = preferences.get(BooleanKey.ApsUseAutoIsfWeights)
     private val autoISF_max; get() = preferences.get(DoubleKey.ApsAutoIsfMax)
@@ -1067,7 +1071,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
-    // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) to role-tier
+    // Couple ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.05) to role-tier
     // band changes. Called from every auto that restores to TierA or escalates to TierB/C. No-op when
     // the band does not change (same pair rewrite, or B↔C).
     private fun applyRoleTierDeliveryNudge(previousBand: Int, newBand: Int) {
@@ -1076,14 +1080,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mild = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         if (previousBand == 0 && newBand == 1) {
             val newSmb = (smb + 0.01).coerceAtMost(0.5)
-            val newMild = (mild + 0.25).coerceAtMost(1.0)
+            val newMild = (mild + 0.05).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
             aapsLogger.info(LTag.APS, "RoleTierDelivery: elevate A→B/C smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
             addCarePortalNote(compactSettingNote("SM", newMild, 2, omitLeadingZero = true))
         } else if (previousBand == 1 && newBand == 0) {
             val newSmb = (smb - 0.01).coerceAtLeast(0.1)
-            val newMild = (mild - 0.25).coerceAtLeast(0.1)
+            val newMild = (mild - 0.05).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newSmb)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMild)
             aapsLogger.info(LTag.APS, "RoleTierDelivery: restore B/C→A smb ${round(smb, 2)}→${round(newSmb, 2)} mild ${round(mild, 2)}→${round(newMild, 2)}")
@@ -2470,6 +2474,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
     }
 
+    private fun restoreSmbDeliveryBaselineUnlessBoostThisCycle() {
+        if (smbDeliveryBoostedThisCycle) return
+        setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+    }
+
     // BMild *outcome* set only — not its entry criteria. SMBdel = mildBase+deliveryBoostIncrement
     // (0.15 default) and ppWeight high. setTt=true (BMild/Failsafe): 2-min 5.0 TT is the DelOff
     // timer. HiBrk passes setTt=false and keeps its own 4.0@5min so HiBrkCut still sees the
@@ -2485,6 +2494,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun applyBMildOutcomeFactors(gMgdl: Double, setTt: Boolean = true, deliveryBoostIncrement: Double = 0.15) {
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         setSmbDeliveryRatio(mildBase + deliveryBoostIncrement)
+        smbDeliveryBoostedThisCycle = true
         // Stash the exact creation timestamp of the TT just started (if it actually was -- this no-ops
         // like any other startTempTargetIfNeeded call if a TT was already active) so
         // bmildOwnFiveTtActive() can later prove ownership of THIS SPECIFIC TT by exact timestamp
@@ -3084,6 +3094,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "buckets=${sample?.buckets} missing=${listOf(5, 10, 15, 30, 60, 180).filter { sample?.steps(it) == null }}")
         }
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
+        smbDeliveryBoostedThisCycle = false
         lastAPSResult = null
         if (useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true) {
             aapsLogger.debug(LTag.APS, "LiveStepsMirror: skipping Virtual loop; core step buckets missing or stale")
@@ -5440,14 +5451,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("WizardPctUpTT")
         }
 
-        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.25 nudge on
+        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.05 nudge on
         // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
         // ApsAutoIsfSmbDeliveryBaseline, and stays at its own separate ±0.01 step), clamped to its own
-        // min of 0.1 — not a real target. Step widened 0.01 -> 0.05 -> 0.25 on 2026-08-29, alongside the
-        // key's own max widening 0.5->1.0 (see ApsAutoIsfMildBoostRatio in DoubleKey.kt). Same
-        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        // min of 0.1 — not a real target. Step 0.25 -> 0.05 on 2026-09-21 (List1 labels match).
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
         if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.05).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
@@ -5455,11 +5465,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("MildBoostDownTT")
         }
 
-        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.25 nudge on
-        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0 (widened from 0.5 on 2026-08-29).
+        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.05 nudge on
+        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0. Floor remains 0.10.
         // Same pattern as MildBoostDownTT above.
         if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.05).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
             sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
@@ -6686,6 +6696,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // caution factor.
                 val giv3Increment = if (bg3CautionFactor) 0.015 else 0.03
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + giv3Increment)
+                smbDeliveryBoostedThisCycle = true
                                             // strengthen SMB delivery during the post-bolus boost;
                                             // recovery/protective autos restore it to baseline (see below)
                 // +10% profile boost skipped under the same bg3 caution factor -- a second, independent
@@ -7227,7 +7238,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (u2block != null) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setBgAccelIsfWeight(0.50)
-                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime "back to usual" recovery restores delivery baseline
+                restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // daytime "back to usual" recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
@@ -7264,7 +7275,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchToStandardAtSharedTier(30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
-                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // daytime recovery restores delivery baseline
+                restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
                 addCarePortalNote("COff1-$ctBlock")
@@ -8230,7 +8241,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Both off + High enters the floor; both off + Normal is a no-op. Ceiling + High / floor
         // + Normal re-writes the same pair.
         // 2026-09-03: when the live roles actually change band, also nudge
-        // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.25) via
+        // ApsAutoIsfSmbDeliveryBaseline (±0.01) and ApsAutoIsfMildBoostRatio (±0.05) via
         // applyRoleTierDeliveryNudge — TierA ↔ (TierB|TierC) once, never stacked on B↔C.
         // Same nudge is applied inside resetStandardAndLowTiersToA (HypoRevert / TierARst).
         //
@@ -8508,7 +8519,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val hpNight = hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
                 if ((isTimeBetween(22, 0, 6, 0) || (hpNight != null && hpNight < 5.0)) && !rescueActive) switchToLowAtSharedTier()
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 22)
-                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // overnight reset restores delivery baseline
+                restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
                 sendSms("NightAcce_0.35TH22 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
@@ -8540,7 +8551,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (stB1 || stB2 || stB3) {
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
-                setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // morning recovery restores delivery baseline
+                restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // morning recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 sendSms("SemiTwilightAcce_0.50TH16")
                 addCarePortalNote("Semi")
