@@ -57,10 +57,9 @@ class DetermineBasalAutoISF @Inject constructor(
     var uamBoostFiredThisCycle: Boolean = false
 
     // lastUamBoostFireTimestamp (Tier 3's own 10-min self-throttle, added 2026-08-23) removed 2026-08-24:
-    // now that Tier 3's entry triggers ARE bmildBasicCriteriaMet / bg3BasicCriteriaMet (see those gates'
-    // own doc comments), Tier 3 can only fire as often as BolusGivenMild's OWN readyToRun("BolusGivenMild",
-    // 5) or BolusGiven bg3's readyToRun("BolusGivenBg3", 5) throttle allows -- an independent, redundant
-    // 10-min throttle here was no longer doing any real work of its own.
+    // entry triggers are still bmildBasicCriteriaMet / bg3BasicCriteriaMet (BMild/bg3 stay on their own
+    // 5-min readyToRun). 2026-09-21: T3 itself is also skipped while uamBoostRecent (UamBst marked in
+    // the last 20 min) or live smb_delivery_ratio > 0.50. T3 never writes SMBdel.
 
     // T3AcceISF observation-only shadow check (added 2026-08-24, removed 2026-08-27 per explicit
     // instruction -- no longer wanted: "I don't need 'how often would the old approach have fired'").
@@ -391,6 +390,8 @@ class DetermineBasalAutoISF @Inject constructor(
         // (markRun is after determine_basal), so the first boosted SMB is unchanged. Default false
         // preserves callers/tests. Also now one of smbBoostRecent's own OR-branches (see caller) --
         // this param's OWN uses below (holdFastRiseAfterUamBst, postUamBstLate) are unchanged.
+        // 2026-09-21: the same flag also skips the Tier 3 candidate block after a fire, so T3 cannot
+        // re-arm every BMild/bg3 5-min tick. BMild/bg3 themselves are not throttled by this.
         uamBoostRecent: Boolean = false,
         // Added 2026-09-13, per explicit request: whole minutes since UamBst last marked (1-min loop
         // cadence, so this doubles as a cycle count). Int.MAX_VALUE default preserves callers/tests that
@@ -1657,7 +1658,8 @@ class DetermineBasalAutoISF @Inject constructor(
                     // rise that bg3 already owns. Tier 3 runs wherever ApsAutoIsfUamBoostEnabled is
                     // set (no pump-type gate any more -- boostActive is just that preference), and can only
                     // ever RAISE the ordinary SMB, never lower it -- see the max() comparison just below
-                    // this gate. Candidate compounding is path-specific: BMild-only restores the original
+                    // this gate. 2026-09-21: also skipped while last UamBst was <20 min or live SMBdel
+                    // > 0.50; T3 does not write SMBdel. Candidate compounding is path-specific: BMild-only restores the original
                     // preBoostMicroBolus * boost_scale multiply; the bg3 path keeps the 2026-09-01
                     // independent candidate (no multiply) so BolusGiven's own delivery-ratio boost is not
                     // then scaled again.
@@ -1685,6 +1687,16 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
                         iob_data.iob < boostMaxIOB && boost_scale < 3 && bg > 80
                         && boostIobAllowance > 0.0) {
+                        // 2026-09-21: T3-only skips. BMild/bg3 still run this cycle (SMBdel/TT unchanged).
+                        // uamBoostRecent is false on the firing cycle (markRun is after determine_basal).
+                        val liveSmbDel = profile.smb_delivery_ratio
+                        if (uamBoostRecent) {
+                            consoleError.add("Tier 3 UAM Boost skipped: last UamBst <20 min")
+                            rT.reason.append("T3skip<20min; ")
+                        } else if (liveSmbDel > 0.50) {
+                            consoleError.add("Tier 3 UAM Boost skipped: SMBdel ${round(liveSmbDel, 2)} > 0.50")
+                            rT.reason.append("T3skip SMBdel>${round(liveSmbDel, 2)}; ")
+                        } else {
 
                         val preBoostMicroBolus = microBolus
                         boostInsulinReq = min(boost_scale * boostInsulinReq, boost_max)
@@ -1780,6 +1792,7 @@ class DetermineBasalAutoISF @Inject constructor(
                                     rT.reason.append("[Tier3FastCarb] rebound observed (Tier 3 not active this cycle); ")
                                 }
                             }
+                        }
                         }
                     }
                 }

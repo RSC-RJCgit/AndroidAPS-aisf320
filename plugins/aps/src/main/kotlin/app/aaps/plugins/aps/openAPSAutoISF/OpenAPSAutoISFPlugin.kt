@@ -9068,6 +9068,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 20 min covers the 6 Sep 12:16→12:30 tail without lasting into the next meal. Computed before
         // replaySmbBoostRecent (2026-09-13) so Tier 3 firing recently can also feed into it below --
         // see that val's own doc comment for why.
+        // 2026-09-21: this same 20-min flag now also skips the T3 candidate itself (DetermineBasal
+        // UAM Boost block). BMild/bg3 5-min cadence is unchanged.
         val replayUamBoostRecent = !readyToRun("UamBst", 20)
         // Added 2026-09-13, per explicit request: whole minutes since UamBst last marked, feeding
         // DetermineBasalAutoISF.kt's graduated post-UamBst fast-rise taper (see that param's own doc
