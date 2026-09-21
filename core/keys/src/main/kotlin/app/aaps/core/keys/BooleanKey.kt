@@ -82,6 +82,10 @@ enum class BooleanKey(
     // LoReb: the recent-low rebound guard (halves microBolus after a recent low). Default OFF, matching the
     // hard-coded off state it replaced on 2026-09-20.
     ApsAutoIsfLowReboundGuardEnabled("autoisf_low_rebound_guard_enabled", false),
+    // Compare switch (2026-09-22): when ON, T3 skips the 20-min/SMBdel>0.50 cuts, the max_iob/9.5
+    // shot cap, and the boost_max_iob_percent IOB gate. Default OFF. Not Virtual-gated -- turn on
+    // only where you want the comparison (typically Virtual List 2).
+    ApsAutoIsfUamBoostUnrestrictedEnabled("autoisf_uam_boost_unrestricted_enabled", false),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, defaultedBySM = true),
     ApsAutoIsfSmbOnEvenTarget("Enable alternative activation of SMB always", false, defaultedBySM = true),   // profile target
     ApsAutoIsfSplitBolusEnabled("split_bolus_enabled", false, defaultedBySM = true),

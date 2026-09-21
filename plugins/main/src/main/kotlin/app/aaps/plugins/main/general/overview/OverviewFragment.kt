@@ -1369,6 +1369,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // (LoReb). Same EventAutoIsfDirectTtCode dispatch as the toggles above; Client relays 5.226 / 5.228.
         FAST_RISE_TOGGLE("FastRise SMB tiers on/off (test)", 5.226),
         LOW_REBOUND_GUARD_TOGGLE("Post-low rebound guard LoReb on/off (test)", 5.228),
+        T3_UNRESTRICTED_TOGGLE("T3 unrestricted compare on/off", 5.230),
         // 5.204: loop phone stores its Build.MODEL as the only location-SMS sender. Pump/Virtual
         // apply immediately; Client relays the TT to Live (Client does not send location SMS).
         LOCATION_SMS_THIS_PHONE("Location SMS from the loop phone (model)", 5.204),
@@ -1566,6 +1567,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.ADB_START_ATTEMPT,
                 BasalDirectAction.FAST_RISE_TOGGLE,
                 BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE,
+                BasalDirectAction.T3_UNRESTRICTED_TOGGLE,
                 BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
@@ -1608,6 +1610,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
         BasalDirectAction.FAST_RISE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfFastRiseEnabled)
         BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
+        BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
             if (config.AAPSCLIENT) {
                 val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]

@@ -438,6 +438,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("LRb${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local LoReb toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.230) <= 0.0000001) {
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+                        preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
+                        sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("T3u${if (newState) "On" else "Off"}")
+                        aapsLogger.info(LTag.APS, "Applied local T3 unrestricted toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
                         // Client List2 relays 5.204 here. This runs on the loop phone and writes that
                         // phone's Build.MODEL. Location SMS still originate on this loop phone.
@@ -3061,6 +3068,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "StageAaps333NewestTT" -> 5.202
         "FastRiseToggleTT" -> 5.226
         "LowReboundGuardToggleTT" -> 5.228
+        "T3UnrestrictedToggleTT" -> 5.230
         else -> null
     }
 
@@ -5265,6 +5273,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("LRb${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
             markRun("LowReboundGuardToggleTT")
+        }
+        if (readyToRun("T3UnrestrictedToggleTT", 2) && activeTtNear(5.230, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("T3u${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
+            markRun("T3UnrestrictedToggleTT")
         }
 
         // List 2 coded-location master switch. This changes only the enable preference; the five
@@ -10482,6 +10499,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, summary = R.string.use_live_steps_on_virtual_summary, title = R.string.use_live_steps_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfFastRiseEnabled, summary = R.string.fast_rise_enabled_summary, title = R.string.fast_rise_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowReboundGuardEnabled, summary = R.string.low_rebound_guard_enabled_summary, title = R.string.low_rebound_guard_enabled_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, summary = R.string.autoisf_uam_boost_unrestricted_summary, title = R.string.autoisf_uam_boost_unrestricted_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, summary = R.string.use_live_mj_state_on_virtual_summary, title = R.string.use_live_mj_state_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveSteroidEventsOnVirtual, summary = R.string.use_live_steroid_events_on_virtual_summary, title = R.string.use_live_steroid_events_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))

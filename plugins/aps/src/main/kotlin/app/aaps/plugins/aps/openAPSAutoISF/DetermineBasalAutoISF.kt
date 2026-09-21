@@ -1591,7 +1591,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (boostActive && tier3TimeAllowed) {
                     // Per-SMB size cap: min(boost_bolus_cap setting, 1.0U at max_iob 9.5).
                     // 1/9.5 = 10.526...% (not 10.4%: that is 0.988U and floors to 0.95 at 0.05U steps).
-                    val boost_max = min(profile.boost_max, profile.max_iob / 9.5)
+                    // ApsAutoIsfUamBoostUnrestrictedEnabled (List 2 5.230, default off) skips that
+                    // 9.5 cap, the 20-min/SMBdel>0.50 cuts, and the percent IOB gate -- compare only.
+                    val t3Unrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+                    if (t3Unrestricted) rT.reason.append("T3 unrestricted (compare); ")
+                    val boost_max = if (t3Unrestricted) profile.boost_max else min(profile.boost_max, profile.max_iob / 9.5)
                     val boostMaxIOBPercent = profile.boostMaxIOBPercent
                     val boostMaxIOB = profile.max_iob * boostMaxIOBPercent / 100.0
                     val boostIobAllowance = (boostMaxIOB - iob_data.iob).coerceAtLeast(0.0)
@@ -1687,15 +1691,15 @@ class DetermineBasalAutoISF @Inject constructor(
                     // dosing), keeping them just made the combined path unreachable rather than adding
                     // real protection.
                     if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
-                        iob_data.iob < boostMaxIOB && boost_scale < 3 && bg > 80
-                        && boostIobAllowance > 0.0) {
+                        boost_scale < 3 && bg > 80 &&
+                        (t3Unrestricted || (iob_data.iob < boostMaxIOB && boostIobAllowance > 0.0))) {
                         // 2026-09-21: T3-only skips. BMild/bg3 still run this cycle (SMBdel/TT unchanged).
                         // uamBoostRecent is false on the firing cycle (markRun is after determine_basal).
                         val liveSmbDel = profile.smb_delivery_ratio
-                        if (uamBoostRecent) {
+                        if (!t3Unrestricted && uamBoostRecent) {
                             consoleError.add("Tier 3 UAM Boost skipped: last UamBst <20 min")
                             rT.reason.append("T3skip<20min; ")
-                        } else if (liveSmbDel > 0.50) {
+                        } else if (!t3Unrestricted && liveSmbDel > 0.50) {
                             consoleError.add("Tier 3 UAM Boost skipped: SMBdel ${round(liveSmbDel, 2)} > 0.50")
                             rT.reason.append("T3skip SMBdel>${round(liveSmbDel, 2)}; ")
                         } else {
@@ -1733,7 +1737,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             max(basalScaleCandidate, max(boostedUsualSmbCandidate, baselineRatioCandidate))
                         else
                             max(basalScaleCandidate, baselineRatioCandidate)
-                        val tier3Candidate = min(tier3Uncapped, boostIobAllowance)
+                        val tier3Candidate = if (t3Unrestricted) tier3Uncapped else min(tier3Uncapped, boostIobAllowance)
                         val roundedTier3Candidate = Math.floor(tier3Candidate * roundSMBTo) / roundSMBTo
                         // Added 2026-08-25: unconditional diagnostic, logged every cycle this block runs
                         // (i.e. every BMild or bg3 firing whose safety numerics also passed) regardless of
@@ -1753,7 +1757,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         if (roundedTier3Candidate > preBoostMicroBolus) {
                             microBolus = roundedTier3Candidate
                             uamBoostEnhancedCandidateThisCycle = true
-                            uamBoostFinalIobAllowanceThisCycle = boostIobAllowance
+                            uamBoostFinalIobAllowanceThisCycle = if (t3Unrestricted) null else boostIobAllowance
                             consoleError.add(">>> TIER 3: UAM Boost candidate <<<")
                             consoleError.add("Tier 3 usual SMB ${round(preBoostMicroBolus, 2)}U x scale ${round(boost_scale, 2)} = ${round(boostedUsualSmbCandidate, 2)}U before Tier 3 ceilings")
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
