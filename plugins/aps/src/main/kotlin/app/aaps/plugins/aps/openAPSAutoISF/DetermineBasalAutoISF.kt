@@ -85,7 +85,7 @@ class DetermineBasalAutoISF @Inject constructor(
     // the AIV export without pulling raw device logs. Added 2026-09-16, per explicit request.
     var recentLowReboundGuardFiredThisCycle: Boolean = false
 
-    // Switch for the recent-low rebound guard ("LoReb": halves microBolus after a recent low), from the setting
+    // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
     // and LastLoRebAppliedAt is no longer refreshed. StuckRisingSlowly no longer reads that stamp.
@@ -2354,9 +2354,10 @@ class DetermineBasalAutoISF @Inject constructor(
                 // merely the 50recent latch which can linger), Boost's reversalScore > 30 (delta rising
                 // while longAvgDelta still reflects the fall), COB 0, and BG still in the recovery band
                 // (< 9.4mmol). Boost's velocity override releases it once the rise is a genuine spike
-                // (delta > 15mg/dL/5min AND already > target+20). Same 0.5 factor as the carb branch.
+                // (delta > 15mg/dL/5min AND already > target+20).
+                // 2026-09-21: leave SMB <=0.10U untouched. 0.10U < SMB <=0.25U is *0.75; above 0.25U is *0.5.
                 if (!recentLowReboundGuardEnabled) rT.reason.append("LoReb OFF (test) ")
-                if (recentLowReboundGuardEnabled && microBolus > 0.0) {
+                if (recentLowReboundGuardEnabled && microBolus > 0.10) {
                     val uciGrams = if (csf > 0.0) uci / csf else 0.0
                     // 2026-09-09: was `recentLowActive` (checkAutomationState("LowBG","50recent")).
                     // That latch is not a time window -- it clears only when the profile returns to
@@ -2377,7 +2378,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         && !(glucose_status.delta > 15 && bg > target_bg + 20)
                     if (carbRebound || artifactRebound) {
                         val beforeLowGuard = microBolus
-                        microBolus = microBolus * 0.5
+                        microBolus = if (microBolus <= 0.25) microBolus * 0.75 else microBolus * 0.5
                         recentLowReboundGuardFiredThisCycle = true
                         val why = if (carbRebound)
                             "carb: recentLowBG=${round(loRebMinimum, 0)}mg/dL, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(uciGrams, 2)}g/5m"
