@@ -313,6 +313,10 @@ class GraphData @Inject constructor(
         addSeries(overviewData.smbStackTotalSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
     }
 
+    fun addInsulinIntervalTotals() {
+        addSeries(overviewData.insulinIntervalTotalSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+    }
+
     fun addIobTh(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
         if (maxCommonIob>0.0) {
             maxY = maxCommonIob

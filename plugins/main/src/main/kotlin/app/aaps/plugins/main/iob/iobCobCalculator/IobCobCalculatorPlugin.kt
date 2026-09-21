@@ -172,11 +172,11 @@ class IobCobCalculatorPlugin @Inject constructor(
         disposable += rxBus
             .toObservable(EventTherapyEventChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ safe("onEventTherapyEventChange") { calculationWorkflow.runOnEventTherapyEventChange(overviewData) } }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventTherapyEventChange") { calculationWorkflow.runOnEventTherapyEventChange(this, overviewData) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventRunningModeChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ safe("onEventRunningModeChange") { calculationWorkflow.runOnEventTherapyEventChange(overviewData) } }, fabricPrivacy::logException)
+            .subscribe({ safe("onEventRunningModeChange") { calculationWorkflow.runOnEventTherapyEventChange(this, overviewData) } }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventAppInitialized::class.java)
             .observeOn(aapsSchedulers.io)

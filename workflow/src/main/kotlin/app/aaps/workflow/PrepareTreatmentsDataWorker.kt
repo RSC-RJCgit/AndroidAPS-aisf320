@@ -20,8 +20,10 @@ import app.aaps.core.graph.data.StepsDataPoint
 import app.aaps.core.graph.data.TherapyEventDataPoint
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -49,6 +51,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var rxBus: RxBus
+    @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var translator: Translator
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var persistenceLayer: PersistenceLayer
@@ -58,6 +61,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var stepCountSource: StepCountSource
 
     class PrepareTreatmentsData(
+        val iobCobCalculator: IobCobCalculator, // cannot be injected : HistoryBrowser uses different instance
         val overviewData: OverviewData
     )
 
@@ -312,6 +316,65 @@ class PrepareTreatmentsDataWorker(
             // total via the filter at open time, and (unlike the old code) nothing can end it early.
         }
         data.overviewData.smbStackTotalSeries = PointsWithLabelGraphSeries(smbStackTotalLabels.toTypedArray())
+
+        // Exactly 12 equal slices of the visible fromTime..toTime window (rangeToDisplay hours),
+        // not endTime (which can extend 1h past toTime when PRE is on). White labels on the IOB
+        // graph. Total = basal delivered in the slice + SMB/normal bolus in the slice; add
+        // overlapping extended bolus only when the pump is not already converting EB into TBR.
+        val insulinIntervalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
+        val windowStart = fromTime
+        val windowEnd = data.overviewData.toTime
+        val span = windowEnd - windowStart
+        if (span > 0L) {
+            val insulinTotals = DoubleArray(12)
+            var t = windowStart
+            while (t < windowEnd) {
+                val profile = profileFunction.getProfile(t)
+                if (profile != null) {
+                    val basalData = data.iobCobCalculator.getBasalData(profile, t)
+                    val idx = ((t - windowStart) * 12 / span).toInt().coerceIn(0, 11)
+                    insulinTotals[idx] += basalData.tempBasalAbsolute / 60.0
+                }
+                t += 60_000L
+            }
+            bolusDataPoints.forEach { dp ->
+                val ts = dp.x.toLong()
+                if (ts >= windowStart && ts < windowEnd) {
+                    val idx = ((ts - windowStart) * 12 / span).toInt().coerceIn(0, 11)
+                    insulinTotals[idx] += dp.data.amount
+                }
+            }
+            if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) {
+                persistenceLayer.getExtendedBolusesStartingFromTimeToTime(windowStart - T.hours(12).msecs(), windowEnd, true)
+                    .filter { it.isValid && it.duration > 0 && !it.isEmulatingTempBasal }
+                    .forEach { eb ->
+                        val ebStart = eb.timestamp
+                        val ebEnd = eb.end
+                        for (i in 0 until 12) {
+                            val s = windowStart + span * i / 12
+                            val e = windowStart + span * (i + 1) / 12
+                            val overlap = minOf(e, ebEnd) - maxOf(s, ebStart)
+                            if (overlap > 0L) insulinTotals[i] += eb.rate * overlap / 3_600_000.0
+                        }
+                    }
+            }
+            for (i in 0 until 12) {
+                val s = windowStart + span * i / 12
+                val e = windowStart + span * (i + 1) / 12
+                insulinIntervalLabels.add(object : DataPointWithLabelInterface {
+                    override fun getX(): Double = (s + e) / 2.0
+                    override fun getY(): Double = 0.0
+                    override fun setY(y: Double) {}
+                    override val label: String = String.format(java.util.Locale.US, "%.2f", insulinTotals[i])
+                    override val duration: Long = 0L
+                    override val shape = app.aaps.core.graph.data.Shape.INSULIN_INTERVAL_TOTAL
+                    override val size: Float = 1.0f
+                    override val paintStyle = android.graphics.Paint.Style.FILL
+                    override fun color(context: android.content.Context?) = android.graphics.Color.WHITE
+                })
+            }
+        }
+        data.overviewData.insulinIntervalTotalSeries = PointsWithLabelGraphSeries(insulinIntervalLabels.toTypedArray())
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())

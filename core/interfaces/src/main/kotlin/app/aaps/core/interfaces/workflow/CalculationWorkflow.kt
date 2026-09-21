@@ -63,7 +63,7 @@ interface CalculationWorkflow {
     /**
      * Update treatments in graph ofter new therapy event
      */
-    fun runOnEventTherapyEventChange(overviewData: OverviewData)
+    fun runOnEventTherapyEventChange(iobCobCalculator: IobCobCalculator, overviewData: OverviewData)
 
     /**
      * Update graph ofter scale change

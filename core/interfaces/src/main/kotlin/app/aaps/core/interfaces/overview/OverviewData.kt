@@ -110,6 +110,7 @@ interface OverviewData {
     var treatmentsSeries: SeriesData
     var smbLabelSeries: SeriesData
     var smbStackTotalSeries: SeriesData
+    var insulinIntervalTotalSeries: SeriesData
     var maxTherapyEventValue: Double
     var therapyEventSeries: SeriesData
     // Plain TE.Type.NOTE events only (split out from therapyEventSeries) — renders on graph4 (swapped

@@ -114,7 +114,7 @@ class CalculationWorkflowImpl @Inject constructor(
             )
             .then(
                 OneTimeWorkRequest.Builder(PrepareTreatmentsDataWorker::class.java)
-                    .setInputData(dataWorkerStorage.storeInputData(PrepareTreatmentsDataWorker.PrepareTreatmentsData(overviewData)))
+                    .setInputData(dataWorkerStorage.storeInputData(PrepareTreatmentsDataWorker.PrepareTreatmentsData(iobCobCalculator, overviewData)))
                     .build()
             )
             .then(
@@ -194,12 +194,12 @@ class CalculationWorkflowImpl @Inject constructor(
             .enqueue()
     }
 
-    override fun runOnEventTherapyEventChange(overviewData: OverviewData) {
+    override fun runOnEventTherapyEventChange(iobCobCalculator: IobCobCalculator, overviewData: OverviewData) {
         WorkManager.getInstance(context)
             .beginUniqueWork(
                 MAIN_CALCULATION, ExistingWorkPolicy.APPEND,
                 OneTimeWorkRequest.Builder(PrepareTreatmentsDataWorker::class.java)
-                    .setInputData(dataWorkerStorage.storeInputData(PrepareTreatmentsDataWorker.PrepareTreatmentsData(overviewData)))
+                    .setInputData(dataWorkerStorage.storeInputData(PrepareTreatmentsDataWorker.PrepareTreatmentsData(iobCobCalculator, overviewData)))
                     .build()
             )
             .then(

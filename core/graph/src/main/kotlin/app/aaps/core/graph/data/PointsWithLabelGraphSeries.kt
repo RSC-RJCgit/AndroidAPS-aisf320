@@ -240,6 +240,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // stacks UPWARD from this base (see the render branch below).
         val smbStackTotalPy = graphTop + graphHeight - scaledTextSize * 0.3f
         val iobPeakMainBottomPy = graphTop + graphHeight - scaledTextSize * 0.35f
+        // Exactly-12 insulin-delivered totals: top quarter of this panel (IOB graph). White.
+        val insulinIntervalPy = graphTop + graphHeight * 0.22f
 
         for (value in values) {
             mPaint.color = value.color(graphView.context)
@@ -269,6 +271,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 // typical visible floor and it started disappearing whenever BG hadn't been low recently.
                 value.shape == Shape.PP_ACC_DU_ROW ||
                 value.shape == Shape.SMB_STACK_TOTAL ||
+                value.shape == Shape.INSULIN_INTERVAL_TOTAL ||
                 value.shape == Shape.IOB_PEAK_MAIN_BOTTOM
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
@@ -559,6 +562,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // near bottom of graph, stacking upward with half-height steps
                         val labelY = graphTop + graphHeight - scaledTextSize * 0.3f - stackIndex2 * scaledTextSize * 0.5f
                         canvas.drawText(value.label, endX, labelY, mPaint)
+                        mPaint.textAlign = Paint.Align.LEFT
+                    }
+                } else if (value.shape == Shape.INSULIN_INTERVAL_TOTAL) {
+                    if (value.label.isNotEmpty()) {
+                        mPaint.strokeWidth = 0f
+                        mPaint.textSize = (scaledTextSize * 0.5f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.color = Color.WHITE
+                        mPaint.textAlign = Paint.Align.CENTER
+                        canvas.drawText(value.label, endX, insulinIntervalPy, mPaint)
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.SMB_STACK_TOTAL) {

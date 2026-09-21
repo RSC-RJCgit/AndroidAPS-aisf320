@@ -599,7 +599,10 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // Was g == 0 (graph1) here while OverviewFragment had already swapped this to g == 1 (graph2),
             // trading places with the CarePortal notes now on graph4 above. History Browse never got that
             // swap, which is why SMB labels appeared on a different panel in the two screens.
-            if (g == 1) secondGraphData.addSmbLabels()
+            if (g == 1) {
+                secondGraphData.addSmbLabels()
+                secondGraphData.addInsulinIntervalTotals()
+            }
             // graph3 (g==2): was the "pp= acc= du=" row -- replaced with the SMB-stack-total labels (was
             // g==0/IOB-COB panel, moved here). Unlike OverviewFragment.kt, this screen has no established
             // main-graph annotation wiring (L1/A1/UKF/HP aren't ported here either), so the "pp= acc= du="
