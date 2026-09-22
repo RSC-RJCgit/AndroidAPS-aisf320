@@ -24,6 +24,12 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+// Inputs are mg/dL and mg/dL per five minutes, matching determine_basal's native units.
+internal fun loRebLookbackMinutes(bg: Double, delta: Double, shortDelta: Double): Int =
+    if (bg.isFinite() && delta.isFinite() && shortDelta.isFinite() &&
+        bg > 6.0 * 18.0 && delta > 0.10 * 18.0 && shortDelta > 0.10 * 18.0
+    ) 30 else 60
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
