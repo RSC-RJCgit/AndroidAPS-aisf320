@@ -18,6 +18,7 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -208,6 +209,38 @@ private fun fastRiseSizeTier(input: FastRiseSizeInput): FastRiseSizeTier {
     return FastRiseSizeTier.None
 }
 
+internal data class FastRiseSmbResult(
+    val microBolus: Double,
+    val reason: String,
+)
+
+// Applies one FastRise size decision to an SMB that is already rounded to the pump step.
+// roundSmbTo is 1 / bolus increment. A factor of 1 leaves the SMB as it is.
+internal fun fastRiseAdjustedMicroBolus(
+    microBolus: Double,
+    roundSmbTo: Double,
+    loReb: LoRebWindow,
+    input: FastRiseSizeInput,
+): FastRiseSmbResult {
+    val decision = fastRiseSizeDecision(
+        input.copy(microBolus = microBolus, loRebWindowActive = loReb.active)
+    )
+    val adjusted = if (decision.factor < 1.0 && microBolus > 0.0 && roundSmbTo > 0.0) {
+        floor(microBolus * decision.factor * roundSmbTo) / roundSmbTo
+    } else {
+        microBolus
+    }
+    val reason = when {
+        !input.fastRiseSettingOn -> "FastRise tiers OFF (test). "
+        loReb.active -> "FastRise tiers OFF (LoReb ${loReb.lookbackMinutes}min). "
+        !input.libreActive -> "FastRise tiers OFF (not Libre). "
+        input.tempTargetSet -> "FastRise tiers OFF (temp target). "
+        adjusted != microBolus -> "FastRise x${decision.factor} SMB $microBolus -> $adjusted. "
+        else -> ""
+    }
+    return FastRiseSmbResult(adjusted, reason)
+}
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
@@ -393,7 +426,16 @@ class DetermineBasalAutoISF(
     fun determine_basal(
         glucose_status: GlucoseStatus, currenttemp: CurrentTemp, iob_data_array: Array<IobTotal>, profile: OapsProfileAutoIsf, autosens_data: AutosensResult, meal_data: MealData,
         microBolusAllowed: Boolean, currentTime: Long, flatBGsDetected: Boolean, autoIsfMode: Boolean, loop_wanted_smb: String, profile_percentage: Int, smb_ratio: Double,
-        smb_max_range_extension: Double, iob_threshold_percent: Int, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>
+        smb_max_range_extension: Double, iob_threshold_percent: Int, auto_isf_consoleError: MutableList<String>, auto_isf_consoleLog: MutableList<String>,
+        // Null means this caller does not use the FastRise size tiers. Existing tests stay on that path.
+        fastRiseSettingOn: Boolean? = null,
+        libreActive: Boolean = false,
+        rawDelta5Mgdl: Double = 0.0,
+        aapsDelta1Mgdl: Double = 0.0,
+        hour: Int = -1,
+        lastAlarmHypoAt: Long = 0L,
+        lowReboundGuardEnabled: Boolean = false,
+        fastRiseSlopeRatio: Double = 1.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1325,6 +1367,47 @@ class DetermineBasalAutoISF(
                         consoleError.add("Full loop capped SMB at ${round(microBolus, 2)} to not exceed $iobTHtolerance% of effective iobTH ${round(iobTHvirtual / iobTHtolerance * 100, 2)}U")
                     }
                     microBolus = kotlin.math.floor(microBolus * roundSMBTo) / roundSMBTo
+                }
+                if (fastRiseSettingOn != null) {
+                    val nowHour = if (hour in 0..23) hour
+                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                    val loReb = loRebWindow(
+                        bg = bg,
+                        delta = glucose_status.delta,
+                        shortDelta = glucose_status.shortAvgDelta,
+                        systemTimeMs = systemTime,
+                        lastAlarmHypoAtMs = lastAlarmHypoAt,
+                        cob = meal_data.mealCOB,
+                        uci = 0.0,
+                        csf = 1.0,
+                        recentLowReboundGuardEnabled = lowReboundGuardEnabled,
+                    )
+                    val adjusted = fastRiseAdjustedMicroBolus(
+                        microBolus = microBolus,
+                        roundSmbTo = roundSMBTo,
+                        loReb = loReb,
+                        input = FastRiseSizeInput(
+                            bg = bg,
+                            delta = glucose_status.delta,
+                            shortDelta = glucose_status.shortAvgDelta,
+                            longDelta = glucose_status.longAvgDelta,
+                            rawDelta5 = rawDelta5Mgdl,
+                            aapsDelta1 = aapsDelta1Mgdl,
+                            cob = meal_data.mealCOB,
+                            iob = iob_data.iob,
+                            maxIob = profile.max_iob,
+                            microBolus = microBolus,
+                            // TDD factor is not ported yet, so this uses 1.0. UKF3426 multiplies by TDDfactor.
+                            threshold = 0.030 * profile.max_iob,
+                            hour = nowHour,
+                            slopeRatio = fastRiseSlopeRatio,
+                            libreActive = libreActive,
+                            tempTargetSet = profile.temptargetSet,
+                            fastRiseSettingOn = fastRiseSettingOn,
+                        ),
+                    )
+                    microBolus = adjusted.microBolus
+                    if (adjusted.reason.isNotEmpty()) rT.reason.append(adjusted.reason)
                 }
 
                 // calculate a long enough zero temp to eventually correct back up to target

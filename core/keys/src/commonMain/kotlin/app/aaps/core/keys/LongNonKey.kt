@@ -22,5 +22,8 @@ enum class LongNonKey(
     // hasn't republished the roster yet). Not exported — re-pair regenerates this.
     NsClientControlPairedAt("nsclient_control_paired_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
+
+    // Epoch millis of the last AlarmHypo. Nothing writes this until that alarm is ported.
+    ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0L),
 }
 

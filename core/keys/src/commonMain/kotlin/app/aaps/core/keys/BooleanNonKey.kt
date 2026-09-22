@@ -36,6 +36,11 @@ enum class BooleanNonKey(
 
     AllowHardwarePump("allow_hardware_pump", false),
 
+    // AutoISF 3.2.1 FastRise size tiers. On by default, matching UKF3426. No settings row yet.
+    ApsAutoIsfFastRiseEnabled("autoisf_fast_rise_enabled", true),
+    // Recent-low rebound guard. Off by default, matching UKF3426. No settings row yet.
+    ApsAutoIsfLowReboundGuardEnabled("autoisf_low_rebound_guard_enabled", false),
+
     // Statistics screen section expanded/collapsed states (per-device UI state, not user-facing preferences)
     StatsTddExpanded("stats_tdd_expanded", true, exportable = false),
     StatsTirExpanded("stats_tir_expanded", true, exportable = false),

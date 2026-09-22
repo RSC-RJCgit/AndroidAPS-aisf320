@@ -166,6 +166,60 @@ class FastRiseSizeTierTest {
     }
 
     @Test
+    fun adjustedSmbUsesTheStrongCut() {
+        val result = fastRiseAdjustedMicroBolus(
+            microBolus = 1.0,
+            roundSmbTo = 20.0,
+            loReb = inactiveWindow(),
+            input = rise(delta = 18.0, shortDelta = 18.0, longDelta = 18.0),
+        )
+        assertEquals(0.2, result.microBolus)
+        assertEquals("FastRise x0.2 SMB 1.0 -> 0.2. ", result.reason)
+    }
+
+    @Test
+    fun adjustedSmbStaysWholeWhenTheLoRebWindowIsActive() {
+        val window = loRebWindow(
+            bg = 144.0,
+            delta = 0.42 * 18.0,
+            shortDelta = 0.31 * 18.0,
+            systemTimeMs = 1_700_000_000_000L,
+            lastAlarmHypoAtMs = 1_700_000_000_000L - 28 * 60_000L,
+            cob = 0.0,
+            uci = 0.0,
+            csf = 1.0,
+            recentLowReboundGuardEnabled = true,
+        )
+        val result = fastRiseAdjustedMicroBolus(
+            microBolus = 1.0,
+            roundSmbTo = 20.0,
+            loReb = window,
+            input = rise(
+                bg = 144.0,
+                delta = 0.42 * 18.0,
+                shortDelta = 0.31 * 18.0,
+                longDelta = 1.0,
+                rawDelta5 = 0.42 * 18.0,
+                aapsDelta1 = 0.42 * 18.0,
+            ),
+        )
+        assertEquals(1.0, result.microBolus)
+        assertEquals("FastRise tiers OFF (LoReb 30min). ", result.reason)
+    }
+
+    @Test
+    fun adjustedSmbExplainsANonLibreSensor() {
+        val result = fastRiseAdjustedMicroBolus(
+            microBolus = 1.0,
+            roundSmbTo = 20.0,
+            loReb = inactiveWindow(),
+            input = rise(delta = 18.0, shortDelta = 18.0, longDelta = 18.0).copy(libreActive = false),
+        )
+        assertEquals(1.0, result.microBolus)
+        assertEquals("FastRise tiers OFF (not Libre). ", result.reason)
+    }
+
+    @Test
     fun settingLibreAndTempTargetEachLeaveTheSmbUncut() {
         val strong = rise(delta = 18.0, shortDelta = 18.0, longDelta = 18.0)
         assertEquals(FastRiseSizeTier.OffTest, fastRiseSizeDecision(strong.copy(fastRiseSettingOn = false)).tier)
@@ -173,6 +227,18 @@ class FastRiseSizeTierTest {
         assertEquals(FastRiseSizeTier.OffTempTarget, fastRiseSizeDecision(strong.copy(tempTargetSet = true)).tier)
         assertEquals(1.0, fastRiseSizeDecision(strong.copy(fastRiseSettingOn = false)).factor)
     }
+
+    private fun inactiveWindow() = loRebWindow(
+        bg = 126.0,
+        delta = 18.0,
+        shortDelta = 18.0,
+        systemTimeMs = 1_700_000_000_000L,
+        lastAlarmHypoAtMs = 0L,
+        cob = 0.0,
+        uci = 0.0,
+        csf = 1.0,
+        recentLowReboundGuardEnabled = true,
+    )
 
     private fun rise(
         bg: Double = 126.0,

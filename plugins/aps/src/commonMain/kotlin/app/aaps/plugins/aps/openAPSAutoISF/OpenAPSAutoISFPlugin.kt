@@ -5,6 +5,7 @@ import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -46,8 +47,10 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
@@ -67,9 +70,13 @@ import app.aaps.plugins.aps.keys.ApsIntentKey
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -467,7 +474,14 @@ open class OpenAPSAutoISFPlugin(
             smb_max_range_extension = smbMaxRangeExtension,
             iob_threshold_percent = iobThresholdPercent,
             auto_isf_consoleError = consoleError,
-            auto_isf_consoleLog = consoleLog
+            auto_isf_consoleLog = consoleLog,
+            fastRiseSettingOn = preferences.get(BooleanNonKey.ApsAutoIsfFastRiseEnabled),
+            libreActive = libreActive(now),
+            rawDelta5Mgdl = rawDelta5MinMgdl(now) ?: 0.0,
+            aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
+            hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+            lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
+            lowReboundGuardEnabled = preferences.get(BooleanNonKey.ApsAutoIsfLowReboundGuardEnabled),
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -1009,5 +1023,36 @@ open class OpenAPSAutoISFPlugin(
         ),
         icon = pluginDescription.icon
     )
+
+    // Libre 2 and Libre 3 only, matching UKF3426's fslReally sensor check.
+    private suspend fun libreActive(now: Long): Boolean {
+        val newest = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 15 * 60 * 1000L, now, ascending = false)
+            .firstOrNull() ?: return false
+        return newest.sourceSensor == SourceSensor.LIBRE_2 ||
+            newest.sourceSensor == SourceSensor.LIBRE_2_NATIVE ||
+            newest.sourceSensor == SourceSensor.LIBRE_3
+    }
+
+    // mg/dL over about five minutes, from the Libre raw value stored in GV.noise.
+    // Null when that raw value is missing. The caller then passes 0, so the FastRise gate stays closed.
+    private suspend fun rawDelta5MinMgdl(now: Long): Double? {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60 * 1000L, now, ascending = false)
+        if (readings.size < 2) return null
+        val newest = readings[0].noise ?: return null
+        val fiveMinAgo = now - 5 * 60 * 1000L
+        val reference = readings.minByOrNull { abs(it.timestamp - fiveMinAgo) } ?: return null
+        if (reference.timestamp == readings[0].timestamp) return null
+        val previous = reference.noise ?: return null
+        return newest - previous
+    }
+
+    // mg/dL per five minutes, from the two newest calibrated values.
+    private suspend fun aapsDelta1MinMgdl(now: Long): Double? {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 3 * 60 * 1000L, now, ascending = false)
+        if (readings.size < 2) return null
+        val minutes = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
+        if (minutes <= 0.0) return null
+        return (readings[0].value - readings[1].value) / minutes * 5.0
+    }
 
 }
