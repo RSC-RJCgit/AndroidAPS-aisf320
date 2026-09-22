@@ -9138,6 +9138,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val lowBgSnapshotAt = dateUtil.now()
         val replayRecentLowBG = recentLowBgMgdl(at = lowBgSnapshotAt) ?: 999.0
         val replayRecentLowBG30 = recentLowBgMgdl(minutes = 30, at = lowBgSnapshotAt)
+        val replayLastAlarmHypoAt = preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)
         // Fixed 2026-08-27: reuse bmildFiredThisCycle (captured once, above the BolusGivenMild block)
         // instead of calling bmildBasicCriteriaMet() fresh here -- see that val's own doc comment for
         // why a second call in the same cycle always returned false.
@@ -9209,6 +9210,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 "iobChange5Min" to replayIobChange5Min,
                 "recentLowBG" to replayRecentLowBG,
                 "recentLowBG30" to replayRecentLowBG30,
+                "lastAlarmHypoAt" to replayLastAlarmHypoAt,
                 "bmildBasicCriteriaMet" to replayBmildBasicCriteriaMet,
                 "bg3BasicCriteriaMet" to replayBg3BasicCriteriaMet,
                 "daytimeGateBypassOk" to daytimeGateBypassOk(glucoseStatus.glucose),
@@ -9285,6 +9287,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // detection, see recentLowBgMgdl()'s own doc comment.
             recentLowBG = replayRecentLowBG,
             recentLowBG30 = replayRecentLowBG30,
+            lastAlarmHypoAt = replayLastAlarmHypoAt,
             // Two Tier 3 UAM Boost entry triggers (BMild and BolusGiven bg3), replacing its own former
             // delta/ratio/acceleration gate entirely -- see determine_basal()'s own bmildBasicCriteriaMet
             // / bg3BasicCriteriaMet param doc comments. Snapshots captured once above, before each

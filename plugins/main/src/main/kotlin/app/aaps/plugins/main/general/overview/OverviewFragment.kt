@@ -3233,10 +3233,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
-            if (g == 1) {
-                secondGraphData.addSmbLabels()
-                secondGraphData.addInsulinIntervalTotals()
-            }
+            if (g == 0) secondGraphData.addInsulinIntervalTotals()
+            if (g == 1) secondGraphData.addSmbLabels()
             // graph3 (g==2): was the "pp= acc= du=" row (now on graph5, see graph5Data.addIsfWeightsRow()
             // above) -- replaced with the SMB-stack-total labels (was g==0/IOB-COB panel, moved here).
             if (g == 2) secondGraphData.addSmbStackTotalLabels()

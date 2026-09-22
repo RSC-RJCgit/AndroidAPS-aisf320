@@ -32,10 +32,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 // Inputs are mg/dL (deltas per five minutes), matching determine_basal's native units.
-internal fun loRebLookbackMinutes(bg: Double, delta: Double, shortDelta: Double, minimum30: Double?): Int =
+internal fun loRebLookbackMinutes(bg: Double, delta: Double, shortDelta: Double): Int =
     if (bg.isFinite() && delta.isFinite() && shortDelta.isFinite() &&
-        bg > 6.0 * 18.0 && delta > 0.10 * 18.0 && shortDelta > 0.10 * 18.0 &&
-        minimum30 != null && minimum30.isFinite() && minimum30 > 0.0
+        bg > 6.0 * 18.0 && delta > 0.10 * 18.0 && shortDelta > 0.10 * 18.0
     ) 30 else 60
 
 @Singleton
@@ -482,11 +481,15 @@ class DetermineBasalAutoISF @Inject constructor(
         // still-modest BG, the exact pattern behind the two real hypos that guard was originally added
         // for on BMild's side.
         iobChange5Min: Double = 0.0,
-        // Minimum BG over 60 minutes, shared by Tier 3 rebound checks and default LoReb.
+        // Minimum BG over 60 minutes, used by Tier 3 rebound checks.
         // Default 999.0 preserves legacy callers without history.
         recentLowBG: Double = 999.0,
-        // LoReb only: missing 30-min history retains the original 60-min guard.
+        // Retained in replay records for compatibility; LoReb no longer uses a minimum-BG test.
         recentLowBG30: Double? = null,
+        // Exact persisted timestamp of the newest AlarmHypo1/AlarmHypo2 firing. LoReb compares its
+        // age with its selected 30/60-minute window instead of reading AlarmRecent (whose lifecycle is
+        // tied to LowBG recovery) or treating any low stored BGL as an alarm.
+        lastAlarmHypoAt: Long = 0L,
         // Added 2026-08-24: one of two Tier 3 UAM Boost entry triggers, replacing its own former
         // delta/ratio/throttle/quiet-window gate entirely (see that gate's own doc comment for why).
         // Pass the live result of OpenAPSAutoISFPlugin's bmildBasicCriteriaMet() -- the exact same
@@ -1804,20 +1807,26 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
 
                 val libreActive = (glucose_status as? GlucoseStatusAutoIsf)?.libreActive == true
-                // LoReb's own lookback (30 min when BG>6.0 and Delta/SDelta >0.10, else 60) plus the
-                // same carb/artifact predicates as the guard below. FastRise brake tiers stay off for
-                // that whole window so they cannot cut a post-low rebound LoReb is already covering.
-                val loRebMinutes = loRebLookbackMinutes(bg, glucose_status.delta, glucose_status.shortAvgDelta, recentLowBG30)
-                val loRebMinimum = if (loRebMinutes == 30) recentLowBG30!! else recentLowBG
+                // LoReb's own lookback: 30 min during a confirmed rising recovery (BG>6.0 and
+                // Delta/SDelta>0.10), otherwise 60. A genuine AlarmHypo1/2 must have fired inside that
+                // exact window. This uses its dedicated persisted timestamp, not AlarmRecent or a
+                // minimum stored BGL. FastRise brake tiers stay off only while the same LoReb
+                // predicates are active.
+                val loRebMinutes = loRebLookbackMinutes(bg, glucose_status.delta, glucose_status.shortAvgDelta)
+                val loRebAlarmAgeMs = systemTime - lastAlarmHypoAt
+                val loRebRecentAlarm = lastAlarmHypoAt > 0L &&
+                    loRebAlarmAgeMs >= 0L &&
+                    loRebAlarmAgeMs <= loRebMinutes * 60_000L
                 val loRebUciGrams = if (csf > 0.0) uci / csf else 0.0
-                val loRebCarbRebound = loRebMinimum < 100.0 && (COB > 0.0 || loRebUciGrams >= 0.3)
-                val loRebReversalScore = if (glucose_status.longAvgDelta < 0 && glucose_status.delta > 0)
-                    glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
-                val loRebArtifactRebound = COB == 0.0
-                    && loRebMinimum < 81.1 /* 4.5 mmol */
-                    && loRebReversalScore > 30.0
-                    && bg < 170.0 /* 9.4 mmol */
-                    && !(glucose_status.delta > 15 && bg > target_bg + 20)
+                val loRebCarbRebound = loRebRecentAlarm && (COB > 0.0 || loRebUciGrams >= 0.3)
+                // Evidence-derived from 21 Sep's post-AlarmHypo rise: first simultaneous crossing was
+                // Delta 0.42 / SDelta 0.31 mmol at 08:19, 28 min after AlarmHypo1. The initially
+                // proposed 0.6 Delta bar would have missed the entire real rise (peak Delta 0.55).
+                val loRebArtifactRebound = loRebRecentAlarm
+                    && COB == 0.0
+                    && glucose_status.delta > 0.40 * 18.0
+                    && glucose_status.shortAvgDelta > 0.30 * 18.0
+                    && bg < 9.4 * 18.0
                 val loRebWindowActive = recentLowReboundGuardEnabled && (loRebCarbRebound || loRebArtifactRebound)
                 // Test toggle (2026-09-20, ApsAutoIsfFastRiseEnabled; Settings + List 2 5.226): gates the three Libre
                 // FAST RISE size-tier conditions below (main tier cascade, early-rise tier, higher-BG tier). Off skips
@@ -2356,10 +2365,10 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // RECENT-LOW REBOUND GUARD
 // =====================================================
-                // Halves the SMB when a low happened recently and the rise looks like a REBOUND rather
-                // than a fresh excursion. Two triggers (see the two branches below): the carb branch
-                // needs a recent low (recentLowBG < 5.6mmol, 60-min min) + carb activity (logged or
-                // deviation-based); the L2 branch needs no carbs at all, for the sensor-artifact case.
+                // Trims SMB when AlarmHypo1/2 fired inside LoReb's selected 30/60-min window and the
+                // rise looks like a REBOUND rather than a fresh excursion. Two triggers: the carb
+                // branch needs logged/deviation-based carb activity; the artifact branch needs no
+                // carbs and a measured fast recovery (Delta>0.4, SDelta>0.3 mmol).
                 // Motivated by a real overnight episode
                 // (28 Jul): BG fell 11.7 -> 5.6 on ~4.9U IOB, rescue carbs were taken, BG rebounded
                 // to 9.6, ~2.3U was delivered against that rebound over 40 min, and BG then went to 3.8.
@@ -2382,14 +2391,10 @@ class DetermineBasalAutoISF @Inject constructor(
                 // drift. Both that threshold and the 0.5 factor are first estimates -- the reason string
                 // logs COB, uci and the factor so they can be tuned against real fires.
                 // L2 (2026-09-08): a second trigger with NO carb evidence, for the compression-low /
-                // sensor-artifact case. A brief artifact dip has no rescue carbs logged (so COB/uci are
-                // both zero) yet still trips a 50%TT and a counter-regulation rebound the loop then
-                // chases -- 6-8 Sep showed IOB stacking to 3+U catching a 4.0->8.9 rebound off a fake
-                // low. This branch needs: a genuinely low 60-min minimum (recentLowBG < 4.5mmol, not
-                // merely the 50recent latch which can linger), Boost's reversalScore > 30 (delta rising
-                // while longAvgDelta still reflects the fall), COB 0, and BG still in the recovery band
-                // (< 9.4mmol). Boost's velocity override releases it once the rise is a genuine spike
-                // (delta > 15mg/dL/5min AND already > target+20).
+                // sensor-artifact case. Revised 2026-09-22: minimum-BGL and reversalScore tests removed;
+                // AlarmHypo1/2 recency is the proof of the preceding alarm, while Delta>0.4 and
+                // SDelta>0.3mmol prove the current fast rebound. The thresholds preserve the real
+                // 21 Sep post-alarm rise (0.42/0.31 at its first crossing); 0.6/0.3 would have missed it.
                 // 2026-09-21: leave SMB <=0.10U untouched. 0.10U < SMB <=0.25U is *0.75; above 0.25U is *0.5.
                 if (!recentLowReboundGuardEnabled) rT.reason.append("LoReb OFF (test) ")
                 if (recentLowReboundGuardEnabled && microBolus > 0.10) {
@@ -2399,10 +2404,11 @@ class DetermineBasalAutoISF @Inject constructor(
                         val beforeLowGuard = microBolus
                         microBolus = if (microBolus <= 0.25) microBolus * 0.75 else microBolus * 0.5
                         recentLowReboundGuardFiredThisCycle = true
+                        val alarmAgeMinutes = loRebAlarmAgeMs / 60_000L
                         val why = if (loRebCarbRebound)
-                            "carb: recentLowBG=${round(loRebMinimum, 0)}mg/dL, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(loRebUciGrams, 2)}g/5m"
+                            "carb: AlarmHypo ${alarmAgeMinutes}min ago, window=${loRebMinutes}min, COB=${round(COB, 1)}, uci=${round(loRebUciGrams, 2)}g/5m"
                         else
-                            "artifact: recentLowBG=${round(loRebMinimum, 0)}mg/dL window=${loRebMinutes}min rev=${round(loRebReversalScore, 0)} COB=0"
+                            "artifact: AlarmHypo ${alarmAgeMinutes}min ago, window=${loRebMinutes}min, Delta=${round(glucose_status.delta / 18.0, 2)}, SDelta=${round(glucose_status.shortAvgDelta / 18.0, 2)}, COB=0"
                         rT.reason.append(" recent-low rebound guard: SMB ${round(beforeLowGuard, 2)} -> ${round(microBolus, 2)} ($why) ")
                     }
                 }

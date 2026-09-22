@@ -127,6 +127,9 @@ object AutoIsfReplayAdapterMain {
             iobChange5Min = parameters.doubleValue("iobChange5Min"),
             recentLowBG = parameters.doubleValue("recentLowBG"),
             recentLowBG30 = parameters.get("recentLowBG30")?.takeIf { it.isJsonPrimitive }?.asDouble,
+            lastAlarmHypoAt = parameters.get("lastAlarmHypoAt")
+                ?.takeIf { it.isJsonPrimitive }?.asLong
+                ?: 0L,
             bmildBasicCriteriaMet = parameters.booleanValue("bmildBasicCriteriaMet"),
             bg3BasicCriteriaMet = parameters.get("bg3BasicCriteriaMet")
                 ?.takeIf { it.isJsonPrimitive }?.asBoolean
