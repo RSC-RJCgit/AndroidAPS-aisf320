@@ -138,7 +138,7 @@ class HardLimitsImplTest : TestBase() {
     @Test
     fun `diaRange returns correct values for all ages`() {
         whenever(preferences.get(StringKey.SafetyAge)).thenReturn("child")
-        assertThat(hardLimits.diaRange()).isEqualTo(5.0..9.0)
+        assertThat(hardLimits.diaRange()).isEqualTo(5.0..10.0)
 
         whenever(preferences.get(StringKey.SafetyAge)).thenReturn("pregnant")
         assertThat(hardLimits.diaRange()).isEqualTo(5.0..10.0)

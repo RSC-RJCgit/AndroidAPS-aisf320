@@ -15,15 +15,17 @@ interface HardLimits {
         )
 
         // Very Hard Limits Ranges [mg/dL]
-        // The range says how low and how high the limit itself may be set
+        // The range says how low and how high the limit itself may be set.
+        // The low end is 72 mg/dL (4.0 mmol/L), the same as the 3.2.1 profiles. A floor of 80 or 90
+        // rejects those profiles, so the loop never starts.
         // MIN_BG top is 180.2, not a flat 180.0. A 10.0 mmol low target (the highest the editor offers)
         // converts to 180.16 mg/dL, and the loop rounds the profile low target to 0.1 mg/dL BEFORE this
         // check (OpenAPSSMBPlugin: Round.roundTo(getTargetLowMgdl(), 0.1) -> 180.2). A tighter top (180.0,
         // or even the raw 180.16) makes the loop clamp a valid 10.0 mmol low target and warn every run.
         // (The temp-target low path is checked UNROUNDED, so LIMIT_TEMP_MIN_BG only needs 180.16.)
-        val LIMIT_MIN_BG = 80.0..180.2
-        val LIMIT_MAX_BG = 90.0..200.0
-        val LIMIT_TARGET_BG = 80.0..200.0
+        val LIMIT_MIN_BG = 72.0..180.2
+        val LIMIT_MAX_BG = 72.0..200.0
+        val LIMIT_TARGET_BG = 72.0..200.0
 
         // Very Hard Limits Ranges for Temp Targets [mg/dL]
         // Top is 180.16 (= 10.0 mmol * 18.01559), not a flat 180.0. A user may pick 10.0 mmol as the
@@ -33,11 +35,12 @@ interface HardLimits {
         val LIMIT_TEMP_MIN_BG = 72.0..180.16
         val LIMIT_TEMP_MAX_BG = 72.0..270.0
         val LIMIT_TEMP_TARGET_BG = 72.0..200.0
+        // 3.2.1 allows 10 hours for every age. A DIA of 10 must not reject the profile.
         val LIMIT_DIA = mapOf(
-            AgeType.CHILD to 5.0..9.0,
-            AgeType.TEENAGE to 5.0..9.0,
-            AgeType.ADULT to 5.0..9.0,
-            AgeType.RESISTANT_ADULT to 5.0..9.0,
+            AgeType.CHILD to 5.0..10.0,
+            AgeType.TEENAGE to 5.0..10.0,
+            AgeType.ADULT to 5.0..10.0,
+            AgeType.RESISTANT_ADULT to 5.0..10.0,
             AgeType.PREGNANT to 5.0..10.0
         )
         val LIMIT_PEAK = 35..120 // min
