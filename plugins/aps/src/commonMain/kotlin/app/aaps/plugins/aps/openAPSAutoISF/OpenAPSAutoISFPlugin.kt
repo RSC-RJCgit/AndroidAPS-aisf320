@@ -481,6 +481,8 @@ open class OpenAPSAutoISFPlugin(
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
             lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
+            steps60 = steps60(now),
+            iobThUser = iobThresholdPercent,
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -1024,6 +1026,10 @@ open class OpenAPSAutoISFPlugin(
         ),
         icon = pluginDescription.icon
     )
+
+    // Steps a watch stored in the last hour. No sample means 0, so the quiet morning cap can apply.
+    private suspend fun steps60(now: Long): Int =
+        persistenceLayer.getLastStepsCountFromTimeToTime(now - 60 * 60 * 1000L, now)?.steps60min ?: 0
 
     // Libre 2 and Libre 3 only, matching UKF3426's fslReally sensor check.
     private suspend fun libreActive(now: Long): Boolean {

@@ -263,7 +263,7 @@ internal data class ShowerTwilightResult(
 )
 
 // Morning SMB cap from 3.2.1, hours 5 to 9. The quieter step gate is checked first.
-// The loop does not call this yet.
+// determine_basal applies this before the FastRise size tiers.
 internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult {
     val morning = input.hour in 5..9 &&
         input.bg <= 8.0 * 18.0 &&
@@ -498,6 +498,10 @@ class DetermineBasalAutoISF(
         lastAlarmHypoAt: Long = 0L,
         lowReboundGuardEnabled: Boolean = false,
         fastRiseSlopeRatio: Double = 1.0,
+        // Walking steps in the last hour. 0 means none were stored. The morning cap uses this.
+        steps60: Int = 0,
+        // The IOB-threshold percent from settings, before any profile scaling.
+        iobThUser: Int = 100,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1444,6 +1448,26 @@ class DetermineBasalAutoISF(
                         csf = 1.0,
                         recentLowReboundGuardEnabled = lowReboundGuardEnabled,
                     )
+                    val slope = if (fastRiseSlopeRatio > 0.0) fastRiseSlopeRatio else 1.0
+                    val shower = showerTwilightSmb(
+                        ShowerTwilightInput(
+                            hour = nowHour,
+                            bg = bg,
+                            steps60 = steps60,
+                            cob = meal_data.mealCOB,
+                            tempTargetSet = profile.temptargetSet,
+                            delta = glucose_status.delta / slope,
+                            shortDelta = glucose_status.shortAvgDelta / slope,
+                            iobThUser = iobThUser,
+                            rawDelta5 = rawDelta5Mgdl,
+                            aapsDelta1 = aapsDelta1Mgdl,
+                            microBolus = microBolus,
+                            iob = iob_data.iob,
+                            maxIob = profile.max_iob,
+                        )
+                    )
+                    microBolus = shower.microBolus
+                    if (shower.reason.isNotEmpty()) rT.reason.append(shower.reason)
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
                         roundSmbTo = roundSMBTo,
