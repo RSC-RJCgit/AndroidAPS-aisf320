@@ -260,6 +260,8 @@ internal data class ShowerTwilightInput(
 internal data class ShowerTwilightResult(
     val microBolus: Double,
     val reason: String,
+    // True when a morning gate matched, even if the SMB did not change.
+    val matched: Boolean,
 )
 
 // Morning SMB cap from 3.2.1, hours 5 to 9. The quieter step gate is checked first.
@@ -282,7 +284,7 @@ internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult
         input.shortDelta >= 0.15 * 18.0 &&
         input.rawDelta5 >= 0.35 * 18.0 &&
         input.aapsDelta1 >= 0.35 * 18.0
-    if (!quietSteps && !busierSteps) return ShowerTwilightResult(input.microBolus, "")
+    if (!quietSteps && !busierSteps) return ShowerTwilightResult(input.microBolus, "", matched = false)
 
     val perSmbCap = 0.04 * input.maxIob
     val iobCeiling = 0.09 * input.maxIob
@@ -297,7 +299,23 @@ internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult
         reason.append("Shower IOB ceiling ${twoDecimals(smb)}. ")
     }
     if (!quietSteps) reason.append("Shower time. ")
-    return ShowerTwilightResult(smb, reason.toString())
+    return ShowerTwilightResult(smb, reason.toString(), matched = true)
+}
+
+internal data class MorningThenGlitchResult(
+    val microBolus: Double,
+    val reason: String,
+)
+
+// Morning cap first. A match, even one that leaves the SMB unchanged, skips the glitch cuts.
+internal fun morningThenGlitch(
+    showerInput: ShowerTwilightInput,
+    glitchInput: SensorGlitchInput,
+): MorningThenGlitchResult {
+    val shower = showerTwilightSmb(showerInput)
+    if (shower.matched) return MorningThenGlitchResult(shower.microBolus, shower.reason)
+    val glitch = sensorGlitchSmb(glitchInput.copy(microBolus = shower.microBolus))
+    return MorningThenGlitchResult(glitch.microBolus, shower.reason + glitch.reason)
 }
 
 private fun twoDecimals(value: Double): Double =
@@ -325,7 +343,7 @@ internal data class SensorGlitchResult(
 )
 
 // Sensor-glitch SMB cuts from 3.2.1. The first matching gate wins.
-// The loop does not call this yet. It belongs after the morning cap, and only when that cap did not match.
+// determine_basal applies these after the morning cap, and only when that cap did not match.
 // The FastRise switch does not turn these cuts off.
 internal fun sensorGlitchSmb(input: SensorGlitchInput): SensorGlitchResult {
     val smb = input.microBolus
@@ -587,6 +605,8 @@ class DetermineBasalAutoISF(
         steps60: Int = 0,
         // The IOB-threshold percent from settings, before any profile scaling.
         iobThUser: Int = 100,
+        // BG acceleration from the parabola fit. 0 leaves the low-IOB accel cut closed.
+        bgAcceleration: Double = 0.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1534,8 +1554,8 @@ class DetermineBasalAutoISF(
                         recentLowReboundGuardEnabled = lowReboundGuardEnabled,
                     )
                     val slope = if (fastRiseSlopeRatio > 0.0) fastRiseSlopeRatio else 1.0
-                    val shower = showerTwilightSmb(
-                        ShowerTwilightInput(
+                    val morningAndGlitch = morningThenGlitch(
+                        showerInput = ShowerTwilightInput(
                             hour = nowHour,
                             bg = bg,
                             steps60 = steps60,
@@ -1549,10 +1569,25 @@ class DetermineBasalAutoISF(
                             microBolus = microBolus,
                             iob = iob_data.iob,
                             maxIob = profile.max_iob,
-                        )
+                        ),
+                        glitchInput = SensorGlitchInput(
+                            bgAcceleration = bgAcceleration,
+                            delta = glucose_status.delta / slope,
+                            shortDelta = glucose_status.shortAvgDelta / slope,
+                            longDelta = glucose_status.longAvgDelta / slope,
+                            iob = iob_data.iob,
+                            cob = meal_data.mealCOB,
+                            bg = bg,
+                            hour = nowHour,
+                            tempTargetSet = profile.temptargetSet,
+                            targetBg = target_bg,
+                            rawDelta5 = rawDelta5Mgdl,
+                            aapsDelta1 = aapsDelta1Mgdl,
+                            microBolus = microBolus,
+                        ),
                     )
-                    microBolus = shower.microBolus
-                    if (shower.reason.isNotEmpty()) rT.reason.append(shower.reason)
+                    microBolus = morningAndGlitch.microBolus
+                    if (morningAndGlitch.reason.isNotEmpty()) rT.reason.append(morningAndGlitch.reason)
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
                         roundSmbTo = roundSMBTo,

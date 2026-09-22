@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.concurrent.AapsLock
@@ -483,6 +484,7 @@ open class OpenAPSAutoISFPlugin(
             lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
             steps60 = steps60(now),
             iobThUser = iobThresholdPercent,
+            bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0,
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data

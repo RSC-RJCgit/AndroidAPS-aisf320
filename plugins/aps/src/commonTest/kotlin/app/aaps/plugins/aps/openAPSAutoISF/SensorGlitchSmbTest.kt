@@ -182,6 +182,63 @@ class SensorGlitchSmbTest {
     }
 
     @Test
+    fun aMorningMatchSkipsTheGlitchEvenWhenTheSmbStaysTheSame() {
+        val result = morningThenGlitch(
+            showerInput = ShowerTwilightInput(
+                hour = 7,
+                bg = 7.0 * 18.0,
+                steps60 = 0,
+                cob = 0.0,
+                tempTargetSet = false,
+                delta = 0.30 * 18.0,
+                shortDelta = 0.20 * 18.0,
+                iobThUser = 70,
+                rawDelta5 = 0.30 * 18.0,
+                aapsDelta1 = 0.30 * 18.0,
+                microBolus = 0.1,
+                iob = 0.2,
+                maxIob = 10.0,
+            ),
+            glitchInput = calm(
+                delta = 0.0,
+                shortDelta = 0.25 * 18.0,
+                longDelta = 0.0,
+                microBolus = 0.1,
+            ),
+        )
+        assertEquals(0.1, result.microBolus, 0.001)
+        assertEquals("", result.reason)
+    }
+
+    @Test
+    fun noMorningMatchAppliesTheGlitchCut() {
+        val result = morningThenGlitch(
+            showerInput = ShowerTwilightInput(
+                hour = 12,
+                bg = 8.0 * 18.0,
+                steps60 = 0,
+                cob = 0.0,
+                tempTargetSet = false,
+                delta = 0.0,
+                shortDelta = 0.25 * 18.0,
+                iobThUser = 100,
+                rawDelta5 = 0.0,
+                aapsDelta1 = 0.0,
+                microBolus = 1.0,
+                iob = 1.0,
+                maxIob = 10.0,
+            ),
+            glitchInput = calm(
+                delta = 0.0,
+                shortDelta = 0.25 * 18.0,
+                longDelta = 0.0,
+            ),
+        )
+        assertEquals(0.7, result.microBolus, 0.001)
+        assertEquals("Short spike 0.713 SMB 0.7. ", result.reason)
+    }
+
+    @Test
     fun aFlatReadingLeavesTheSmbAlone() {
         val result = sensorGlitchSmb(calm())
         assertEquals(1.0, result.microBolus, 0.001)
