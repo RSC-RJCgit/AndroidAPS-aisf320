@@ -6444,6 +6444,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // the iobTH<=50/old-cannula branch2 alternate trigger, and the 4.2mmol temp-target-based dosing
         // nudge (a separate escalation technique used elsewhere, e.g. HighOver6.0ok1) -- neither was part
         // of this redesign; add back if wanted.
+        // 2026-09-23, per explicit request: end of window extended 04:00->07:00 (start unchanged at
+        // 02:00), so it now covers the same dawn stretch HiBrkTwilight owns (04:00-07:00) up to
+        // HiBrkDayMid's own 07:00 start. Real evidence: 23 Sep, all three deltas cleared 0.1mmol
+        // together only briefly, 04:45-04:48, right as BGL first passed 6.5mmol during a plateau
+        // HiBrkTwilight's TT-only nudge wasn't enough for -- the old 04:00 cutoff meant this block
+        // could never have reached that moment at all. Firing order vs HiBrkTwilight left unchanged:
+        // this still requires activeTtMgdl() == null, so an active HiBrkTwilight TT still blocks it
+        // until that TT clears (2min, per its own duration).
         // Sets automation state Profile=HnAM while active so OffHighProf can apply a matching
         // tightened exit (see that block's own doc comment) instead of its normal shared 7.5mmol/
         // single-delta gate; OffHighProf clears the tag back to C100 when it reverts.
@@ -6453,7 +6461,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val ld = glucoseStatus.longAvgDelta
-            val baseOk = isTimeBetween(2, 0, 4, 0) && g > 117.1 /* 6.5 mmol */
+            val baseOk = isTimeBetween(2, 0, 7, 0) && g > 117.1 /* 6.5 mmol */
                 && d >= 1.8 /* 0.1 mmol */ && sd >= 1.8 /* 0.1 mmol */ && ld >= 1.8 /* 0.1 mmol */
             if (baseOk) {
                 switchToStandardAtSharedTier(30)
@@ -7840,11 +7848,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // protection was unreachable, which is why this block deliberately has NO BGL condition at all.
         // Starting at 00:00 rather than 01:00 also closes the midnight-to-01:00 gap.
         //
-        // KNOWN CONFLICT, deliberate: HighNight00AM (01:00-05:45, 60-min throttle) sets iobTH to 51 to
-        // permit correcting a genuine overnight high, and this will pull it back to 22 (or 35, see below)
-        // within ~5 min. That is the intended precedence given the episode above -- an uncorrected
-        // overnight high is the accepted cost of not repeating a sustained 3.5 -- but it does mean
-        // HighNight00AM is now largely neutered between 01:00 and 05:45.
+        // HighNight00AM (currently 02:00-07:00, 60-min throttle) no longer touches iobTH/acce at all as
+        // of its 2026-09-16 redesign -- it only does a Standard-vs-Low profile switch -- so it does NOT
+        // conflict with this block's iobTH/acce cap the way the pre-16-Sep design once did. Kept for
+        // history: the OLD HnAM raised iobTH to 51 and would have been pulled straight back to 22 (or 35)
+        // here within ~5 min, which is why it was disabled outright before being re-enabled in this
+        // narrower, non-conflicting form.
         //
         // Relaxed cap added 2026-08-28, per the "revisit if overnight highs start persisting" note this
         // comment used to end on: 22 -> 35 only while cobSustainedRelax is true (see tracker above, shared
