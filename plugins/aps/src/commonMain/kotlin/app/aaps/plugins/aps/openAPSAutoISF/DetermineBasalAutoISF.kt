@@ -492,6 +492,91 @@ internal fun highStepsSmbCut(
     return SmbStepResult(microBolus, "")
 }
 
+// Predicted glucose in mmol/L. 3.2.1 uses a smoothed raw line. This app uses the Libre raw
+// 5 minute change until that smoother is here. Missing raw means no prediction.
+internal fun hypoPrediction2Mmol(bg: Double, shortDelta: Double, rawDelta5: Double, iob: Double, cob: Double): Double {
+    val mmol = 18.0182
+    return (bg / mmol - iob) +
+        0.25 * (shortDelta / mmol) +
+        0.25 * (rawDelta5 / mmol) +
+        cob / 12.0
+}
+
+// Extra 25% cut in the day when FastRise already reduced the SMB, the person is walking a little,
+// and the predicted glucose is 6.5 mmol/L or lower. 3.2.1 marks the step counts and 6.5 as a first guess.
+internal fun littleWalkingSmbCut(
+    microBolus: Double,
+    uncappedMicroBolus: Double,
+    hour: Int,
+    steps5: Int,
+    steps15: Int,
+    steps30: Int,
+    steps60: Int,
+    hypoPrediction2: Double?,
+): SmbStepResult {
+    val daytime = hour in 9..20
+    val moving = steps60 > 300 || steps30 > 100 || steps15 > 30 || steps5 > 10
+    val lowAhead = hypoPrediction2 != null && hypoPrediction2 <= 6.5
+    if (microBolus != uncappedMicroBolus && daytime && moving && lowAhead) {
+        val cut = microBolus * 0.75
+        return SmbStepResult(cut, "Little walking x0.75 SMB ${twoDecimals(cut)}. ")
+    }
+    return SmbStepResult(microBolus, "")
+}
+
+// A recent boost, a night skip, or a real meal can put the pre-FastRise SMB back.
+// After UamBst, high IOB and no carbs hold that restore back, then let it return over 15 minutes.
+internal fun fastRiseBoostRestore(
+    microBolus: Double,
+    uncappedMicroBolus: Double,
+    smbBoostRecent: Boolean,
+    nightFrSkipActive: Boolean,
+    uamBoostRecent: Boolean,
+    uamBstMinutesAgo: Int,
+    iob: Double,
+    maxIob: Double,
+    cob: Double,
+): SmbStepResult {
+    if ((!smbBoostRecent && !nightFrSkipActive) || microBolus == uncappedMicroBolus) {
+        return SmbStepResult(microBolus, "")
+    }
+    val hold = uamBoostRecent && iob >= 0.18 * maxIob && cob <= 0.0
+    if (!hold) {
+        return SmbStepResult(uncappedMicroBolus, "Boost restore SMB ${twoDecimals(uncappedMicroBolus)}. ")
+    }
+    val factor = when {
+        uamBstMinutesAgo <= 5 -> 1.0
+        uamBstMinutesAgo <= 15 -> 0.75
+        else -> 0.0
+    }
+    if (factor <= 0.0) return SmbStepResult(microBolus, "UamBst hold keeps SMB ${twoDecimals(microBolus)}. ")
+    val blended = microBolus + (uncappedMicroBolus - microBolus) * factor
+    return SmbStepResult(blended, "UamBst taper x${twoDecimals(factor)} SMB ${twoDecimals(blended)}. ")
+}
+
+// True when a boost mark is still inside its window, or carbs are at least 9 g, and the rise is real.
+// A missing 5 minute raw change stays false so a gap cannot skip the FastRise cuts.
+internal fun smbBoostRecentNow(
+    bolusGiven: Boolean,
+    bolusGivenMild: Boolean,
+    bolusGivenBg3: Boolean,
+    uamBoost: Boolean,
+    cob: Double,
+    rawDelta5: Double?,
+    longAvgDelta: Double,
+): Boolean {
+    val markedOrMeal = bolusGiven || bolusGivenMild || bolusGivenBg3 || uamBoost || cob >= 9.0
+    return markedOrMeal && (rawDelta5 ?: -9999.0) >= 1.8 && longAvgDelta > -1.8
+}
+
+// While the under-7.5 mark is inside 10 minutes, and glucose is still under 7.5, the SMB is 0.
+internal fun sub75CooldownCut(microBolus: Double, cooldown: Boolean, bg: Double): SmbStepResult {
+    if (cooldown && bg < 135.1) {
+        return SmbStepResult(0.0, "Under 7.5 cooldown SMB ${twoDecimals(microBolus)} -> 0. ")
+    }
+    return SmbStepResult(microBolus, "")
+}
+
 // The LoReb window already turns the size tiers off. This is the extra SMB trim from 3.2.1.
 internal fun loRebSmbTrim(microBolus: Double, windowActive: Boolean, guardEnabled: Boolean): SmbStepResult {
     if (!guardEnabled || !windowActive || microBolus <= 0.10) return SmbStepResult(microBolus, "")
@@ -499,8 +584,7 @@ internal fun loRebSmbTrim(microBolus: Double, windowActive: Boolean, guardEnable
     return SmbStepResult(cut, "Low rebound SMB ${twoDecimals(microBolus)} -> ${twoDecimals(cut)}. ")
 }
 
-// Later FastRise requests shrink after a lot of SMB, or when IOB is already high and carbs are gone.
-// The UamBst boost marks are not in this app, so that branch is left out.
+// Later FastRise requests shrink after a lot of SMB, after UamBst, or when IOB is already high and carbs are gone.
 internal fun lateFastRiseTaper(
     microBolus: Double,
     fastRiseNow: Boolean,
@@ -508,18 +592,24 @@ internal fun lateFastRiseTaper(
     maxIob: Double,
     cob: Double,
     smbSum30: Double,
+    uamBoostRecent: Boolean = false,
 ): SmbStepResult {
-    if (!fastRiseNow || microBolus <= 0.0) return SmbStepResult(microBolus, "")
     val iobHighNoCob = iob >= 0.18 * maxIob && cob <= 0.0
+    val laterRise = uamBoostRecent || iobHighNoCob
+    if ((!fastRiseNow && !uamBoostRecent) || microBolus <= 0.0) return SmbStepResult(microBolus, "")
     val factor = when {
-        iobHighNoCob -> 0.50
+        laterRise -> 0.50
         smbSum30 >= 1.9 -> 0.50
         smbSum30 >= 1.5 -> 0.75
         else -> 1.0
     }
     if (factor >= 1.0) return SmbStepResult(microBolus, "")
     val cut = microBolus * factor
-    val why = if (iobHighNoCob) "high IOB" else "SMB 30 min ${twoDecimals(smbSum30)}U"
+    val why = when {
+        uamBoostRecent -> "after UamBst"
+        iobHighNoCob -> "high IOB"
+        else -> "SMB 30 min ${twoDecimals(smbSum30)}U"
+    }
     return SmbStepResult(cut, "Late FastRise $why x${twoDecimals(factor)} SMB ${twoDecimals(cut)}. ")
 }
 
@@ -564,9 +654,19 @@ internal data class AfterFastRiseInput(
     val smbSum10: Double,
     val minuteOfDay: Int,
     val bg: Double,
+    val uncappedMicroBolus: Double,
+    val steps5: Int,
+    val steps15: Int,
+    val hypoPrediction2: Double?,
+    val smbBoostRecent: Boolean,
+    val nightFrSkipActive: Boolean,
+    val uamBoostRecent: Boolean,
+    val uamBstMinutesAgo: Int,
+    val sub75Cooldown: Boolean,
 )
 
-// Order matches 3.2.1 after the size tiers: early morning, high steps, LoReb trim, late taper, then the two caps.
+// Order matches 3.2.1 after the size tiers: early morning, high steps, little walking,
+// boost restore, LoReb trim, late taper, the two caps, then the under-7.5 pause.
 internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val reason = StringBuilder()
     var smb = input.microBolus
@@ -578,10 +678,37 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val steps = highStepsSmbCut(smb, input.threshold, input.steps30, input.steps60, input.steps180)
     smb = steps.microBolus
     reason.append(steps.reason)
+    val walking = littleWalkingSmbCut(
+        microBolus = smb,
+        uncappedMicroBolus = input.uncappedMicroBolus,
+        hour = input.earlyMorning.hour,
+        steps5 = input.steps5,
+        steps15 = input.steps15,
+        steps30 = input.steps30,
+        steps60 = input.steps60,
+        hypoPrediction2 = input.hypoPrediction2,
+    )
+    smb = walking.microBolus
+    reason.append(walking.reason)
+    val restored = fastRiseBoostRestore(
+        microBolus = smb,
+        uncappedMicroBolus = input.uncappedMicroBolus,
+        smbBoostRecent = input.smbBoostRecent,
+        nightFrSkipActive = input.nightFrSkipActive,
+        uamBoostRecent = input.uamBoostRecent,
+        uamBstMinutesAgo = input.uamBstMinutesAgo,
+        iob = input.iob,
+        maxIob = input.maxIob,
+        cob = input.cob,
+    )
+    smb = restored.microBolus
+    reason.append(restored.reason)
     val loReb = loRebSmbTrim(smb, input.loRebActive, input.loRebGuardEnabled)
     smb = loReb.microBolus
     reason.append(loReb.reason)
-    val taper = lateFastRiseTaper(smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30)
+    val taper = lateFastRiseTaper(
+        smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30, input.uamBoostRecent
+    )
     smb = taper.microBolus
     reason.append(taper.reason)
     val cap30 = smbCap30Min(smb, input.smbSum30)
@@ -590,6 +717,9 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val cap10 = smbCap10Min(smb, input.smbSum10, input.minuteOfDay, input.bg)
     smb = cap10.microBolus
     reason.append(cap10.reason)
+    val sub75 = sub75CooldownCut(smb, input.sub75Cooldown, input.bg)
+    smb = sub75.microBolus
+    reason.append(sub75.reason)
     if (input.roundSmbTo > 0.0 && smb.isFinite()) smb = floor(smb * input.roundSmbTo) / input.roundSmbTo
     if (!smb.isFinite() || smb <= 0.0) smb = 0.0
     return SmbStepResult(smb, reason.toString())
@@ -835,6 +965,14 @@ class DetermineBasalAutoISF(
         smbSum30Min: Double = 0.0,
         // 1.0 leaves insulinReq and max IOB unchanged. Live ratio is clamped to 0.80..1.20.
         tddFactor: Double = 1.0,
+        steps5: Int = 0,
+        steps15: Int = 0,
+        hypoPrediction2: Double? = null,
+        smbBoostRecent: Boolean = false,
+        nightFrSkipActive: Boolean = false,
+        uamBoostRecent: Boolean = false,
+        uamBstMinutesAgo: Int = Int.MAX_VALUE,
+        sub75Cooldown: Boolean = false,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1819,6 +1957,7 @@ class DetermineBasalAutoISF(
                     )
                     microBolus = morningAndGlitch.microBolus
                     if (morningAndGlitch.reason.isNotEmpty()) rT.reason.append(morningAndGlitch.reason)
+                    val uncappedMicroBolus = microBolus
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
                         roundSmbTo = roundSMBTo,
@@ -1889,6 +2028,15 @@ class DetermineBasalAutoISF(
                             smbSum10 = smbSum10Min,
                             minuteOfDay = minuteOfDay,
                             bg = bg,
+                            uncappedMicroBolus = uncappedMicroBolus,
+                            steps5 = steps5,
+                            steps15 = steps15,
+                            hypoPrediction2 = hypoPrediction2,
+                            smbBoostRecent = smbBoostRecent,
+                            nightFrSkipActive = nightFrSkipActive,
+                            uamBoostRecent = uamBoostRecent,
+                            uamBstMinutesAgo = uamBstMinutesAgo,
+                            sub75Cooldown = sub75Cooldown,
                         )
                     )
                     microBolus = after.microBolus

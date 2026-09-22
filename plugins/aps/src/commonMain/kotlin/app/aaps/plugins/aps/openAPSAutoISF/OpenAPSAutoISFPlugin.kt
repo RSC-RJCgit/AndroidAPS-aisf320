@@ -160,6 +160,7 @@ open class OpenAPSAutoISFPlugin(
     private val highTemptargetRaisesSensitivity; get() = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
     val normalTarget = Constants.NORMAL_TARGET_MGDL
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
+    private val runMarks = RunMarks()
 
     override suspend fun onStart() {
         super.onStart()
@@ -460,6 +461,12 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "AutoIsfMode:        $autoIsfMode")
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
 
+        val raw5 = rawDelta5MinMgdl(now)
+        val smb10 = smbSum(now, 10 * 60 * 1000L)
+        val sub75Note = updateSub75Mark(runMarks, now, glucoseStatus.glucose, glucoseStatus.delta, smb10)
+        if (sub75Note == "arm") aapsLogger.debug(LTag.APS, "sc7.5 cooldown armed, 10 min SMB $smb10")
+        if (sub75Note == "clear") aapsLogger.debug(LTag.APS, "sc7.5 cooldown cleared")
+        val uamRecent = runMarks.recent(RunMark.UAM_BST, 20, now)
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -480,7 +487,7 @@ open class OpenAPSAutoISFPlugin(
             auto_isf_consoleLog = consoleLog,
             fastRiseSettingOn = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled),
             libreActive = libreActive(now),
-            rawDelta5Mgdl = rawDelta5MinMgdl(now) ?: 0.0,
+            rawDelta5Mgdl = raw5 ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
@@ -488,17 +495,35 @@ open class OpenAPSAutoISFPlugin(
             steps60 = steps60(now),
             iobThUser = iobThresholdPercent,
             bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0,
-            immediateRawDelta5Mgdl = rawDelta5MinMgdl(now) ?: 9999.0,
+            immediateRawDelta5Mgdl = raw5 ?: 9999.0,
             rawDelta15Mgdl = rawDelta15MinMgdl(now) ?: 9999.0,
             steps30 = steps30(now),
             steps180 = steps180(now),
-            smbSum10Min = smbSum(now, 10 * 60 * 1000L),
+            smbSum10Min = smb10,
             smbSum30Min = smbSum(now, 30 * 60 * 1000L),
             tddFactor = tddFactorValue(
                 enabled = preferences.get(BooleanKey.ApsAutoIsfTddFactor),
                 fallback = preferences.get(DoubleKey.ApsAutoIsfTddFactorFallback),
                 tddRatio = tddRatioForFactor(),
             ),
+            steps5 = steps5(now),
+            steps15 = steps15(now),
+            hypoPrediction2 = raw5?.let {
+                hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iobData.iob, mealData.mealCOB)
+            },
+            smbBoostRecent = smbBoostRecentNow(
+                bolusGiven = runMarks.recent(RunMark.BOLUS_GIVEN, 30, now),
+                bolusGivenMild = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 30, now),
+                bolusGivenBg3 = runMarks.recent(RunMark.BOLUS_GIVEN_BG3, 30, now),
+                uamBoost = uamRecent,
+                cob = mealData.mealCOB,
+                rawDelta5 = raw5,
+                longAvgDelta = glucoseStatus.longAvgDelta,
+            ),
+            nightFrSkipActive = runMarks.recent(RunMark.NIGHT_FR_SKIP, 2, now),
+            uamBoostRecent = uamRecent,
+            uamBstMinutesAgo = runMarks.minutesAgo(RunMark.UAM_BST, now) ?: Int.MAX_VALUE,
+            sub75Cooldown = runMarks.recent(RunMark.SUB75, 10, now),
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -1052,6 +1077,12 @@ open class OpenAPSAutoISFPlugin(
 
     private suspend fun steps30(now: Long): Int =
         persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)?.steps30min ?: 0
+
+    private suspend fun steps5(now: Long): Int =
+        persistenceLayer.getLastStepsCountFromTimeToTime(now - 5 * 60 * 1000L, now)?.steps5min ?: 0
+
+    private suspend fun steps15(now: Long): Int =
+        persistenceLayer.getLastStepsCountFromTimeToTime(now - 15 * 60 * 1000L, now)?.steps15min ?: 0
 
     // The 3-hour count is stored on the sample, so the lookback is the sample age, not a second sum.
     private suspend fun steps180(now: Long): Int =

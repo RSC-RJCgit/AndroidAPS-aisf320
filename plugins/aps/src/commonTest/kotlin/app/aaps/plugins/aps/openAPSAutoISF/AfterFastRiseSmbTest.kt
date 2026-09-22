@@ -197,5 +197,14 @@ class AfterFastRiseSmbTest {
         smbSum10 = 0.0,
         minuteOfDay = 12 * 60,
         bg = 8.0 * 18.0,
+        uncappedMicroBolus = microBolus,
+        steps5 = 0,
+        steps15 = 0,
+        hypoPrediction2 = null,
+        smbBoostRecent = false,
+        nightFrSkipActive = false,
+        uamBoostRecent = false,
+        uamBstMinutesAgo = Int.MAX_VALUE,
+        sub75Cooldown = false,
     )
 }
