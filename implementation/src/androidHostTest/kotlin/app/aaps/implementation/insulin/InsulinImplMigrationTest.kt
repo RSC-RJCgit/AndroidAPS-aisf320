@@ -265,6 +265,23 @@ class InsulinImplMigrationTest : TestBase() {
         verify(preferences, never()).put(eq(StringNonKey.InsulinConfiguration), any<String>())
     }
 
+    @Test
+    fun reloadOfEmptyConfigRestoresTheDefaultInsulin() {
+        // The insulin screen reloads on open. An empty saved value must not wipe the catalogue:
+        // a profile cannot start with no insulin, and the screen hides Add when the list is empty.
+        val sut = create(cfg(ins()))
+        storedConfig = "{}"
+        clearInvocations(preferences)
+
+        sut.loadSettings()
+
+        assertThat(sut.insulins).hasSize(1)
+        assertThat(sut.insulins[0].insulinPeakTime).isEqualTo(rapidPeakMs)
+        assertThat(sut.insulins[0].insulinEndTime).isEqualTo(rapidEndMs)
+        assertThat(storedInsulinCount()).isEqualTo(1)
+        verify(preferences, never()).put(eq(StringNonKey.InsulinConfiguration), any<String>())
+    }
+
     // ── add / remove / current selection ────────────────────────────────────────────────────────────
 
     @Test

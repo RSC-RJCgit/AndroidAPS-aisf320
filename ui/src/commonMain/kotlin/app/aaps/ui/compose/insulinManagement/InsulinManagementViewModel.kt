@@ -417,6 +417,16 @@ class InsulinManagementViewModel(
             return false
         }
 
+        // No card yet: the catalogue was empty. Save creates the first insulin from the editor
+        // instead of reporting that a target is missing.
+        if (state.insulins.isEmpty()) {
+            insulinManager.addNewInsulin(editedICfg)
+            _uiState.update { it.copy(insulins = insulinManager.insulins.map { it.deepClone() }) }
+            lastAppliedConfig = preferences.get(StringNonKey.InsulinConfiguration)
+            loadData(targetIndex = insulinManager.insulins.lastIndex, reload = false)
+            return true
+        }
+
         // The target is the insulin the editor was bound to, found by its label - never by an index into
         // the UI snapshot. A sync can replace the manager's list at any moment (on the master too, and also
         // while the user keeps editing over an external change), so the manager finds it, builds the new

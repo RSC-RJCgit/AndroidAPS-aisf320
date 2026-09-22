@@ -233,11 +233,23 @@ class InsulinImpl(
         return -1
     }
 
-    // Verbatim mirror of the persisted config — parse only, NO normalization, NO store. Normalization
+    // Verbatim mirror of a non-empty config — parse only, no normalization, no store. Normalization
     // happens in bootstrap (at init, and on the master when someone else wrote the value) and at edit time
-    // (addNewInsulin, updateInsulin); a master push is already normalized, so applying it is a pure re-parse → no
-    // re-store → no echo loop.
-    override fun loadSettings(): Unit = lock.withLock { parse(preferences.get(StringNonKey.InsulinConfiguration)) }
+    // (addNewInsulin, updateInsulin); a master push is already normalized, so applying it is a pure re-parse
+    // and does not store again.
+    //
+    // An empty or broken value is the exception. The insulin screen calls this on every open. Parsing
+    // "{}" used to replace the default insulin with an empty list, and the screen then had nothing to
+    // show and no way to add one. A profile cannot start without an insulin, so the same Rapid-Acting
+    // default bootstrap uses is put back and stored once. putRemote, same as bootstrap: this is a
+    // repair, not a local edit, so it does not echo to the other side.
+    override fun loadSettings(): Unit = lock.withLock {
+        parse(preferences.get(StringNonKey.InsulinConfiguration))
+        if (insulins.isEmpty()) {
+            insulins = ArrayList<ICfg>().also { addTo(it, InsulinType.OREF_RAPID_ACTING.getICfg(rh), ue = false) }
+            persistBootstrap()
+        }
+    }
 
     // Builds the new list first and then swaps it in (see [insulins]).
     private fun parse(value: String) {
