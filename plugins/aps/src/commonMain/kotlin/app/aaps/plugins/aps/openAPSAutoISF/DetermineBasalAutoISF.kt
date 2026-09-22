@@ -74,6 +74,140 @@ internal fun loRebWindow(
     )
 }
 
+internal enum class FastRiseSizeTier {
+    OffTest,
+    OffLoReb,
+    OffNotLibre,
+    OffTempTarget,
+    Size0201,
+    Size0602,
+    Size0653,
+    Size0504,
+    Uncapped0564,
+    Size0900,
+    Size0850,
+    Size0750,
+    Uncapped0707,
+    Size0700,
+    Uncapped0608,
+    Size0759,
+    None,
+}
+
+internal data class FastRiseSizeDecision(
+    val factor: Double,
+    val tier: FastRiseSizeTier,
+)
+
+internal data class FastRiseSizeInput(
+    val bg: Double,
+    val delta: Double,
+    val shortDelta: Double,
+    val longDelta: Double,
+    val rawDelta5: Double,
+    val aapsDelta1: Double,
+    val cob: Double,
+    val iob: Double,
+    val maxIob: Double,
+    val microBolus: Double,
+    val threshold: Double,
+    val hour: Int,
+    val slopeRatio: Double = 1.0,
+    val libreActive: Boolean = true,
+    val tempTargetSet: Boolean = false,
+    val fastRiseSettingOn: Boolean = true,
+    val loRebWindowActive: Boolean = false,
+)
+
+// The three Libre FastRise size tiers from UKF3426. Deltas are mg/dL per five minutes.
+// slopeRatio matches determine_basal: compensated delta = delta / slopeRatio, and 1.0 leaves
+// the delta unchanged. An active LoReb window, or the test setting off, leaves the SMB at 1.0.
+// Sensor-glitch cuts and the late taper are not part of this decision.
+internal fun fastRiseSizeDecision(input: FastRiseSizeInput): FastRiseSizeDecision {
+    val tier = when {
+        !input.fastRiseSettingOn -> FastRiseSizeTier.OffTest
+        input.loRebWindowActive -> FastRiseSizeTier.OffLoReb
+        !input.libreActive -> FastRiseSizeTier.OffNotLibre
+        input.tempTargetSet -> FastRiseSizeTier.OffTempTarget
+        else -> fastRiseSizeTier(input)
+    }
+    val factor = when (tier) {
+        FastRiseSizeTier.Size0201 -> 0.2
+        FastRiseSizeTier.Size0602 -> 0.6
+        FastRiseSizeTier.Size0653 -> 0.65
+        FastRiseSizeTier.Size0504 -> 0.5
+        FastRiseSizeTier.Size0900 -> 0.9
+        FastRiseSizeTier.Size0850 -> 0.85
+        FastRiseSizeTier.Size0750 -> 0.75
+        FastRiseSizeTier.Size0700 -> 0.7
+        FastRiseSizeTier.Size0759 -> 0.75
+        else -> 1.0
+    }
+    return FastRiseSizeDecision(factor, tier)
+}
+
+private fun fastRiseSizeTier(input: FastRiseSizeInput): FastRiseSizeTier {
+    val delta = input.delta / input.slopeRatio
+    val shortDelta = input.shortDelta / input.slopeRatio
+    val longDelta = input.longDelta / input.slopeRatio
+    val mainGate = input.bg > 6.0 * 18.0 &&
+        input.bg < 12.0 * 18.0 &&
+        input.cob <= 25.0 &&
+        delta >= 0.25 * 18.0 &&
+        shortDelta >= 0.10 * 18.0 &&
+        (input.iob > 0.12 * input.maxIob || input.hour >= 22 || input.hour <= 5) &&
+        input.rawDelta5 >= 0.25 * 18.0 &&
+        input.aapsDelta1 >= 0.25 * 18.0
+    if (mainGate) {
+        return when {
+            delta >= 1.0 * 18.0 && shortDelta >= 1.0 * 18.0 && longDelta >= 1.0 * 18.0 ->
+                FastRiseSizeTier.Size0201
+            delta >= 0.55 * 18.0 && shortDelta >= 0.30 * 18.0 && delta < 1.0 * 18.0 && shortDelta < 1.0 * 18.0 ->
+                when {
+                    input.bg > 8.8 * 18.0 -> FastRiseSizeTier.Size0602
+                    input.bg > 8.0 * 18.0 -> FastRiseSizeTier.Size0653
+                    input.bg <= 8.0 * 18.0 && input.microBolus > input.threshold -> FastRiseSizeTier.Size0504
+                    input.bg <= 8.0 * 18.0 && input.microBolus <= input.threshold -> FastRiseSizeTier.Uncapped0564
+                    else -> FastRiseSizeTier.None
+                }
+            delta >= 0.25 * 18.0 && shortDelta >= 0.15 * 18.0 && delta < 0.55 * 18.0 && shortDelta < 0.55 * 18.0 ->
+                when {
+                    input.bg > 8.8 * 18.0 -> FastRiseSizeTier.Size0900
+                    input.bg > 8.0 * 18.0 -> FastRiseSizeTier.Size0850
+                    input.bg <= 8.0 * 18.0 &&
+                        (input.microBolus > input.threshold || (input.hour <= 8 && input.hour >= 3)) ->
+                        FastRiseSizeTier.Size0750
+                    else -> FastRiseSizeTier.Uncapped0707
+                }
+            else -> FastRiseSizeTier.None
+        }
+    } else if (
+        delta >= 0.25 * 18.0 &&
+        shortDelta >= 0.10 * 18.0 &&
+        delta < 0.35 * 18.0 &&
+        input.rawDelta5 >= 0.25 * 18.0 &&
+        input.aapsDelta1 >= 0.25 * 18.0
+    ) {
+        return if (input.microBolus > input.threshold || input.hour <= 8) {
+            FastRiseSizeTier.Size0700
+        } else {
+            FastRiseSizeTier.Uncapped0608
+        }
+    } else if (
+        delta >= 0.9 * 18.0 &&
+        shortDelta >= 0.7 * 18.0 &&
+        input.bg > 11.5 * 18.0 &&
+        input.bg < 13.5 * 18.0 &&
+        input.iob > input.threshold &&
+        input.cob <= 25.0 &&
+        input.rawDelta5 >= 0.9 * 18.0 &&
+        input.aapsDelta1 >= 0.9 * 18.0
+    ) {
+        return FastRiseSizeTier.Size0759
+    }
+    return FastRiseSizeTier.None
+}
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
