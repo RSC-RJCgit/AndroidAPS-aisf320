@@ -361,11 +361,16 @@ class PrepareTreatmentsDataWorker(
             for (i in 0 until 12) {
                 val s = windowStart + span * i / 12
                 val e = windowStart + span * (i + 1) / 12
+                val formattedTotal = String.format(java.util.Locale.US, "%.2f", insulinTotals[i])
                 insulinIntervalLabels.add(object : DataPointWithLabelInterface {
                     override fun getX(): Double = (s + e) / 2.0
                     override fun getY(): Double = 0.0
                     override fun setY(y: Double) {}
-                    override val label: String = String.format(java.util.Locale.US, "%.2f", insulinTotals[i])
+                    override val label: String = when {
+                        formattedTotal == "0.00" -> "0"
+                        formattedTotal.startsWith("0.") -> formattedTotal.removePrefix("0")
+                        else -> formattedTotal
+                    }
                     override val duration: Long = 0L
                     override val shape = app.aaps.core.graph.data.Shape.INSULIN_INTERVAL_TOTAL
                     override val size: Float = 1.0f
