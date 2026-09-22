@@ -25,5 +25,8 @@ enum class LongNonKey(
 
     // Epoch millis of the last AlarmHypo. Nothing writes this until that alarm is ported.
     ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0L),
+
+    // Epoch millis when the current rapid-SMB stack started. 0 means no stack. Local only.
+    ApsAutoIsfSmbStackStart("autoisf_smb_stack_start", 0L, exportable = false),
 }
 

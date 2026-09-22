@@ -569,6 +569,48 @@ internal fun smbBoostRecentNow(
     return markedOrMeal && (rawDelta5 ?: -9999.0) >= 1.8 && longAvgDelta > -1.8
 }
 
+internal data class SmbStackResult(
+    val microBolus: Double,
+    val reason: String,
+    val stackStart: Long,
+)
+
+// SMBs closer than 70 seconds over the last 5 minutes start a 10 minute stack.
+// The first cycle of a new stack stays full size. Later cycles lose 10%.
+// After 4 minutes, and only when IOB is already high, the cut grows. Night uses a lower IOB bar.
+// A gap above 70 seconds clears the stack.
+internal fun smbStackTrim(
+    microBolus: Double,
+    smbIntervalSec: Double,
+    stackStart: Long,
+    nowMs: Long,
+    hour: Int,
+    iob: Double,
+    maxIob: Double,
+): SmbStackResult {
+    if (smbIntervalSec <= 70.0 && microBolus > 0.0) {
+        if (stackStart == 0L || nowMs - stackStart >= 10 * 60 * 1000L) {
+            return SmbStackResult(microBolus, "SMB stacking <=70s: new 10min stack window, full size ", nowMs)
+        }
+        val stackAgeMin = (nowMs - stackStart) / 60000.0
+        val overnight = hour >= 22 || hour < 8
+        val gate = if (overnight) 0.15 else 0.35
+        val highIob = iob >= gate * maxIob
+        val trim = if (highIob && stackAgeMin >= 4.0) {
+            (0.25 + 0.10 * ((stackAgeMin - 4.0) / 2.0).toInt()).coerceAtMost(0.45)
+        } else {
+            0.10
+        }
+        val cut = microBolus * (1.0 - trim)
+        return SmbStackResult(
+            cut,
+            "SMB stacking <=70s: microBolus x${twoDecimals(1.0 - trim)} (age ${twoDecimals(stackAgeMin)}min, IOB ${twoDecimals(iob)}) = ${twoDecimals(cut)} ",
+            stackStart,
+        )
+    }
+    return SmbStackResult(microBolus, "", 0L)
+}
+
 // While the under-7.5 mark is inside 10 minutes, and glucose is still under 7.5, the SMB is 0.
 internal fun sub75CooldownCut(microBolus: Double, cooldown: Boolean, bg: Double): SmbStepResult {
     if (cooldown && bg < 135.1) {
@@ -763,6 +805,10 @@ class DetermineBasalAutoISF(
 
     private var consoleError = mutableListOf<String>()
     private var consoleLog = mutableListOf<String>()
+
+    // Null means this loop did not reach the SMB stack check, so the saved start must stay as it is.
+    var smbStackStartToStore: Long? = null
+        private set
 
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
@@ -973,9 +1019,12 @@ class DetermineBasalAutoISF(
         uamBoostRecent: Boolean = false,
         uamBstMinutesAgo: Int = Int.MAX_VALUE,
         sub75Cooldown: Boolean = false,
+        smbIntervalSec: Double = 9999.0,
+        smbStackStart: Long = 0L,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
+        smbStackStartToStore = null
         var rT = RT(
             algorithm = APSResult.Algorithm.AUTO_ISF,
             runningDynamicIsf = autoIsfMode,
@@ -1908,6 +1957,20 @@ class DetermineBasalAutoISF(
                     }
                     microBolus = kotlin.math.floor(microBolus * roundSMBTo) / roundSMBTo
                 }
+                val stackHour = if (hour in 0..23) hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                val stacked = smbStackTrim(
+                    microBolus = microBolus,
+                    smbIntervalSec = smbIntervalSec,
+                    stackStart = smbStackStart,
+                    nowMs = currentTime,
+                    hour = stackHour,
+                    iob = iob_data.iob,
+                    maxIob = profile.max_iob,
+                )
+                microBolus = stacked.microBolus
+                if (stacked.reason.isNotEmpty()) rT.reason.append(stacked.reason)
+                smbStackStartToStore = stacked.stackStart
                 if (fastRiseSettingOn != null) {
                     val nowHour = if (hour in 0..23) hour
                     else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
@@ -1923,6 +1986,7 @@ class DetermineBasalAutoISF(
                         recentLowReboundGuardEnabled = lowReboundGuardEnabled,
                     )
                     val slope = if (fastRiseSlopeRatio > 0.0) fastRiseSlopeRatio else 1.0
+                    val uncappedMicroBolus = microBolus
                     val morningAndGlitch = morningThenGlitch(
                         showerInput = ShowerTwilightInput(
                             hour = nowHour,
@@ -1957,7 +2021,6 @@ class DetermineBasalAutoISF(
                     )
                     microBolus = morningAndGlitch.microBolus
                     if (morningAndGlitch.reason.isNotEmpty()) rT.reason.append(morningAndGlitch.reason)
-                    val uncappedMicroBolus = microBolus
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
                         roundSmbTo = roundSMBTo,

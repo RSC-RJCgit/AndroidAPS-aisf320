@@ -524,7 +524,12 @@ open class OpenAPSAutoISFPlugin(
             uamBoostRecent = uamRecent,
             uamBstMinutesAgo = runMarks.minutesAgo(RunMark.UAM_BST, now) ?: Int.MAX_VALUE,
             sub75Cooldown = runMarks.recent(RunMark.SUB75, 10, now),
+            smbIntervalSec = smbInterval5Sec(now),
+            smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
         ).also {
+            determineBasalAutoISF.smbStackStartToStore?.let { start ->
+                preferences.put(LongNonKey.ApsAutoIsfSmbStackStart, start)
+            }
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints
@@ -1097,6 +1102,15 @@ open class OpenAPSAutoISFPlugin(
         val tddLast4H = tddCalculator.calculateDaily(-4, 0)?.totalAmount
         val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
         return blendedTddRatio(tdd7D, tdd1D, tddLast4H, tddLast8to4H)?.ratio ?: 1.0
+    }
+
+    // Average seconds between SMB deliveries in the last 5 minutes. Fewer than two means no stack.
+    private suspend fun smbInterval5Sec(now: Long): Double {
+        val smbs = persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+        if (smbs.size < 2) return 9999.0
+        val spanSec = (smbs.first().timestamp - smbs.last().timestamp).toDouble() / 1000.0
+        return spanSec / (smbs.size - 1)
     }
 
     private suspend fun smbSum(now: Long, windowMs: Long): Double =
