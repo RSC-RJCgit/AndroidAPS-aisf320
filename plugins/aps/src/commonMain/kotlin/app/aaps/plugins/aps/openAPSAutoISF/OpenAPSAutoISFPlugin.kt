@@ -41,6 +41,7 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -108,7 +109,8 @@ open class OpenAPSAutoISFPlugin(
     private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: () -> APSResult,
-    private val ch: ConcentrationHelper
+    private val ch: ConcentrationHelper,
+    private val tddCalculator: TddCalculator
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -492,6 +494,11 @@ open class OpenAPSAutoISFPlugin(
             steps180 = steps180(now),
             smbSum10Min = smbSum(now, 10 * 60 * 1000L),
             smbSum30Min = smbSum(now, 30 * 60 * 1000L),
+            tddFactor = tddFactorValue(
+                enabled = preferences.get(BooleanKey.ApsAutoIsfTddFactor),
+                fallback = preferences.get(DoubleKey.ApsAutoIsfTddFactorFallback),
+                tddRatio = tddRatioForFactor(),
+            ),
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -976,6 +983,9 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsMaxBasal,
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseAutosens,
+            BooleanKey.ApsAutoIsfTddSensitivity,
+            BooleanKey.ApsAutoIsfTddFactor,
+            DoubleKey.ApsAutoIsfTddFactorFallback,
             BooleanKey.ApsSensitivityRaisesTarget,
             BooleanKey.ApsResistanceLowersTarget,
             BooleanKey.ApsAutoIsfHighTtRaisesSens,
@@ -1046,6 +1056,17 @@ open class OpenAPSAutoISFPlugin(
     // The 3-hour count is stored on the sample, so the lookback is the sample age, not a second sum.
     private suspend fun steps180(now: Long): Int =
         persistenceLayer.getLastStepsCountFromTimeToTime(now - 180 * 60 * 1000L, now)?.steps180min ?: 0
+
+    // Autosens on keeps the ratio at 1.0, matching 3.2.1. The live blend is used only when autosens is off.
+    private suspend fun tddRatioForFactor(): Double {
+        if (constraintsChecker.isAutosensModeEnabled().value()) return 1.0
+        if (!preferences.get(BooleanKey.ApsAutoIsfTddSensitivity)) return 1.0
+        val tdd7D = tddCalculator.averageTDD(tddCalculator.calculate(7, allowMissingDays = true))?.data?.totalAmount
+        val tdd1D = tddCalculator.averageTDD(tddCalculator.calculate(1, allowMissingDays = true))?.data?.totalAmount
+        val tddLast4H = tddCalculator.calculateDaily(-4, 0)?.totalAmount
+        val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
+        return blendedTddRatio(tdd7D, tdd1D, tddLast4H, tddLast8to4H)?.ratio ?: 1.0
+    }
 
     private suspend fun smbSum(now: Long, windowMs: Long): Double =
         persistenceLayer.getBolusesFromTimeToTime(now - windowMs, now, ascending = false)

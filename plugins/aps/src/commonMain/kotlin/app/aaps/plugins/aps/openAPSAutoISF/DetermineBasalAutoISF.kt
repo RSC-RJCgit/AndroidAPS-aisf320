@@ -595,6 +595,36 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     return SmbStepResult(smb, reason.toString())
 }
 
+internal data class BlendedTdd(
+    val ratio: Double,
+    val tdd7D: Double,
+)
+
+// 8-hour weighted blend against the 7 day average, from 3.2.1. Null when a part is missing.
+// The ratio is limited to 0.70..1.50 before the tighter TDD-factor clamp.
+internal fun blendedTddRatio(
+    tdd7D: Double?,
+    tdd1D: Double?,
+    tddLast4H: Double?,
+    tddLast8to4H: Double?,
+): BlendedTdd? {
+    if (tdd7D == null || tdd7D <= 0.0 || tdd1D == null || tddLast4H == null || tddLast8to4H == null) return null
+    val weighted8h = ((1.4 * tddLast4H) + (0.6 * tddLast8to4H)) * 3.0
+    val blended = if (weighted8h < 0.75 * tdd7D) {
+        val adjusted7d = weighted8h + ((weighted8h / tdd7D) * (tdd7D - weighted8h))
+        (adjusted7d * 0.34) + (tdd1D * 0.33) + (weighted8h * 0.33)
+    } else {
+        (weighted8h * 0.33) + (tdd7D * 0.34) + (tdd1D * 0.33)
+    }
+    return BlendedTdd(ratio = (blended / tdd7D).coerceIn(0.70, 1.50), tdd7D = tdd7D)
+}
+
+// The switch uses the live ratio, clamped to 0.80..1.20. Off uses the fallback setting.
+internal fun tddFactorValue(enabled: Boolean, fallback: Double, tddRatio: Double): Double {
+    val raw = if (enabled) tddRatio.coerceIn(0.80, 1.20) else fallback
+    return twoDecimals(raw)
+}
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
@@ -803,6 +833,8 @@ class DetermineBasalAutoISF(
         steps180: Int = 0,
         smbSum10Min: Double = 0.0,
         smbSum30Min: Double = 0.0,
+        // 1.0 leaves insulinReq and max IOB unchanged. Live ratio is clamped to 0.80..1.20.
+        tddFactor: Double = 1.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -862,7 +894,7 @@ class DetermineBasalAutoISF(
         }
 
         // TODO eliminate
-        val max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
+        var max_iob = profile.max_iob // maximum amount of non-bolus IOB OpenAPS will ever deliver
 
         // if min and max are set, then set target to their average
         var target_bg = (profile.min_bg + profile.max_bg) / 2
@@ -1696,6 +1728,9 @@ class DetermineBasalAutoISF(
             var insulinReq =
                 // if (dynIsfMode) round((min(minPredBG, eventualBG) - target_bg) / future_sens, 2)
                 round((min(minPredBG, eventualBG) - target_bg) / sens, 2)
+            insulinReq = round(insulinReq * tddFactor, 2)
+            max_iob = round(max_iob * tddFactor, 2)
+            rT.reason.append("TDDfactor ${twoDecimals(tddFactor)} max_iob ${twoDecimals(max_iob)} insulinReq ${twoDecimals(insulinReq)}. ")
             // if that would put us over max_iob, then reduce accordingly
             if (insulinReq > max_iob - iob_data.iob) {
                 rT.reason.append("max_iob $max_iob, ")
@@ -1799,8 +1834,7 @@ class DetermineBasalAutoISF(
                             iob = iob_data.iob,
                             maxIob = profile.max_iob,
                             microBolus = microBolus,
-                            // TDD factor is not ported yet, so this uses 1.0. UKF3426 multiplies by TDDfactor.
-                            threshold = 0.030 * profile.max_iob,
+                            threshold = tddFactor * 0.030 * profile.max_iob,
                             hour = nowHour,
                             slopeRatio = fastRiseSlopeRatio,
                             libreActive = libreActive,
@@ -1841,7 +1875,7 @@ class DetermineBasalAutoISF(
                                 steps60 = steps60,
                                 microBolus = microBolus,
                             ),
-                            threshold = 0.030 * profile.max_iob,
+                            threshold = tddFactor * 0.030 * profile.max_iob,
                             steps30 = steps30,
                             steps60 = steps60,
                             steps180 = steps180,

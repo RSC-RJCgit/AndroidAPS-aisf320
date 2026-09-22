@@ -214,6 +214,22 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfTddSensitivity(
+        "autoisf_tdd_sensitivity",
+        true,
+        KeysStrings.pref_title_aps_tdd_sensitivity,
+        KeysStrings.pref_summary_aps_tdd_sensitivity,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTddFactor(
+        "autoisf_tdd_factor",
+        true,
+        KeysStrings.pref_title_aps_tdd_factor,
+        KeysStrings.pref_summary_aps_tdd_factor,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     MaintenanceEnableFabric("enable_fabric2", true, KeysStrings.pref_title_maintenance_enable_fabric, defaultedBySM = true, hideParentScreenIfHidden = true),
 

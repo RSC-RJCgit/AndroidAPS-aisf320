@@ -82,6 +82,12 @@
     <string name="pref_summary_aps_fast_rise_enabled">Cut SMB size during a fast Libre rise. Off leaves the SMB unchanged.</string>
     <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
     <string name="pref_summary_aps_low_rebound_guard_enabled">Turn FastRise size tiers off after a recent hypo alarm while glucose is rebounding.</string>
+    <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
+    <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, scale doses from recent insulin use compared with the 7 day average.</string>
+    <string name="pref_title_aps_tdd_factor">TDD factor</string>
+    <string name="pref_summary_aps_tdd_factor">Scale the insulin request and max IOB by the TDD ratio, limited to 0.8 to 1.2.</string>
+    <string name="pref_title_aps_tdd_factor_fallback">TDD factor fallback</string>
+    <string name="pref_summary_aps_tdd_factor_fallback">Used when the TDD factor switch is off. 1.0 leaves the dose unchanged.</string>
 
     <!-- Maintenance preferences -->
     <string name="pref_title_maintenance_enable_fabric">Enable Fabric crash reporting</string>

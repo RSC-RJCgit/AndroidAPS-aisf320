@@ -295,6 +295,17 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfTddFactorFallback(
+        key = "autoisf_tdd_factor_fallback",
+        defaultValue = 1.0,
+        min = 0.8,
+        max = 1.2,
+        title = KeysStrings.pref_title_aps_tdd_factor_fallback,
+        summary = KeysStrings.pref_summary_aps_tdd_factor_fallback,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfSmbDeliveryRatio(
         key = "openapsama_smb_delivery_ratio",
         defaultValue = 0.5,
