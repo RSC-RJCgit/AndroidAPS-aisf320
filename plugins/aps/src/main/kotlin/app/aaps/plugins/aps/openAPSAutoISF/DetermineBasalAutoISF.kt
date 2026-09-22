@@ -2127,11 +2127,16 @@ class DetermineBasalAutoISF @Inject constructor(
                                 microBolus = microBolus * 0.6
                                 rT.reason.append("microBolus = microBolus * 0.6 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.602 for moderate fast rise 0.602 ")
-                            } else if (bg > 8.0 * 18) {
+                            } else if (bg > 7.5 * 18) {
+                                // 2026-09-23: boundary lowered 8.0->7.5, per explicit request. Real data
+                                // (22 Sep 17:56-17:59, both Live and Virtual): a genuine sustained rise sat
+                                // at BG 7.0-7.7 and hit the harsher 0.504 branch below the whole time, while
+                                // BG kept climbing rather than leveling -- this band was getting the
+                                // strictest cut exactly where less caution was warranted, not more.
                                 microBolus = microBolus * 0.65
                                 rT.reason.append("microBolus = microBolus * 0.65 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.653 for moderate fast rise 0.653 ")
-                            } else if (bg <= 8.0 * 18 &&
+                            } else if (bg <= 7.5 * 18 &&
                                 microBolus > ThresholForFastRise
                             ) {
                                 // 2026-09-15: dropped the overnight-always `|| nowHour <= 8` half. That
@@ -2143,7 +2148,7 @@ class DetermineBasalAutoISF @Inject constructor(
                                 microBolus = microBolus * 0.5
                                 rT.reason.append("microBolus ov ${round(ThresholForFastRise, 2)} = microBolus * 0.5 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.504 for moderate fast rise 0.504 ")
-                            } else if (bg <= 8.0 * 18 && microBolus <= ThresholForFastRise) {
+                            } else if (bg <= 7.5 * 18 && microBolus <= ThresholForFastRise) {
                                 rT.reason.append("smbUn  0.564 for microBolus  = ${round(microBolus, 2)} ")
                             }
                         } else if (Delta >= 0.25 * 18 &&
@@ -2155,11 +2160,13 @@ class DetermineBasalAutoISF @Inject constructor(
                                 microBolus = microBolus * 0.9 // was 0.85 — slight loosening, mild-tier daytime rise
                                 rT.reason.append("microBolus = microBolus * 0.9 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.900 for mild fast rise 0.900 ")
-                            } else if (bg > 8.0 * 18) {
+                            } else if (bg > 7.5 * 18) {
+                                // 2026-09-23: boundary lowered 8.0->7.5, same real-data rationale as the
+                                // moderate branch above.
                                 microBolus = microBolus * 0.85 // was 0.8 — slight loosening
                                 rT.reason.append("microBolus = microBolus * 0.85 ; microBolus = ${round(microBolus, 2)} ")
                                 rT.reason.append(" CHANGED SIZE 0.850 for mild fast rise 0.850 ")
-                            } else if (bg <= 8.0 * 18 &&
+                            } else if (bg <= 7.5 * 18 &&
                                 (microBolus > ThresholForFastRise ||
                                     (nowHour <= 8 && nowHour >= 3))
                             ) {
