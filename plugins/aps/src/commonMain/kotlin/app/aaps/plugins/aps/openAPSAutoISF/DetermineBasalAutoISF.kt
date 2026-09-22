@@ -241,6 +241,68 @@ internal fun fastRiseAdjustedMicroBolus(
     return FastRiseSmbResult(adjusted, reason)
 }
 
+internal data class ShowerTwilightInput(
+    val hour: Int,
+    val bg: Double,
+    val steps60: Int,
+    val cob: Double,
+    val tempTargetSet: Boolean,
+    val delta: Double,
+    val shortDelta: Double,
+    val iobThUser: Int,
+    val rawDelta5: Double,
+    val aapsDelta1: Double,
+    val microBolus: Double,
+    val iob: Double,
+    val maxIob: Double,
+)
+
+internal data class ShowerTwilightResult(
+    val microBolus: Double,
+    val reason: String,
+)
+
+// Morning SMB cap from 3.2.1, hours 5 to 9. The quieter step gate is checked first.
+// The loop does not call this yet.
+internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult {
+    val morning = input.hour in 5..9 &&
+        input.bg <= 8.0 * 18.0 &&
+        input.cob <= 0.0 &&
+        !input.tempTargetSet &&
+        input.iobThUser < 71
+    val quietSteps = morning &&
+        input.steps60 < 10 &&
+        input.delta >= 0.25 * 18.0 &&
+        input.shortDelta >= 0.1 * 18.0 &&
+        input.rawDelta5 >= 0.25 * 18.0 &&
+        input.aapsDelta1 >= 0.25 * 18.0
+    val busierSteps = morning &&
+        input.steps60 < 100 &&
+        input.delta >= 0.35 * 18.0 &&
+        input.shortDelta >= 0.15 * 18.0 &&
+        input.rawDelta5 >= 0.35 * 18.0 &&
+        input.aapsDelta1 >= 0.35 * 18.0
+    if (!quietSteps && !busierSteps) return ShowerTwilightResult(input.microBolus, "")
+
+    val perSmbCap = 0.04 * input.maxIob
+    val iobCeiling = 0.09 * input.maxIob
+    var smb = input.microBolus
+    val reason = StringBuilder()
+    if (smb > perSmbCap) {
+        smb = perSmbCap
+        reason.append("Shower SMB cap ${twoDecimals(smb)}. ")
+    }
+    if (smb + input.iob > iobCeiling) {
+        smb = iobCeiling - input.iob
+        reason.append("Shower IOB ceiling ${twoDecimals(smb)}. ")
+    }
+    if (!quietSteps) reason.append("Shower time. ")
+    return ShowerTwilightResult(smb, reason.toString())
+}
+
+private fun twoDecimals(value: Double): Double =
+    (value * 100.0).roundToInt() / 100.0
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
