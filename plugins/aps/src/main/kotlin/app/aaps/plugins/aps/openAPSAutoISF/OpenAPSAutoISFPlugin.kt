@@ -2362,19 +2362,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val thresholdMgdl = thresholdMmol * Constants.MMOLL_TO_MGDL
         return readings.all { it.noise!! < thresholdMgdl }
     }
-
-
-    // Not yet called anywhere; ready for later conditions that need "time since last bolus" in code.
-    // Mirrors TriggerBolusAgo: returns null (not just a huge number) when no NORMAL bolus has ever been logged,
-    // so callers must decide explicitly how to treat "no history yet" rather than it silently always-passing.
-    private fun minutesSinceLastNormalBolus(): Int? {
-        val lastBolusTime = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)?.timestamp ?: return null
-        return ((dateUtil.now() - lastBolusTime).toDouble() / (60 * 1000)).toInt()
-    }
-
-    // Active automation gates must ignore the 0 U NORMAL records that Omnipod Dash writes when a
-    // basal-compensation bolus command is denied or cannot be confirmed. Their longest lookback gate
-    // is 210 minutes, so no positive NORMAL bolus in one day is equivalent to one older than the gate.
+    // Bolus-age consumers must ignore the 0 U NORMAL records that Omnipod Dash writes when a
+    // basal-compensation bolus command is denied or cannot be confirmed. The longest live gate is
+    // 210 minutes, so no positive NORMAL bolus in one day is equivalent to one older than the gate.
     private fun minutesSinceLastPositiveNormalBolus(): Int? {
         val now = dateUtil.now()
         val lastBolusTime = persistenceLayer
@@ -2760,25 +2750,43 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val notification: NotificationUserMessage
 
         if (exportPasswordDataStore.exportPasswordStoreEnabled()) {
-            val (password, isExpired, isAboutToExpire) = exportPasswordDataStore.getPasswordFromDataStore(context)
-            if (password.isNotEmpty() && !isExpired) {
-                exportResultMessage = if (isAboutToExpire) {
-                    rh.gs(app.aaps.core.ui.R.string.export_result_message_about_to_expire)
-                } else {
-                    rh.gs(app.aaps.core.ui.R.string.export_result_message_exported)
+            if (!importExportPrefs.hasValidAapsDirectoryAccess()) {
+                exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_local_access_lost)
+                notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                if (readyToRun("SettingsExportLocalAccessSms", 360)) {
+                    sendSms(exportResultMessage)
+                    markRun("SettingsExportLocalAccessSms")
                 }
-                var localNotification = NotificationUserMessage(exportResultMessage, if (isAboutToExpire) Notification.LOW else Notification.INFO)
-                if (!importExportPrefs.exportSharedPreferencesNonInteractive(context, password)) {
-                    exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_failed)
-                    localNotification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                announceAlert = true
+            } else {
+                val (password, isExpired, isAboutToExpire) = exportPasswordDataStore.getPasswordFromDataStore(context)
+                if (password.isNotEmpty() && !isExpired) {
+                    exportResultMessage = if (isAboutToExpire) {
+                        rh.gs(app.aaps.core.ui.R.string.export_result_message_about_to_expire)
+                    } else {
+                        rh.gs(app.aaps.core.ui.R.string.export_result_message_exported)
+                    }
+                    var localNotification = NotificationUserMessage(exportResultMessage, if (isAboutToExpire) Notification.LOW else Notification.INFO)
+                    if (!importExportPrefs.exportSharedPreferencesNonInteractive(context, password)) {
+                        val localAccessLost = !importExportPrefs.hasValidAapsDirectoryAccess()
+                        exportResultMessage = rh.gs(
+                            if (localAccessLost) app.aaps.core.ui.R.string.export_result_message_local_access_lost
+                            else app.aaps.core.ui.R.string.export_result_message_failed
+                        )
+                        localNotification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                        if (localAccessLost && readyToRun("SettingsExportLocalAccessSms", 360)) {
+                            sendSms(exportResultMessage)
+                            markRun("SettingsExportLocalAccessSms")
+                        }
+                        announceAlert = true
+                    }
+                    notification = localNotification
+                } else {
+                    exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_expired)
+                    notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
+                    exportPasswordDataStore.clearPasswordDataStore(context)
                     announceAlert = true
                 }
-                notification = localNotification
-            } else {
-                exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_expired)
-                notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
-                exportPasswordDataStore.clearPasswordDataStore(context)
-                announceAlert = true
             }
         } else {
             exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_disabled)
@@ -6847,7 +6855,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val thresholdScale = deliveryBaseline / 0.17
-            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
             val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
             val profileName = profileFunction.getProfileName()
             val outerGuardOk = profile_percentage == 100 && activeTtMgdl() == null
@@ -8631,7 +8639,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val iob = iobData.iob
             val cob = mealData.mealCOB
-            val lastBolusMin = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
             val b1 = lastBolusMin <= 5 && sd <= -3.6 /* -0.2 mmol */ && d <= -5.4 /* -0.3 mmol */
                 && g <= 126.1 /* 7.0 mmol */ && iob >= 0.5 && cob >= 9.0
             val b2 = lastBolusMin <= 15 && checkAutomationState("MJ", "MJ active")
@@ -9145,7 +9153,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val replaySmbSum30Min = smbSum30Min()
         val replaySub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
         val replayFastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
-        val replayLastBolusMinutes = minutesSinceLastNormalBolus() ?: Int.MAX_VALUE
+        val replayLastBolusMinutes = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
         val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
         val replayIobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
         val lowBgSnapshotAt = dateUtil.now()

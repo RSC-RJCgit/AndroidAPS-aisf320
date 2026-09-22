@@ -212,6 +212,7 @@
     <string name="can_change_in_export_settings">You can modify this later in Export Settings</string>
     <string name="setup_cloud_directory_first">Please set up Cloud Directory first to use Export Settings</string>
     <string name="local_directory">LOCAL Directory</string>
+    <string name="local_directory_access_lost">AAPS local directory access was lost. Open Maintenance → Local Directory and reselect AAPS3/AAPS333.</string>
     <string name="cloud_directory">Cloud Directory</string>
     <string name="export_options">Export Options</string>
     <string name="log_export_option">Log</string>

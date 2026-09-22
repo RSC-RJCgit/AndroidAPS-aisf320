@@ -17,6 +17,7 @@ interface ImportExportPrefs {
     fun prefsFileExists(): Boolean
     fun verifyStoragePermissions(fragment: Fragment, onGranted: Runnable)
     fun exportSharedPreferences(f: Fragment)
+    fun hasValidAapsDirectoryAccess(): Boolean
     fun exportSharedPreferencesNonInteractive(context: Context, password: String): Boolean
     /**
      * Interactive User-Entries export entry point (Maintenance CSV button, Treatments→User Entry

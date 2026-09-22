@@ -206,6 +206,10 @@ class MaintenanceFragment : DaggerFragment() {
             }
         }
 
+        binding.directoryErrorIcon.setOnClickListener {
+            app.aaps.core.ui.toast.ToastUtils.warnToast(requireContext(), rh.gs(R.string.local_directory_access_lost))
+        }
+
         // Cloud directory error icon click - show toast with error info
         binding.cloudDirectoryErrorIcon.setOnClickListener {
             app.aaps.core.ui.toast.ToastUtils.warnToast(requireContext(), rh.gs(R.string.cloud_token_expired_or_invalid))
@@ -292,8 +296,9 @@ class MaintenanceFragment : DaggerFragment() {
     }
 
     private fun updateStorageErrorState() {
-        // Local directory - no error icon needed (local storage doesn't have connection errors)
-        binding.directoryErrorIcon.visibility = View.GONE
+        // A saved SAF URI can outlive its Android persisted grant (notably after reinstall/data loss).
+        binding.directoryErrorIcon.visibility =
+            if (fileListProvider.hasValidAapsDirectoryAccess()) View.GONE else View.VISIBLE
 
         // Cloud directory error - show when cloud is active but token is invalid/expired
         val isCloudActive = cloudStorageManager.isCloudStorageActive()

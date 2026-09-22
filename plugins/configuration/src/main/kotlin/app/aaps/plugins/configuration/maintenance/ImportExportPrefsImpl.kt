@@ -153,6 +153,7 @@ class ImportExportPrefsImpl @Inject constructor(
     override var selectedImportFile: PrefsFile? = null
 
     override fun prefsFileExists(): Boolean = prefFileList.listPreferenceFiles().isNotEmpty()
+    override fun hasValidAapsDirectoryAccess(): Boolean = prefFileList.hasValidAapsDirectoryAccess()
     private val disposable = CompositeDisposable()
 
     override fun exportSharedPreferences(f: Fragment) {
@@ -396,18 +397,16 @@ class ImportExportPrefsImpl @Inject constructor(
         }
 
         // Local export requires AAPS base directory
-        val directoryUri = preferences.getIfExists(StringKey.AapsDirectoryUri)
-        if (directoryUri.isNullOrEmpty()) {
-            ToastUtils.errorToast(activity, rh.gs(R.string.error_accessing_filesystem_select_aaps_directory_properly))
+        if (!prefFileList.hasValidAapsDirectoryAccess()) {
+            ToastUtils.longErrorToast(activity, rh.gs(R.string.local_directory_access_lost))
             return
         }
         exportToLocal(activity)
     }
 
     private fun exportToBoth(activity: FragmentActivity) {
-        val directoryUri = preferences.getIfExists(StringKey.AapsDirectoryUri)
-        if (directoryUri.isNullOrEmpty()) {
-            ToastUtils.errorToast(activity, rh.gs(R.string.error_accessing_filesystem_select_aaps_directory_properly))
+        if (!prefFileList.hasValidAapsDirectoryAccess()) {
+            ToastUtils.longErrorToast(activity, rh.gs(R.string.local_directory_access_lost))
             return
         }
 
@@ -426,6 +425,10 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
     private fun exportToLocal(activity: FragmentActivity) {
+        if (!prefFileList.hasValidAapsDirectoryAccess()) {
+            ToastUtils.longErrorToast(activity, rh.gs(R.string.local_directory_access_lost))
+            return
+        }
         prefFileList.ensureExportDirExists()
         val newFile = prefFileList.newPreferenceFile()
 
@@ -458,6 +461,10 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
     private fun exportToCloud(activity: FragmentActivity) {
+        if (!prefFileList.hasValidAapsDirectoryAccess()) {
+            ToastUtils.longErrorToast(activity, rh.gs(R.string.local_directory_access_lost))
+            return
+        }
         activity.lifecycleScope.launch {
             val provider = cloudStorageManager.getActiveProvider()
             if (provider == null) {
@@ -498,6 +505,10 @@ class ImportExportPrefsImpl @Inject constructor(
     private fun doExportToCloud(activity: FragmentActivity, password: String) {
         activity.lifecycleScope.launch {
             try {
+                if (!prefFileList.hasValidAapsDirectoryAccess()) {
+                    ToastUtils.longErrorToast(activity, rh.gs(R.string.local_directory_access_lost))
+                    return@launch
+                }
                 val provider = cloudStorageManager.getActiveProvider()
                 if (provider == null) {
                     aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} EXPORT_NO_PROVIDER")
@@ -611,16 +622,34 @@ class ImportExportPrefsImpl @Inject constructor(
 
         aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT exportToLocal=$exportToLocal, exportToCloud=$exportToCloud")
 
+        // Cloud settings export also stages its encrypted temporary file under the selected AAPS
+        // SAF tree, so either destination requires the persisted local read/write grant.
+        if ((exportToLocal || exportToCloud) && !prefFileList.hasValidAapsDirectoryAccess()) {
+            aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL_ACCESS_LOST")
+            return false
+        }
+
         var localResult = true
         if (exportToLocal) {
-            prefFileList.ensureExportDirExists()
-            val newFile = prefFileList.newPreferenceFile()
-            if (newFile != null) {
-                localResult = savePreferences(newFile, password)
-                aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL result=$localResult")
-            } else {
-                aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL_NO_FILE")
+            if (!prefFileList.hasValidAapsDirectoryAccess()) {
+                aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL_ACCESS_LOST")
                 localResult = false
+            } else {
+                localResult = try {
+                    prefFileList.ensureExportDirExists()
+                    val newFile = prefFileList.newPreferenceFile()
+                    if (newFile != null) {
+                        savePreferences(newFile, password).also {
+                            aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL result=$it")
+                        }
+                    } else {
+                        aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL_NO_FILE")
+                        false
+                    }
+                } catch (e: Exception) {
+                    aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} NONINTERACTIVE_EXPORT_LOCAL_EXCEPTION", e)
+                    false
+                }
             }
         }
 

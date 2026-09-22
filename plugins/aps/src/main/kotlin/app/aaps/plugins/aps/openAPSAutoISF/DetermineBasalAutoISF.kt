@@ -470,9 +470,10 @@ class DetermineBasalAutoISF @Inject constructor(
         // callers/tests unaffected (Int.MAX_VALUE = "no recent manual bolus/carb seen", 0.0 = "no IOB
         // change data supplied").
         //
-        // lastBolusMinutes/lastCarbMinutes: minutes since the last MANUAL bolus/carb entry (mirrors
-        // BMild's own minutesSinceLastNormalBolus()/minutesSinceLastCarbs() exactly, including that it's
-        // manual entries, not SMBs -- a meal-timing quiet window, not an SMB-stacking check on its own).
+        // lastBolusMinutes/lastCarbMinutes: minutes since the last positive MANUAL bolus/carb entry
+        // (mirrors BMild's own minutesSinceLastPositiveNormalBolus()/minutesSinceLastCarbs() exactly,
+        // excluding 0 U Dash failure records and SMBs -- a meal-timing quiet window, not an
+        // SMB-stacking check on its own).
         lastBolusMinutes: Int = Int.MAX_VALUE,
         lastCarbMinutes: Int = Int.MAX_VALUE,
         // iobChange5Min: IOB delta over the last 5 minutes (mirrors BMild's own totalIobAt(now) -

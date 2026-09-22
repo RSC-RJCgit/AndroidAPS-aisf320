@@ -14,6 +14,8 @@ interface FileListProvider {
      *  uses -- and unlike that grant, survives an app reinstall untouched. sendLogs() zips and uploads
      *  from this path; SAF temp is only an optional email-attachment copy. */
     val logsPath: File
+    /** True only while the saved AAPS tree URI still has persisted read/write access and is writable. */
+    fun hasValidAapsDirectoryAccess(): Boolean
     fun ensurePreferenceDirExists(): DocumentFile?
     fun ensureExportDirExists(): DocumentFile?
     fun ensureTempDirExists(): DocumentFile?

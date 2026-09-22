@@ -134,37 +134,33 @@ class FileListProviderImpl @Inject constructor(
     private fun metadataFor(contents: String): PrefMetadataMap =
         checkMetadata(encryptedPrefsFormat.loadMetadata(contents))
 
-    override fun ensurePreferenceDirExists(): DocumentFile? {
-        val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null
-        val uri = Uri.parse(prefUri)
-        val baseDir = DocumentFile.fromTreeUri(context, uri)
-        val files = baseDir?.listFiles()
-        return files?.firstOrNull { it.name == preferencesPath } ?: baseDir?.createDirectory(preferencesPath)
+    override fun hasValidAapsDirectoryAccess(): Boolean {
+        return try {
+            val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return false
+            val uri = Uri.parse(prefUri)
+            val persistedGrant = context.contentResolver.persistedUriPermissions.firstOrNull { it.uri == uri }
+            if (persistedGrant?.isReadPermission != true || !persistedGrant.isWritePermission) return false
+            DocumentFile.fromTreeUri(context, uri)?.let { it.exists() && it.canRead() && it.canWrite() } == true
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    override fun ensureExportDirExists(): DocumentFile? {
-        val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null
-        val uri = Uri.parse(prefUri)
-        val baseDir = DocumentFile.fromTreeUri(context, uri)
-        val files = baseDir?.listFiles()
-        return files?.firstOrNull { it.name == exportsPath } ?: baseDir?.createDirectory(exportsPath)
+    private fun ensureManagedDirExists(path: String): DocumentFile? {
+        if (!hasValidAapsDirectoryAccess()) return null
+        return try {
+            val uri = Uri.parse(preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null)
+            val baseDir = DocumentFile.fromTreeUri(context, uri) ?: return null
+            baseDir.listFiles().firstOrNull { it.name == path } ?: baseDir.createDirectory(path)
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    override fun ensureTempDirExists(): DocumentFile? {
-        val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null
-        val uri = Uri.parse(prefUri)
-        val baseDir = DocumentFile.fromTreeUri(context, uri)
-        val files = baseDir?.listFiles()
-        return files?.firstOrNull { it.name == tempPath } ?: baseDir?.createDirectory(tempPath)
-    }
-
-    override fun ensureExtraDirExists(): DocumentFile? {
-        val prefUri = preferences.get().getIfExists(StringKey.AapsDirectoryUri) ?: return null
-        val uri = Uri.parse(prefUri)
-        val baseDir = DocumentFile.fromTreeUri(context, uri)
-        val files = baseDir?.listFiles()
-        return files?.firstOrNull { it.name == extraPath } ?: baseDir?.createDirectory(extraPath)
-    }
+    override fun ensurePreferenceDirExists(): DocumentFile? = ensureManagedDirExists(preferencesPath)
+    override fun ensureExportDirExists(): DocumentFile? = ensureManagedDirExists(exportsPath)
+    override fun ensureTempDirExists(): DocumentFile? = ensureManagedDirExists(tempPath)
+    override fun ensureExtraDirExists(): DocumentFile? = ensureManagedDirExists(extraPath)
 
     override fun ensureResultDirExists(): File {
         if (!resultPath.exists()) {
