@@ -8110,7 +8110,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 //    same clock window as the Jul/Aug stacking incidents, so this stays the milder
                 //    lever. Explicit mid-band clock is set independently of the outer window and is
                 //    narrower on BOTH ends (07:00 start, 01:30 end) so an outer-window change cannot
-                //    quietly reopen 01:30-02:00. 04:00-07:00 6.5-9.0 is HiBrkTwilight (TT 4.4 only).
+                //    quietly reopen 01:30-02:00. 04:00-07:00 6.5-9.0 is HiBrkTwilight (TT 4.2 only, since 23 Sep).
                 //    2026-09-18: considered widening this start to 04:30 to cover a real 04:30-08:00
                 //    high plateau, but the 08:30 start exists specifically because a 06:14 fire once
                 //    stacked IOB into a later low (see 7 Sep history two lines above) -- reverted, and
@@ -8161,6 +8161,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // plateau/raw/IOB guards; no SMB-ratio, pp-weight or profile action.
         // 2026-09-21: uncommented. 04:00-07:00, BG 6.5-9.0, TT 4.4@2min only. Night/day
         // HiBrk still own >=9.0 (22:00-06:00 / 06:00-22:00). Day mid starts 07:00.
+        // 2026-09-23, per explicit request: real data (23 Sep 04:00-06:47) showed BG climbing
+        // 4.9->6.9 then plateauing 6.5-6.9 for ~2h with SMB=0.00 throughout (TBR-only). The TT
+        // fired once at 05:01 but only lasted its own 2-minute duration before reverting, and the
+        // 30-min readyToRun throttle meant it couldn't refire until 05:31 -- effectively live only
+        // ~2 of every 30 minutes. Tightened TT 4.4->4.2mmol and throttle 30->15min; duration stays
+        // 2min and no SMBdel/ppWeight action added (deliberately still milder than HiBrkDayMid's
+        // TT4.0+ppWeight-high combo). Still TT-only.
         run {
             val twilightNow = dateUtil.now()
             val activeTarget = persistenceLayer.getTemporaryTargetActiveAt(twilightNow)
@@ -8179,7 +8186,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addCarePortalNote("HiBrkTwilightCut")
                 }
             } else if (isTimeBetween(4, 0, 7, 0) && activeTarget == null
-                && readyToRun("HiBrkTwilight", 30)
+                && readyToRun("HiBrkTwilight", 15)
                 && readyToRun("HighEveNightBrake", 30) && readyToRun("HighDaytimeBrake", 30)
                 && checkAutomationState("Steroids", "Steroids Off")
                 && glucoseStatus.glucose > 6.5 * 18.0 && glucoseStatus.glucose < 9.0 * 18.0
@@ -8190,12 +8197,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && ukfRawDeltasPositive()
                 && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
             ) {
-                startTempTargetIfNeededAt(4.4 * 18.0, 2)?.let { createdAt ->
+                startTempTargetIfNeededAt(4.2 * 18.0, 2)?.let { createdAt ->
                     preferences.put(LongNonKey.LastHiBrkTwilightTtAt, createdAt)
                     markRun("HiBrkTwilight")
-                    sendSms("HiBrkTwilight: TT 4.4mmol@2min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    sendSms("HiBrkTwilight: TT 4.2mmol@2min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
                     addCarePortalNote("HiBrkTwilight")
-                    aapsLogger.debug(LTag.APS, "HiBrkTwilight: TT 4.4mmol@2min requested; ratio and ppWeight unchanged")
+                    aapsLogger.debug(LTag.APS, "HiBrkTwilight: TT 4.2mmol@2min requested; ratio and ppWeight unchanged")
                 }
             }
         }
