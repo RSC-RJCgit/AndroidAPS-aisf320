@@ -303,6 +303,91 @@ internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult
 private fun twoDecimals(value: Double): Double =
     (value * 100.0).roundToInt() / 100.0
 
+internal data class SensorGlitchInput(
+    val bgAcceleration: Double,
+    val delta: Double,
+    val shortDelta: Double,
+    val longDelta: Double,
+    val iob: Double,
+    val cob: Double,
+    val bg: Double,
+    val hour: Int,
+    val tempTargetSet: Boolean,
+    val targetBg: Double,
+    val rawDelta5: Double,
+    val aapsDelta1: Double,
+    val microBolus: Double,
+)
+
+internal data class SensorGlitchResult(
+    val microBolus: Double,
+    val reason: String,
+)
+
+// Sensor-glitch SMB cuts from 3.2.1. The first matching gate wins.
+// The loop does not call this yet. It belongs after the morning cap, and only when that cap did not match.
+// The FastRise switch does not turn these cuts off.
+internal fun sensorGlitchSmb(input: SensorGlitchInput): SensorGlitchResult {
+    val smb = input.microBolus
+    val delta = input.delta
+    val shortDelta = input.shortDelta
+    val longDelta = input.longDelta
+    val bg = input.bg
+
+    if (input.bgAcceleration > 0.30 * 18.0 && delta >= 0.50 * 18.0 && input.iob < 0.70) {
+        val cut = smb * 0.7
+        return SensorGlitchResult(cut, "Low IOB accel glitch 0.712 SMB ${twoDecimals(cut)}. ")
+    }
+    if (delta >= 0.40 * 18.0 &&
+        shortDelta <= 0.5 * delta &&
+        longDelta <= 0.10 * delta &&
+        input.cob <= 20.0 &&
+        bg < 10.0 * 18.0
+    ) {
+        val cut = smb * 0.5
+        return SensorGlitchResult(cut, "Sensor swing 0.511 SMB ${twoDecimals(cut)}. ")
+    }
+    if (delta >= 0.50 * 18.0 &&
+        shortDelta >= 0.40 * 18.0 &&
+        longDelta <= 0.15 * 18.0 &&
+        bg < 10.0 * 18.0
+    ) {
+        val cut = smb * 0.5
+        return SensorGlitchResult(cut, "Sensor swing 0.512 SMB ${twoDecimals(cut)}. ")
+    }
+    if (delta >= 0.50 * 18.0 &&
+        input.hour >= 18 &&
+        input.cob > 10.0 &&
+        delta <= 0.95 * 18.0 &&
+        bg < 10.0 * 18.0
+    ) {
+        val cut = smb * 0.7
+        return SensorGlitchResult(cut, "Post carb swing 0.713 SMB ${twoDecimals(cut)}. ")
+    }
+    if (delta >= 0.25 * 18.0 &&
+        shortDelta >= 0.20 * 18.0 &&
+        bg < 10.0 * 18.0 &&
+        input.tempTargetSet &&
+        input.targetBg <= 4.1 * 18.0 &&
+        input.rawDelta5 >= 0.25 * 18.0 &&
+        input.aapsDelta1 >= 0.25 * 18.0
+    ) {
+        val cut = smb * 0.5
+        return SensorGlitchResult(cut, "Low temp target SMB ${twoDecimals(cut)}. ")
+    }
+    if (delta > 1.0 * 18.0 && longDelta < -0.05 * 18.0 && bg < 162.0) {
+        return SensorGlitchResult(0.0, "Glitch zero SMB. ")
+    }
+    if (shortDelta >= 0.25 * 18.0 &&
+        longDelta <= 0.08 * 18.0 &&
+        shortDelta >= 3.0 * (longDelta + 0.01)
+    ) {
+        val cut = smb * 0.7
+        return SensorGlitchResult(cut, "Short spike 0.713 SMB ${twoDecimals(cut)}. ")
+    }
+    return SensorGlitchResult(smb, "")
+}
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
