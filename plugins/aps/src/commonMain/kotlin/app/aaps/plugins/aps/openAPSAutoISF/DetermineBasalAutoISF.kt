@@ -30,6 +30,50 @@ internal fun loRebLookbackMinutes(bg: Double, delta: Double, shortDelta: Double)
         bg > 6.0 * 18.0 && delta > 0.10 * 18.0 && shortDelta > 0.10 * 18.0
     ) 30 else 60
 
+internal data class LoRebWindow(
+    val lookbackMinutes: Int,
+    val recentAlarm: Boolean,
+    val carbRebound: Boolean,
+    val artifactRebound: Boolean,
+    val active: Boolean,
+)
+
+// Same rule as UKF3426. A real AlarmHypo must sit inside the 30 or 60 minute lookback.
+// Carbs, or a sharp rise with no COB, then mark the rebound. Active is the flag that
+// later turns FastRise off. Times are epoch milliseconds. uci and csf use the same units
+// as determine_basal, and uci / csf is grams.
+internal fun loRebWindow(
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    systemTimeMs: Long,
+    lastAlarmHypoAtMs: Long,
+    cob: Double,
+    uci: Double,
+    csf: Double,
+    recentLowReboundGuardEnabled: Boolean,
+): LoRebWindow {
+    val lookbackMinutes = loRebLookbackMinutes(bg, delta, shortDelta)
+    val alarmAgeMs = systemTimeMs - lastAlarmHypoAtMs
+    val recentAlarm = lastAlarmHypoAtMs > 0L &&
+        alarmAgeMs >= 0L &&
+        alarmAgeMs <= lookbackMinutes * 60_000L
+    val uciGrams = if (csf > 0.0) uci / csf else 0.0
+    val carbRebound = recentAlarm && (cob > 0.0 || uciGrams >= 0.3)
+    val artifactRebound = recentAlarm &&
+        cob == 0.0 &&
+        delta > 0.40 * 18.0 &&
+        shortDelta > 0.30 * 18.0 &&
+        bg < 9.4 * 18.0
+    return LoRebWindow(
+        lookbackMinutes = lookbackMinutes,
+        recentAlarm = recentAlarm,
+        carbRebound = carbRebound,
+        artifactRebound = artifactRebound,
+        active = recentLowReboundGuardEnabled && (carbRebound || artifactRebound),
+    )
+}
+
 @SingleIn(AppScope::class)
 @Inject
 class DetermineBasalAutoISF(
