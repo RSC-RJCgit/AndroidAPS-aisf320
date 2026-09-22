@@ -212,6 +212,7 @@ private fun fastRiseSizeTier(input: FastRiseSizeInput): FastRiseSizeTier {
 internal data class FastRiseSmbResult(
     val microBolus: Double,
     val reason: String,
+    val tier: FastRiseSizeTier,
 )
 
 // Applies one FastRise size decision to an SMB that is already rounded to the pump step.
@@ -238,7 +239,7 @@ internal fun fastRiseAdjustedMicroBolus(
         adjusted != microBolus -> "FastRise x${decision.factor} SMB $microBolus -> $adjusted. "
         else -> ""
     }
-    return FastRiseSmbResult(adjusted, reason)
+    return FastRiseSmbResult(adjusted, reason, decision.tier)
 }
 
 internal data class ShowerTwilightInput(
@@ -404,6 +405,194 @@ internal fun sensorGlitchSmb(input: SensorGlitchInput): SensorGlitchResult {
         return SensorGlitchResult(cut, "Short spike 0.713 SMB ${twoDecimals(cut)}. ")
     }
     return SensorGlitchResult(smb, "")
+}
+
+internal data class SmbStepResult(
+    val microBolus: Double,
+    val reason: String,
+)
+
+// Early-morning and twilight run only when the FastRise size cascade did not take a branch,
+// and only for Libre with no temp target. The test switch and an active LoReb window skip the
+// size tiers, and these two cuts still run.
+internal fun earlyMorningFollowOnAllowed(
+    tier: FastRiseSizeTier,
+    libreActive: Boolean,
+    tempTargetSet: Boolean,
+): Boolean = libreActive && !tempTargetSet &&
+    (tier == FastRiseSizeTier.None ||
+        tier == FastRiseSizeTier.OffTest ||
+        tier == FastRiseSizeTier.OffLoReb)
+
+internal data class EarlyMorningTwilightInput(
+    val hour: Int,
+    val iob: Double,
+    val maxIob: Double,
+    val cob: Double,
+    val immediateRawDelta5: Double,
+    val rawDelta15: Double,
+    val bg: Double,
+    val delta: Double,
+    val shortDelta: Double,
+    val steps60: Int,
+    val microBolus: Double,
+)
+
+// Hours 6 to 9 use the raw 5-minute rise. A missing 15-minute raw (9999) does not block the cut.
+// Hours 6 to 8 with very few steps use the smaller twilight cap instead, and only if the raw cut did not match.
+internal fun earlyMorningThenTwilight(input: EarlyMorningTwilightInput): SmbStepResult {
+    val raw15Ok = input.rawDelta15 >= 9999.0 ||
+        (input.rawDelta15 >= 0.2 * 18.0 && input.immediateRawDelta5 > input.rawDelta15 * 1.5)
+    if (input.hour in 6..9 &&
+        input.iob > 0.075 * input.maxIob &&
+        input.cob <= 25.0 &&
+        input.immediateRawDelta5 >= 0.5 * 18.0 &&
+        raw15Ok
+    ) {
+        val cut = input.microBolus * 0.8
+        return SmbStepResult(cut, "Early morning raw rise x0.8 SMB ${twoDecimals(cut)}. ")
+    }
+    if (input.hour in 6..8 &&
+        input.bg < 9.0 * 18.0 &&
+        input.delta < 1.0 * 18.0 &&
+        input.shortDelta < 1.0 * 18.0 &&
+        input.steps60 < 10 &&
+        input.cob <= 25.0
+    ) {
+        var smb = input.microBolus
+        val reason = StringBuilder()
+        val perSmb = 0.02 * input.maxIob
+        if (smb > perSmb) {
+            smb = perSmb
+            reason.append("Twilight SMB cap ${twoDecimals(smb)}. ")
+        }
+        val ceiling = 0.09 * input.maxIob
+        if (smb + input.iob > ceiling) {
+            smb = ceiling - input.iob
+            reason.append("Twilight IOB ceiling ${twoDecimals(smb)}. ")
+        }
+        reason.append("Twilight hours. ")
+        return SmbStepResult(smb, reason.toString())
+    }
+    return SmbStepResult(input.microBolus, "")
+}
+
+// A lot of walking cuts the SMB to 70% when it is already above the FastRise threshold.
+internal fun highStepsSmbCut(
+    microBolus: Double,
+    threshold: Double,
+    steps30: Int,
+    steps60: Int,
+    steps180: Int,
+): SmbStepResult {
+    if (microBolus > threshold && (steps30 > 1500 || steps60 > 800 || steps180 > 1500)) {
+        val cut = microBolus * 0.70
+        return SmbStepResult(cut, "High steps x0.7 SMB ${twoDecimals(cut)}. ")
+    }
+    return SmbStepResult(microBolus, "")
+}
+
+// The LoReb window already turns the size tiers off. This is the extra SMB trim from 3.2.1.
+internal fun loRebSmbTrim(microBolus: Double, windowActive: Boolean, guardEnabled: Boolean): SmbStepResult {
+    if (!guardEnabled || !windowActive || microBolus <= 0.10) return SmbStepResult(microBolus, "")
+    val cut = if (microBolus <= 0.25) microBolus * 0.75 else microBolus * 0.5
+    return SmbStepResult(cut, "Low rebound SMB ${twoDecimals(microBolus)} -> ${twoDecimals(cut)}. ")
+}
+
+// Later FastRise requests shrink after a lot of SMB, or when IOB is already high and carbs are gone.
+// The UamBst boost marks are not in this app, so that branch is left out.
+internal fun lateFastRiseTaper(
+    microBolus: Double,
+    fastRiseNow: Boolean,
+    iob: Double,
+    maxIob: Double,
+    cob: Double,
+    smbSum30: Double,
+): SmbStepResult {
+    if (!fastRiseNow || microBolus <= 0.0) return SmbStepResult(microBolus, "")
+    val iobHighNoCob = iob >= 0.18 * maxIob && cob <= 0.0
+    val factor = when {
+        iobHighNoCob -> 0.50
+        smbSum30 >= 1.9 -> 0.50
+        smbSum30 >= 1.5 -> 0.75
+        else -> 1.0
+    }
+    if (factor >= 1.0) return SmbStepResult(microBolus, "")
+    val cut = microBolus * factor
+    val why = if (iobHighNoCob) "high IOB" else "SMB 30 min ${twoDecimals(smbSum30)}U"
+    return SmbStepResult(cut, "Late FastRise $why x${twoDecimals(factor)} SMB ${twoDecimals(cut)}. ")
+}
+
+internal fun smbCap30Min(microBolus: Double, smbSum30: Double): SmbStepResult {
+    val allowance = (2.1 - smbSum30).coerceAtLeast(0.0)
+    if (microBolus <= allowance) return SmbStepResult(microBolus, "")
+    return SmbStepResult(allowance, "30 min SMB cap ${twoDecimals(microBolus)} -> ${twoDecimals(allowance)}. ")
+}
+
+// 00:00-04:00 is 0.6 U under 8.0 mmol/L. 22:00-00:00 is 1.0 U under 8.0. Otherwise 1.5 U.
+internal fun smbCap10Min(microBolus: Double, smbSum10: Double, minuteOfDay: Int, bg: Double): SmbStepResult {
+    val bgUnder8 = bg < 144.0
+    val cap = when {
+        minuteOfDay < 240 && bgUnder8 -> 0.6
+        minuteOfDay >= 1320 && bgUnder8 -> 1.0
+        else -> 1.5
+    }
+    val allowance = cap - smbSum10
+    if (microBolus <= allowance) return SmbStepResult(microBolus, "")
+    val cut = if (allowance > 0.0) allowance else 0.0
+    return SmbStepResult(cut, "10 min SMB cap ${twoDecimals(microBolus)} -> ${twoDecimals(cut)}. ")
+}
+
+internal data class AfterFastRiseInput(
+    val tier: FastRiseSizeTier,
+    val libreActive: Boolean,
+    val tempTargetSet: Boolean,
+    val microBolus: Double,
+    val roundSmbTo: Double,
+    val earlyMorning: EarlyMorningTwilightInput,
+    val threshold: Double,
+    val steps30: Int,
+    val steps60: Int,
+    val steps180: Int,
+    val loRebActive: Boolean,
+    val loRebGuardEnabled: Boolean,
+    val fastRiseNow: Boolean,
+    val iob: Double,
+    val maxIob: Double,
+    val cob: Double,
+    val smbSum30: Double,
+    val smbSum10: Double,
+    val minuteOfDay: Int,
+    val bg: Double,
+)
+
+// Order matches 3.2.1 after the size tiers: early morning, high steps, LoReb trim, late taper, then the two caps.
+internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
+    val reason = StringBuilder()
+    var smb = input.microBolus
+    if (earlyMorningFollowOnAllowed(input.tier, input.libreActive, input.tempTargetSet)) {
+        val early = earlyMorningThenTwilight(input.earlyMorning.copy(microBolus = smb))
+        smb = early.microBolus
+        reason.append(early.reason)
+    }
+    val steps = highStepsSmbCut(smb, input.threshold, input.steps30, input.steps60, input.steps180)
+    smb = steps.microBolus
+    reason.append(steps.reason)
+    val loReb = loRebSmbTrim(smb, input.loRebActive, input.loRebGuardEnabled)
+    smb = loReb.microBolus
+    reason.append(loReb.reason)
+    val taper = lateFastRiseTaper(smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30)
+    smb = taper.microBolus
+    reason.append(taper.reason)
+    val cap30 = smbCap30Min(smb, input.smbSum30)
+    smb = cap30.microBolus
+    reason.append(cap30.reason)
+    val cap10 = smbCap10Min(smb, input.smbSum10, input.minuteOfDay, input.bg)
+    smb = cap10.microBolus
+    reason.append(cap10.reason)
+    if (input.roundSmbTo > 0.0 && smb.isFinite()) smb = floor(smb * input.roundSmbTo) / input.roundSmbTo
+    if (!smb.isFinite() || smb <= 0.0) smb = 0.0
+    return SmbStepResult(smb, reason.toString())
 }
 
 @SingleIn(AppScope::class)
@@ -607,6 +796,13 @@ class DetermineBasalAutoISF(
         iobThUser: Int = 100,
         // BG acceleration from the parabola fit. 0 leaves the low-IOB accel cut closed.
         bgAcceleration: Double = 0.0,
+        // Missing raw uses 9999 so the early-morning guard still caps. FastRise keeps its own 0.
+        immediateRawDelta5Mgdl: Double = 9999.0,
+        rawDelta15Mgdl: Double = 9999.0,
+        steps30: Int = 0,
+        steps180: Int = 0,
+        smbSum10Min: Double = 0.0,
+        smbSum30Min: Double = 0.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1614,6 +1810,55 @@ class DetermineBasalAutoISF(
                     )
                     microBolus = adjusted.microBolus
                     if (adjusted.reason.isNotEmpty()) rT.reason.append(adjusted.reason)
+                    val minuteOfDay = Instant.fromEpochMilliseconds(currentTime)
+                        .toLocalDateTime(TimeZone.currentSystemDefault())
+                        .let { it.hour * 60 + it.minute }
+                    val fastRiseNow = libreActive &&
+                        bg > 6.0 * 18.0 &&
+                        bg < 12.0 * 18.0 &&
+                        meal_data.mealCOB <= 25.0 &&
+                        glucose_status.delta >= 0.25 * 18.0 &&
+                        glucose_status.shortAvgDelta >= 0.10 * 18.0 &&
+                        rawDelta5Mgdl >= 0.25 * 18.0 &&
+                        aapsDelta1Mgdl >= 0.25 * 18.0
+                    val after = afterFastRiseSmb(
+                        AfterFastRiseInput(
+                            tier = adjusted.tier,
+                            libreActive = libreActive,
+                            tempTargetSet = profile.temptargetSet,
+                            microBolus = microBolus,
+                            roundSmbTo = roundSMBTo,
+                            earlyMorning = EarlyMorningTwilightInput(
+                                hour = nowHour,
+                                iob = iob_data.iob,
+                                maxIob = profile.max_iob,
+                                cob = meal_data.mealCOB,
+                                immediateRawDelta5 = immediateRawDelta5Mgdl,
+                                rawDelta15 = rawDelta15Mgdl,
+                                bg = bg,
+                                delta = glucose_status.delta / slope,
+                                shortDelta = glucose_status.shortAvgDelta / slope,
+                                steps60 = steps60,
+                                microBolus = microBolus,
+                            ),
+                            threshold = 0.030 * profile.max_iob,
+                            steps30 = steps30,
+                            steps60 = steps60,
+                            steps180 = steps180,
+                            loRebActive = loReb.active,
+                            loRebGuardEnabled = lowReboundGuardEnabled,
+                            fastRiseNow = fastRiseNow,
+                            iob = iob_data.iob,
+                            maxIob = profile.max_iob,
+                            cob = meal_data.mealCOB,
+                            smbSum30 = smbSum30Min,
+                            smbSum10 = smbSum10Min,
+                            minuteOfDay = minuteOfDay,
+                            bg = bg,
+                        )
+                    )
+                    microBolus = after.microBolus
+                    if (after.reason.isNotEmpty()) rT.reason.append(after.reason)
                 }
 
                 // calculate a long enough zero temp to eventually correct back up to target

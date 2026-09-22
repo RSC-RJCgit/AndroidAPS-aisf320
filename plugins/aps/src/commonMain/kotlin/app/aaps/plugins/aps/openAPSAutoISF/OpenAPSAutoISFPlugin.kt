@@ -4,6 +4,7 @@ import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
@@ -485,6 +486,12 @@ open class OpenAPSAutoISFPlugin(
             steps60 = steps60(now),
             iobThUser = iobThresholdPercent,
             bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0,
+            immediateRawDelta5Mgdl = rawDelta5MinMgdl(now) ?: 9999.0,
+            rawDelta15Mgdl = rawDelta15MinMgdl(now) ?: 9999.0,
+            steps30 = steps30(now),
+            steps180 = steps180(now),
+            smbSum10Min = smbSum(now, 10 * 60 * 1000L),
+            smbSum30Min = smbSum(now, 30 * 60 * 1000L),
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -1033,6 +1040,18 @@ open class OpenAPSAutoISFPlugin(
     private suspend fun steps60(now: Long): Int =
         persistenceLayer.getLastStepsCountFromTimeToTime(now - 60 * 60 * 1000L, now)?.steps60min ?: 0
 
+    private suspend fun steps30(now: Long): Int =
+        persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)?.steps30min ?: 0
+
+    // The 3-hour count is stored on the sample, so the lookback is the sample age, not a second sum.
+    private suspend fun steps180(now: Long): Int =
+        persistenceLayer.getLastStepsCountFromTimeToTime(now - 180 * 60 * 1000L, now)?.steps180min ?: 0
+
+    private suspend fun smbSum(now: Long, windowMs: Long): Double =
+        persistenceLayer.getBolusesFromTimeToTime(now - windowMs, now, ascending = false)
+            .filter { it.type == BS.Type.SMB }
+            .sumOf { it.amount }
+
     // Libre 2 and Libre 3 only, matching UKF3426's fslReally sensor check.
     private suspend fun libreActive(now: Long): Boolean {
         val newest = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 15 * 60 * 1000L, now, ascending = false)
@@ -1053,6 +1072,18 @@ open class OpenAPSAutoISFPlugin(
         if (reference.timestamp == readings[0].timestamp) return null
         val previous = reference.noise ?: return null
         return newest - previous
+    }
+
+    // 15-minute Libre raw change, scaled to mg/dL per five minutes. Null when the raw value is missing.
+    private suspend fun rawDelta15MinMgdl(now: Long): Double? {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 17 * 60 * 1000L, now, ascending = false)
+        if (readings.size < 2) return null
+        val newest = readings[0].noise ?: return null
+        val fifteenMinAgo = now - 15 * 60 * 1000L
+        val reference = readings.minByOrNull { abs(it.timestamp - fifteenMinAgo) } ?: return null
+        if (reference.timestamp == readings[0].timestamp) return null
+        val previous = reference.noise ?: return null
+        return (newest - previous) / 3.0
     }
 
     // mg/dL per five minutes, from the two newest calibrated values.
