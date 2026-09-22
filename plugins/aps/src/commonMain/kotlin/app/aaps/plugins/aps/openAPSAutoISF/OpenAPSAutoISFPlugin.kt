@@ -47,7 +47,6 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
@@ -475,13 +474,13 @@ open class OpenAPSAutoISFPlugin(
             iob_threshold_percent = iobThresholdPercent,
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog,
-            fastRiseSettingOn = preferences.get(BooleanNonKey.ApsAutoIsfFastRiseEnabled),
+            fastRiseSettingOn = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled),
             libreActive = libreActive(now),
             rawDelta5Mgdl = rawDelta5MinMgdl(now) ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
-            lowReboundGuardEnabled = preferences.get(BooleanNonKey.ApsAutoIsfLowReboundGuardEnabled),
+            lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
         ).also {
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -972,6 +971,8 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfLowTtLowersSens,
             IntKey.ApsAutoIsfHalfBasalExerciseTarget,
             BooleanKey.ApsUseSmb,
+            BooleanKey.ApsAutoIsfFastRiseEnabled,
+            BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,

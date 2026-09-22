@@ -198,6 +198,22 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfFastRiseEnabled(
+        "autoisf_fast_rise_enabled",
+        true,
+        KeysStrings.pref_title_aps_fast_rise_enabled,
+        KeysStrings.pref_summary_aps_fast_rise_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfLowReboundGuardEnabled(
+        "autoisf_low_rebound_guard_enabled",
+        false,
+        KeysStrings.pref_title_aps_low_rebound_guard_enabled,
+        KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     MaintenanceEnableFabric("enable_fabric2", true, KeysStrings.pref_title_maintenance_enable_fabric, defaultedBySM = true, hideParentScreenIfHidden = true),
 
