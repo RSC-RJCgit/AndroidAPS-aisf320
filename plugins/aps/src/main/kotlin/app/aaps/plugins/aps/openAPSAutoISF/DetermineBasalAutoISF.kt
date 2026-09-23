@@ -2568,6 +2568,26 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append(" Tier 3 final IOB allowance: ${round(beforeTier3FinalCap, 2)} -> ${round(microBolus, 2)}U ")
                     }
                 }
+                // 2026-09-24, per explicit request: carb-bypassed offset band. offsetSoZeroSMB zeroes the SMB below
+                // targetBgOffset only while COB is low; a recent carb entry (COB >= 5, or COB < 5 with CarbAge <= 120)
+                // switches that exclusion off, so SMBs still went out right at target (23 Sep 20:50-21:14: 7 x 0.05U at
+                // BG 5.2-5.5, COB 21-24g, BG then fell to 4.1). While the exclusion is off but BG is still inside the
+                // offset band: below targetBgOrig + 0.5*varOffset -> zero SMB; from there up to targetBgOffset -> half
+                // SMB (floored to the pump step below). Skipped on BMild / bg3 / Tier 3 fire cycles: MildOffsetZero
+                // already forces varOffset to 0 for BMild, and Tier 3 has its own IOB allowance.
+                if (!offsetSoZeroSMB && varOffset > 0.0 && bg < targetBgOffset && microBolus > 0.0 &&
+                    !(bmildBasicCriteriaMet || bg3BasicCriteriaMet || uamBoostEnhancedCandidateThisCycle)
+                ) {
+                    val beforeOffsetBand = microBolus
+                    val offsetBandZeroTop = min(targetBgOrig + 0.5 * varOffset, targetBgOffset)
+                    if (bg < offsetBandZeroTop) {
+                        microBolus = 0.0
+                        rT.reason.append(" offsetBand: bg ${convert_bg(bg)} < ${convert_bg(offsetBandZeroTop)} with exclusion off (carbs) -> SMB ${round(beforeOffsetBand, 2)} -> 0 ")
+                    } else {
+                        microBolus *= 0.5
+                        rT.reason.append(" offsetBand: bg ${convert_bg(bg)} < targetBgOffset ${convert_bg(targetBgOffset)} with exclusion off (carbs) -> SMB ${round(beforeOffsetBand, 2)} x0.5 ")
+                    }
+                }
                 microBolus = Math.floor(microBolus * roundSMBTo) / roundSMBTo
 
                 if (offsetSoZeroSMB) {
