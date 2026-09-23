@@ -7,6 +7,7 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -53,6 +54,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -510,6 +512,22 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.NIGHT_FR_SKIP, now)
             aapsLogger.debug(LTag.APS, "NightFrSkip marked")
         }
+        markBolusBoosts(
+            now = now,
+            profilePercent = profile_percentage,
+            tempTargetSet = isTempTarget,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            rawDelta5 = raw5 ?: -9999.0,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            steps5 = stepSample?.steps5min ?: 0,
+            steps30 = stepSample?.steps30min ?: 0,
+        )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1088,6 +1106,8 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
+            DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
+            StringKey.ApsAutoIsfLowProfileName,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
             DoubleKey.ApsAutoIsfTddFactorFallback,
@@ -1185,6 +1205,129 @@ open class OpenAPSAutoISFPlugin(
         return blendedTddRatio(tdd7D, tdd1D, tddLast4H, tddLast8to4H)?.ratio ?: 1.0
     }
 
+    // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
+    // The mark lets the FastRise restore see the boost. It does not write iobTH, profile percent, or the delivery ratio.
+    // Libre raw is used. A missing raw value is -9999, so the rise gate stays closed.
+    private suspend fun markBolusBoosts(
+        now: Long,
+        profilePercent: Int,
+        tempTargetSet: Boolean,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        rawDelta5: Double,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps5: Int,
+        steps30: Int,
+    ) {
+        val boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+        val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+        val profileName = profileFunction.getOriginalProfileName()
+        val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val onLowProfile = profileName == lowName
+        val mjActive = statesOn && states().inState("MJ", "MJ active")
+        val rawDelta1 = rawDelta1MinMgdl(now) ?: -9999.0
+        val interval = smbInterval5Sec(now)
+        val iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L)
+        val lastBolusMin = minutesSinceLastPositiveNormalBolus(now)
+        val recentAlarm = now - preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt) <= 60 * 60_000L
+        val bypass = newPodHighBypass(now, bg)
+        val readyMild = runMarks.ready(RunMark.BOLUS_GIVEN_MILD, 5, now)
+        val readyBg3 = runMarks.ready(RunMark.BOLUS_GIVEN_BG3, 5, now)
+        val readyGiven = runMarks.ready(RunMark.BOLUS_GIVEN, 5, now)
+        val bg3 = bg3BoostShouldFire(
+            readyBolusGiven = readyGiven,
+            readyBg3 = readyBg3,
+            readyMild = readyMild,
+            profilePercent = profilePercent,
+            boostAutomationsOn = boostOn,
+            minuteOfDay = minuteOfDay,
+            daytimeBypass = bypass,
+            bg = bg,
+            delta = delta,
+            longDelta = longDelta,
+            rawDelta5 = rawDelta5,
+            rawDelta1 = rawDelta1,
+            iobChange5 = iobChange5,
+            smbCount5 = smbCount5(now),
+            onLowProfile = onLowProfile,
+            mjActive = mjActive,
+            steps5 = steps5,
+            steps30 = steps30,
+            steps60 = steps60(now),
+            smbIntervalSec = interval,
+            deliveryBaseline = baseline,
+        )
+        val mild = mildBoostShouldFire(
+            readyMild = readyMild,
+            readyBg3 = readyBg3,
+            profilePercent = profilePercent,
+            tempTargetSet = tempTargetSet,
+            boostAutomationsOn = boostOn,
+            minuteOfDay = minuteOfDay,
+            daytimeBypass = bypass,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            rawDelta5 = rawDelta5,
+            rawDelta1 = rawDelta1,
+            iobChange5 = iobChange5,
+            cob = cob,
+            minutesSinceNormalBolus = lastBolusMin,
+            recentAlarmHypo = recentAlarm,
+            onLowProfile = onLowProfile,
+            mjActive = mjActive,
+            steps5 = steps5,
+            steps30 = steps30,
+            smbIntervalSec = interval,
+            deliveryBaseline = baseline,
+        )
+        val blocked = bg3 && bg3BoostBlocked(
+            recentBolusGiven = runMarks.recent(RunMark.BOLUS_GIVEN, 60, now),
+            recentMild = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 60, now),
+            recentMildFailsafe = runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 60, now),
+            iob = iob,
+        )
+        if (bg3 && !blocked) {
+            runMarks.mark(RunMark.BOLUS_GIVEN, now)
+            runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
+            aapsLogger.debug(LTag.APS, "BolusGiven bg3 marked")
+        } else if (mild) {
+            runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
+            aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
+        } else if (blocked) {
+            aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
+        }
+    }
+
+    private suspend fun iobAt(time: Long): Double {
+        val profile = profileFunction.getProfile(time) ?: return 0.0
+        return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
+    }
+
+    private suspend fun minutesSinceLastPositiveNormalBolus(now: Long): Int {
+        val last = persistenceLayer.getBolusesFromTimeToTime(now - 24 * 60 * 60_000L, now, ascending = false)
+            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 }
+            ?.timestamp ?: return Int.MAX_VALUE
+        return ((now - last).toDouble() / 60_000.0).toInt()
+    }
+
+    // A site change under 2 hours with glucose over 9.0 mmol/L may open the day window at any hour.
+    // The Usual2forTH bypass is not written here, so that half stays closed.
+    private suspend fun newPodHighBypass(now: Long, bg: Double): Boolean {
+        val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return false
+        val hours = (now - last.timestamp) / 3_600_000.0
+        return hours < 2.0 && bg > 162.2
+    }
+
+    private suspend fun smbCount5(now: Long): Int =
+        persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
+            .count { it.type == BS.Type.SMB }
+
     // Average seconds between SMB deliveries in the last 5 minutes. Fewer than two means no stack.
     private suspend fun smbInterval5Sec(now: Long): Double {
         val smbs = persistenceLayer.getBolusesFromTimeToTime(now - 5 * 60_000L, now, ascending = false)
@@ -1216,6 +1359,18 @@ open class OpenAPSAutoISFPlugin(
         val newest = readings[0].noise ?: return null
         val fiveMinAgo = now - 5 * 60 * 1000L
         val reference = readings.minByOrNull { abs(it.timestamp - fiveMinAgo) } ?: return null
+        if (reference.timestamp == readings[0].timestamp) return null
+        val previous = reference.noise ?: return null
+        return newest - previous
+    }
+
+    // One-minute Libre raw change, mg/dL. Null when the raw value is missing.
+    private suspend fun rawDelta1MinMgdl(now: Long): Double? {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 3 * 60 * 1000L, now, ascending = false)
+        if (readings.size < 2) return null
+        val newest = readings[0].noise ?: return null
+        val oneMinAgo = now - 60_000L
+        val reference = readings.minByOrNull { abs(it.timestamp - oneMinAgo) } ?: return null
         if (reference.timestamp == readings[0].timestamp) return null
         val previous = reference.noise ?: return null
         return newest - previous

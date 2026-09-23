@@ -217,6 +217,14 @@ enum class StringKey(
         isPassword = true,
         validator = StringValidator.minLength(17)
     ),
+    ApsAutoIsfLowProfileName(
+        key = "autoisf_low_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_low_profile_name,
+        summary = KeysStrings.pref_summary_aps_low_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     ;
 

@@ -306,6 +306,17 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfSmbDeliveryBaseline(
+        key = "autoisf_smb_delivery_baseline",
+        defaultValue = 0.14,
+        min = 0.1,
+        max = 0.5,
+        title = KeysStrings.pref_title_aps_smb_delivery_baseline,
+        summary = KeysStrings.pref_summary_aps_smb_delivery_baseline,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsActivityScaleFactor(
         key = "activity_scale_factor",
         defaultValue = 1.0,

@@ -104,6 +104,10 @@
     <string name="pref_summary_aps_tdd_factor">Scale the insulin request and max IOB by the TDD ratio, limited to 0.8 to 1.2.</string>
     <string name="pref_title_aps_tdd_factor_fallback">TDD factor fallback</string>
     <string name="pref_summary_aps_tdd_factor_fallback">Used when the TDD factor switch is off. 1.0 leaves the dose unchanged.</string>
+    <string name="pref_title_aps_smb_delivery_baseline">SMB delivery baseline</string>
+    <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
+    <string name="pref_title_aps_low_profile_name">Low profile name</string>
+    <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
 
     <!-- Maintenance preferences -->
     <string name="pref_title_maintenance_enable_fabric">Enable Fabric crash reporting</string>
