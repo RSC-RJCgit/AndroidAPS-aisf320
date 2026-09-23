@@ -1,5 +1,6 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BolusWizardData
@@ -39,9 +40,11 @@ import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import kotlinx.coroutines.CoroutineScope
@@ -126,6 +129,13 @@ class BolusWizard(
         private set
     var calculatedCorrection: Double = 0.0
         private set
+    private var carbsHalvedByRecent50: Boolean = false
+    private var hpSafetyApplied: Boolean = false
+    private var hpSafetyOriginal: Double = 0.0
+    private var hpSafetyAdjusted: Double = 0.0
+    private var hpSafetyCobRemoved: Double = 0.0
+    private var riseBoostApplied: Boolean = false
+    private var riseBoostOriginal: Double = 0.0
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
@@ -204,8 +214,10 @@ class BolusWizard(
         this.positiveIOBOnly = positiveIOBOnly
         this.source = source
 
-        // Insulin from BG
-        sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData))
+        // Insulin from BG. Above 100% this uses the 100% sensitivity. The dialog percent is not changed.
+        val activePct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+        val baseScale = wizardProfileBaseScale(activePct)
+        sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData)) * baseScale
         targetBGLow = profileUtil.fromMgdlToUnits(profile.getTargetLowMgdl())
         targetBGHigh = profileUtil.fromMgdlToUnits(profile.getTargetHighMgdl())
         if (useTT && tempTarget != null) {
@@ -230,9 +242,26 @@ class BolusWizard(
             }
         }
 
-        // Insulin from carbs
-        ic = profile.getIc()
+        // Insulin from carbs. Above 100% this uses the 100% carb ratio.
+        // A recent low halves only this carb insulin. Protein and fat are not in this calculator yet.
+        ic = profile.getIc() * baseScale
         insulinFromCarbs = carbs / ic
+        val status = glucoseStatus
+        val wizardBgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
+        carbsHalvedByRecent50 = recent50ShouldHalveCarbs(
+            profilePercent = activePct,
+            lowBgRecent = lowBgIsRecent50(
+                preferences.get(BooleanKey.AutomationStatesEnabled),
+                preferences.get(StringNonKey.AutomationCurrentStates),
+            ),
+            wizardBgMgdl = wizardBgMgdl,
+            glucoseMgdl = status?.glucose ?: 0.0,
+            delta = status?.delta ?: 0.0,
+            shortDelta = status?.shortAvgDelta ?: 0.0,
+            longDelta = status?.longAvgDelta ?: 0.0,
+            hasGlucose = status != null,
+        )
+        if (carbsHalvedByRecent50) insulinFromCarbs /= 2.0
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB calculation
@@ -288,6 +317,40 @@ class BolusWizard(
             // preClamp stays as the original negative value
         }
 
+        val positiveIob = (bolusIob.iob + basalIob.basaliob).coerceAtLeast(0.0)
+        val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
+        val deltaMgdl = glucoseStatus?.delta ?: 0.0
+        val shortMgdl = glucoseStatus?.shortAvgDelta ?: 0.0
+        val longMgdl = glucoseStatus?.longAvgDelta ?: 0.0
+        val bgMmol = bgMgdl * Constants.MGDL_TO_MMOLL
+        val deltaMmol = deltaMgdl * Constants.MGDL_TO_MMOLL
+        val shortMmol = shortMgdl * Constants.MGDL_TO_MMOLL
+        val longMmol = longMgdl * Constants.MGDL_TO_MMOLL
+        val hp = wizardHpCut(
+            dose = calculatedTotalInsulin,
+            insulinFromCob = insulinFromCOB,
+            percentage = percentage,
+            projectedHp = wizardProjectedHp(bgMgdl, positiveIob, calculatedTotalInsulin, deltaMgdl, shortMgdl),
+            bgMmol = bgMmol,
+            deltaMmol = deltaMmol,
+            shortDeltaMmol = shortMmol,
+            positiveIob = positiveIob,
+        )
+        hpSafetyApplied = hp.applied
+        hpSafetyCobRemoved = hp.cobRemoved
+        if (hp.applied) {
+            hpSafetyOriginal = calculatedTotalInsulin
+            calculatedTotalInsulin = hp.dose
+            hpSafetyAdjusted = calculatedTotalInsulin
+        }
+        val boosted = wizardRiseBoost(calculatedTotalInsulin, walkingSoonCut = false, bgMmol, deltaMmol, shortMmol, longMmol)
+        riseBoostApplied = boosted != null
+        if (boosted != null) {
+            riseBoostOriginal = calculatedTotalInsulin
+            calculatedTotalInsulin = boosted
+        }
+        if (preClamp >= 0.0) preClamp = calculatedTotalInsulin
+
         // Amount-aware (Insight) + concentration-adjusted deliverable step, so the rounded value matches the pump grid.
         val bolusStep = ch.bolusStep(calculatedTotalInsulin)
         calculatedTotalInsulin = Round.roundTo(calculatedTotalInsulin, bolusStep)
@@ -330,6 +393,16 @@ class BolusWizard(
         return this
     }
 
+    private fun calculatorNote(base: String): String {
+        val extras = mutableListOf<String>()
+        if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
+        if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
+        if (riseBoostApplied) extras.add(rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
+        return extras.fold(base) { acc, line ->
+            if (acc.isEmpty()) line else rh.gs(InterfacesStrings.wizard_notes_join, acc, line)
+        }
+    }
+
     fun createBolusCalculatorResult(): BCR {
         val unit = profileFunction.getUnits()
         return BCR(
@@ -362,7 +435,7 @@ class BolusWizard(
             totalInsulin = calculatedTotalInsulin,
             percentageCorrection = percentageCorrection,
             profileName = profileName,
-            note = notes
+            note = calculatorNote(notes)
         )
     }
 
@@ -445,6 +518,18 @@ class BolusWizard(
             }
             if (eCarbsGrams > 0) {
                 line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_ecarbs, eCarbsGrams, eCarbsDurationHours, eCarbsDelayMinutes))
+            }
+            if (carbsHalvedByRecent50) {
+                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_carbs_halved))
+            }
+            if (hpSafetyApplied) {
+                line(
+                    ConfirmationRole.INFO,
+                    rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved)
+                )
+            }
+            if (riseBoostApplied) {
+                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
             }
         }
 
