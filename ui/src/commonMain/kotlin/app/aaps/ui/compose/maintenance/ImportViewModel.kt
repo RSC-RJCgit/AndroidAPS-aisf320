@@ -62,7 +62,8 @@ sealed interface ImportStep {
         val decryptionPassword: String = "",
         val needsDecryptionPassword: Boolean = false,
         val decryptResult: ImportDecryptResult? = null,
-        val isProcessing: Boolean = false
+        val isProcessing: Boolean = false,
+        val enableAutomationStates: Boolean = false
     ) : ImportStep
 
     /**
@@ -346,6 +347,12 @@ class ImportViewModel(
         }
     }
 
+    fun setEnableAutomationStates(enabled: Boolean) {
+        val current = importStep.value
+        if (current !is ImportStep.Review) return
+        _importStep.value = current.copy(enableAutomationStates = enabled)
+    }
+
     fun confirmImport() {
         val current = importStep.value
         if (current !is ImportStep.Review) return
@@ -360,7 +367,7 @@ class ImportViewModel(
                 // length of this block every preference reads as its default - the safety limits
                 // included. Nothing may act on settings until it is finished.
                 config.whileReconfiguring {
-                    importExportPrefs.executeImport(result.prefs)
+                    importExportPrefs.executeImport(result.prefs, current.enableAutomationStates)
                     importExportPrefs.prepareImportedSettings()
                 }
             }

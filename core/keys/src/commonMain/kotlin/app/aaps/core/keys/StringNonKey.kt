@@ -38,8 +38,8 @@ enum class StringNonKey(
     // sync publisher/receiver in :plugins:sync can observe it without an inter-module dependency.
     AutomationEvents(key = "AUTOMATION_EVENTS", defaultValue = "", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     // Current automation state values and their allowed lists. Local to the loop phone.
-    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}", exportable = false),
-    AutomationStateValues(key = "automation_state_values", defaultValue = "{}", exportable = false),
+    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}"),
+    AutomationStateValues(key = "automation_state_values", defaultValue = "{}"),
     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"wizard\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ComposeGraphConfig("compose_graphconfig", ""),

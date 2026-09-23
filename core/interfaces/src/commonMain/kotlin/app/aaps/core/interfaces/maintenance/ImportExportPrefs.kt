@@ -101,8 +101,11 @@ interface ImportExportPrefs {
     /** Attempt to decrypt a preference file with the given password. */
     fun decryptImportFile(file: PrefsFile, password: String): ImportDecryptResult
 
-    /** Write the decrypted prefs to SharedPreferences and call plugin hooks. */
-    fun executeImport(prefs: Prefs)
+    /**
+     * Write the decrypted prefs and call plugin hooks.
+     * The local AAPS folder is kept. Automation states are off unless [enableAutomationStates] is true.
+     */
+    fun executeImport(prefs: Prefs, enableAutomationStates: Boolean = false)
 
     /**
      * Tidy up after [executeImport], before the imported settings are applied.

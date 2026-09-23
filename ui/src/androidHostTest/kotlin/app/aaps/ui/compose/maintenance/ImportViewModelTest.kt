@@ -247,7 +247,7 @@ internal class ImportViewModelTest {
 
         inOrder(config, importExportPrefs) {
             verify(config).beginReconfiguring()
-            verify(importExportPrefs).executeImport(any())
+            verify(importExportPrefs).executeImport(any(), eq(false))
             verify(importExportPrefs).prepareImportedSettings()
             verify(config).endReconfiguring()
         }

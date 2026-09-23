@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -51,6 +52,7 @@ import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
@@ -117,6 +119,7 @@ fun ImportSettingsScreen(
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport() },
+                onEnableAutomationStates = { viewModel.setEnableAutomationStates(it) },
                 onBack = { viewModel.goBackToFilePicker() }
             )
         }
@@ -453,6 +456,7 @@ internal fun ImportReviewContent(
     onDecryptionPasswordChanged: (String) -> Unit,
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
+    onEnableAutomationStates: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -664,6 +668,23 @@ internal fun ImportReviewContent(
                         if (problemEntries.isNotEmpty()) {
                             problemEntries.forEach { (metaKey, metaEntry) ->
                                 ImportSummaryItem(metaKey = metaKey, metaEntry = metaEntry, rxBus = rxBus)
+                            }
+                        }
+                        val hasAutomationStates = result.prefs.values.keys.any {
+                            it == StringNonKey.AutomationCurrentStates.key || it == StringNonKey.AutomationStateValues.key
+                        }
+                        if (hasAutomationStates) {
+                            Text(
+                                text = stringResource(CoreUiStrings.import_automation_states_warning),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = state.enableAutomationStates,
+                                    onCheckedChange = onEnableAutomationStates,
+                                    enabled = !state.isProcessing
+                                )
+                                Text(text = stringResource(CoreUiStrings.import_enable_automation_states))
                             }
                         }
                     }

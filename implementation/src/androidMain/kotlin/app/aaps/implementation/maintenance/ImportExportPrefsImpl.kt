@@ -44,6 +44,7 @@ import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -618,8 +619,9 @@ class ImportExportPrefsImpl(
         }
     }
 
-    override fun executeImport(prefs: Prefs) {
+    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean) {
         activePlugin.beforeImport()
+        val savedDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
         sp.clear()
         for ((key, value) in prefs.values) {
             if (value == "true" || value == "false") {
@@ -628,6 +630,8 @@ class ImportExportPrefsImpl(
                 sp.putString(key, value)
             }
         }
+        if (savedDirectory.isNotEmpty()) sp.putString(StringKey.AapsDirectoryUri.key, savedDirectory)
+        sp.putBoolean(BooleanKey.AutomationStatesEnabled.key, enableAutomationStates)
         activePlugin.afterImport()
     }
 

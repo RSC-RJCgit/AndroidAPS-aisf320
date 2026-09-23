@@ -5,6 +5,8 @@ import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
 import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
 import app.aaps.implementation.maintenance.PrefsMetadataKeyImpl
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 
@@ -65,13 +67,19 @@ class PrefsTransfer(
      * there. A setting the old configuration had and the new one does not would otherwise survive an
      * import that was meant to replace it.
      *
+     * Two values are put back after that clear. The local AAPS folder stays, because it is a permission
+     * on this phone. Automation states are written off unless the import screen checkbox asked for them.
+     *
      * Booleans are written as booleans. They come back from the file as the strings `true` and
      * `false`, and a store that kept them as text would answer the wrong type to every later read.
      */
-    fun applyImported(prefs: Prefs) {
+    fun applyImported(prefs: Prefs, enableAutomationStates: Boolean = false) {
+        val savedDirectory = store.getString(StringKey.AapsDirectoryUri.key, "")
         store.clear()
         prefs.values.forEach { (key, value) ->
             if (value == "true" || value == "false") store.putBoolean(key, value.toBoolean()) else store.putString(key, value)
         }
+        if (savedDirectory.isNotEmpty()) store.putString(StringKey.AapsDirectoryUri.key, savedDirectory)
+        store.putBoolean(BooleanKey.AutomationStatesEnabled.key, enableAutomationStates)
     }
 }
