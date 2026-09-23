@@ -77,7 +77,8 @@ class WizardBolusExecutorImplTest : TestBaseWithProfile() {
     private fun create() = WizardBolusExecutorImpl(
         aapsLogger, rh, config, quickWizard, bolusWizardProvider, profileFunction, profileRepository, iobCobCalculator, constraintsChecker, activePlugin,
         runningModeGuard, commandQueue, persistenceLayer, uel, loop, dateUtil, decimalFormatter, profileUtil, automation, notificationManager, bolusProgressData,
-        CoroutineScope(Dispatchers.Unconfined)
+        CoroutineScope(Dispatchers.Unconfined),
+        preferences
     )
 
     // The base mocks ConstraintsChecker without a default answer; the FIXED/batch cap path needs a passthrough.

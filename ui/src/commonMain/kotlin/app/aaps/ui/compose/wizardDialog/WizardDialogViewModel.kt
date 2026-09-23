@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
@@ -31,6 +32,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -40,6 +42,8 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.wizardMaxBolusDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
@@ -111,6 +115,14 @@ class WizardDialogViewModel(
     val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
 
     private var wizard: BolusWizard? = null
+    private var savedSafetyMaxBolus: Double? = null
+    private var maxBolusOverridden = false
+    private var maxBolusTouched = false
+
+    override fun onCleared() {
+        if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
+        super.onCleared()
+    }
 
     init {
         viewModelScope.launch { initialize() }
@@ -125,7 +137,6 @@ class WizardDialogViewModel(
         val units = profileFunction.getUnits()
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
-        val maxBolus = constraintChecker.getMaxBolusAllowed().value()
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
 
@@ -154,6 +165,8 @@ class WizardDialogViewModel(
         val hasBgData = actualBg != null
         val currentBg = actualBg?.valueToUnits(units) ?: 0.0
         val bgAgeMinutes = if (actualBg != null) ((dateUtil.now() - actualBg.timestamp) / 60000).toInt() else 0
+        val startingMaxBolus = suggestedMaxBolus(currentBg, units, bolusStep)
+        applyWizardMaxBolus(startingMaxBolus)
 
         // IOB for display
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
@@ -185,7 +198,7 @@ class WizardDialogViewModel(
                 calculationExpanded = false,
                 // Config
                 maxCarbs = maxCarbs,
-                maxBolus = maxBolus,
+                maxBolus = startingMaxBolus,
                 bolusStep = bolusStep,
                 units = units,
                 profileNames = profileList,
@@ -234,6 +247,34 @@ class WizardDialogViewModel(
     fun updateFat(value: Int) {
         _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
         recalculate()
+    }
+
+    fun updateWarsawDuration(value: Double) {
+        _uiState.update { it.copy(warsawDurationHours = value.coerceIn(0.0, 24.0)) }
+        recalculate()
+    }
+
+    fun updateMaxBolus(value: Double) {
+        maxBolusTouched = true
+        val clamped = value.coerceIn(0.1, 60.0)
+        applyWizardMaxBolus(clamped)
+        _uiState.update { it.copy(maxBolus = clamped) }
+        recalculate()
+    }
+
+    private suspend fun suggestedMaxBolus(bg: Double, units: GlucoseUnit, bolusStep: Double): Double {
+        val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
+        val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, units)
+        else iobCobCalculator.ads.actualBg()?.value ?: 999.0
+        val recent = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl)
+        return wizardMaxBolusDefault(saved, bgMgdl, recent, bolusStep)
+    }
+
+    private fun applyWizardMaxBolus(value: Double) {
+        val saved = savedSafetyMaxBolus ?: return
+        if (!maxBolusOverridden && abs(saved - value) < 0.001) return
+        preferences.put(DoubleKey.SafetyMaxBolus, value)
+        maxBolusOverridden = true
     }
 
     fun addCarbs(increment: Int) {
@@ -356,7 +397,15 @@ class WizardDialogViewModel(
     }
 
     private suspend fun recalculateSuspend() {
-        val state = uiState.value
+        var state = uiState.value
+        if (!maxBolusTouched) {
+            val suggested = suggestedMaxBolus(state.bg, state.units, state.bolusStep)
+            if (abs(state.maxBolus - suggested) >= 0.001) {
+                applyWizardMaxBolus(suggested)
+                _uiState.update { it.copy(maxBolus = suggested) }
+                state = uiState.value
+            }
+        }
         val profileStore = profileRepository.profile.value ?: return
 
         // Resolve profile
@@ -420,6 +469,7 @@ class WizardDialogViewModel(
             state.carbTime,
             protein = state.protein,
             fat = state.fat,
+            warsawDurationHours = state.warsawDurationHours,
         )
 
         wizard = w
@@ -536,6 +586,7 @@ class WizardDialogViewModel(
             useTt = state.useTT, useTrend = state.useTrend, alarm = state.alarmChecked, notes = state.notes,
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
             profileName = profileName, protein = state.protein, fat = state.fat,
+            warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         appScope.launch {

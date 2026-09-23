@@ -248,5 +248,6 @@ interface WizardBolusExecutor {
         val protein: Int = 0,
         val fat: Int = 0,
         val warsawDurationHours: Double = 5.0,
+        val maxBolus: Double? = null,
     )
 }

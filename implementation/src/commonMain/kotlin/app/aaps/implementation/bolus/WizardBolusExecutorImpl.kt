@@ -47,6 +47,8 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
@@ -97,7 +99,8 @@ class WizardBolusExecutorImpl(
     private val bolusProgressData: BolusProgressData,
     // Plain CoroutineScope, not @ApplicationScope: that qualifier is javax and cannot appear in
     // commonMain. AppCoroutineBindings.unqualifiedAppScope binds the very same scope without it.
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    private val preferences: Preferences,
 ) : WizardBolusExecutor {
 
     /**
@@ -146,6 +149,7 @@ class WizardBolusExecutorImpl(
         val bolusTimestamp: Long? = null,
         val warsawPlan: WarsawFpuPlan? = null,
         val warsawIobBaseline: Double = 0.0,
+        val wizardMaxBolus: Double? = null,
     )
 
     // Consume-once slots keyed by bolusId — a map, NOT a single var, so prepares from different actors (the
@@ -312,11 +316,18 @@ class WizardBolusExecutorImpl(
         val cob = if (inputs.useCob) iobCobCalculator.getCobInfo("WizardPrepare").displayCob ?: 0.0 else 0.0
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(inputs.carbs, aapsLogger)).value()
         if (carbsAfterConstraints != inputs.carbs) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
-        val wizard = bolusWizardProvider().doCalc(
-            profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
-            inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
-            protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
-        )
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val wizardMax = inputs.maxBolus?.coerceIn(0.1, 60.0)
+        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        val wizard = try {
+            bolusWizardProvider().doCalc(
+                profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
+                inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
+                protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
+            )
+        } finally {
+            if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
         val insulinAfterConstraints = wizard.insulinAfterConstraints
         val minStep = pump.pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints)
         if (abs(insulinAfterConstraints - wizard.calculatedTotalInsulin) >= minStep)
@@ -342,6 +353,7 @@ class WizardBolusExecutorImpl(
                 eCarbsDurationHours = inputs.eCarbsDurationHours,
                 warsawPlan = wizard.warsawPlan,
                 warsawIobBaseline = wizard.warsawIobBaseline,
+                wizardMaxBolus = inputs.maxBolus,
             )
         )
         val advisorApplies = wizard.needsBolusAdvisor()
@@ -663,9 +675,16 @@ class WizardBolusExecutorImpl(
         // The mg/dL BG comes from the BCR's glucoseValue (== profileUtil.convertToMgdl(bg, units)).
         // correctionU: watch-side ± adjustment added by the user on the result page; adjust BCR so the wizard log
         // records the actual delivered amount (otherCorrection mirrors the phone wizard's direct-correction field).
-        val correctedInsulin = constraintChecker.applyBolusConstraints(
-            ConstraintObject((p.insulin + correctionU).coerceAtLeast(0.0), aapsLogger)
-        ).value()
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val wizardMax = p.wizardMaxBolus?.coerceIn(0.1, 60.0)
+        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        val correctedInsulin = try {
+            constraintChecker.applyBolusConstraints(
+                ConstraintObject((p.insulin + correctionU).coerceAtLeast(0.0), aapsLogger)
+            ).value()
+        } finally {
+            if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
         val correctedBcr = if (correctionU != 0.0)
             p.bcr?.copy(
                 otherCorrection = p.bcr.otherCorrection + correctionU,
