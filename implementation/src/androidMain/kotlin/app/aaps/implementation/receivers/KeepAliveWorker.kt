@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.maintenance.AutomaticExport
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -65,6 +66,7 @@ class KeepAliveWorker(
     private val rxBus: RxBus,
     private val commandQueue: CommandQueue,
     private val periodicMaintenance: PeriodicMaintenance,
+    private val automaticExport: AutomaticExport,
     private val rh: ResourceHelper,
     private val preferences: Preferences,
     private val dstHelper: DstHelper,
@@ -159,6 +161,7 @@ class KeepAliveWorker(
         // nothing. What stays here is what genuinely needs this worker: the pump and APS checks, and
         // the WorkManager telemetry below.
         periodicMaintenance.runOnce()
+        automaticExport.runIfDue()
         checkPump()
         checkAPS()
         workerDbStatus()

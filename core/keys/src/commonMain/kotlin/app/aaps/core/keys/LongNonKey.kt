@@ -14,6 +14,12 @@ enum class LongNonKey(
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),
     LastCleanupRun("last_cleanup_run", 0L),
 
+    // When the six-hour AutoISF history files were last written. Local only.
+    LastAutoIsfHistoryExport("last_autoisf_history_export", 0L, exportable = false),
+
+    // When the six-hour cloud log upload last started. Local only.
+    LastCloudLogExport("last_cloud_log_export", 0L, exportable = false),
+
     // NSCv3 client-control pairing (excluded from export — replay protection regresses if restored)
     NsClientControlCounterSent("nsclient_control_counter_sent", 0L, exportable = false),
 

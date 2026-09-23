@@ -37,6 +37,8 @@ class IosMaintenance(
     private val logDirectory: String? = defaultLogDirectory()
 ) : Maintenance {
 
+    override suspend fun uploadLogsToCloud(): Boolean = false
+
     override suspend fun executeSendLogs(): ExportResult =
         aapsLogger.failNotOnIosYet("Maintenance.executeSendLogs")
 

@@ -1,7 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +23,7 @@ import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -157,6 +157,10 @@ fun BgGraphCompose(
     val lowColor = AapsTheme.generalColors.bgLow
     val inRangeColor = AapsTheme.generalColors.bgInRange
     val highColor = AapsTheme.generalColors.bgHigh
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
     val basalColor = AapsTheme.elementColors.tempBasal
     val targetLineColor = AapsTheme.elementColors.tempTarget
     val activityColor = AapsTheme.elementColors.activity
@@ -246,25 +250,23 @@ fun BgGraphCompose(
 
             // Block 2 → Basal layer (layer 1, end axis)
             lineModel {
-                if (currentBasalData.profileBasal.size >= 2) {
-                    val pts = currentBasalData.profileBasal
-                        .map { timestampToX(it.timestamp, minTimestamp) to it.value }
-                        .sortedBy { it.first }
-                    series(x = pts.map { it.first }, y = pts.map { it.second })
-                } else {
-                    // Dummy series - invisible at y=0
-                    series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                fun addBasalSeries(points: List<GraphDataPoint>) {
+                    if (points.size >= 2) {
+                        val pts = points
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = pts.map { it.first }, y = pts.map { it.second })
+                    } else {
+                        // Dummy series - invisible at y=0
+                        series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    }
                 }
-
-                if (currentBasalData.actualBasal.size >= 2) {
-                    val pts = currentBasalData.actualBasal
-                        .map { timestampToX(it.timestamp, minTimestamp) to it.value }
-                        .sortedBy { it.first }
-                    series(x = pts.map { it.first }, y = pts.map { it.second })
-                } else {
-                    // Dummy series - invisible at y=0
-                    series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
-                }
+                addBasalSeries(currentBasalData.profileBasal)
+                addBasalSeries(currentBasalData.actualBasal)
+                addBasalSeries(currentBasalData.acceTemp)
+                addBasalSeries(currentBasalData.bgTemp)
+                addBasalSeries(currentBasalData.ppTemp)
+                addBasalSeries(currentBasalData.duraTemp)
             }
 
             // Block 3 → Target line layer (layer 2, start axis)
@@ -391,8 +393,16 @@ fun BgGraphCompose(
         bucketedData.associateBy { timestampToX(it.timestamp, minTimestamp) }
     }
 
-    val bucketedPointProvider = remember(bucketedLookup, lowColor, inRangeColor, highColor) {
-        BucketedPointProvider(bucketedLookup, lowColor, inRangeColor, highColor)
+    val readingLookup = remember(bgReadings, minTimestamp) {
+        bgReadings.associateBy { timestampToX(it.timestamp, minTimestamp) }
+    }
+
+    val bucketedPointProvider = remember(bucketedLookup, lowColor, inRangeColor, highColor, acceColor, bgIsfColor, ppColor, duraColor) {
+        BucketedPointProvider(bucketedLookup, lowColor, inRangeColor, highColor, acceColor, bgIsfColor, ppColor, duraColor)
+    }
+
+    val readingPointProvider = remember(readingLookup, regularColor, acceColor, bgIsfColor, ppColor, duraColor) {
+        ReadingPointProvider(readingLookup, regularColor, acceColor, bgIsfColor, ppColor, duraColor)
     }
 
     // Time formatter and axis configuration
@@ -403,21 +413,11 @@ fun BgGraphCompose(
     // BG layer lines (layer 0)
     // =========================================================================
 
-    val regularLine = remember(regularColor) {
+    val regularLine = remember(readingPointProvider) {
         LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
             areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(
-                    component = ShapeComponent(
-                        fill = Fill(Color.Transparent),
-                        shape = CircleShape,
-                        strokeFill = Fill(regularColor.copy(alpha = 0.3f)),
-                        strokeThickness = 1.dp
-                    ),
-                    size = 6.dp
-                )
-            )
+            pointProvider = readingPointProvider
         )
     }
 
@@ -481,8 +481,20 @@ fun BgGraphCompose(
         )
     }
 
-    val basalLines = remember(profileBasalLine, actualBasalLine) {
-        listOf(profileBasalLine, actualBasalLine)
+    fun factorBasalLine(color: Color) = LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
+        areaFill = LineCartesianLayer.AreaFill.single(Fill(color.copy(alpha = 0.7f))),
+        interpolator = Square
+    )
+
+    val acceBasalLine = remember(acceColor) { factorBasalLine(acceColor) }
+    val bgBasalLine = remember(bgIsfColor) { factorBasalLine(bgIsfColor) }
+    val ppBasalLine = remember(ppColor) { factorBasalLine(ppColor) }
+    val duraBasalLine = remember(duraColor) { factorBasalLine(duraColor) }
+
+    val basalLines = remember(profileBasalLine, actualBasalLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine) {
+        listOf(profileBasalLine, actualBasalLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine)
     }
 
     // =========================================================================

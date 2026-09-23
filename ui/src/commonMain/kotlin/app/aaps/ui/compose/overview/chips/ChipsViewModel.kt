@@ -5,6 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -27,6 +28,9 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.AUTO_ISF_HISTORY_WINDOW_MS
+import app.aaps.ui.compose.overview.AutoIsfHistoryRow
+import app.aaps.ui.compose.overview.autoIsfHistoryRows
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
@@ -190,8 +194,23 @@ class ChipsViewModel(
             dialogText = dialogText.joinToString("\n"),
             ratio = lastAutosensRatio ?: 1.0,
             isEnabled = isEnabled,
-            hasData = lastAutosensData != null
+            hasData = lastAutosensData != null,
+            autoIsfHistory = activePlugin.activeAPS?.algorithm == APSResult.Algorithm.AUTO_ISF
         )
+    }
+
+    /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
+    suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
+        val now = dateUtil.now()
+        val units = profileFunction.getUnits()
+        return persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
+            .sortedByDescending { it.timestamp }
+            .autoIsfHistoryRows(
+                timeText = { dateUtil.timeString(it) },
+                glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
+                deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },
+                format2 = { decimalFormatter.to2Decimal(it) }
+            )
     }
 
     fun showIobInfo() {

@@ -31,7 +31,10 @@ import app.aaps.core.interfaces.overview.graph.AapsClientStatusData
 import app.aaps.core.interfaces.overview.graph.AapsClientStatusItem
 import app.aaps.core.interfaces.overview.graph.AbsIobGraphData
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
+import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
+import app.aaps.core.interfaces.overview.graph.DominantIsf
+import app.aaps.core.interfaces.overview.graph.dominantIsf
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -243,6 +246,8 @@ class OverviewDataCacheImpl(
     override val devSlopeGraphFlow: StateFlow<DevSlopeGraphData> = _devSlopeGraphFlow.asStateFlow()
     private val _varSensGraphFlow = MutableStateFlow(VarSensGraphData(emptyList()))
     override val varSensGraphFlow: StateFlow<VarSensGraphData> = _varSensGraphFlow.asStateFlow()
+    private val _autoIsfGraphFlow = MutableStateFlow(AutoIsfGraphData())
+    override val autoIsfGraphFlow: StateFlow<AutoIsfGraphData> = _autoIsfGraphFlow.asStateFlow()
     private val _heartRateGraphFlow = MutableStateFlow(HeartRateGraphData(emptyList()))
     override val heartRateGraphFlow: StateFlow<HeartRateGraphData> = _heartRateGraphFlow.asStateFlow()
     private val _stepsGraphFlow = MutableStateFlow(StepsGraphData(emptyList()))
@@ -789,6 +794,10 @@ class OverviewDataCacheImpl(
         _varSensGraphFlow.value = data
     }
 
+    override fun updateAutoIsfGraph(data: AutoIsfGraphData) {
+        _autoIsfGraphFlow.value = data
+    }
+
     override fun updateHeartRateGraph(data: HeartRateGraphData) {
         _heartRateGraphFlow.value = data
     }
@@ -1059,7 +1068,16 @@ class OverviewDataCacheImpl(
         if (lastProfileBasal >= 0.0) profileBasal.add(GraphDataPoint(endTime, lastProfileBasal))
         if (lastActualBasal >= 0.0) actualBasal.add(GraphDataPoint(endTime, lastActualBasal))
 
-        _basalGraphFlow.value = BasalGraphData(profileBasal, actualBasal, maxBasal)
+        val factorTemps = factorTempColumns(fromTime, endTime)
+        _basalGraphFlow.value = BasalGraphData(
+            profileBasal = profileBasal,
+            actualBasal = actualBasal,
+            maxBasal = maxBasal,
+            acceTemp = factorTemps.acce,
+            bgTemp = factorTemps.bg,
+            ppTemp = factorTemps.pp,
+            duraTemp = factorTemps.dura
+        )
 
         // Everything needed to see a short line for what it is, without a second run. The last
         // point of each series is the end the user actually sees, so comparing it against `now`
@@ -1076,6 +1094,47 @@ class OverviewDataCacheImpl(
                 "actual=${actualBasal.size} points ending ${actualBasal.lastOrNull()?.let { dateUtil.dateAndTimeAndSecondsString(it.timestamp) } ?: "nowhere"}"
         }
     }
+
+    /**
+     * One 5-minute column per AutoISF row, drawn on top of the normal temp basal.
+     * A row with no temp, or with no factor more than 0.01 from 1.0, keeps the normal colour.
+     */
+    private suspend fun factorTempColumns(fromTime: Long, endTime: Long): FactorTemps {
+        val acce = mutableListOf<GraphDataPoint>()
+        val bg = mutableListOf<GraphDataPoint>()
+        val pp = mutableListOf<GraphDataPoint>()
+        val dura = mutableListOf<GraphDataPoint>()
+        val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime).sortedBy { it.timestamp }
+        val columnMs = 5L * 60L * 1000L
+        for (row in rows) {
+            val profile = profileFunction.getProfile(row.timestamp) ?: continue
+            val basalData = iobCobCalculator.getBasalData(profile, row.timestamp)
+            if (!basalData.isTempBasalRunning) continue
+            val rate = basalData.tempBasalAbsolute
+            if (rate <= 0.0) continue
+            val target = when (dominantIsf(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)) {
+                DominantIsf.ACCE -> acce
+                DominantIsf.BG   -> bg
+                DominantIsf.PP   -> pp
+                DominantIsf.DURA -> dura
+                DominantIsf.NONE -> continue
+            }
+            val end = row.timestamp + columnMs
+            val last = target.lastOrNull()
+            if (last == null || last.timestamp < row.timestamp) target.add(GraphDataPoint(row.timestamp, 0.0))
+            target.add(GraphDataPoint(row.timestamp + 1L, rate))
+            target.add(GraphDataPoint(end - 1L, rate))
+            target.add(GraphDataPoint(end, 0.0))
+        }
+        return FactorTemps(acce, bg, pp, dura)
+    }
+
+    private data class FactorTemps(
+        val acce: List<GraphDataPoint>,
+        val bg: List<GraphDataPoint>,
+        val pp: List<GraphDataPoint>,
+        val dura: List<GraphDataPoint>
+    )
 
     // =========================================================================
     // NSClient status rebuild
@@ -1218,6 +1277,7 @@ class OverviewDataCacheImpl(
         _ratioGraphFlow.value = RatioGraphData(emptyList())
         _devSlopeGraphFlow.value = DevSlopeGraphData(emptyList(), emptyList())
         _varSensGraphFlow.value = VarSensGraphData(emptyList())
+        _autoIsfGraphFlow.value = AutoIsfGraphData()
         _heartRateGraphFlow.value = HeartRateGraphData(emptyList())
         _stepsGraphFlow.value = StepsGraphData(emptyList())
         _treatmentGraphFlow.value = TreatmentGraphData(emptyList(), emptyList(), emptyList(), emptyList())

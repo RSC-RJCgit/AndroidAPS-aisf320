@@ -7,6 +7,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.TimeZone
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
@@ -24,7 +25,10 @@ import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.AbsIobGraphData
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
+import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.DominantIsf
+import app.aaps.core.interfaces.overview.graph.dominantIsfAt
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.BgiGraphData
@@ -179,7 +183,7 @@ class PrepareGraphDataRunner(
 
     // ---------- Phase 2 (PrepareBucketedDataWorker logic) ----------
 
-    private fun prepareBucketedData(data: PrepareGraphData) {
+    private suspend fun prepareBucketedData(data: PrepareGraphData) {
         val bucketedData = data.iobCobCalculator.ads.getBucketedDataTableCopy() ?: return
         if (bucketedData.isEmpty()) {
             aapsLogger.debug("No bucketed data.")
@@ -192,6 +196,7 @@ class PrepareGraphDataRunner(
 
         val highMark = preferences.get(UnitDoubleKey.OverviewHighMark)
         val lowMark = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(newFromTime, newToTime)
 
         val bucketedDataPoints = bucketedData
             .filter { it.timestamp in newFromTime..newToTime }
@@ -207,7 +212,8 @@ class PrepareGraphDataRunner(
                     value = valueInUnits,
                     range = range,
                     type = BgType.BUCKETED,
-                    filledGap = value.filledGap
+                    filledGap = value.filledGap,
+                    dominantIsf = dominantFor(value.timestamp, autoIsfRows)
                 )
             }
         data.cache.updateBucketedData(bucketedDataPoints)
@@ -222,6 +228,7 @@ class PrepareGraphDataRunner(
 
         val highMarkInUnits = preferences.get(UnitDoubleKey.OverviewHighMark)
         val lowMarkInUnits = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, toTime)
 
         val bgDataPoints = bgReadingsArray
             .filter { it.timestamp in fromTime..toTime }
@@ -235,7 +242,8 @@ class PrepareGraphDataRunner(
                         valueInUnits < lowMarkInUnits  -> BgRange.LOW
                         else                           -> BgRange.IN_RANGE
                     },
-                    type = BgType.REGULAR
+                    type = BgType.REGULAR,
+                    dominantIsf = dominantFor(bg.timestamp, autoIsfRows)
                 )
             }
 
@@ -784,8 +792,29 @@ class PrepareGraphDataRunner(
         data.cache.updateRatioGraph(RatioGraphData(ratio = ratioListCompose))
         data.cache.updateDevSlopeGraph(DevSlopeGraphData(dsMax = dsMaxListCompose, dsMin = dsMinListCompose))
         data.cache.updateVarSensGraph(VarSensGraphData(varSens = varSensListCompose))
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        data.cache.updateAutoIsfGraph(
+            AutoIsfGraphData(
+                acce = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsf) },
+                bg = autoIsfRows.map { GraphDataPoint(it.timestamp, it.bgIsf) },
+                pp = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsf) },
+                dura = autoIsfRows.map { GraphDataPoint(it.timestamp, it.duraIsf) },
+                finalIsf = autoIsfRows.map { GraphDataPoint(it.timestamp, it.finalIsf) }
+            )
+        )
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100)
     }
+
+    private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =
+        dominantIsfAt(
+            timestamp = timestamp,
+            rows = rows,
+            timeOf = { it.timestamp },
+            acceOf = { it.acceIsf },
+            bgOf = { it.bgIsf },
+            ppOf = { it.ppIsf },
+            duraOf = { it.duraIsf }
+        )
 
 }

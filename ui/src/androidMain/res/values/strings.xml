@@ -197,6 +197,24 @@
     <string name="activate_profile">Activate profile</string>
     <string name="review_native_automations">Review native automations</string>
     <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names stay blocked while that switch is on. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="autoisf_history_title">AutoISF history</string>
+    <string name="autoisf_history_empty">No AutoISF data in the last 6 hours</string>
+    <string name="autoisf_history_no_smb">No SMB in the last 6 hours</string>
+    <string name="autoisf_history_smb_only" comment="Button. Shows only rows where an SMB was given.">SMB only</string>
+    <string name="autoisf_history_all" comment="Button. Shows every AutoISF row, not only SMB rows.">All</string>
+    <string name="autoisf_history_time">Time</string>
+    <string name="autoisf_history_bgl">BGL</string>
+    <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
+    <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
+    <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>
+    <string name="autoisf_history_pp" comment="The pp ISF factor. Example: 0.90">pp</string>
+    <string name="autoisf_history_dura" comment="The dura ISF factor. Example: 1.05">dura</string>
+    <string name="autoisf_history_accel" comment="BG acceleration. This is not the acce ISF factor.">accel</string>
+    <string name="autoisf_history_delta">Delta</string>
+    <string name="autoisf_history_short_delta" comment="Short average BG delta.">Short delta</string>
+    <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
+    <string name="autoisf_history_iob">IOB</string>
+    <string name="autoisf_history_smb">SMB</string>
     <string name="coded_profiles">Coded profiles</string>
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>

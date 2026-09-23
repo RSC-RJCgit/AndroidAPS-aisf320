@@ -31,5 +31,13 @@ internal val migration35to36 = object : Migration(35, 36) {
         connection.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTO_ISF_VALUES` (`timestamp`)"
         )
+        // These indexes are added after the database opens. They are not part of the Room
+        // tables. Room compares the live database to the tables after this step, so they
+        // must be gone here. The next open creates them again.
+        connection.execSQL("DROP INDEX IF EXISTS `index_temporaryBasals_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_extendedBoluses_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_temporaryTargets_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_carbs_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_runningModes_end`")
     }
 }

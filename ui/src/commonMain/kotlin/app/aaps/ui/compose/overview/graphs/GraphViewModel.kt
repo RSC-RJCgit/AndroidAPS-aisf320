@@ -114,6 +114,7 @@ class GraphViewModel(
     val ratioGraphFlow = cache.ratioGraphFlow
     val devSlopeGraphFlow = cache.devSlopeGraphFlow
     val varSensGraphFlow = cache.varSensGraphFlow
+    val autoIsfGraphFlow = cache.autoIsfGraphFlow
     val heartRateGraphFlow = cache.heartRateGraphFlow
     val stepsGraphFlow = cache.stepsGraphFlow
     val treatmentGraphFlow = cache.treatmentGraphFlow

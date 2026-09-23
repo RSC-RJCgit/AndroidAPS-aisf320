@@ -104,7 +104,13 @@ data class GeneralColors(
     val notificationAnnouncement: Color,
     val onNotification: Color,
     // Toggle colors
-    val toggleOn: Color
+    val toggleOn: Color,
+    // AutoISF factor colours. The history table and the graph use the same four.
+    val acceIsf: Color,
+    val bgIsf: Color,
+    val ppIsf: Color,
+    val duraIsf: Color,
+    val finalIsf: Color
 )
 
 /**
@@ -161,7 +167,12 @@ val LightGeneralColors = GeneralColors(
     notificationInfo = Color(0xFF009705),         // green for info notifications
     notificationAnnouncement = Color(0xFFFF8C00), // orange for announcements
     onNotification = Color(0xFFFFFFFF),            // white text on notification backgrounds
-    toggleOn = Color(0xFF4CAF50)                    // green for active/selected toggles
+    toggleOn = Color(0xFF4CAF50),                   // green for active/selected toggles
+    acceIsf = Color(0xFF4499FF),                    // blue when acce ISF is the largest change
+    bgIsf = Color(0xFFFF1493),                      // pink when bg ISF is the largest change
+    ppIsf = Color(0xFF00BB00),                      // green when pp ISF is the largest change
+    duraIsf = Color(0xFFFF8800),                    // orange when dura ISF is the largest change
+    finalIsf = Color(0xFFFF6060)                    // red for the final factor when none of the four moved it
 )
 
 /**
@@ -218,7 +229,12 @@ val DarkGeneralColors = GeneralColors(
     notificationInfo = Color(0xFF009705),
     notificationAnnouncement = Color(0xFFFF8C00),
     onNotification = Color(0xFFFFFFFF),
-    toggleOn = Color(0xFF81C784)                    // lighter green for active/selected toggles (dark mode)
+    toggleOn = Color(0xFF81C784),                   // lighter green for active/selected toggles (dark mode)
+    acceIsf = Color(0xFF4499FF),
+    bgIsf = Color(0xFFFF1493),
+    ppIsf = Color(0xFF00FF00),                      // brighter green on a dark background
+    duraIsf = Color(0xFFFF8800),
+    finalIsf = Color(0xFFFF6060)
 )
 
 /**

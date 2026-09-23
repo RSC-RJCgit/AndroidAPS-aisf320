@@ -204,6 +204,8 @@ fun SecondaryGraphCompose(
     val deviationsData = if (SeriesType.DEVIATIONS in primaryTypes) viewModel.deviationsGraphFlow.collectAsStateWithLifecycle().value else null
     val ratioData = if (primaryType == SeriesType.SENSITIVITY) viewModel.ratioGraphFlow.collectAsStateWithLifecycle().value else null
     val varSensData = if (primaryType == SeriesType.VAR_SENSITIVITY) viewModel.varSensGraphFlow.collectAsStateWithLifecycle().value else null
+    val needsAutoIsf = primaryType in AUTO_ISF_SERIES_TYPES || secondaryType in AUTO_ISF_SERIES_TYPES
+    val autoIsfData = if (needsAutoIsf) viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value else null
     val devSlopeData = if (primaryType == SeriesType.DEV_SLOPE) viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value else null
     val hrData = if (primaryType == SeriesType.HEART_RATE) viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value else null
     val stepsData = if (primaryType == SeriesType.STEPS) viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value else null
@@ -232,6 +234,11 @@ fun SecondaryGraphCompose(
             GraphDataPoint(it.timestamp, it.value + 100.0)
         }
         SeriesType.VAR_SENSITIVITY -> viewModel.varSensGraphFlow.collectAsStateWithLifecycle().value.varSens
+        SeriesType.ACCE_ISF,
+        SeriesType.BG_ISF,
+        SeriesType.PP_ISF,
+        SeriesType.DURA_ISF,
+        SeriesType.FINAL_ISF       -> autoIsfData?.pointsFor(secondaryType) ?: emptyList()
         SeriesType.DEV_SLOPE       -> viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value.dsMax
         SeriesType.HEART_RATE      -> viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value.heartRates
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
@@ -251,7 +258,7 @@ fun SecondaryGraphCompose(
 
     // Simple line series processing (excludes BASAL — it's a fixed flipped overlay on IOB)
     val processedSimpleSeries = remember(
-        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData
+        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData, autoIsfData, primaryType
     ) {
         if (!hasRealTimeRange) return@remember emptyList()
         buildList {
@@ -285,6 +292,11 @@ fun SecondaryGraphCompose(
                 activityData?.let {
                     if (it.activity.isNotEmpty()) add(SeriesType.ACTIVITY to processPoints(it.activity, minTimestamp, minX, maxX))
                     if (it.activityPrediction.isNotEmpty()) add(SeriesType.ACTIVITY to processPoints(it.activityPrediction, minTimestamp, minX, maxX))
+                }
+            }
+            if (primaryType in AUTO_ISF_SERIES_TYPES) {
+                autoIsfData?.pointsFor(primaryType)?.takeIf { it.isNotEmpty() }?.let {
+                    add(primaryType to processPoints(it, minTimestamp, minX, maxX))
                 }
             }
         }
@@ -768,6 +780,7 @@ fun SecondaryGraphCompose(
             SeriesType.COB                                    -> niceScale(0.0, primaryYValues.max().coerceAtLeast(0.0), SECONDARY_GRAPH_TICK_COUNT)
             in ZERO_FLOOR_SERIES_TYPES                         -> zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
             SeriesType.VAR_SENSITIVITY, SeriesType.HEART_RATE  -> niceScale(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
+            in AUTO_ISF_SERIES_TYPES                           -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 1.0, SECONDARY_GRAPH_TICK_COUNT, 0.25)
             SeriesType.SENSITIVITY                             -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 100.0, SENS_PIVOT_TICK_COUNT, SENS_MIN_DEVIATION)
             SeriesType.DEV_SLOPE                               -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 0.0, SECONDARY_GRAPH_TICK_COUNT)
             else                                               -> null
@@ -1144,7 +1157,12 @@ data class SeriesColors(
     val devSlope: Color,
     val heartRate: Color,
     val steps: Color,
-    val activity: Color
+    val activity: Color,
+    val acceIsf: Color,
+    val bgIsf: Color,
+    val ppIsf: Color,
+    val duraIsf: Color,
+    val finalIsf: Color
 ) {
 
     fun colorFor(type: SeriesType): Color = when (type) {
@@ -1160,15 +1178,21 @@ data class SeriesColors(
         SeriesType.STEPS           -> steps
         SeriesType.ACTIVITY        -> activity
         SeriesType.PREDICTIONS     -> activity // unused — PREDICTIONS is a BG overlay flag, not a secondary series
+        SeriesType.ACCE_ISF        -> acceIsf
+        SeriesType.BG_ISF          -> bgIsf
+        SeriesType.PP_ISF          -> ppIsf
+        SeriesType.DURA_ISF        -> duraIsf
+        SeriesType.FINAL_ISF       -> finalIsf
     }
 }
 
 @Composable
 fun rememberSeriesColors(): SeriesColors {
-    val iobColor = AapsTheme.generalColors.iobPrediction
-    val cobColor = AapsTheme.generalColors.cobPrediction
+    val general = AapsTheme.generalColors
+    val iobColor = general.iobPrediction
+    val cobColor = general.cobPrediction
     val onSurface = MaterialTheme.colorScheme.onSurface
-    return remember(iobColor, cobColor, onSurface) {
+    return remember(iobColor, cobColor, onSurface, general.acceIsf, general.bgIsf, general.ppIsf, general.duraIsf, general.finalIsf) {
         SeriesColors(
             iob = iobColor,                         // #1e88e5 blue (matches @color/iob)
             absIob = iobColor,                      // same blue as IOB
@@ -1180,7 +1204,12 @@ fun rememberSeriesColors(): SeriesColors {
             devSlope = Color(0xFFFFFF00),            // yellow (matches @color/devSlopePos)
             heartRate = Color(0xFFFFFF66),           // pale yellow (matches @color/heartRate #FFFFFF66)
             steps = Color(0xFF66FFB8),              // mint green (matches @color/steps)
-            activity = Color(0xFFD3F166)            // lime green (matches @color/activity)
+            activity = Color(0xFFD3F166),           // lime green (matches @color/activity)
+            acceIsf = general.acceIsf,
+            bgIsf = general.bgIsf,
+            ppIsf = general.ppIsf,
+            duraIsf = general.duraIsf,
+            finalIsf = general.finalIsf
         )
     }
 }
@@ -1205,8 +1234,14 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
             ),
             interpolator = Square
         )
-        // Line only, no fill
-        SeriesType.DEV_SLOPE, SeriesType.SENSITIVITY, SeriesType.VAR_SENSITIVITY -> LineCartesianLayer.Line(
+        SeriesType.FINAL_ISF -> LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 3.dp),
+            areaFill = null
+        )
+        // Line only, no fill. The four factors are thinner than the final line.
+        SeriesType.DEV_SLOPE, SeriesType.SENSITIVITY, SeriesType.VAR_SENSITIVITY,
+        SeriesType.ACCE_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DURA_ISF -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
             areaFill = null
         )

@@ -158,6 +158,7 @@ class BuiltInSearchables(
         items = listOf(
             StringKey.MaintenanceEmail,
             IntKey.MaintenanceLogsAmount,
+            BooleanKey.MaintenanceAutoExportLogsToCloud,
             PreferenceSubScreenDef(
                 key = "data_choice_setting",
                 title = CoreUiStrings.data_choices,

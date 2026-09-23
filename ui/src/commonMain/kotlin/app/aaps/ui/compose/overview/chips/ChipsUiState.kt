@@ -29,5 +29,6 @@ data class SensitivityUiState(
     val dialogText: String = "",
     val ratio: Double = 1.0,
     val isEnabled: Boolean = true,
-    val hasData: Boolean = false
+    val hasData: Boolean = false,
+    val autoIsfHistory: Boolean = false
 )

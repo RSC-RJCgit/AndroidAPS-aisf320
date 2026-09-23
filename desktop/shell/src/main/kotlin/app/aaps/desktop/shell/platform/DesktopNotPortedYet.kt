@@ -103,6 +103,8 @@ class DesktopMaintenance(
     private val logFile: File = DesktopFolders.log
 ) : Maintenance {
 
+    override suspend fun uploadLogsToCloud(): Boolean = false
+
     override suspend fun executeSendLogs(): ExportResult =
         aapsLogger.failNotOnDesktopYet("Maintenance.executeSendLogs")
 

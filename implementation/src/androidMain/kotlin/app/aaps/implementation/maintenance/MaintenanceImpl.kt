@@ -81,6 +81,16 @@ class MaintenanceImpl(
         return ExportResult(localSuccess = emailSuccess, cloudSuccess = cloudSuccess)
     }
 
+    override suspend fun uploadLogsToCloud(): Boolean {
+        if (!cloudStorageManager.isCloudStorageActive()) return false
+        val amount = preferences.get(IntKey.MaintenanceLogsAmount)
+        val logs = getLogFiles(amount)
+        if (logs.isEmpty()) return false
+        val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName()) ?: return false
+        zipLogs(zipFile, logs)
+        return performCloudLogUpload(zipFile)
+    }
+
     override fun deleteLogs(keep: Int) {
         val logDir = File(loggerUtils.logDirectory)
         val files = logDir.listFiles { _: File?, name: String ->

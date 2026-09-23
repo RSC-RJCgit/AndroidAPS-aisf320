@@ -494,6 +494,15 @@ fun niceScaleAroundPivot(min: Double, max: Double, pivot: Double, maxTickCount: 
  */
 val ZERO_FLOOR_SERIES_TYPES = setOf(SeriesType.BGI, SeriesType.DEVIATIONS, SeriesType.ACTIVITY, SeriesType.STEPS, SeriesType.ABS_IOB)
 
+/** AutoISF factor lines. They sit around 1.0, so the axis is centered there. */
+val AUTO_ISF_SERIES_TYPES = setOf(
+    SeriesType.ACCE_ISF,
+    SeriesType.BG_ISF,
+    SeriesType.PP_ISF,
+    SeriesType.DURA_ISF,
+    SeriesType.FINAL_ISF
+)
+
 /**
  * Zero-floor axis range, disparity-aware: when the negative excursion is tiny relative to the
  * positive side (ratio >= [disparityRatio]), one shared nice tick spacing across the whole

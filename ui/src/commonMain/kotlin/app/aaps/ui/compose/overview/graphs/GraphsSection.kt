@@ -590,6 +590,11 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.STEPS           -> CoreUiStrings.steps_shortname
     SeriesType.ACTIVITY        -> CoreUiStrings.activity_shortname
     SeriesType.PREDICTIONS     -> CoreUiStrings.predictions_shortname
+    SeriesType.ACCE_ISF        -> CoreUiStrings.acce_isf_shortname
+    SeriesType.BG_ISF          -> CoreUiStrings.bg_isf_shortname
+    SeriesType.PP_ISF          -> CoreUiStrings.pp_isf_shortname
+    SeriesType.DURA_ISF        -> CoreUiStrings.dura_isf_shortname
+    SeriesType.FINAL_ISF       -> CoreUiStrings.final_isf_shortname
 }
 
 // =========================================================================

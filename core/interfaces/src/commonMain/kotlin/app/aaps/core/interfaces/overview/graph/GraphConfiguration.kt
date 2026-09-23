@@ -25,7 +25,12 @@ enum class SeriesType {
     HEART_RATE,
     STEPS,
     ACTIVITY,
-    PREDICTIONS
+    PREDICTIONS,
+    ACCE_ISF,
+    BG_ISF,
+    PP_ISF,
+    DURA_ISF,
+    FINAL_ISF
 }
 
 /**

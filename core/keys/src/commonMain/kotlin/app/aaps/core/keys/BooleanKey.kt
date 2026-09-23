@@ -276,6 +276,13 @@ enum class BooleanKey(
     // client is derived from the master. showInNsClientMode=false hides it in apsMode + pumpControlMode only;
     // hideParentScreenIfHidden collapses the now-empty "Unattended Settings Export" subscreen on a client.
     MaintenanceEnableExportSettingsAutomation("enable_unattended_export", false, KeysStrings.pref_title_maintenance_enable_export_automation, defaultedBySM = false, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    MaintenanceAutoExportLogsToCloud(
+        "maintenance_auto_export_logs_to_cloud",
+        false,
+        KeysStrings.pref_title_auto_export_logs,
+        KeysStrings.pref_summary_auto_export_logs,
+        defaultedBySM = false
+    ),
 
     AutotuneAutoSwitchProfile("autotune_auto", false, KeysStrings.pref_title_autotune_auto_switch_profile, KeysStrings.pref_summary_autotune_auto_switch_profile),
     AutotuneCategorizeUamAsBasal("categorize_uam_as_basal", false, KeysStrings.pref_title_autotune_categorize_uam_as_basal, KeysStrings.pref_summary_autotune_categorize_uam_as_basal),

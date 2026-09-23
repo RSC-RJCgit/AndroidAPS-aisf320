@@ -52,6 +52,7 @@ data class BgDataPoint(
     val range: BgRange,            // Range classification (high/in-range/low)
     val type: BgType,              // Type determines rendering style and color
     val filledGap: Boolean = false, // For bucketed data - if true, render semi-transparent
+    val dominantIsf: DominantIsf = DominantIsf.NONE // colour of the dot when an AutoISF factor moved the ISF
 )
 
 // ============================================================================
@@ -190,6 +191,27 @@ data class VarSensGraphData(
 )
 
 /**
+ * The five AutoISF factor lines. Each value is the factor itself (1.0 means no change).
+ */
+data class AutoIsfGraphData(
+    val acce: List<GraphDataPoint> = emptyList(),
+    val bg: List<GraphDataPoint> = emptyList(),
+    val pp: List<GraphDataPoint> = emptyList(),
+    val dura: List<GraphDataPoint> = emptyList(),
+    val finalIsf: List<GraphDataPoint> = emptyList()
+) {
+
+    fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {
+        SeriesType.ACCE_ISF  -> acce
+        SeriesType.BG_ISF    -> bg
+        SeriesType.PP_ISF    -> pp
+        SeriesType.DURA_ISF  -> dura
+        SeriesType.FINAL_ISF -> finalIsf
+        else                 -> emptyList()
+    }
+}
+
+/**
  * Heart rate graph data: BPM readings from smartwatch or similar device.
  * Each point spans (timestamp - duration) to timestamp.
  */
@@ -213,7 +235,11 @@ data class StepsGraphData(
 data class BasalGraphData(
     val profileBasal: List<GraphDataPoint>,
     val actualBasal: List<GraphDataPoint>,
-    val maxBasal: Double
+    val maxBasal: Double,
+    val acceTemp: List<GraphDataPoint> = emptyList(),
+    val bgTemp: List<GraphDataPoint> = emptyList(),
+    val ppTemp: List<GraphDataPoint> = emptyList(),
+    val duraTemp: List<GraphDataPoint> = emptyList()
 )
 
 /**
