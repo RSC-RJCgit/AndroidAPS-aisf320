@@ -118,6 +118,8 @@
     <string name="pref_summary_aps_pp_weight_normal" comment="A weight from 0.000 to 0.150. Default 0.080. The live post-meal weight returns to this after a boost.">Resting post-meal weight. The live weight returns to this after a boost. Default 0.080.</string>
     <string name="pref_title_aps_smb_delivery_baseline">SMB delivery baseline</string>
     <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
+    <string name="pref_title_aps_mild_boost_ratio">Mild SMB boost base</string>
+    <string name="pref_summary_aps_mild_boost_ratio" comment="A ratio with no unit. Default 0.20. A mild rise adds 0.15. A strong rise adds 0.03.">Starting SMB delivery ratio for a rise boost. A mild rise adds 0.15. A strong rise adds 0.03. Default 0.20.</string>
     <string name="pref_title_aps_low_profile_name">Low profile name</string>
     <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
     <string name="pref_title_aps_standard_profile_name">Standard profile name</string>

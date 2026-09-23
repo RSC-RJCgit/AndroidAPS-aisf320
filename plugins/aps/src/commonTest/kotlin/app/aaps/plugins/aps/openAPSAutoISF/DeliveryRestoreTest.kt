@@ -11,6 +11,7 @@ class DeliveryRestoreTest {
         assertTrue(restore(currentRatio = 0.29))
         assertFalse(restore(currentRatio = 0.1405))
         assertFalse(restore(currentRatio = 0.29, tempTargetSet = true))
+        assertFalse(restore(currentRatio = 0.35, recentDeliveryBoost = true))
     }
 
     @Test
@@ -42,7 +43,8 @@ class DeliveryRestoreTest {
         tempTargetSet: Boolean = false,
         atHardStackTarget: Boolean = false,
         smbStacking: Boolean = false,
-    ) = delOffShouldRestore(currentRatio, restingBaseline, tempTargetSet, atHardStackTarget, smbStacking)
+        recentDeliveryBoost: Boolean = false,
+    ) = delOffShouldRestore(currentRatio, restingBaseline, tempTargetSet, atHardStackTarget, smbStacking, recentDeliveryBoost)
 
     private fun reduce(
         atHardStackTarget: Boolean = false,

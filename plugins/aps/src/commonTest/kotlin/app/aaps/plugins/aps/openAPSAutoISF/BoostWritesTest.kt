@@ -39,4 +39,12 @@ class BoostWritesTest {
         assertNull(raiseAbove(71, 100))
         assertNull(raiseAbove(null, 70))
     }
+
+    @Test
+    fun theDeliveryRatioAddsTheRiseOnTopOfTheMildBase() {
+        assertEquals(0.23, boostedDeliveryRatio(0.20, strong = true, caution = false), 0.0001)
+        assertEquals(0.215, boostedDeliveryRatio(0.20, strong = true, caution = true), 0.0001)
+        assertEquals(0.35, boostedDeliveryRatio(0.20, strong = false, caution = false), 0.0001)
+        assertEquals(0.275, boostedDeliveryRatio(0.20, strong = false, caution = true), 0.0001)
+    }
 }

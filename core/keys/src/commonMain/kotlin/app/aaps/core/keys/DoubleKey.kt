@@ -350,6 +350,17 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfMildBoostRatio(
+        key = "autoisf_mild_boost_ratio",
+        defaultValue = 0.20,
+        min = 0.1,
+        max = 1.0,
+        title = KeysStrings.pref_title_aps_mild_boost_ratio,
+        summary = KeysStrings.pref_summary_aps_mild_boost_ratio,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsActivityScaleFactor(
         key = "activity_scale_factor",
         defaultValue = 1.0,

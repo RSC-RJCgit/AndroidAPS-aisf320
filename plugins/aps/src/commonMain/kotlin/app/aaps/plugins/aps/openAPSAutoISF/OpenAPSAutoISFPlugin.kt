@@ -1198,6 +1198,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
+            DoubleKey.ApsAutoIsfMildBoostRatio,
             StringKey.ApsAutoIsfLowProfileName,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
@@ -1400,6 +1401,9 @@ open class OpenAPSAutoISFPlugin(
                 tempTargetSet = tempTargetSet,
                 atHardStackTarget = atHardStack,
                 smbStacking = stacking,
+                recentDeliveryBoost = runMarks.recent(RunMark.BOLUS_GIVEN, 2, now) ||
+                    runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 2, now) ||
+                    runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 2, now),
             )
         ) {
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, resting)
@@ -1422,7 +1426,8 @@ open class OpenAPSAutoISFPlugin(
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
     // A strong mark raises the IOB threshold to 71 and, unless caution applies, the profile percent to 110 for 2 minutes.
     // Both marks raise the post-meal weight. A value that is not above its baseline is left alone.
-    // The acceleration weight and the SMB delivery ratio are not written.
+    // The SMB delivery ratio is raised for 2 minutes. No temp target is set. The restore then puts the ratio back.
+    // The acceleration weight is not written.
     // Libre raw is used. A missing raw value is -9999, so the rise gate stays closed.
     private suspend fun markBolusBoosts(
         now: Long,
@@ -1513,14 +1518,15 @@ open class OpenAPSAutoISFPlugin(
         val caution = (statesOn && !states().inState("MJ", "NOMJremains")) ||
             (standard110.isNotEmpty() && profileName == standard110) ||
             steps30 > 200
+        val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         if (bg3 && !blocked) {
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
-            applyBoostRaise(boostRaises(strong = true, caution = caution))
+            applyBoostRaise(boostRaises(strong = true, caution = caution), boostedDeliveryRatio(mildBase, strong = true, caution = caution))
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 marked")
         } else if (mild) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
-            applyBoostRaise(boostRaises(strong = false, caution = false))
+            applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution))
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
         } else if (mildFailsafeShouldFire(
                 readyFailsafe = runMarks.ready(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 5, now),
@@ -1542,7 +1548,7 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, now)
-            applyBoostRaise(boostRaises(strong = false, caution = false))
+            applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false))
             aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
         } else if (blocked) {
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
@@ -1959,7 +1965,7 @@ open class OpenAPSAutoISFPlugin(
 
     // Writes a boost only when the new value sits above the saved baseline.
     // The restore, which runs later in the same loop, sees the fresh mark and waits 15 minutes.
-    private suspend fun applyBoostRaise(raise: BoostRaise) {
+    private suspend fun applyBoostRaise(raise: BoostRaise, deliveryRatio: Double) {
         val iobTarget = raiseAbove(raise.iobTh, preferences.get(IntKey.ApsAutoIsfIobThPercentNormal))
         if (iobTarget != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, iobTarget)
         val percentTarget = raiseAbove(raise.profilePercent, preferences.get(IntKey.ApsAutoIsfProfilePercentNormal))
@@ -1981,6 +1987,7 @@ open class OpenAPSAutoISFPlugin(
         if (raise.raisePpWeight) {
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
         }
+        preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, deliveryRatio)
     }
 
     private suspend fun iobAt(time: Long): Double {
