@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -63,7 +64,12 @@ sealed interface ImportStep {
         val needsDecryptionPassword: Boolean = false,
         val decryptResult: ImportDecryptResult? = null,
         val isProcessing: Boolean = false,
-        val enableAutomationStates: Boolean = false
+        val enableAutomationStates: Boolean = false,
+        val showKeepPump: Boolean = false,
+        val keepPump: Boolean = false,
+        val keepPatientName: Boolean = false,
+        val keepBgSource: Boolean = false,
+        val keepSync: Boolean = false,
     ) : ImportStep
 
     /**
@@ -336,8 +342,17 @@ class ImportViewModel(
                     }
                 }
 
-                is ImportDecryptResult.Success,
-                is ImportDecryptResult.Error         -> {
+                is ImportDecryptResult.Success -> {
+                    val offer = importExportPrefs.importKeepOffer(result.prefs)
+                    _importStep.value = prev.copy(
+                        isProcessing = false,
+                        decryptResult = result,
+                        showKeepPump = offer.showKeepPump,
+                        keepPump = offer.keepPumpChecked,
+                    )
+                }
+
+                is ImportDecryptResult.Error -> {
                     _importStep.value = prev.copy(
                         isProcessing = false,
                         decryptResult = result
@@ -345,6 +360,20 @@ class ImportViewModel(
                 }
             }
         }
+    }
+
+    fun setKeepPump(enabled: Boolean) = setKeep { it.copy(keepPump = enabled) }
+
+    fun setKeepPatientName(enabled: Boolean) = setKeep { it.copy(keepPatientName = enabled) }
+
+    fun setKeepBgSource(enabled: Boolean) = setKeep { it.copy(keepBgSource = enabled) }
+
+    fun setKeepSync(enabled: Boolean) = setKeep { it.copy(keepSync = enabled) }
+
+    private fun setKeep(change: (ImportStep.Review) -> ImportStep.Review) {
+        val current = importStep.value
+        if (current !is ImportStep.Review) return
+        _importStep.value = change(current)
     }
 
     fun setEnableAutomationStates(enabled: Boolean) {
@@ -367,7 +396,16 @@ class ImportViewModel(
                 // length of this block every preference reads as its default - the safety limits
                 // included. Nothing may act on settings until it is finished.
                 config.whileReconfiguring {
-                    importExportPrefs.executeImport(result.prefs, current.enableAutomationStates)
+                    importExportPrefs.executeImport(
+                        result.prefs,
+                        current.enableAutomationStates,
+                        ImportKeepChoices(
+                            keepPump = current.showKeepPump && current.keepPump,
+                            keepPatientName = current.keepPatientName,
+                            keepBgSource = current.keepBgSource,
+                            keepSync = current.keepSync,
+                        ),
+                    )
                     importExportPrefs.prepareImportedSettings()
                 }
             }

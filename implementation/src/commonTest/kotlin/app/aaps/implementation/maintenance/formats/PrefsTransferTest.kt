@@ -127,6 +127,22 @@ class PrefsTransferTest {
     }
 
     @Test
+    fun `a kept key survives even when the file has a different value`() {
+        store.putString("patient_name", "Ada")
+        store.putString("units", "mmol")
+        val file = sut.exportContents(metadata, "password")
+        store.putString("patient_name", "Keep")
+
+        sut.applyImported(
+            assertIs<ImportDecryptResult.Success>(sut.importResult(file, "password", false)).prefs,
+            preserve = { it == "patient_name" },
+        )
+
+        assertEquals("Keep", store.getString("patient_name", ""))
+        assertEquals("mmol", store.getString("units", ""))
+    }
+
+    @Test
     fun `a wrong password is reported as a wrong password`() {
         store.putString("units", "mmol")
 

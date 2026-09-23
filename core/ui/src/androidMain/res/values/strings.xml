@@ -1105,6 +1105,10 @@
     <string name="import_source_cloud">Cloud</string>
     <string name="import_load_more">Load more</string>
     <string name="import_no_files">No settings files found</string>
+    <string name="import_keep_pump">Keep the current pump. The file will not replace the pump driver, its settings, or the active pod.</string>
+    <string name="import_keep_patient_name">Keep the current patient name</string>
+    <string name="import_keep_bg_source">Keep the current BG source and its settings</string>
+    <string name="import_keep_sync">Keep the current sync settings, including Nightscout</string>
     <string name="import_enable_automation_states">Turn automation states on</string>
     <string name="import_automation_states_warning">This file has automation states. They stay off until you check this. Check it only if these states belong on this phone.</string>
     <string name="import_decrypt_ok">Decryption successful. Ready to import.</string>

@@ -67,19 +67,50 @@ class PrefsTransfer(
      * there. A setting the old configuration had and the new one does not would otherwise survive an
      * import that was meant to replace it.
      *
-     * Two values are put back after that clear. The local AAPS folder stays, because it is a permission
-     * on this phone. Automation states are written off unless the import screen checkbox asked for them.
+     * The local AAPS folder stays, because it is a permission on this phone. Automation states are
+     * written off unless the import screen checkbox asked for them. Keys named by [preserve] are
+     * copied back as well, so a checked group keeps the current pump, name, BG source, or sync.
      *
      * Booleans are written as booleans. They come back from the file as the strings `true` and
      * `false`, and a store that kept them as text would answer the wrong type to every later read.
      */
-    fun applyImported(prefs: Prefs, enableAutomationStates: Boolean = false) {
-        val savedDirectory = store.getString(StringKey.AapsDirectoryUri.key, "")
-        store.clear()
-        prefs.values.forEach { (key, value) ->
-            if (value == "true" || value == "false") store.putBoolean(key, value.toBoolean()) else store.putString(key, value)
-        }
-        if (savedDirectory.isNotEmpty()) store.putString(StringKey.AapsDirectoryUri.key, savedDirectory)
-        store.putBoolean(BooleanKey.AutomationStatesEnabled.key, enableAutomationStates)
+    fun currentEntries(): Map<String, *> = store.getAll()
+
+    fun applyImported(
+        prefs: Prefs,
+        enableAutomationStates: Boolean = false,
+        preserve: (String) -> Boolean = { false },
+    ) {
+        applyImportedStore(store, prefs, enableAutomationStates, preserve)
+    }
+}
+
+internal fun applyImportedStore(
+    store: KeyValueStore,
+    prefs: Prefs,
+    enableAutomationStates: Boolean,
+    preserve: (String) -> Boolean,
+) {
+    val savedDirectory = store.getString(StringKey.AapsDirectoryUri.key, "")
+    val kept = store.getAll().filterKeys(preserve)
+    store.clear()
+    prefs.values.forEach { (key, value) ->
+        if (preserve(key)) return@forEach
+        if (value == "true" || value == "false") store.putBoolean(key, value.toBoolean()) else store.putString(key, value)
+    }
+    kept.forEach { (key, value) -> store.putStored(key, value) }
+    if (savedDirectory.isNotEmpty()) store.putString(StringKey.AapsDirectoryUri.key, savedDirectory)
+    store.putBoolean(BooleanKey.AutomationStatesEnabled.key, enableAutomationStates)
+}
+
+private fun KeyValueStore.putStored(key: String, value: Any?) {
+    when (value) {
+        is Boolean -> putBoolean(key, value)
+        is Int     -> putInt(key, value)
+        is Long    -> putLong(key, value)
+        is Float   -> putDouble(key, value.toDouble())
+        is Double  -> putDouble(key, value)
+        is String  -> putString(key, value)
+        null       -> Unit
     }
 }

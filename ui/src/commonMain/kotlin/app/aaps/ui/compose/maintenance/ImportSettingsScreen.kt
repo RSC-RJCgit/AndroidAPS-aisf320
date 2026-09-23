@@ -120,6 +120,10 @@ fun ImportSettingsScreen(
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport() },
                 onEnableAutomationStates = { viewModel.setEnableAutomationStates(it) },
+                onKeepPump = { viewModel.setKeepPump(it) },
+                onKeepPatientName = { viewModel.setKeepPatientName(it) },
+                onKeepBgSource = { viewModel.setKeepBgSource(it) },
+                onKeepSync = { viewModel.setKeepSync(it) },
                 onBack = { viewModel.goBackToFilePicker() }
             )
         }
@@ -457,6 +461,10 @@ internal fun ImportReviewContent(
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
     onEnableAutomationStates: (Boolean) -> Unit,
+    onKeepPump: (Boolean) -> Unit,
+    onKeepPatientName: (Boolean) -> Unit,
+    onKeepBgSource: (Boolean) -> Unit,
+    onKeepSync: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -678,19 +686,53 @@ internal fun ImportReviewContent(
                                 text = stringResource(CoreUiStrings.import_automation_states_warning),
                                 style = MaterialTheme.typography.bodySmall
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = state.enableAutomationStates,
-                                    onCheckedChange = onEnableAutomationStates,
-                                    enabled = !state.isProcessing
+                            KeepChoice(
+                                checked = state.enableAutomationStates,
+                                label = stringResource(CoreUiStrings.import_enable_automation_states),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onEnableAutomationStates,
+                            )
+                        }
+                        if (result.importPossible) {
+                            if (state.showKeepPump) {
+                                KeepChoice(
+                                    checked = state.keepPump,
+                                    label = stringResource(CoreUiStrings.import_keep_pump),
+                                    enabled = !state.isProcessing,
+                                    onCheckedChange = onKeepPump,
                                 )
-                                Text(text = stringResource(CoreUiStrings.import_enable_automation_states))
                             }
+                            KeepChoice(
+                                checked = state.keepPatientName,
+                                label = stringResource(CoreUiStrings.import_keep_patient_name),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepPatientName,
+                            )
+                            KeepChoice(
+                                checked = state.keepBgSource,
+                                label = stringResource(CoreUiStrings.import_keep_bg_source),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepBgSource,
+                            )
+                            KeepChoice(
+                                checked = state.keepSync,
+                                label = stringResource(CoreUiStrings.import_keep_sync),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepSync,
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun KeepChoice(checked: Boolean, label: String, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 

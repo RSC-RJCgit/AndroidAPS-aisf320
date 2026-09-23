@@ -10,6 +10,8 @@ import app.aaps.core.interfaces.maintenance.ExportPreparation
 import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefMetadataMap
@@ -36,6 +38,8 @@ import app.aaps.core.objects.crypto.platformCryptoPrimitives
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.implementation.maintenance.formats.PrefsFormatCodec
 import app.aaps.implementation.maintenance.formats.PrefsTransfer
+import app.aaps.implementation.maintenance.formats.importKeepOfferFor
+import app.aaps.implementation.maintenance.formats.preserveKeys
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -273,9 +277,12 @@ class LocalImportExportPrefs(
         transfer.importResult(file.content, password, config.isEngineeringMode())
             .also { if (it is ImportDecryptResult.Error) aapsLogger.error(LTag.CORE, "Reading ${file.name} failed: ${it.message}") }
 
-    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean) {
+    override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
+        importKeepOfferFor(activePlugin, transfer.currentEntries(), prefs.values)
+
+    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean, keep: ImportKeepChoices) {
         activePlugin.beforeImport()
-        transfer.applyImported(prefs, enableAutomationStates)
+        transfer.applyImported(prefs, enableAutomationStates, preserveKeys(activePlugin, keep))
         activePlugin.afterImport()
     }
 

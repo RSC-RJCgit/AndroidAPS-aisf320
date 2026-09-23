@@ -102,10 +102,17 @@ interface ImportExportPrefs {
     fun decryptImportFile(file: PrefsFile, password: String): ImportDecryptResult
 
     /**
+     * Whether the import would change the pump, and whether the pump box should start checked.
+     * The patient name, BG source, and sync boxes are always offered when an import is possible.
+     */
+    fun importKeepOffer(prefs: Prefs): ImportKeepOffer
+
+    /**
      * Write the decrypted prefs and call plugin hooks.
      * The local AAPS folder is kept. Automation states are off unless [enableAutomationStates] is true.
+     * [keep] leaves the chosen current groups in place.
      */
-    fun executeImport(prefs: Prefs, enableAutomationStates: Boolean = false)
+    fun executeImport(prefs: Prefs, enableAutomationStates: Boolean = false, keep: ImportKeepChoices = ImportKeepChoices())
 
     /**
      * Tidy up after [executeImport], before the imported settings are applied.
@@ -116,6 +123,20 @@ interface ImportExportPrefs {
      */
     fun prepareImportedSettings()
 }
+
+/** Which current settings the import screen offered to leave in place. */
+data class ImportKeepOffer(
+    val showKeepPump: Boolean,
+    val keepPumpChecked: Boolean,
+)
+
+/** The boxes the user checked on the import screen. */
+data class ImportKeepChoices(
+    val keepPump: Boolean = false,
+    val keepPatientName: Boolean = false,
+    val keepBgSource: Boolean = false,
+    val keepSync: Boolean = false,
+)
 
 /** Result of attempting to decrypt a preference file for import. */
 sealed interface ImportDecryptResult {

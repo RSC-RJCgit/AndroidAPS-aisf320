@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import com.google.common.truth.Truth.assertThat
@@ -81,6 +82,7 @@ internal class ImportViewModelTest {
         // The steps carry resolved text, and an unstubbed mock hands back null into a non-null
         // parameter. Tests that care about the wording stub their own ref over the top of this.
         whenever(rh.gs(any<TextRef>())).thenReturn("message")
+        whenever(importExportPrefs.importKeepOffer(any())).thenReturn(ImportKeepOffer(showKeepPump = false, keepPumpChecked = false))
         sut = ImportViewModel(
             aapsLogger, importExportPrefs, prefFileList, configBuilder, config, rh, uel,
             commandQueue, pumpSync, activePlugin, overviewDataCache, iobCobCalculator, uiRestart
@@ -247,7 +249,7 @@ internal class ImportViewModelTest {
 
         inOrder(config, importExportPrefs) {
             verify(config).beginReconfiguring()
-            verify(importExportPrefs).executeImport(any(), eq(false))
+            verify(importExportPrefs).executeImport(any(), eq(false), any())
             verify(importExportPrefs).prepareImportedSettings()
             verify(config).endReconfiguring()
         }

@@ -25,6 +25,8 @@ import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsFile
@@ -44,7 +46,6 @@ import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
-import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -62,6 +63,9 @@ import app.aaps.implementation.maintenance.data.PrefIOError
 import app.aaps.implementation.maintenance.data.PrefsFormat
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 import app.aaps.implementation.maintenance.formats.EncryptedPrefsFormat
+import app.aaps.implementation.maintenance.formats.applyImportedStore
+import app.aaps.implementation.maintenance.formats.importKeepOfferFor
+import app.aaps.implementation.maintenance.formats.preserveKeys
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.shared.impl.weardata.ZipWatchfaceFormat
 import dev.zacsweers.metro.Assisted
@@ -619,19 +623,12 @@ class ImportExportPrefsImpl(
         }
     }
 
-    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean) {
+    override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
+        importKeepOfferFor(activePlugin, sp.getAll(), prefs.values)
+
+    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean, keep: ImportKeepChoices) {
         activePlugin.beforeImport()
-        val savedDirectory = sp.getString(StringKey.AapsDirectoryUri.key, "")
-        sp.clear()
-        for ((key, value) in prefs.values) {
-            if (value == "true" || value == "false") {
-                sp.putBoolean(key, value.toBoolean())
-            } else {
-                sp.putString(key, value)
-            }
-        }
-        if (savedDirectory.isNotEmpty()) sp.putString(StringKey.AapsDirectoryUri.key, savedDirectory)
-        sp.putBoolean(BooleanKey.AutomationStatesEnabled.key, enableAutomationStates)
+        applyImportedStore(sp, prefs, enableAutomationStates, preserveKeys(activePlugin, keep))
         activePlugin.afterImport()
     }
 
