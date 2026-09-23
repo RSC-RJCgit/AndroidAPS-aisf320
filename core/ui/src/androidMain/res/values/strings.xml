@@ -1110,7 +1110,8 @@
     <string name="import_keep_bg_source">Keep the current BG source and its settings</string>
     <string name="import_keep_sync">Keep the current sync settings, including Nightscout</string>
     <string name="import_enable_automation_states">Turn automation states on</string>
-    <string name="import_automation_states_warning">This file has automation states. They stay off until you check this. Check it only if these states belong on this phone.</string>
+    <string name="import_automation_states_present">This file has automation states. They stay off until you check the box below.</string>
+    <string name="import_automation_states_absent">This file has no automation states. The box below only turns the switch on.</string>
     <string name="import_decrypt_ok">Decryption successful. Ready to import.</string>
     <string name="import_decrypt_warn">Decryption successful, but there are warnings.</string>
     <string name="import_decrypt_error">Decryption successful, but import is not possible.</string>

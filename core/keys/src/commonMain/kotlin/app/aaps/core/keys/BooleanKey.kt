@@ -211,7 +211,6 @@ enum class BooleanKey(
         false,
         KeysStrings.pref_title_aps_low_rebound_guard_enabled,
         KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
-        defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
     ApsAutoIsfTddSensitivity(

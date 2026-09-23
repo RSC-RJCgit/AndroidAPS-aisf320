@@ -678,21 +678,20 @@ internal fun ImportReviewContent(
                                 ImportSummaryItem(metaKey = metaKey, metaEntry = metaEntry, rxBus = rxBus)
                             }
                         }
-                        val hasAutomationStates = result.prefs.values.keys.any {
-                            it == StringNonKey.AutomationCurrentStates.key || it == StringNonKey.AutomationStateValues.key
-                        }
-                        if (hasAutomationStates) {
-                            Text(
-                                text = stringResource(CoreUiStrings.import_automation_states_warning),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            KeepChoice(
-                                checked = state.enableAutomationStates,
-                                label = stringResource(CoreUiStrings.import_enable_automation_states),
-                                enabled = !state.isProcessing,
-                                onCheckedChange = onEnableAutomationStates,
-                            )
-                        }
+                        val hasStates = importedFileHasAutomationStates(result.prefs.values)
+                        Text(
+                            text = stringResource(
+                                if (hasStates) CoreUiStrings.import_automation_states_present
+                                else CoreUiStrings.import_automation_states_absent
+                            ),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        KeepChoice(
+                            checked = state.enableAutomationStates,
+                            label = stringResource(CoreUiStrings.import_enable_automation_states),
+                            enabled = !state.isProcessing,
+                            onCheckedChange = onEnableAutomationStates,
+                        )
                         if (result.importPossible) {
                             if (state.showKeepPump) {
                                 KeepChoice(
@@ -767,5 +766,14 @@ private fun FileDetailsCard(
                 ImportSummaryItem(metaKey = metaKey, metaEntry = metaEntry, rxBus = rxBus)
             }
         }
+    }
+}
+
+/** True when the settings file carries a non-empty automation-state list. */
+internal fun importedFileHasAutomationStates(values: Map<String, String>): Boolean {
+    val keys = listOf(StringNonKey.AutomationCurrentStates.key, StringNonKey.AutomationStateValues.key)
+    return keys.any { key ->
+        val raw = values[key]?.trim().orEmpty()
+        raw.isNotEmpty() && raw != "{}"
     }
 }

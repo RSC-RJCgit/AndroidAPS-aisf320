@@ -13,4 +13,12 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         tools:node="remove" />
 
+    <!-- Debug installs must not pull an older cloud backup over the settings already on the phone.
+         The file on the phone stays. Release builds still allow backup. -->
+    <application
+        android:allowBackup="false"
+        android:restoreAnyVersion="false"
+        tools:replace="android:allowBackup,android:restoreAnyVersion"
+        tools:remove="android:backupAgent" />
+
 </manifest>

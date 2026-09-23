@@ -81,7 +81,7 @@
     <string name="pref_title_aps_fast_rise_enabled">FastRise size tiers</string>
     <string name="pref_summary_aps_fast_rise_enabled">Cut SMB size during a fast Libre rise. Off leaves the SMB unchanged.</string>
     <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
-    <string name="pref_summary_aps_low_rebound_guard_enabled">Turn FastRise size tiers off after a recent hypo alarm while glucose is rebounding.</string>
+    <string name="pref_summary_aps_low_rebound_guard_enabled" comment="0.10 U and 0.25 U are insulin amounts. Three quarters and half are the SMB size cuts.">On turns the LoReb guard on. After a recent low, a carb or artifact rebound trims SMB above 0.10 U: three quarters up to 0.25 U, and half above that. FastRise size tiers also stay off during that window. Off means the guard never runs.</string>
     <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
     <string name="pref_title_aps_boost_automations">Boost automations</string>
