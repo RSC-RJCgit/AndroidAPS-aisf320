@@ -6,6 +6,9 @@ import app.aaps.core.data.model.IDs
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.pump.Pump
+import app.aaps.core.interfaces.pump.PumpWithConcentration
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.source.BgSource
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
@@ -27,6 +30,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -250,6 +254,21 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
         // Should not calculate queue counters when paused
         verify(persistenceLayer, Times(0)).getLastBolusId()
         verify(persistenceLayer, Times(0)).getLastCarbsId()
+    }
+
+    @Test
+    fun doUploadSkipsOnVirtualPumpEvenWhenSwitchIsOn() = runTest {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val virtualPump = mock<Pump>(extraInterfaces = arrayOf(VirtualPump::class))
+        val pump = mock<PumpWithConcentration>()
+        whenever(pump.selectedActivePump()).thenReturn(virtualPump)
+        whenever(activePlugin.activePump).thenReturn(pump)
+
+        sut.doUpload()
+
+        verify(persistenceLayer, Times(0)).getLastBolusId()
     }
 
     @Test

@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.utils.DateUtil
@@ -82,8 +83,20 @@ class DataSyncSelectorV3(
 
     val bgUploadEnabled @OpenForTesting get() = preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
 
+    /**
+     * A full phone on the virtual pump must not write to Nightscout.
+     * The upload switch defaults to on, so the pump check is the brake.
+     * A client phone is not blocked here.
+     */
+    internal fun virtualPumpBlocksNightscoutUpload(): Boolean =
+        !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
+        if (virtualPumpBlocksNightscoutUpload()) {
+            aapsLogger.debug(LTag.NSCLIENT, "Virtual pump: Nightscout upload skipped")
+            return
+        }
         if ((config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)

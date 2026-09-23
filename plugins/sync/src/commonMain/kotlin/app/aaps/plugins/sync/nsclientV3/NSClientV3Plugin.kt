@@ -691,7 +691,7 @@ class NSClientV3Plugin(
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
         if (!isEnabled()) return
-        if (!preferences.get(BooleanKey.NsClientUploadData)) {
+        if (!preferences.get(BooleanKey.NsClientUploadData) || dataSyncSelectorV3.virtualPumpBlocksNightscoutUpload()) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
             return
         }
