@@ -1503,6 +1503,24 @@ open class OpenAPSAutoISFPlugin(
                 aapsLogger.debug(LTag.APS, "iobTH daytime floor left $iobThNow, 70 is above the baseline")
             }
         }
+        val extraBlock = extra50Block(
+            ready = runMarks.ready(RunMark.EXTRA50, 5, now),
+            profilePercent = profilePercent,
+            lowBgClear = statesOn && states().inState("LowBG", "NO50rec"),
+            mjNotRemaining = statesOn && !states().inState("MJ", "NOMJremains"),
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+        )
+        if (extraBlock != null) {
+            val iobBaseline = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal)
+            if (50 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+            applyExtra50State()
+            runMarks.mark(RunMark.EXTRA50, now)
+            aapsLogger.debug(LTag.APS, "Extra50 block $extraBlock")
+        }
         val usualBlock = usual2Block(
             ready = runMarks.ready(RunMark.USUAL2, 5, now),
             profilePercent = profilePercent,
@@ -1556,6 +1574,14 @@ open class OpenAPSAutoISFPlugin(
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
             aapsLogger.debug(LTag.APS, "AlarmHypo marked 1=$hypo1 2=$hypo2")
         }
+    }
+
+    // A falling glucose on a 100% profile. The night FastRise skip stays closed until glucose recovers.
+    // The acceleration weight is not lowered. A drop to 0.07 would stay, because the restore only raises it.
+    private fun applyExtra50State() {
+        val store = states()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        if (store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
     }
 
     // Glucose has risen back through 5.5 mmol/L at a 100% profile. The night FastRise skip can run again.

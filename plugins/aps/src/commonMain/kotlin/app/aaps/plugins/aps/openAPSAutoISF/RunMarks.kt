@@ -15,6 +15,7 @@ internal object RunMark {
     const val ALARM_HYPO_2 = "AlarmHypo2"
     const val NOT50_RECENTLY = "Not50Recently"
     const val IOB_TH_DAYTIME_FLOOR = "iobTHDaytimeFloor"
+    const val EXTRA50 = "Extra50"
 }
 
 /**
