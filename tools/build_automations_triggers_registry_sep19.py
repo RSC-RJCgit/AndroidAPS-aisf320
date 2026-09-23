@@ -10,8 +10,8 @@ from docx.shared import Pt
 from docx.enum.section import WD_SECTION
 
 ROOT = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
-BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 20 26 2144 code registry triggers v11.docx")
-SCRIPT_VERSION = 12
+BASE_DOC = Path(r"C:\winword\aaa\AutoISF Automations List mydoc Sep 21 26 0009 code registry triggers v12.docx")
+SCRIPT_VERSION = 13
 
 # Codes for keys whose note is NOT a literal string in their own block (computed codes, String.format,
 # graph announcements, sibling-branch notes), taken from the full CarePortal code list
@@ -120,6 +120,9 @@ for _k in ("0002", "0204", "0406", "0609", "0912", "1218", "1822", "2200"):
 #     HiBrk day/night blocks now sit behind the highDaytimeBrakeEnabled / highEveNightBrakeEnabled switches (both true).
 # v12: table rows sorted alphabetically by coded key (was plugin source order). StuckRisingSlowly
 #     window/BG/LoReb-stamp changes from 21 Sep 2026 are in this rebuild.
+# v13: rebuilt from the plugin as of 24 Sep 2026 -- HiBrkTwilight (TT 4.2 for 2 min, 15-min throttle, HP1 >= 6.2),
+#     EarlyDawnSlowRise (BG > 6.5, TT 4.4 for 5 min, 5-min throttle), HighNight00AM window 02:00-07:00 and the
+#     T3 unrestricted compare toggle (List 2 5.230) are in this rebuild.
 OUTPUT = Path(
     rf"C:\winword\aaa\AutoISF Automations List mydoc {datetime.now():%b %d %y %H%M} "
     rf"code registry triggers v{SCRIPT_VERSION}.docx"

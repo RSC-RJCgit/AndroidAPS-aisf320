@@ -7257,15 +7257,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // iobTH<=19 is a separate, more severe reduction from other automations, not what was
             // flip-flopping, so it's left alone.
             val stabilized = d >= 0.0 && sd >= 0.0
-            // block 1: daytime 08:00–20:00, or earlier once Shower12 is ≥30 min old AND BGL>7.0
+            // block 1: daytime 08:00–20:00, or earlier once Shower12 is ≥15 min old AND BGL>7.0
             // with SDelta>0.10 (2026-09-14). Shower12 itself is 05:30–08:30; require it in the
             // last 4h so yesterday's latch cannot open Usual2forTH at 05:00.
             val shower12At = lastRunTimestamps["Shower12"] ?: 0L
             val nowMs = dateUtil.now()
-            val shower12Over30 = shower12At != 0L &&
-                nowMs - shower12At >= T.mins(30).msecs() &&
+            val shower12Over15 = shower12At != 0L &&
+                nowMs - shower12At >= T.mins(15).msecs() &&
                 nowMs - shower12At <= T.hours(4).msecs()
-            val earlyUsualAfterShower = shower12Over30 &&
+            val earlyUsualAfterShower = shower12Over15 &&
                 g > 126.1 /* 7.0 mmol */ &&
                 sd > 1.8 /* 0.10 mmol */
             val u2b1Time = isTimeBetween(8, 0, 20, 0) ||
@@ -8204,7 +8204,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
                 && ukfRawDeltasPositive()
-                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
+                // 2026-09-24, per explicit request: HP1 gate lowered 6.5 -> 6.2 (twilight block only; the night and
+                // day brakes keep 6.5). 24 Sep 04:00-06:47: BG plateaued 6.4-6.6 with IOB ~0.3 so HP1 (BG - IOB + ...)
+                // sat at 6.2-6.3 and never reached 6.5 -- the only gate failing on the minutes with BG > 6.5.
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.2
             ) {
                 startTempTargetIfNeededAt(4.2 * 18.0, 2)?.let { createdAt ->
                     preferences.put(LongNonKey.LastHiBrkTwilightTtAt, createdAt)
@@ -8258,8 +8261,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 2026-09-21: weakened. TT 4.4mmol@30min only -- no SMBdel change, no TierC/profile switch.
         // Still no dura/HP/UKF/IOB-change gates. Yields if a TT is already active (so HiBrkTwilight's
         // 4.4@2min in 04:00-07:00 is not stacked in the same cycle).
+        //
+        // 2026-09-24, per explicit request: (1) BG floor 7.0 -> 6.5 mmol -- 24 Sep 04:30-06:47 BG plateaued 6.4-6.6
+        // (max 6.6) so the 7.0 floor could never open although the three-delta test was met on slow-rise minutes;
+        // at 6.5 it first qualifies at 06:35 that morning. (2) TT 30 min -> 5 min and throttle 30 -> 5 min: the TT is
+        // re-armed only while the slow-rise test still holds and ends within ~5 min of the rise stopping (a 30-min TT
+        // also blocked HiBrkTwilight's 4.2 for the whole 30 min, since that needs no active TT).
         run {
-            if (readyToRun("EarlyDawnSlowRise", 30) && isTimeBetween(4, 30, 8, 0)
+            if (readyToRun("EarlyDawnSlowRise", 5) && isTimeBetween(4, 30, 8, 0)
                 && activeTtMgdl() == null
             ) {
                 val g = glucoseStatus.glucose
@@ -8269,9 +8278,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val slowSustainedRise = d > 0.0 && d < 2.7 /* < 0.15 mmol */ &&
                     sd > 0.0 && sd < 2.7 &&
                     ld > 0.0 && ld < 2.7
-                if (g > 126.1 /* 7.0 mmol */ && slowSustainedRise) {
-                    startTempTargetIfNeeded(4.4 * 18.0, 30)
-                    sendSms("EarlyDawnSlowRise: TT 4.4mmol@30min, g=${convert_bg(g)}")
+                if (g > 117.1 /* 6.5 mmol */ && slowSustainedRise) {
+                    startTempTargetIfNeeded(4.4 * 18.0, 5)
+                    sendSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${convert_bg(g)}")
                     addCarePortalNote("EDSR")
                     markRun("EarlyDawnSlowRise")
                 }
