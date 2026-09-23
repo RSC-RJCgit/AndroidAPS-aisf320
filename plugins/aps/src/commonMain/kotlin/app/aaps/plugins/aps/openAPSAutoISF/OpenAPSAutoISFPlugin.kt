@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
@@ -133,7 +134,7 @@ open class OpenAPSAutoISFPlugin(
         .description(ApsStrings.description_auto_isf),
     ownPreferences = ApsIntentKey.entries,
     aapsLogger, rh, preferences, notificationManager
-), APS, PluginConstraints {
+), APS, PluginConstraints, CodedProfileRoles {
 
     // last values
     override var lastAPSRun: Long = 0
@@ -177,6 +178,13 @@ open class OpenAPSAutoISFPlugin(
         )
         automationStates = store
         return store
+    }
+
+    override fun markSteroidsOff() {
+        val required = requiredAutomationStates["Steroids"] ?: return
+        val store = states()
+        store.ensureDeclared("Steroids", required.values, required.defaultValue)
+        store.setState("Steroids", "Steroids Off")
     }
 
     override suspend fun onStart() {

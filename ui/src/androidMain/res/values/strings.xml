@@ -195,6 +195,28 @@
     <string name="edit_label">Edit</string>
     <string name="activate_label">Activate</string>
     <string name="activate_profile">Activate profile</string>
+    <string name="coded_profiles">Coded profiles</string>
+    <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
+    <string name="coded_profiles_empty">Add a profile first.</string>
+    <string name="coded_profiles_blocked" comment="%1$d = how many names were refused. Example: Steroid names left unchanged: 2">Steroid names left unchanged: %1$d</string>
+    <string name="coded_role_label">Profile role</string>
+    <string name="coded_role_not_set">Not set</string>
+    <string name="coded_role_no_change">No role change</string>
+    <string name="coded_role_auto" comment="%1$s = role name. Example: This profile is stored as Steroid tier B">This profile is stored as %1$s</string>
+    <string name="coded_role_standard">Standard, current</string>
+    <string name="coded_role_low">Low, current</string>
+    <string name="coded_role_standard_a">Standard tier A</string>
+    <string name="coded_role_standard_b">Standard tier B</string>
+    <string name="coded_role_standard_c">Standard tier C</string>
+    <string name="coded_role_low_a">Low tier A</string>
+    <string name="coded_role_low_b">Low tier B</string>
+    <string name="coded_role_low_c">Low tier C</string>
+    <string name="coded_role_steroid_a">Steroid tier A</string>
+    <string name="coded_role_steroid_b">Steroid tier B</string>
+    <string name="coded_role_steroid_c">Steroid tier C</string>
+    <string name="coded_role_steroid_d">Steroid tier D</string>
+    <string name="coded_role_steroid_e">Steroid tier E</string>
+    <string name="coded_role_steroid_f">Steroid tier F</string>
     <string name="remove_label">Remove</string>
     <string name="active_profile_indicator">ACTIVE</string>
     <string name="confirm_remove_profile">Remove profile \"%1$s\"?</string>

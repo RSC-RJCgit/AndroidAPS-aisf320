@@ -225,6 +225,97 @@ enum class StringKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfStandardProfileName(
+        key = "autoisf_standard_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_standard_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfStandard100ProfileName(
+        key = "autoisf_standard100_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_standard100_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfStandard105ProfileName(
+        key = "autoisf_standard105_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_standard105_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfStandard110ProfileName(
+        key = "autoisf_standard110_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_standard110_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfLow70ProfileName(
+        key = "autoisf_low70_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_low70_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfLow80ProfileName(
+        key = "autoisf_low80_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_low80_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfLow90ProfileName(
+        key = "autoisf_low90_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_low90_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid100ProfileName(
+        key = "autoisf_steroid_100_profile_name",
+        defaultValue = "",
+        title = KeysStrings.pref_title_aps_steroid_100_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid110ProfileName(
+        key = "autoisf_steroid_110_profile_name",
+        defaultValue = "Steroid Profile110",
+        title = KeysStrings.pref_title_aps_steroid_110_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid130ProfileName(
+        key = "autoisf_steroid_130_profile_name",
+        defaultValue = "Steroid Profile130",
+        title = KeysStrings.pref_title_aps_steroid_130_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid150ProfileName(
+        key = "autoisf_steroid_150_profile_name",
+        defaultValue = "Steroid Profile150",
+        title = KeysStrings.pref_title_aps_steroid_150_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid190ProfileName(
+        key = "autoisf_steroid_190_profile_name",
+        defaultValue = "Steroid190",
+        title = KeysStrings.pref_title_aps_steroid_190_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroid250ProfileName(
+        key = "autoisf_steroid_250_profile_name",
+        defaultValue = "Steroid250",
+        title = KeysStrings.pref_title_aps_steroid_250_profile_name,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     ;
 

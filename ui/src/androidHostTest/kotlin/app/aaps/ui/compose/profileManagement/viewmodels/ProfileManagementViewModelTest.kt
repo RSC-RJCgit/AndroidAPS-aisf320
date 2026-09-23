@@ -3,6 +3,7 @@ package app.aaps.ui.compose.profileManagement.viewmodels
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.PS
+import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -101,7 +102,9 @@ internal class ProfileManagementViewModelTest {
         sut = ProfileManagementViewModel(
             profileRepository, profileFunction, rh, dateUtil, aapsLogger, activePlugin,
             profileUtil, decimalFormatter, persistenceLayer, insulinManager, preferences, config,
-            nsClient, batchExecutor, rxBus, CoroutineScope(UnconfinedTestDispatcher())
+            nsClient, batchExecutor, rxBus, object : CodedProfileRoles {
+                override fun markSteroidsOff() = Unit
+            }, CoroutineScope(UnconfinedTestDispatcher())
         )
     }
 

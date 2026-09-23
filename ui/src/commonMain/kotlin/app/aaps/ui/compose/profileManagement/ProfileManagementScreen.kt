@@ -108,6 +108,7 @@ fun ProfileManagementScreen(
     val canReorder = !isPlayMode && uiState.profileNames.size > 1
     val scope = rememberCoroutineScope()
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var showCodedProfiles by remember { mutableStateOf(false) }
 
     // Back leaves sort mode rather than the screen, so a reshuffle isn't silently discarded.
     NavigationBackHandler(
@@ -178,6 +179,17 @@ fun ProfileManagementScreen(
             snackbarHostState.showSnackbar(message)
         }
     }
+    if (showCodedProfiles) {
+        CodedProfilesDialog(
+            profileNames = uiState.profileNames,
+            initial = codedProfileSlots().map { viewModel.codedRoleValue(it.key) },
+            onSave = { selected ->
+                viewModel.saveCodedProfiles(selected)
+                showCodedProfiles = false
+            },
+            onDismiss = { showCodedProfiles = false }
+        )
+    }
 
     AapsTheme {
         Scaffold(
@@ -227,6 +239,7 @@ fun ProfileManagementScreen(
                                             contentDescription = stringResource(CoreUiStrings.switch_to_edit)
                                         )
                                     }
+                                    CodedProfilesMenu(onOpen = { showCodedProfiles = true })
                                 }
                             } else {
                                 // Menu entry as well as the long-press: the long-press is undiscoverable
@@ -248,6 +261,13 @@ fun ProfileManagementScreen(
                                             onClick = {
                                                 showOverflowMenu = false
                                                 viewModel.enterReorderMode()
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(UiStrings.coded_profiles)) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                showCodedProfiles = true
                                             }
                                         )
                                     }
@@ -509,6 +529,28 @@ fun ProfileManagementScreen(
                 }
 
             }
+        }
+    }
+}
+
+@Composable
+private fun CodedProfilesMenu(onOpen: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = stringResource(CoreUiStrings.more_options)
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(UiStrings.coded_profiles)) },
+                onClick = {
+                    expanded = false
+                    onOpen()
+                }
+            )
         }
     }
 }

@@ -108,6 +108,19 @@
     <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
     <string name="pref_title_aps_low_profile_name">Low profile name</string>
     <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
+    <string name="pref_title_aps_standard_profile_name">Standard profile name</string>
+    <string name="pref_title_aps_standard100_profile_name">Standard tier A profile name</string>
+    <string name="pref_title_aps_standard105_profile_name">Standard tier B profile name</string>
+    <string name="pref_title_aps_standard110_profile_name">Standard tier C profile name</string>
+    <string name="pref_title_aps_low70_profile_name">Low tier A profile name</string>
+    <string name="pref_title_aps_low80_profile_name">Low tier B profile name</string>
+    <string name="pref_title_aps_low90_profile_name">Low tier C profile name</string>
+    <string name="pref_title_aps_steroid_100_profile_name">Steroid tier A profile name</string>
+    <string name="pref_title_aps_steroid_110_profile_name">Steroid tier B profile name</string>
+    <string name="pref_title_aps_steroid_130_profile_name">Steroid tier C profile name</string>
+    <string name="pref_title_aps_steroid_150_profile_name">Steroid tier D profile name</string>
+    <string name="pref_title_aps_steroid_190_profile_name">Steroid tier E profile name</string>
+    <string name="pref_title_aps_steroid_250_profile_name">Steroid tier F profile name</string>
 
     <!-- Maintenance preferences -->
     <string name="pref_title_maintenance_enable_fabric">Enable Fabric crash reporting</string>

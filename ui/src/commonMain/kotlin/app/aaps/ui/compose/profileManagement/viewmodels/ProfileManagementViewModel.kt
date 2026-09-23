@@ -12,6 +12,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.graph.profile.ProfileCompareData
 import app.aaps.core.graph.profile.buildProfileCompareData
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.bolus.BatchAction
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
@@ -46,6 +47,10 @@ import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.ScreenMode
 import app.aaps.core.ui.compose.icons.IcProfile
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.profileManagement.codedProfileSlots
+import app.aaps.ui.compose.profileManagement.planCodedProfileSave
+import app.aaps.ui.compose.profileManagement.planSwitchRole
+import app.aaps.ui.compose.profileManagement.stringKeyForCodedRole
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -106,6 +111,7 @@ class ProfileManagementViewModel(
     private val nsClient: NsClient,
     private val batchExecutor: BatchExecutor,
     private val rxBus: RxBus,
+    private val codedProfileRoles: CodedProfileRoles,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope
@@ -691,6 +697,26 @@ class ProfileManagementViewModel(
 
             else                       -> false // Unconfirmed → handled by the app-level pending modal
         }
+    }
+
+    fun codedRoleValue(key: String): String = preferences.get(stringKeyForCodedRole(key))
+
+    /** Writes the role list. Returns how many steroid names were refused for a Standard or Low slot. */
+    fun saveCodedProfiles(selected: List<String>): Int {
+        val slots = codedProfileSlots()
+        val previous = slots.associate { it.key to codedRoleValue(it.key) }
+        val plan = planCodedProfileSave(slots, selected, previous)
+        plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
+        if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
+        if (plan.blocked > 0) _snackbarEvent.tryEmit(rh.gs(UiStrings.coded_profiles_blocked, plan.blocked))
+        return plan.blocked
+    }
+
+    /** Writes the one role chosen on the profile switch screen. */
+    fun declareRoleForSwitch(profileName: String, chosenKey: String?) {
+        val plan = planSwitchRole(profileName, chosenKey)
+        plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
+        if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
     }
 
     companion object {
