@@ -486,6 +486,30 @@ open class OpenAPSAutoISFPlugin(
         if (sub75Note == "arm") aapsLogger.debug(LTag.APS, "sc7.5 cooldown armed, 10 min SMB $smb10")
         if (sub75Note == "clear") aapsLogger.debug(LTag.APS, "sc7.5 cooldown cleared")
         val uamRecent = runMarks.recent(RunMark.UAM_BST, 20, now)
+        val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+        val stepSample = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)
+        val statesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
+        if (nightFrSkipShouldFire(
+                ready = runMarks.ready(RunMark.NIGHT_FR_SKIP, 60, now),
+                profilePercent = profile_percentage,
+                tempTargetSet = isTempTarget,
+                boostAutomationsOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled),
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                rawDelta5 = raw5 ?: -9999.0,
+                iob = iobData.iob,
+                smbSum10 = smb10,
+                lowBgRecent = statesOn && states().inState("LowBG", "50recent"),
+                mjActive = statesOn && states().inState("MJ", "MJ active"),
+                steps5 = stepSample?.steps5min ?: 0,
+                steps30 = stepSample?.steps30min ?: 0,
+            )
+        ) {
+            runMarks.mark(RunMark.NIGHT_FR_SKIP, now)
+            aapsLogger.debug(LTag.APS, "NightFrSkip marked")
+        }
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1063,6 +1087,7 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
+            BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
             DoubleKey.ApsAutoIsfTddFactorFallback,

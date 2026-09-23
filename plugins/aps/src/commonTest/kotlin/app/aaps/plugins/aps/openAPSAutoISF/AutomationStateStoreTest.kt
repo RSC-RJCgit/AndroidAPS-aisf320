@@ -54,6 +54,30 @@ class AutomationStateStoreTest {
     }
 
     @Test
+    fun nightSkipFiresOnlyInsideItsWindowAndSafetyGates() {
+        val fire = nightFrSkipShouldFire(
+            ready = true, profilePercent = 100, tempTargetSet = false, boostAutomationsOn = true,
+            minuteOfDay = 3 * 60, bg = 130.0, delta = 5.0, shortDelta = 3.0, rawDelta5 = 5.0,
+            iob = 0.8, smbSum10 = 0.2, lowBgRecent = false, mjActive = false, steps5 = 10, steps30 = 20,
+        )
+        assertTrue(fire)
+        assertFalse(fire.let {
+            nightFrSkipShouldFire(
+                ready = true, profilePercent = 100, tempTargetSet = false, boostAutomationsOn = true,
+                minuteOfDay = 20, bg = 130.0, delta = 5.0, shortDelta = 3.0, rawDelta5 = 5.0,
+                iob = 0.8, smbSum10 = 0.2, lowBgRecent = false, mjActive = false, steps5 = 10, steps30 = 20,
+            )
+        })
+        assertFalse(
+            nightFrSkipShouldFire(
+                ready = true, profilePercent = 100, tempTargetSet = false, boostAutomationsOn = true,
+                minuteOfDay = 3 * 60, bg = 130.0, delta = 5.0, shortDelta = 3.0, rawDelta5 = 5.0,
+                iob = 0.8, smbSum10 = 0.2, lowBgRecent = true, mjActive = false, steps5 = 10, steps30 = 20,
+            )
+        )
+    }
+
+    @Test
     fun droppingTheActiveValueClearsIt() {
         val store = Memory().store()
         store.setStateValues("Profile", listOf("AllOK", "Bolus"))

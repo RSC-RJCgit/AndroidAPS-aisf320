@@ -84,6 +84,36 @@ internal data class RequiredAutomationState(
     val defaultValue: String? = null,
 )
 
+/**
+ * One night FastRise skip. True only inside 00:30-04:00 when the rise is real and the safety states are off.
+ * A missing raw change is passed as a large negative number so the skip stays off.
+ */
+internal fun nightFrSkipShouldFire(
+    ready: Boolean,
+    profilePercent: Int,
+    tempTargetSet: Boolean,
+    boostAutomationsOn: Boolean,
+    minuteOfDay: Int,
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    rawDelta5: Double,
+    iob: Double,
+    smbSum10: Double,
+    lowBgRecent: Boolean,
+    mjActive: Boolean,
+    steps5: Int,
+    steps30: Int,
+): Boolean {
+    val inWindow = minuteOfDay in 30 until 240
+    return ready && profilePercent == 100 && !tempTargetSet && boostAutomationsOn && inWindow &&
+        bg > 117.0 && bg <= 144.1 &&
+        delta >= 4.5 && shortDelta >= 2.7 && rawDelta5 >= 4.5 &&
+        iob <= 1.0 && smbSum10 < 0.6 &&
+        !lowBgRecent && !mjActive &&
+        steps5 <= 100 && steps30 <= 200
+}
+
 /** The names 3.2.1 reads. Defaults are the off values, so a new store does not look active. */
 internal val requiredAutomationStates: Map<String, RequiredAutomationState> = mapOf(
     "MJ" to RequiredAutomationState(listOf("NOMJremains", "MJ active", "MJ2", "MJ3", "MJ4", "MJ5", "MJ6"), "NOMJremains"),
