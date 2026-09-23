@@ -84,6 +84,8 @@
     <string name="pref_summary_aps_low_rebound_guard_enabled">Turn FastRise size tiers off after a recent hypo alarm while glucose is rebounding.</string>
     <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
+    <string name="pref_title_aps_automation_states">Automation states</string>
+    <string name="pref_summary_aps_automation_states">Remember named states such as MJ and LowBG. Off makes every state check false.</string>
     <string name="pref_title_aps_activity_detection">Step activity</string>
     <string name="pref_summary_aps_activity_detection">Use recent steps to change the sensitivity ratio. Off leaves it unchanged. Walking needs the phone to have moved.</string>
     <string name="pref_title_aps_activity_scale">Walking strength</string>

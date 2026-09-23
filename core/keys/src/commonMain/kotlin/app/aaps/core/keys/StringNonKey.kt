@@ -37,6 +37,9 @@ enum class StringNonKey(
     // Standalone Automation runtime. In core/keys (not the automation module) so the client→master
     // sync publisher/receiver in :plugins:sync can observe it without an inter-module dependency.
     AutomationEvents(key = "AUTOMATION_EVENTS", defaultValue = "", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Current automation state values and their allowed lists. Local to the loop phone.
+    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}", exportable = false),
+    AutomationStateValues(key = "automation_state_values", defaultValue = "{}", exportable = false),
     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"wizard\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ComposeGraphConfig("compose_graphconfig", ""),

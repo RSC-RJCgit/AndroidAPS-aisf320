@@ -53,6 +53,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
@@ -162,10 +163,26 @@ open class OpenAPSAutoISFPlugin(
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val runMarks = RunMarks()
     private var processStartedAtMs: Long = 0L
+    private var automationStates: AutomationStateStore? = null
+
+    private fun states(): AutomationStateStore {
+        automationStates?.let { return it }
+        val store = AutomationStateStore(
+            currentJson = preferences.get(StringNonKey.AutomationCurrentStates),
+            valuesJson = preferences.get(StringNonKey.AutomationStateValues),
+            saveCurrent = { preferences.put(StringNonKey.AutomationCurrentStates, it) },
+            saveValues = { preferences.put(StringNonKey.AutomationStateValues, it) },
+        )
+        automationStates = store
+        return store
+    }
 
     override suspend fun onStart() {
         super.onStart()
         if (processStartedAtMs == 0L) processStartedAtMs = dateUtil.now()
+        requiredAutomationStates.forEach { (name, required) ->
+            states().ensureDeclared(name, required.values, required.defaultValue)
+        }
         var count = 0
         val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
         apsResults.forEach {
@@ -673,8 +690,9 @@ open class OpenAPSAutoISFPlugin(
             targetBg = target_bg,
             shortDelta = glucose_status.shortAvgDelta,
             minutesSinceStart = (nowMs - startedAt) / 60_000L,
-            sleeping = false,
-            sleepStateExists = false,
+            sleeping = preferences.get(BooleanKey.AutomationStatesEnabled) &&
+                automationStates?.inState("Sleeping", "True") == true,
+            sleepStateExists = automationStates?.hasStateValues("Sleeping") == true,
             ignoreInactivityOvernight = preferences.get(BooleanKey.ApsIgnoreInactivityOvernight),
             idleStartHour = preferences.get(IntKey.ApsActivityIdleStart),
             idleEndHour = preferences.get(IntKey.ApsActivityIdleEnd),
@@ -1044,6 +1062,7 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsMaxBasal,
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseAutosens,
+            BooleanKey.AutomationStatesEnabled,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
             DoubleKey.ApsAutoIsfTddFactorFallback,

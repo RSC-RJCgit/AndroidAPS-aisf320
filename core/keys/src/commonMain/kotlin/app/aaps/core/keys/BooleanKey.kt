@@ -222,6 +222,14 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    AutomationStatesEnabled(
+        "automation_states_enabled",
+        true,
+        KeysStrings.pref_title_aps_automation_states,
+        KeysStrings.pref_summary_aps_automation_states,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsActivityDetection(
         "activity_detection",
         false,
