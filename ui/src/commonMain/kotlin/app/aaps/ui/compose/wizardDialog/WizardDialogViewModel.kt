@@ -226,6 +226,16 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    fun updateProtein(value: Int) {
+        _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
+    fun updateFat(value: Int) {
+        _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
     fun addCarbs(increment: Int) {
         val state = uiState.value
         val newValue = (state.carbs + increment).coerceIn(0, state.maxCarbs)
@@ -407,7 +417,9 @@ class WizardDialogViewModel(
             state.useTrend,
             state.alarmChecked,
             state.notes,
-            state.carbTime
+            state.carbTime,
+            protein = state.protein,
+            fat = state.fat,
         )
 
         wizard = w
@@ -448,7 +460,7 @@ class WizardDialogViewModel(
                 targetBGLow = 0.0, // not exposed directly
                 targetBGHigh = 0.0,
                 hasResult = true,
-                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0,
+                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
                 hasTempTarget = hasTT,
                 effectiveCarbs = effectiveCarbs,
                 eCarbs = eCarbs,
@@ -461,7 +473,7 @@ class WizardDialogViewModel(
     // --- Action methods ---
 
     fun hasAction(): Boolean =
-        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 } ?: false
+        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 || it.warsawPlan != null } ?: false
 
     fun getConfirmationSummary(): List<ConfirmationLine> {
         val state = uiState.value
@@ -523,7 +535,7 @@ class WizardDialogViewModel(
             carbTime = state.carbTime, useBg = state.useBg, useCob = state.useCOB, useIob = state.useIOB,
             useTt = state.useTT, useTrend = state.useTrend, alarm = state.alarmChecked, notes = state.notes,
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
-            profileName = profileName
+            profileName = profileName, protein = state.protein, fat = state.fat,
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         appScope.launch {

@@ -192,6 +192,8 @@ fun WizardDialogScreen(
         unitsLabel = uiState.units.displayLabel,
         onBgChange = { viewModel.updateBg(it) },
         onCarbsChange = { viewModel.updateCarbs(it.toInt()) },
+        onProteinChange = { viewModel.updateProtein(it.toInt()) },
+        onFatChange = { viewModel.updateFat(it.toInt()) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -220,6 +222,8 @@ internal fun WizardDialogContent(
     unitsLabel: String,
     onBgChange: (Double) -> Unit,
     onCarbsChange: (Double) -> Unit,
+    onProteinChange: (Double) -> Unit = {},
+    onFatChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -626,6 +630,22 @@ internal fun WizardDialogContent(
                             increment2 = uiState.carbsButtonIncrement2,
                             increment3 = uiState.carbsButtonIncrement3,
                             onAddCarbs = onAddCarbs
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_protein,
+                            value = uiState.protein.toDouble(),
+                            onValueChange = onProteinChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fat,
+                            value = uiState.fat.toDouble(),
+                            onValueChange = onFatChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
                         )
 
                         // Carbs type selector

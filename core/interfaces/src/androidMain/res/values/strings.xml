@@ -165,6 +165,10 @@
     <string name="wizard_carbs_halved">Carb insulin halved for a recent low.</string>
     <string name="wizard_hp_safety" comment="%1$.2f = units before the cut, %2$.2f = units after the cut, %3$.2f = carb-on-board insulin removed. Example: HP safety: 1.20 U to 0.68 U, carbs on board removed 0.30 U">HP safety: %1$.2f U to %2$.2f U, carbs on board removed %3$.2f U</string>
     <string name="wizard_rise_boost" comment="%1$.2f = units before the boost, %2$.2f = units after the boost. Example: Rise boost: 1.00 U to 1.33 U">Rise boost: %1$.2f U to %2$.2f U</string>
+    <string name="wizard_protein">Protein</string>
+    <string name="wizard_fat">Fat</string>
+    <string name="wizard_warsaw_dose">Protein and fat</string>
+    <string name="wizard_warsaw_plan" comment="%1$.2f = total units, %2$d = number of doses, %3$d = hours. Example: Protein and fat: 2.40 U in 5 doses over 5 h">Protein and fat: %1$.2f U in %2$d doses over %3$d h</string>
     <string name="wizard_notes_join" comment="%1$s = the note already written, %2$s = the next calculator line.">%1$s
 %2$s</string>
     <string name="format_insulin_units">%1$.2f U</string>

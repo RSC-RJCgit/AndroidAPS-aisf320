@@ -48,6 +48,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
@@ -130,6 +131,10 @@ class BolusWizard(
     var calculatedCorrection: Double = 0.0
         private set
     private var carbsHalvedByRecent50: Boolean = false
+    var warsawPlan: WarsawFpuPlan? = null
+        private set
+    var warsawIobBaseline: Double = 0.0
+        private set
     private var hpSafetyApplied: Boolean = false
     private var hpSafetyOriginal: Double = 0.0
     private var hpSafetyAdjusted: Double = 0.0
@@ -188,7 +193,10 @@ class BolusWizard(
         usePercentage: Boolean = false,
         totalPercentage: Double = 100.0,
         positiveIOBOnly: Boolean = false,
-        source: Sources = Sources.WizardDialog
+        source: Sources = Sources.WizardDialog,
+        protein: Int = 0,
+        fat: Int = 0,
+        warsawDurationHours: Double = 5.0,
     ): BolusWizard {
 
         this.profile = profile
@@ -243,8 +251,11 @@ class BolusWizard(
         }
 
         // Insulin from carbs. Above 100% this uses the 100% carb ratio.
-        // A recent low halves only this carb insulin. Protein and fat are not in this calculator yet.
+        // A recent low halves only this carb insulin.
+        // Protein and fat stay out of the immediate bolus. They are spread later, one dose per hour.
         ic = profile.getIc() * baseScale
+        warsawPlan = warsawFpuPlan(protein, fat, ic, warsawDurationHours)
+        if (activePct < 100 || useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) warsawPlan = null
         insulinFromCarbs = carbs / ic
         val status = glucoseStatus
         val wizardBgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
@@ -357,6 +368,7 @@ class BolusWizard(
         unclampedCalculatedInsulin = Round.roundTo(preClamp, bolusStep)
 
         insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(calculatedTotalInsulin, aapsLogger)).value()
+        warsawIobBaseline = (insulinFromBolusIOB + insulinFromBasalIOB).coerceAtLeast(0.0) + insulinAfterConstraints
 
         data = BolusWizardData(
             timeStamp = timeStamp,
@@ -398,9 +410,61 @@ class BolusWizard(
         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
         if (riseBoostApplied) extras.add(rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
+        warsawPlan?.let { plan ->
+            extras.add(rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60))
+        }
         return extras.fold(base) { acc, line ->
             if (acc.isEmpty()) line else rh.gs(InterfacesStrings.wizard_notes_join, acc, line)
         }
+    }
+
+    /**
+     * Queue the protein and fat doses. Each one is checked again at its own hour.
+     * A later confirm cancels this series. Nothing is written to the care portal.
+     */
+    suspend fun scheduleWarsawDoses(plan: WarsawFpuPlan, iobBaseline: Double, source: Sources) {
+        if (plan.numDoses <= 0) return
+        if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return
+        val profile = profileFunction.getProfile() ?: return
+        if (profileSwitchPercent(profile) < 100) return
+        val token = WarsawScheduleGate.next()
+        aapsLogger.info(
+            LTag.CORE,
+            "Warsaw: ${plan.numDoses} doses of ${plan.perDoseInsulin} U over ${plan.durationMinutes} min"
+        )
+        for (index in 1..plan.numDoses) {
+            val delayMin = warsawDoseDelayMinutes(index, plan.numDoses, plan.durationMinutes)
+            val planned = plan.perDoseInsulin
+            appScope.launch {
+                delay(delayMin * 60_000L)
+                if (!WarsawScheduleGate.isCurrent(token)) return@launch
+                deliverWarsawDose(planned, iobBaseline, source)
+            }
+        }
+    }
+
+    private suspend fun deliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources) {
+        if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return
+        val profile = profileFunction.getProfile() ?: return
+        if (profileSwitchPercent(profile) < 100) return
+        val status = glucoseStatusProvider.glucoseStatusData
+        if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) {
+            aapsLogger.info(LTag.CORE, "Warsaw dose skipped: glucose check failed")
+            return
+        }
+        val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
+        val dose = warsawDoseAfterIobRise(planned, iobBaseline, liveIob, ch.bolusStep(planned))
+        if (dose <= 0.0) {
+            aapsLogger.info(LTag.CORE, "Warsaw dose skipped: insulin on board already covers it")
+            return
+        }
+        wizardBolusExecutor.deliverInsulin(
+            insulin = dose,
+            note = null,
+            source = source,
+            onError = { failure -> aapsLogger.info(LTag.CORE, "Warsaw dose not delivered: ${failure.comment}") },
+            treatmentNote = rh.gs(InterfacesStrings.wizard_warsaw_dose),
+        )
     }
 
     fun createBolusCalculatorResult(): BCR {
@@ -530,6 +594,12 @@ class BolusWizard(
             }
             if (riseBoostApplied) {
                 line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
+            }
+            warsawPlan?.let { plan ->
+                line(
+                    ConfirmationRole.INFO,
+                    rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60)
+                )
             }
         }
 

@@ -244,6 +244,9 @@ interface WizardBolusExecutor {
         val eCarbsDelayMinutes: Int = 0,
         val eCarbsDurationHours: Int = 0,
         val profileName: String? = null,
-        val source: Sources = Sources.WizardDialog
+        val source: Sources = Sources.WizardDialog,
+        val protein: Int = 0,
+        val fat: Int = 0,
+        val warsawDurationHours: Double = 5.0,
     )
 }

@@ -53,6 +53,7 @@ import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
+import app.aaps.core.objects.wizard.WarsawFpuPlan
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.ui.compose.formatMinutesAsDuration
 import kotlinx.coroutines.CoroutineScope
@@ -142,7 +143,9 @@ class WizardBolusExecutorImpl(
         val therapyEventEdits: List<BatchAction.TherapyEventEdit> = emptyList(),
         val recordOnly: Boolean = false,
         val iCfg: ICfg? = null,
-        val bolusTimestamp: Long? = null
+        val bolusTimestamp: Long? = null,
+        val warsawPlan: WarsawFpuPlan? = null,
+        val warsawIobBaseline: Double = 0.0,
     )
 
     // Consume-once slots keyed by bolusId — a map, NOT a single var, so prepares from different actors (the
@@ -243,11 +246,21 @@ class WizardBolusExecutorImpl(
         if (abs(insulinAfterConstraints - wizard.calculatedTotalInsulin) >= minStep)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
         // A correction-only QuickWizard (0 carbs) that nets to nothing → reject rather than show an empty confirm.
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0)
+        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
 
         evictStalePending()
-        pending.park(wizard.timeStamp, PendingBolus(wizard.unclampedCalculatedInsulin, wizard.carbs, wizard.createBolusCalculatorResult(), wizard.timeStamp, entry, carbTimeMinutes = entry.carbTime(), notes = entry.buttonText()))
+        pending.park(wizard.timeStamp, PendingBolus(
+            wizard.unclampedCalculatedInsulin,
+            wizard.carbs,
+            wizard.createBolusCalculatorResult(),
+            wizard.timeStamp,
+            entry,
+            carbTimeMinutes = entry.carbTime(),
+            notes = entry.buttonText(),
+            warsawPlan = wizard.warsawPlan,
+            warsawIobBaseline = wizard.warsawIobBaseline,
+        ))
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
         val advisorApplies = wizard.needsBolusAdvisor()
@@ -301,7 +314,8 @@ class WizardBolusExecutorImpl(
         if (carbsAfterConstraints != inputs.carbs) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
         val wizard = bolusWizardProvider().doCalc(
             profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
-            inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime
+            inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
+            protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
         )
         val insulinAfterConstraints = wizard.insulinAfterConstraints
         val minStep = pump.pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints)
@@ -310,7 +324,7 @@ class WizardBolusExecutorImpl(
         // Nothing to deliver (e.g. BG below target + high IOB, no carbs): reject so the caller shows the standard
         // "no insulin required" instead of an empty confirmation. The guard lives here so every surface that recomputes
         // through this path — phone wizard dialog, client relay, watch — gets it (it was previously only in the wear handler).
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0)
+        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
         evictStalePending()
         pending.park(wizard.timeStamp,
@@ -325,7 +339,9 @@ class WizardBolusExecutorImpl(
                 notes = inputs.notes,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
-                eCarbsDurationHours = inputs.eCarbsDurationHours
+                eCarbsDurationHours = inputs.eCarbsDurationHours,
+                warsawPlan = wizard.warsawPlan,
+                warsawIobBaseline = wizard.warsawIobBaseline,
             )
         )
         val advisorApplies = wizard.needsBolusAdvisor()
@@ -657,6 +673,7 @@ class WizardBolusExecutorImpl(
             )
         else p.bcr
         deliverWizardBolus(correctedInsulin, p.carbs, carbTimeOffset.toInt(), p.bcr?.glucoseValue, correctedBcr, notes, source, onError)
+        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source) }
         if (carbs2 > 0) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
         if (useAlarm && p.carbs > 0 && carbTimeOffset > 0)
             automation.scheduleTimeToEatReminder(T.mins(carbTimeOffset).secs().toInt())
