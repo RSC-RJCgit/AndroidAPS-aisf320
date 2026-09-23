@@ -3,6 +3,7 @@ package app.aaps.core.objects.wizard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.text.Spanned
+import android.view.View
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.RM
@@ -112,6 +113,12 @@ class BolusWizard @Inject constructor(
     // block's own doc comment). Does NOT show up in ic itself, so without this flag the calc-info note
     // would report a carb ratio that doesn't match the insulin actually calculated from it.
     var carbsHalvedByRecent50 = false
+        private set
+    // Set in doCalc() -- BG < 6.0 mmol, a normal bolus / carb entry within the last 60 min, and BG below 6.0
+    // since that first entry (see WizardRecentEntry). Callers use it to start the COB box unticked and to apply
+    // the x0.8 max-bolus cut (dialog and QuickWizard); the calc-info note reports it. doCalc() itself does not
+    // remove COB: the caller passes useCob/cob, already unticked by default under this rule.
+    var lowBgRecentEntryRule = false
         private set
     var glucoseStatus: GlucoseStatus? = null
         private set
@@ -369,6 +376,12 @@ class BolusWizard @Inject constructor(
         insulinFromProteinOnly = (protein * 0.4) / ic
         insulinFromFatOnly = (fat * 0.9) / ic
         insulinFromCarbs = insulinFromCarbsOnly
+        // Low-BG recent-entry rule (2026-09-24, per explicit request): see WizardRecentEntry. Only detected here;
+        // the Bolus Wizard dialog and QuickWizard start their COB box unticked under it (the user can re-tick),
+        // so COB is whatever the caller passed in. BG is the wizard BG when the BG box is used, else the latest
+        // CGM value.
+        val ruleBgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else glucoseStatus?.glucose
+        lowBgRecentEntryRule = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), ruleBgMgdl)
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
@@ -578,7 +591,10 @@ class BolusWizard @Inject constructor(
         if (profileBaseScale != 1.0) icAnnotations.add("profile@${(profileBaseScale * 100).toInt()}%, recovered to base")
         if (carbsHalvedByRecent50) icAnnotations.add("carbs halved: recent50")
         val icText = "IC=${decimalFormatter.to2Decimal(ic)}" + if (icAnnotations.isNotEmpty()) " (${icAnnotations.joinToString("; ")})" else ""
-        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U, $icText, Profile=${delayedProfilePctPreview}%, " +
+        val recentEntryText = if (lowBgRecentEntryRule) {
+            ", RecentEntry<60min@BG<6 (COB ${if (useCob) "ON" else "off"}, MaxBolus x0.8)"
+        } else ""
+        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
             "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel"
     }
 
@@ -725,6 +741,58 @@ class BolusWizard @Inject constructor(
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
+    // QuickWizard limit box inside the confirmation dialog (2026-09-24, low-BG recent-entry rule, see
+    // WizardRecentEntry): the caller supplies the box view and a cleanup that restores the real SafetyMaxBolus.
+    // The box's own change listener (caller side) writes the temporary limit and calls refreshConfirmation().
+    // confirmLimitBoxShown tells the caller whether the dialog really opened (a zero-dose entry never shows it),
+    // so it can restore the limit itself when it did not.
+    var confirmExtraView: View? = null
+    var confirmExtraFinish: (() -> Unit)? = null
+    var confirmLimitBoxShown = false
+        private set
+    private var confirmDialog: androidx.appcompat.app.AlertDialog? = null
+    private var confirmMessageBuilder: (() -> Spanned)? = null
+
+    /** Recalculates with the limit now in force (same inputs) and refreshes the open confirmation's text. */
+    fun refreshConfirmation() {
+        doCalc(
+            profile, profileName, tempTarget, carbs, cob, bg, correction, percentageCorrection, useBg, useCob,
+            includeBolusIOB, includeBasalIOB, useSuperBolus, useTT, useTrend, useAlarm, notes, carbTime,
+            usePercentage, totalPercentage, quickWizard, positiveIOBOnly, protein, fat, walkingSoon
+        )
+        maxBolusAllowedAtConfirm = constraintChecker.getMaxBolusAllowed().value()
+        confirmMessageBuilder?.let { confirmDialog?.setMessage(it()) }
+    }
+
+    private fun showWizardConfirmation(ctx: Context, title: String, message: Spanned, rebuildMessage: () -> Spanned, ok: Runnable) {
+        val extra = confirmExtraView
+        if (extra == null) {
+            OKDialog.showConfirmation(ctx, title, message, ok)
+            return
+        }
+        var finished = false
+        val finish = {
+            if (!finished) {
+                finished = true
+                confirmExtraFinish?.invoke()
+            }
+        }
+        confirmMessageBuilder = rebuildMessage
+        confirmLimitBoxShown = true
+        confirmDialog = OKDialog.showConfirmationWithView(
+            ctx, title, message, extra,
+            ok = Runnable {
+                // Snapshot the (possibly edited) limit BEFORE the temporary preference is restored -- see
+                // maxBolusAllowedAtConfirm's own doc comment.
+                maxBolusAllowedAtConfirm = constraintChecker.getMaxBolusAllowed().value()
+                finish()
+                ok.run()
+            },
+            cancel = Runnable { finish() },
+            onAbort = Runnable { finish() }
+        )
+    }
+
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
         // Snapshot HERE, synchronously, before returning to the caller (WizardDialog's OK handler calls
         // dismiss() immediately after this returns, which reverts any live max-bolus-override) -- see
@@ -842,7 +910,7 @@ class BolusWizard @Inject constructor(
         val now = dateUtil.now()
 
         val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
-        OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
+        showWizardConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, { confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry) }, {
             // Same protein/fat-only fix as confirmAndExecute()'s own guard above.
             if (insulinAfterConstraints > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
                 if (useSuperBolus) {

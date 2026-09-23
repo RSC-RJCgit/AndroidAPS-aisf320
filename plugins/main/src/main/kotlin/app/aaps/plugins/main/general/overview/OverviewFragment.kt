@@ -123,6 +123,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
+import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
@@ -633,7 +634,25 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val quickWizardEntry = quickWizard.getActive()
         if (quickWizardEntry != null && actualBg != null && profile != null) {
             binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
-            val wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+            var wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+            // Low-BG recent-entry rule (2026-09-24, see WizardRecentEntry): BG < 6.0, a normal bolus / carb entry
+            // in the last 60 min, and BG below 6.0 since. For this press only, the max bolus is cut to x0.8 of what
+            // applies (SafetyMaxBolus is lowered temporarily and restored afterwards) and the confirmation dialog
+            // carries a limit box so it can be seen and changed without an extra dialog. COB is left to the button's
+            // own COB setting.
+            var recentEntryMaxBolus: Double? = null
+            if (wizard.lowBgRecentEntryRule) {
+                val baseMax = constraintChecker.getMaxBolusAllowed().value()
+                val bolusStepForCap = activePlugin.activePump.pumpDescription.bolusStep
+                val reducedMax = WizardRecentEntry.scaledMaxBolus(baseMax, bolusStepForCap)
+                if (baseMax > 0.0 && reducedMax < baseMax) {
+                    restoreQuickWizardSafetyMaxBolus()
+                    quickWizardOriginalSafetyMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+                    preferences.put(DoubleKey.SafetyMaxBolus, min(quickWizardOriginalSafetyMaxBolus ?: reducedMax, reducedMax))
+                    recentEntryMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+                }
+                if (recentEntryMaxBolus != null) wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+            }
             if (wizard.calculatedTotalInsulin > 0.0 || quickWizardEntry.carbs() > 0.0) {
                 val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
                 activity?.let {
@@ -645,18 +664,28 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     // calculatedTotalInsulin remainder. Blocking here on the normal MaxBolus clamp
                     // used to prevent both the bolus confirmation/delivery and the split scheduler.
                     if (carbsAfterConstraints != quickWizardEntry.carbs()) {
+                        restoreQuickWizardSafetyMaxBolus()
                         OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\n" + rh.gs(R.string.change_your_input))
                         return
                     }
                     val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
                     if (wizard.calculatedTotalInsulin > maxBolusAllowed && maxBolusAllowed > 0.0) {
-                        showQuickWizardMaxBolusDialog(it, quickWizardEntry)
+                        showQuickWizardMaxBolusDialog(it, quickWizardEntry, recentEntryMaxBolus)
                     } else {
-                        wizard.confirmAndExecute(it, quickWizardEntry)
+                        recentEntryMaxBolus?.let { startMax -> attachRecentEntryLimitBox(wizard, startMax) }
+                        try {
+                            wizard.confirmAndExecute(it, quickWizardEntry)
+                        } finally {
+                            // With the limit box embedded, the confirmation dialog restores the real limit
+                            // itself (after snapshotting it); otherwise restore right away.
+                            if (!wizard.confirmLimitBoxShown) restoreQuickWizardSafetyMaxBolus()
+                        }
                     }
+                    return
                 }
             }
-        }
+            restoreQuickWizardSafetyMaxBolus()
+        } else restoreQuickWizardSafetyMaxBolus()
     }
 
     /**
@@ -669,7 +698,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
      */
     private fun showQuickWizardMaxBolusDialog(
         activity: androidx.fragment.app.FragmentActivity,
-        quickWizardEntry: QuickWizardEntry
+        quickWizardEntry: QuickWizardEntry,
+        // Starting limit for the stepper when the low-BG recent-entry rule already cut it to x0.8
+        // (see onClickQuickWizard). Null = start at the real preference value, as before. The real value
+        // is still what gets restored on dismiss.
+        startMax: Double? = null
     ) {
         quickWizardMaxBolusDialog?.dismiss()
         restoreQuickWizardSafetyMaxBolus()
@@ -691,8 +724,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return recalculated
         }
 
+        val startValue = startMax ?: originalMaxBolus
         dialogBinding.maxBolusInput.setParams(
-            originalMaxBolus,
+            startValue,
             0.1,
             60.0,
             bolusStep,
@@ -704,6 +738,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             preferences.put(DoubleKey.SafetyMaxBolus, dialogBinding.maxBolusInput.value)
             recalculateAndShowSummary()
         }
+        if (startMax != null) preferences.put(DoubleKey.SafetyMaxBolus, startValue)
         recalculateAndShowSummary()
 
         quickWizardMaxBolusDialog = androidx.appcompat.app.AlertDialog.Builder(activity)
@@ -723,6 +758,28 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
                 dialog.show()
             }
+    }
+
+    /**
+     * Puts the max-bolus box (same NumberPicker layout as the over-limit dialog, summary hidden) into the wizard's
+     * confirmation dialog for a press under the low-BG recent-entry rule. Editing it writes the temporary limit and
+     * refreshes the confirmation; the real limit is restored when that dialog is finished (OK, cancel or abort).
+     */
+    private fun attachRecentEntryLimitBox(wizard: BolusWizard, startMax: Double) {
+        val box = DialogQuickWizardMaxBolusBinding.inflate(layoutInflater)
+        box.summary.visibility = View.GONE
+        val step = activePlugin.activePump.pumpDescription.bolusStep.takeIf { it > 0.0 } ?: 0.05
+        box.maxBolusInput.setParams(
+            startMax, 0.1, 60.0, step,
+            decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+            false, null
+        )
+        box.maxBolusInput.setOnValueChangedListener {
+            preferences.put(DoubleKey.SafetyMaxBolus, box.maxBolusInput.value)
+            wizard.refreshConfirmation()
+        }
+        wizard.confirmExtraView = box.root
+        wizard.confirmExtraFinish = { restoreQuickWizardSafetyMaxBolus() }
     }
 
     private fun restoreQuickWizardSafetyMaxBolus() {

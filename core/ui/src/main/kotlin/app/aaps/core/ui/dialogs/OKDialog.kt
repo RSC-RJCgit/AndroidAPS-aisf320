@@ -193,6 +193,41 @@ object OKDialog {
         showConfirmation(context, context.getString(R.string.confirmation), message, ok, cancel)
     }
 
+    /**
+     * Confirmation with an extra view (e.g. a limit box) under the message. Returns the dialog so the caller can
+     * refresh the message with setMessage(). [onAbort] runs only if the dialog is dismissed WITHOUT pressing OK or
+     * Cancel (back button etc.); the OK / Cancel runnables are the caller's own cleanup points.
+     */
+    @SuppressLint("InflateParams")
+    fun showConfirmationWithView(
+        context: Context, title: String, message: Spanned, extraView: android.view.View,
+        ok: Runnable?, cancel: Runnable? = null, onAbort: Runnable? = null
+    ): androidx.appcompat.app.AlertDialog {
+        var buttonClicked = false
+        val dialog = MaterialAlertDialogBuilder(context, R.style.DialogTheme)
+            .setMessage(message)
+            .setView(extraView)
+            .setCustomTitle(AlertDialogHelper.buildCustomTitle(context, title))
+            .setPositiveButton(android.R.string.ok) { d: DialogInterface, _: Int ->
+                if (buttonClicked) return@setPositiveButton
+                buttonClicked = true
+                d.dismiss()
+                SystemClock.sleep(100)
+                runOnUiThread(ok)
+            }
+            .setNegativeButton(android.R.string.cancel) { d: DialogInterface, _: Int ->
+                if (buttonClicked) return@setNegativeButton
+                buttonClicked = true
+                d.dismiss()
+                SystemClock.sleep(100)
+                runOnUiThread(cancel)
+            }
+            .setOnDismissListener { if (!buttonClicked) runOnUiThread(onAbort) }
+            .show()
+        dialog.setCanceledOnTouchOutside(false)
+        return dialog
+    }
+
     @SuppressLint("InflateParams")
     fun showConfirmation(context: Context, title: String, message: String, ok: Runnable?, cancel: Runnable? = null) {
         var okClicked = false

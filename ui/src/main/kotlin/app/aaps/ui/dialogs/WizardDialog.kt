@@ -50,6 +50,7 @@ import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardActivitySteps
+import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
@@ -119,6 +120,11 @@ class WizardDialog : DaggerDialogFragment() {
     // BGL<6.0 drops the this-bolus-only max-bolus stepper to 2.0U. Manual stepper change wins.
     private var maxBolusLowBgUserOverride = false
     private var applyingMaxBolusLowBgDefault = false
+    // BGL<6.0, a normal bolus / carb entry in the last 60 min and BGL<6.0 since it (WizardRecentEntry): COB box unticked
+    // by default and the session max bolus x0.8. Ticking COB by hand wins for the rest of the session
+    // (same pattern as Walking Soon). The programmatic untick is never saved to WizardIncludeCob.
+    private var cobRecentUserOverride = false
+    private var applyingCobRecentDefault = false
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -403,6 +409,7 @@ class WizardDialog : DaggerDialogFragment() {
     }
 
     private fun onCheckedChanged(buttonView: CompoundButton, @Suppress("unused") state: Boolean) {
+        if (buttonView.id == binding.cobCheckbox.id && !applyingCobRecentDefault) cobRecentUserOverride = true
         saveCheckedStates()
         binding.ttCheckbox.isEnabled = binding.bgCheckbox.isChecked && persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null
         binding.ttCheckboxIcon.visibility = binding.ttCheckbox.isEnabled.toVisibility()
@@ -448,7 +455,7 @@ class WizardDialog : DaggerDialogFragment() {
     }
 
     private fun saveCheckedStates() {
-        preferences.put(BooleanKey.WizardIncludeCob, binding.cobCheckbox.isChecked)
+        if (!applyingCobRecentDefault) preferences.put(BooleanKey.WizardIncludeCob, binding.cobCheckbox.isChecked)
         preferences.put(BooleanKey.WizardIncludeTrend, binding.bgTrendCheckbox.isChecked)
         preferences.put(BooleanKey.WizardCorrectionPercent, binding.correctionPercent.isChecked)
     }
@@ -534,15 +541,38 @@ class WizardDialog : DaggerDialogFragment() {
         applyingWalkingSoonDefault = false
     }
 
+    // BG for the low-BG defaults below: the wizard BG box when it has a value, else the latest CGM value.
+    private fun lowBgRuleMgdl(bgInput: Double): Double {
+        val gs = glucoseStatusProvider.getGlucoseStatusData()
+        return if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
+        else gs?.glucose ?: 999.0
+    }
+
+    // COB box default (2026-09-24): BGL<6.0, a normal bolus / carb entry within 60 min and BGL<6.0 since -> unticked
+    // (COB would re-count carbs that entry's bolus already covered). When the rule stops applying the box
+    // returns to the user's saved WizardIncludeCob. Manual tick/untick wins for the rest of the session.
+    private fun applyCobRecentDefault(bgInput: Double) {
+        if (cobRecentUserOverride || applyingCobRecentDefault) return
+        val rule = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), lowBgRuleMgdl(bgInput))
+        val want = if (rule) false else preferences.get(BooleanKey.WizardIncludeCob)
+        if (binding.cobCheckbox.isChecked == want) return
+        applyingCobRecentDefault = true
+        binding.cobCheckbox.isChecked = want
+        applyingCobRecentDefault = false
+    }
+
     // Temporary max-bolus stepper only. Preference is reverted in onDestroy. If the standing
     // SafetyMaxBolus is already below 2.0, leave it — this only decreases. BGL>=6.0 restores
-    // the session snapshot unless the user has touched the stepper.
+    // the session snapshot unless the user has touched the stepper. BGL<6.0 with a normal bolus / carb
+    // entry in the last 60 min and BGL<6.0 since (WizardRecentEntry) takes a further x0.8 off that limit, rounded down to
+    // the pump step (3.0 -> 2.0 -> 1.6).
     private fun applyMaxBolusLowBgDefault(bgInput: Double) {
         if (maxBolusLowBgUserOverride || applyingMaxBolusLowBgDefault) return
-        val gs = glucoseStatusProvider.getGlucoseStatusData()
-        val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
-        else gs?.glucose ?: 999.0
-        val want = if (bgMgdl < 108.1 /* 6.0 mmol */) min(originalSafetyMaxBolus, 2.0) else originalSafetyMaxBolus
+        val bgMgdl = lowBgRuleMgdl(bgInput)
+        val lowBgMax = if (bgMgdl < 108.1 /* 6.0 mmol */) min(originalSafetyMaxBolus, 2.0) else originalSafetyMaxBolus
+        val want = if (WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl))
+            WizardRecentEntry.scaledMaxBolus(lowBgMax, bolusStep)
+        else lowBgMax
         if (abs(binding.maxBolusOverrideInput.value - want) < 0.001) return
         applyingMaxBolusLowBgDefault = true
         binding.maxBolusOverrideInput.value = want
@@ -571,6 +601,7 @@ class WizardDialog : DaggerDialogFragment() {
         val fat = SafeParse.stringToInt(binding.fatInput.text)
         applyWalkingSoonDefault(carbs, protein, fat, bg)
         applyMaxBolusLowBgDefault(bg)
+        applyCobRecentDefault(bg)
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection
