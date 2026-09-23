@@ -527,6 +527,11 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.NIGHT_FR_SKIP, now)
             aapsLogger.debug(LTag.APS, "NightFrSkip marked")
         }
+        applyDeliveryRestore(
+            now = now,
+            tempTargetSet = isTempTarget,
+            mealCob = mealData.mealCOB,
+        )
         markBolusBoosts(
             now = now,
             profilePercent = profile_percentage,
@@ -1376,6 +1381,42 @@ open class OpenAPSAutoISFPlugin(
         }
         runMarks.mark(RunMark.IOB_PROFILE_REVERT, now)
         aapsLogger.debug(LTag.APS, "Dose revert reason=${decision.reason}")
+    }
+
+    // Puts the SMB delivery ratio back to its saved baseline when no temp target is on.
+    // While four or more SMBs land inside 65 seconds, and the meal is under 9 g, the ratio goes to
+    // baseline minus 0.03 instead. A boost mark from the last 3 minutes is left alone.
+    // This runs before the boost marks, so a later write in the same loop is not undone here.
+    private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double) {
+        val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+        val resting = baseline.coerceAtMost(smb_delivery_ratio_max)
+        val hardStackTarget = (baseline - 0.03).coerceAtLeast(0.1)
+        val stacking = smbIsStacking(smbInterval5Sec(now), smbCount5(now))
+        val current = smb_delivery_ratio
+        val atHardStack = deliveryNear(current, hardStackTarget)
+        if (delOffShouldRestore(
+                currentRatio = current,
+                restingBaseline = resting,
+                tempTargetSet = tempTargetSet,
+                atHardStackTarget = atHardStack,
+                smbStacking = stacking,
+            )
+        ) {
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, resting)
+            aapsLogger.debug(LTag.APS, "SMB delivery ratio back to $resting")
+        }
+        val recentBoost = runMarks.recent(RunMark.BOLUS_GIVEN, 3, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 3, now)
+        if (hardStackShouldReduce(
+                atHardStackTarget = atHardStack,
+                smbStacking = stacking,
+                recentOwnBoost = recentBoost,
+                mealCob = mealCob,
+            )
+        ) {
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, hardStackTarget)
+            aapsLogger.debug(LTag.APS, "SMB delivery ratio down to $hardStackTarget while SMBs are stacking")
+        }
     }
 
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
