@@ -1481,6 +1481,28 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.NOT50_RECENTLY, now)
             aapsLogger.debug(LTag.APS, "Not50Recently cleared")
         }
+        val iobThNow = preferences.get(IntKey.ApsAutoIsfIobThPercent)
+        if (iobThDaytimeFloorShouldFire(
+                ready = runMarks.ready(RunMark.IOB_TH_DAYTIME_FLOOR, 30, now),
+                minuteOfDay = minuteOfDay,
+                profilePercent = profilePercent,
+                lowBgClear = statesOn && states().inState("LowBG", "NO50rec"),
+                steroidsOff = statesOn && states().inState("Steroids", "Steroids Off"),
+                tempTargetSet = tempTargetSet,
+                iobTh = iobThNow,
+                bg = bg,
+                delta = delta,
+            )
+        ) {
+            val iobBaseline = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal)
+            if (70 <= iobBaseline) {
+                preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+                runMarks.mark(RunMark.IOB_TH_DAYTIME_FLOOR, now)
+                aapsLogger.debug(LTag.APS, "iobTH daytime floor $iobThNow -> 70")
+            } else {
+                aapsLogger.debug(LTag.APS, "iobTH daytime floor left $iobThNow, 70 is above the baseline")
+            }
+        }
         val usualBlock = usual2Block(
             ready = runMarks.ready(RunMark.USUAL2, 5, now),
             profilePercent = profilePercent,
