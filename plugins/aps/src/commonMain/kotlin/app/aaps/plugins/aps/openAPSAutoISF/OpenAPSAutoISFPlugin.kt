@@ -1469,6 +1469,18 @@ open class OpenAPSAutoISFPlugin(
         } else if (blocked) {
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
         }
+        if (not50RecentlyShouldFire(
+                ready = runMarks.ready(RunMark.NOT50_RECENTLY, 5, now),
+                profilePercent = profilePercent,
+                lowBgRecent = statesOn && states().inState("LowBG", "50recent"),
+                delta = delta,
+                bg = bg,
+            )
+        ) {
+            applyNot50Clear()
+            runMarks.mark(RunMark.NOT50_RECENTLY, now)
+            aapsLogger.debug(LTag.APS, "Not50Recently cleared")
+        }
         val usualBlock = usual2Block(
             ready = runMarks.ready(RunMark.USUAL2, 5, now),
             profilePercent = profilePercent,
@@ -1522,6 +1534,15 @@ open class OpenAPSAutoISFPlugin(
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
             aapsLogger.debug(LTag.APS, "AlarmHypo marked 1=$hypo1 2=$hypo2")
         }
+    }
+
+    // Glucose has risen back through 5.5 mmol/L at a 100% profile. The night FastRise skip can run again.
+    // The saved hypo-alarm time is not cleared, so the 60 minute meal floor still applies.
+    private fun applyNot50Clear() {
+        val store = states()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        if (store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
+        if (store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "NoAlarmRecent")
     }
 
     // Records a real hypo alarm. The mild meal-leftover floor then stays at 7.0 mmol/L for 60 minutes.

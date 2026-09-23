@@ -13,6 +13,7 @@ internal object RunMark {
     const val USUAL2 = "Usual2forTH"
     const val ALARM_HYPO_1 = "AlarmHypo1"
     const val ALARM_HYPO_2 = "AlarmHypo2"
+    const val NOT50_RECENTLY = "Not50Recently"
 }
 
 /**
