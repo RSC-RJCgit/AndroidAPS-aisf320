@@ -576,6 +576,14 @@ open class OpenAPSAutoISFPlugin(
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
         )
+        applyActivityProf50(
+            now = now,
+            profilePercent = profile_percentage,
+            profileIsBolus = statesOn && states().inState("Profile", "Bolus"),
+            lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+        )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1700,6 +1708,50 @@ open class OpenAPSAutoISFPlugin(
         if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "HnAM")
         runMarks.mark(RunMark.HIGH_NIGHT, now)
         aapsLogger.debug(LTag.APS, "High night -> $standardName for 30 min")
+    }
+
+    // A 6.8 mmol/L activity temp target, with glucose at or under 8.5 mmol/L and not rising,
+    // sets the current profile to 50% for 180 minutes. The acceleration weight is left alone.
+    private suspend fun applyActivityProf50(
+        now: Long,
+        profilePercent: Int,
+        profileIsBolus: Boolean,
+        lowTargetMgdl: Double?,
+        bg: Double,
+        delta: Double,
+    ) {
+        if (!activityProf50ShouldFire(
+                ready = runMarks.ready(RunMark.ACTIVITY_PROF_50, 5, now),
+                profilePercent = profilePercent,
+                profileIsBolus = profileIsBolus,
+                lowTargetMgdl = lowTargetMgdl,
+                bg = bg,
+                delta = delta,
+            )
+        ) return
+        val baseline = preferences.get(IntKey.ApsAutoIsfProfilePercentNormal)
+        if (50 > baseline) {
+            aapsLogger.debug(LTag.APS, "Activity profile 50 left alone, 50 is above the baseline")
+            return
+        }
+        val switched = profileFunction.createProfileSwitch(
+            durationInMinutes = 180,
+            percentage = 50,
+            timeShiftInHours = 0,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: activity profile 50",
+            listValues = listOf(
+                ValueWithUnit.Percent(50),
+                ValueWithUnit.Minute(180)
+            )
+        ) != null
+        if (!switched) {
+            aapsLogger.debug(LTag.APS, "Activity profile 50 did not write a switch")
+            return
+        }
+        runMarks.mark(RunMark.ACTIVITY_PROF_50, now)
+        aapsLogger.debug(LTag.APS, "Activity profile 50 for 180 min")
     }
 
     // Switches to [profileName] at 100% for [minutes]. Returns false when the name is missing.
