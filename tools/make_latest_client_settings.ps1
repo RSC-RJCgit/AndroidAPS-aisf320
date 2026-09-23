@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $SourceDirectory 'AutoISF_settings_Client_SMF731B_Latest.docx'
+    $OutputPath = 'C:\winword\aaa\AutoISF_settings_Client_SMF731B_Latest.docx'
 }
 
 # Export timestamps survive copying, unlike Windows modification times.
