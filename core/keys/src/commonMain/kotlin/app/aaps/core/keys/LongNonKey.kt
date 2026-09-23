@@ -34,5 +34,8 @@ enum class LongNonKey(
 
     // Epoch millis when the current rapid-SMB stack started. 0 means no stack. Local only.
     ApsAutoIsfSmbStackStart("autoisf_smb_stack_start", 0L, exportable = false),
+
+    // Epoch millis until an overnight duration rescue must not start another one. Local only.
+    ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0L, exportable = false),
 }
 

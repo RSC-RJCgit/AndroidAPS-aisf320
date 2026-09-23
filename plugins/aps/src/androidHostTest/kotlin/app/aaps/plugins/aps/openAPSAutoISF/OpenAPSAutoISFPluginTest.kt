@@ -34,7 +34,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
 
     @BeforeEach fun prepare() {
         openAPSAutoISFPlugin = OpenAPSAutoISFPlugin(
-            aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileUtil, config, activePlugin,
+            aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileRepository, profileUtil, config, activePlugin,
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, notificationManager, determineBasalSMB, profiler,
             GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch,

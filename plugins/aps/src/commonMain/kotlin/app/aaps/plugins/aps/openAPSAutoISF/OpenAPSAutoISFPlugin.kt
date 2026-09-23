@@ -46,6 +46,7 @@ import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.profiling.Profiler
@@ -101,6 +102,7 @@ open class OpenAPSAutoISFPlugin(
     private val constraintsChecker: ConstraintsChecker,
     override val rh: TextResolver,
     private val profileFunction: ProfileFunction,
+    private val profileRepository: ProfileRepository,
     private val profileUtil: ProfileUtil,
     private val config: Config,
     private val activePlugin: ActivePlugin,
@@ -540,6 +542,16 @@ open class OpenAPSAutoISFPlugin(
             statesOn = statesOn,
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
+        )
+        applyOvernightDuraRescue(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            factors = autoIsfFactors,
+            smbSum30 = smbSum(now, 30 * 60 * 1000L),
+            statesOn = statesOn,
         )
         revertRaisedWeights(
             now = now,
@@ -1574,6 +1586,74 @@ open class OpenAPSAutoISFPlugin(
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
             aapsLogger.debug(LTag.APS, "AlarmHypo marked 1=$hypo1 2=$hypo2")
         }
+    }
+
+    // Between 02:00 and 04:00, a flat high on the Low profile can move to the Standard profile for 60 minutes.
+    // The duration factor must be above 2.5 and higher than the other factors. No SMB in the last 30 minutes.
+    private suspend fun applyOvernightDuraRescue(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        factors: AutoIsfFactors,
+        smbSum30: Double,
+        statesOn: Boolean,
+    ) {
+        if (!factors.recorded) return
+        val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val fire = overnightDuraRescueShouldFire(
+            ready = runMarks.ready(RunMark.OVERNIGHT_DURA_RESCUE, 60, now),
+            rescueActive = preferences.get(LongNonKey.ApsAutoIsfOvernightRescueUntil) > now,
+            minuteOfDay = minuteOfDay,
+            onLowProfile = lowName.isNotBlank() && profileFunction.getOriginalProfileName() == lowName,
+            bg = bg,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            duraIsf = factors.duraIsf,
+            finalIsf = factors.finalIsf,
+            acceIsf = factors.acceIsf,
+            bgIsf = factors.bgIsf,
+            ppIsf = factors.ppIsf,
+            smbSum30 = smbSum30,
+            lowBgRecent = !statesOn || states().inState("LowBG", "50recent"),
+        )
+        if (!fire) return
+        if (standardName.isBlank() || profileFunction.getOriginalProfileName() == standardName) {
+            aapsLogger.debug(LTag.APS, "Overnight dura rescue: no standard profile to switch to")
+            return
+        }
+        val iCfg = profileFunction.getRunningOrRequestedICfg()
+        val store = profileRepository.profile.value
+        if (iCfg == null || store == null || store.getSpecificProfile(standardName) == null) {
+            aapsLogger.debug(LTag.APS, "Overnight dura rescue: standard profile is not in the store")
+            return
+        }
+        val switched = profileFunction.createProfileSwitch(
+            profileStore = store,
+            profileName = standardName,
+            durationInMinutes = 60,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = now,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: overnight dura rescue",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(standardName),
+                ValueWithUnit.Percent(100),
+                ValueWithUnit.Minute(60)
+            ),
+            iCfg = iCfg,
+        ) != null
+        if (!switched) {
+            aapsLogger.debug(LTag.APS, "Overnight dura rescue did not write a switch")
+            return
+        }
+        preferences.put(LongNonKey.ApsAutoIsfOvernightRescueUntil, now + 60 * 60_000L)
+        runMarks.mark(RunMark.OVERNIGHT_DURA_RESCUE, now)
+        aapsLogger.debug(LTag.APS, "Overnight dura rescue -> $standardName for 60 min")
     }
 
     // A falling glucose on a 100% profile. The night FastRise skip stays closed until glucose recovers.
