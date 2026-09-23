@@ -584,6 +584,13 @@ open class OpenAPSAutoISFPlugin(
             bg = glucoseStatus.glucose,
             delta = glucoseStatus.delta,
         )
+        applyActivityOff(
+            now = now,
+            profilePercent = profile_percentage,
+            lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+        )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1752,6 +1759,71 @@ open class OpenAPSAutoISFPlugin(
         }
         runMarks.mark(RunMark.ACTIVITY_PROF_50, now)
         aapsLogger.debug(LTag.APS, "Activity profile 50 for 180 min")
+    }
+
+    // Ends the 180 minute activity profile at 50%. Switches to the standard profile at 100% with no end time,
+    // so the short 50% switch does not keep running. Cancels the temp target. Puts the IOB threshold back to 70
+    // only when 70 is not above the saved baseline. The acceleration weight is left alone.
+    private suspend fun applyActivityOff(
+        now: Long,
+        profilePercent: Int,
+        lowTargetMgdl: Double?,
+        bg: Double,
+        delta: Double,
+    ) {
+        if (!runMarks.ready(RunMark.ACTIVITY_OFF, 5, now) || profilePercent != 50) return
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) 0.0 else (now - cannula.timestamp) / 3_600_000.0
+        if (!activityOffShouldFire(
+                ready = true,
+                profilePercent = profilePercent,
+                lowTargetMgdl = lowTargetMgdl,
+                bg = bg,
+                delta = delta,
+                cannulaHours = cannulaHours,
+                lastBolusMinutes = minutesSinceLastPositiveNormalBolus(now),
+                delayedBolusPending = false,
+            )
+        ) return
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val iCfg = profileFunction.getRunningOrRequestedICfg()
+        val store = profileRepository.profile.value
+        if (standardName.isBlank() || iCfg == null || store == null || store.getSpecificProfile(standardName) == null) {
+            aapsLogger.debug(LTag.APS, "Activity off: standard profile is not in the store")
+            return
+        }
+        val switched = profileFunction.createProfileSwitch(
+            profileStore = store,
+            profileName = standardName,
+            durationInMinutes = 0,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = now,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: activity off",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(standardName),
+                ValueWithUnit.Percent(100)
+            ),
+            iCfg = iCfg,
+        ) != null
+        if (!switched) {
+            aapsLogger.debug(LTag.APS, "Activity off did not write a switch")
+            return
+        }
+        persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+            timestamp = now,
+            action = Action.CANCEL_TT,
+            source = Sources.Automation,
+            note = "AutoISF: activity off",
+            listValues = emptyList(),
+        )
+        val iobBaseline = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal)
+        if (70 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+        else aapsLogger.debug(LTag.APS, "Activity off left the IOB threshold alone, 70 is above the baseline")
+        runMarks.mark(RunMark.ACTIVITY_OFF, now)
+        aapsLogger.debug(LTag.APS, "Activity off -> $standardName at 100%")
     }
 
     // Switches to [profileName] at 100% for [minutes]. Returns false when the name is missing.
