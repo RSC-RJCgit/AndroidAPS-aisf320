@@ -17,6 +17,7 @@ internal object RunMark {
     const val IOB_TH_DAYTIME_FLOOR = "iobTHDaytimeFloor"
     const val EXTRA50 = "Extra50"
     const val OVERNIGHT_DURA_RESCUE = "OvernightDuraRescue"
+    const val HIGH_NIGHT = "HighNight00AM"
 }
 
 /**

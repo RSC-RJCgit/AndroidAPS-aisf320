@@ -553,6 +553,16 @@ open class OpenAPSAutoISFPlugin(
             smbSum30 = smbSum(now, 30 * 60 * 1000L),
             statesOn = statesOn,
         )
+        applyHighNight(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            tempTargetSet = isTempTarget,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            statesOn = statesOn,
+        )
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
@@ -1654,6 +1664,67 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(LongNonKey.ApsAutoIsfOvernightRescueUntil, now + 60 * 60_000L)
         runMarks.mark(RunMark.OVERNIGHT_DURA_RESCUE, now)
         aapsLogger.debug(LTag.APS, "Overnight dura rescue -> $standardName for 60 min")
+    }
+
+    // A confirmed overnight rise moves to the Standard profile for 30 minutes.
+    // Profile is marked HnAM. The IOB threshold and the acceleration weight stay as they are.
+    private suspend fun applyHighNight(
+        now: Long,
+        minuteOfDay: Int,
+        tempTargetSet: Boolean,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        statesOn: Boolean,
+    ) {
+        if (!highNightShouldFire(
+                ready = runMarks.ready(RunMark.HIGH_NIGHT, 60, now),
+                tempTargetSet = tempTargetSet,
+                steroidsOff = statesOn && states().inState("Steroids", "Steroids Off"),
+                minuteOfDay = minuteOfDay,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+            )
+        ) return
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val alreadyThere = standardName.isNotBlank() && profileFunction.getOriginalProfileName() == standardName
+        val switched = alreadyThere || switchToStandardFor(standardName, 30, now)
+        if (!switched) {
+            aapsLogger.debug(LTag.APS, "High night: standard profile was not switched")
+            return
+        }
+        val store = states()
+        if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "HnAM")
+        runMarks.mark(RunMark.HIGH_NIGHT, now)
+        aapsLogger.debug(LTag.APS, "High night -> $standardName for 30 min")
+    }
+
+    // Switches to [profileName] at 100% for [minutes]. Returns false when the name is missing.
+    private suspend fun switchToStandardFor(profileName: String, minutes: Int, now: Long): Boolean {
+        if (profileName.isBlank()) return false
+        val iCfg = profileFunction.getRunningOrRequestedICfg() ?: return false
+        val store = profileRepository.profile.value ?: return false
+        if (store.getSpecificProfile(profileName) == null) return false
+        return profileFunction.createProfileSwitch(
+            profileStore = store,
+            profileName = profileName,
+            durationInMinutes = minutes,
+            percentage = 100,
+            timeShiftInHours = 0,
+            timestamp = now,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = "AutoISF: high night",
+            listValues = listOf(
+                ValueWithUnit.SimpleString(profileName),
+                ValueWithUnit.Percent(100),
+                ValueWithUnit.Minute(minutes)
+            ),
+            iCfg = iCfg,
+        ) != null
     }
 
     // A falling glucose on a 100% profile. The night FastRise skip stays closed until glucose recovers.
