@@ -161,9 +161,11 @@ open class OpenAPSAutoISFPlugin(
     val normalTarget = Constants.NORMAL_TARGET_MGDL
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val runMarks = RunMarks()
+    private var processStartedAtMs: Long = 0L
 
     override suspend fun onStart() {
         super.onStart()
+        if (processStartedAtMs == 0L) processStartedAtMs = dateUtil.now()
         var count = 0
         val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
         apsResults.forEach {
@@ -636,37 +638,66 @@ open class OpenAPSAutoISFPlugin(
         var sensitivityRatio: Double
         var origin_sens = ""
         val low_temptarget_lowers_sensitivity = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)
-        if (high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
-            || low_temptarget_lowers_sensitivity && isTempTarget && target_bg < normalTarget
-        ) {
+        val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
+        val resistanceModeActive = low_temptarget_lowers_sensitivity && isTempTarget && target_bg < normalTarget
+        var tempTargetRatio = 1.0
+        if (exerciseModeActive || resistanceModeActive) {
             // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
             // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
-            //sensitivityRatio = 2/(2+(target_bg-normalTarget)/40);
             val halfBasalTarget = preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget)
             val c = (halfBasalTarget - normalTarget).toDouble()
             if (c * (c + target_bg - normalTarget) <= 0.0) {
-                sensitivityRatio = preferences.get(DoubleKey.AutosensMax)
-                // consoleError.add("Sensitivity decrease for temp target of $target_bg limited by Autosens_max; ")
-
+                tempTargetRatio = preferences.get(DoubleKey.AutosensMax)
             } else {
-                sensitivityRatio = c / (c + target_bg - normalTarget)
-                // limit sensitivityRatio to profile.autosens_max (1.2x by default)
-                sensitivityRatio = min(sensitivityRatio, preferences.get(DoubleKey.AutosensMax))
-                sensitivityRatio = round(sensitivityRatio, 2)
+                tempTargetRatio = c / (c + target_bg - normalTarget)
+                tempTargetRatio = min(tempTargetRatio, preferences.get(DoubleKey.AutosensMax))
+                tempTargetRatio = round(tempTargetRatio, 2)
                 origin_sens = " from low TT modifier"
-                // consoleError.add("Sensitivity ratio set to $sensitivityRatio based on temp target of $target_bg; ")
             }
-        } else {
-            var autosensResult = AutosensResult()
-
-            if (constraintsChecker.isAutosensModeEnabled().value()) {
-                iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
-                    autosensResult = it.autosensResult
-                }
-            } else autosensResult.sensResult = "autosens disabled"
-            sensitivityRatio = autosensResult.ratio
-            // consoleError.add("Autosens ratio: $sensitivityRatio; ")
         }
+        val nowMs = dateUtil.now()
+        val stepSample = persistenceLayer.getLastStepsCountFromTimeToTime(nowMs - 60 * 60 * 1000L, nowMs)
+        val startedAt = if (processStartedAtMs == 0L) nowMs else processStartedAtMs
+        val activityRatio = if (glucose_status == null) 1.0 else activitySensitivityRatio(
+            enabled = preferences.get(BooleanKey.ApsActivityDetection),
+            tempTargetSet = isTempTarget,
+            phoneMoved = PhoneMotion.movedRecently(nowMs),
+            stepsKnown = stepSample != null,
+            steps5 = stepSample?.steps5min ?: 0,
+            steps10 = stepSample?.steps10min ?: 0,
+            steps15 = stepSample?.steps15min ?: 0,
+            steps30 = stepSample?.steps30min ?: 0,
+            steps60 = stepSample?.steps60min ?: 0,
+            hour = Instant.fromEpochMilliseconds(nowMs).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+            bg = glucose_status.glucose,
+            targetBg = target_bg,
+            shortDelta = glucose_status.shortAvgDelta,
+            minutesSinceStart = (nowMs - startedAt) / 60_000L,
+            sleeping = false,
+            sleepStateExists = false,
+            ignoreInactivityOvernight = preferences.get(BooleanKey.ApsIgnoreInactivityOvernight),
+            idleStartHour = preferences.get(IntKey.ApsActivityIdleStart),
+            idleEndHour = preferences.get(IntKey.ApsActivityIdleEnd),
+            activityScale = preferences.get(DoubleKey.ApsActivityScaleFactor),
+            inactivityScale = preferences.get(DoubleKey.ApsInactivityScaleFactor),
+        )
+        val autosensOn = constraintsChecker.isAutosensModeEnabled().value()
+        var autosensRatio = 1.0
+        if (autosensOn) {
+            iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")?.also {
+                autosensRatio = it.autosensResult.ratio
+            }
+        }
+        val tddRatio = if (autosensOn) null else tddRatioForFactor()
+        sensitivityRatio = loopSensitivityRatio(
+            tempTargetActive = exerciseModeActive || resistanceModeActive,
+            tempTargetRatio = tempTargetRatio,
+            activityRatio = activityRatio,
+            autosensOn = autosensOn,
+            autosensRatio = autosensRatio,
+            tddSensitivityOn = preferences.get(BooleanKey.ApsAutoIsfTddSensitivity),
+            tddRatio = tddRatio,
+        )
         if (!usingDynamicIsf() || !autoIsfWeights || glucose_status == null) {
             consoleError.add("autoISF weights disabled in Preferences")
             consoleError.add("----------------------------------")
@@ -1021,6 +1052,12 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfHighTtRaisesSens,
             BooleanKey.ApsAutoIsfLowTtLowersSens,
             IntKey.ApsAutoIsfHalfBasalExerciseTarget,
+            BooleanKey.ApsActivityDetection,
+            DoubleKey.ApsActivityScaleFactor,
+            DoubleKey.ApsInactivityScaleFactor,
+            BooleanKey.ApsIgnoreInactivityOvernight,
+            IntKey.ApsActivityIdleStart,
+            IntKey.ApsActivityIdleEnd,
             BooleanKey.ApsUseSmb,
             BooleanKey.ApsAutoIsfFastRiseEnabled,
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,

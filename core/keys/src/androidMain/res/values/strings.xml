@@ -83,7 +83,19 @@
     <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
     <string name="pref_summary_aps_low_rebound_guard_enabled">Turn FastRise size tiers off after a recent hypo alarm while glucose is rebounding.</string>
     <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
-    <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, scale doses from recent insulin use compared with the 7 day average.</string>
+    <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
+    <string name="pref_title_aps_activity_detection">Step activity</string>
+    <string name="pref_summary_aps_activity_detection">Use recent steps to change the sensitivity ratio. Off leaves it unchanged. Walking needs the phone to have moved.</string>
+    <string name="pref_title_aps_activity_scale">Walking strength</string>
+    <string name="pref_summary_aps_activity_scale">How strongly walking lowers insulin. 1.0 is the normal strength.</string>
+    <string name="pref_title_aps_inactivity_scale">Sitting strength</string>
+    <string name="pref_summary_aps_inactivity_scale">How strongly sitting still raises insulin. 1.0 is the normal strength.</string>
+    <string name="pref_title_aps_ignore_inactivity_overnight">Ignore sitting overnight</string>
+    <string name="pref_summary_aps_ignore_inactivity_overnight">Do not raise insulin for sitting still during the idle hours.</string>
+    <string name="pref_title_aps_activity_idle_start">Idle start hour</string>
+    <string name="pref_summary_aps_activity_idle_start" comment="Hour of the day, 0 to 23. Example: 22 means 22:00.">First hour of the overnight idle window.</string>
+    <string name="pref_title_aps_activity_idle_end">Idle end hour</string>
+    <string name="pref_summary_aps_activity_idle_end" comment="Hour of the day, 0 to 23. Example: 6 means 06:00.">Hour when the overnight idle window ends.</string>
     <string name="pref_title_aps_tdd_factor">TDD factor</string>
     <string name="pref_summary_aps_tdd_factor">Scale the insulin request and max IOB by the TDD ratio, limited to 0.8 to 1.2.</string>
     <string name="pref_title_aps_tdd_factor_fallback">TDD factor fallback</string>

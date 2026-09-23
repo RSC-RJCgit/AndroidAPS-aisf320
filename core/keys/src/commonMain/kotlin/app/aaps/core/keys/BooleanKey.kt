@@ -222,6 +222,23 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsActivityDetection(
+        "activity_detection",
+        false,
+        KeysStrings.pref_title_aps_activity_detection,
+        KeysStrings.pref_summary_aps_activity_detection,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsIgnoreInactivityOvernight(
+        "ignore_inactivity_overnight",
+        true,
+        KeysStrings.pref_title_aps_ignore_inactivity_overnight,
+        KeysStrings.pref_summary_aps_ignore_inactivity_overnight,
+        defaultedBySM = true,
+        dependency = ApsActivityDetection,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTddFactor(
         "autoisf_tdd_factor",
         true,

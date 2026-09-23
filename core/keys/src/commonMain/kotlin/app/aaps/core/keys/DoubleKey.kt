@@ -306,6 +306,30 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsActivityScaleFactor(
+        key = "activity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_aps_activity_scale,
+        summary = KeysStrings.pref_summary_aps_activity_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsActivityDetection,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsInactivityScaleFactor(
+        key = "inactivity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_aps_inactivity_scale,
+        summary = KeysStrings.pref_summary_aps_inactivity_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsActivityDetection,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfSmbDeliveryRatio(
         key = "openapsama_smb_delivery_ratio",
         defaultValue = 0.5,

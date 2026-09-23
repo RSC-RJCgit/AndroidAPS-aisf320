@@ -3,6 +3,8 @@ package app.aaps
 import app.aaps.di.GeneratedStringOwners
 import android.app.Application
 import android.bluetooth.BluetoothDevice
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
@@ -37,6 +39,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.events.EventAppInitialized
 import app.aaps.core.interfaces.tempTargets.toJson
 import app.aaps.core.interfaces.utils.SafeParse
+import app.aaps.plugins.aps.openAPSAutoISF.PhoneMovementDetector
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
@@ -101,6 +104,14 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
          * the two start paths should behave the same, which is the whole point of waiting here at all.
          */
         private val PLUGIN_START_WAIT = 30.seconds
+    }
+
+    private val phoneMovementDetector = PhoneMovementDetector()
+
+    private fun registerPhoneMovement() {
+        val sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return
+        sensorManager.registerListener(phoneMovementDetector, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
     }
 
     override fun injectMembers(target: Any): Boolean = metroGraphs.injectMembers(target)
@@ -199,6 +210,7 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
 
         // Here should be everything injected
         aapsLogger.debug("onCreate")
+        registerPhoneMovement()
         ProcessLifecycleOwner.get().lifecycle.addObserver(processLifecycleListener)
 
         // Background fallback for EventShowSnackbar: when no GlobalSnackbarHost is collecting,

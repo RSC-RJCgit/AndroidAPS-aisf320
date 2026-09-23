@@ -357,6 +357,28 @@ enum class IntKey(
         unitType = UnitType.MGDL,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsActivityIdleStart(
+        key = "inactivity_idle_start",
+        defaultValue = 22,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_aps_activity_idle_start,
+        summary = KeysStrings.pref_summary_aps_activity_idle_start,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsIgnoreInactivityOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsActivityIdleEnd(
+        key = "inactivity_idle_end",
+        defaultValue = 6,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_aps_activity_idle_end,
+        summary = KeysStrings.pref_summary_aps_activity_idle_end,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsIgnoreInactivityOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfIobThPercent(
         key = "iob_threshold_percent",
         defaultValue = 100,
