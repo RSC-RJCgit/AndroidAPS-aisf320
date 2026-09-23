@@ -284,6 +284,28 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_3,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfBgAccelWeightNormal(
+        key = "autoisf_bgaccel_isf_weight_normal",
+        defaultValue = 0.70,
+        min = 0.0,
+        max = 1.0,
+        title = KeysStrings.pref_title_aps_bg_accel_weight_normal,
+        summary = KeysStrings.pref_summary_aps_bg_accel_weight_normal,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfPpWeightNormal(
+        key = "autoisf_pp_isf_weight_normal",
+        defaultValue = 0.08,
+        min = 0.0,
+        max = 0.15,
+        title = KeysStrings.pref_title_aps_pp_weight_normal,
+        summary = KeysStrings.pref_summary_aps_pp_weight_normal,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_3,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfDuraWeight(
         key = "dura_ISF_weight",
         defaultValue = 0.0,

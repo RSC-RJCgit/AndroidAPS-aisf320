@@ -120,6 +120,12 @@ kotlin {
         // Hand written rather than taken from test-module-dependencies and
         // compose-test-module-dependencies, because both apply com.android.library and so cannot be
         // used by a multiplatform module. Same approach as :plugins:aps.
+        getByName("commonTest") {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+
         getByName("androidHostTest") {
             dependencies {
                 implementation(project(":shared:tests"))

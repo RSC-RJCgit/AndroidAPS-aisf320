@@ -8,6 +8,7 @@ internal object RunMark {
     const val BOLUS_GIVEN_BG3 = "BolusGivenBg3"
     const val BOLUS_GIVEN_MILD_FAILSAFE = "BolusGivenMildFailsafe"
     const val NIGHT_FR_SKIP = "NightFrSkip"
+    const val PP_WEIGHT_REVERT = "PpWeightRevertUnder8_5"
 }
 
 /**

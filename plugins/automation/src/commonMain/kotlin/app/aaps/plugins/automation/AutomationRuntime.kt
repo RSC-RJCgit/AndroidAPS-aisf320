@@ -177,6 +177,12 @@ class AutomationRuntime(
             pairedBtDevices = pairedBtDevices
         )
 
+    /** Declared automation states and the value each one holds now. Read only. */
+    fun currentAutomationStates(): List<Pair<String, String>> = automationStateRows(
+        currentJson = preferences.get(StringNonKey.AutomationCurrentStates),
+        valuesJson = preferences.get(StringNonKey.AutomationStateValues)
+    )
+
     private var scope: CoroutineScope? = null
 
     private val automationEvents = ArrayList<AutomationEventObject>()

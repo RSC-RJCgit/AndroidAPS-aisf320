@@ -538,6 +538,12 @@ open class OpenAPSAutoISFPlugin(
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
         )
+        revertRaisedWeights(
+            now = now,
+            bg = glucoseStatus.glucose,
+            steps5 = stepSample?.steps5min ?: 0,
+            steps30 = stepSample?.steps30min ?: 0,
+        )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1186,10 +1192,12 @@ open class OpenAPSAutoISFPlugin(
                     DoubleKey.ApsAutoIsfMin,
                     DoubleKey.ApsAutoIsfMax,
                     DoubleKey.ApsAutoIsfBgAccelWeight,
+                    DoubleKey.ApsAutoIsfBgAccelWeightNormal,
                     DoubleKey.ApsAutoIsfBgBrakeWeight,
                     DoubleKey.ApsAutoIsfLowBgWeight,
                     DoubleKey.ApsAutoIsfHighBgWeight,
                     DoubleKey.ApsAutoIsfPpWeight,
+                    DoubleKey.ApsAutoIsfPpWeightNormal,
                     DoubleKey.ApsAutoIsfDuraWeight,
                     IntKey.ApsAutoIsfIobThPercent
                 )
@@ -1236,6 +1244,42 @@ open class OpenAPSAutoISFPlugin(
         val tddLast4H = tddCalculator.calculateDaily(-4, 0)?.totalAmount
         val tddLast8to4H = tddCalculator.calculateDaily(-8, -4)?.totalAmount
         return blendedTddRatio(tdd7D, tdd1D, tddLast4H, tddLast8to4H)?.ratio ?: 1.0
+    }
+
+    // Puts a raised post-meal weight, and an acceleration weight that sits above its baseline, back.
+    // The first run copies the live weights into the baselines, so a phone that has never saved
+    // those two settings does not change its dose. A raw Libre high in the last 48 hours is not
+    // tracked yet, so that trigger stays open.
+    private suspend fun revertRaisedWeights(now: Long, bg: Double, steps5: Int, steps30: Int) {
+        val livePp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+        val liveAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+        if (preferences.getIfExists(DoubleKey.ApsAutoIsfPpWeightNormal) == null) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, livePp)
+        }
+        if (preferences.getIfExists(DoubleKey.ApsAutoIsfBgAccelWeightNormal) == null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, liveAcce)
+        }
+        val decision = ppAcceWeightRevert(
+            currentPp = livePp,
+            baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal),
+            currentAcce = liveAcce,
+            baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal),
+            glucoseMgdl = bg,
+            steps5 = steps5,
+            steps30 = steps30,
+            steps60 = steps60(now),
+            noRecentHigh = true,
+            recentBoost = ppWeightBoostMarks.any { runMarks.recent(it, 15, now) },
+        )
+        if (!decision.restorePp && !decision.restoreAcce) return
+        if (decision.restorePp) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+        }
+        if (decision.restoreAcce) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+        }
+        runMarks.mark(RunMark.PP_WEIGHT_REVERT, now)
+        aapsLogger.debug(LTag.APS, "Weight revert reason=${decision.reason}")
     }
 
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
