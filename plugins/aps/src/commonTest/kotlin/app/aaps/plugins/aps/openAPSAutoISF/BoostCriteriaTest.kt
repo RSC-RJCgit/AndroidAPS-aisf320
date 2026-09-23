@@ -161,4 +161,69 @@ class BoostCriteriaTest {
         smbIntervalSec = 9999.0,
         deliveryBaseline = 0.14,
     )
+
+    @Test
+    fun mildFailsafeFiresOnAQuietConfirmedRise() {
+        assertTrue(failsafe())
+    }
+
+    @Test
+    fun mildFailsafeClosesAt9AndAt21() {
+        assertFalse(failsafe(minuteOfDay = 8 * 60 + 59))
+        assertFalse(failsafe(minuteOfDay = 21 * 60))
+        assertTrue(failsafe(minuteOfDay = 20 * 60 + 59))
+    }
+
+    @Test
+    fun mildFailsafeOpensAtNightAfterANewPodHigh() {
+        assertTrue(failsafe(minuteOfDay = 3 * 60, daytimeBypass = true))
+    }
+
+    @Test
+    fun mildFailsafeStaysOffWhenAnSmbOrTooMuchIobIsPresent() {
+        assertFalse(failsafe(smbCount20 = 1))
+        assertFalse(failsafe(iob = 0.21))
+    }
+
+    @Test
+    fun mildFailsafeStaysOffWhenTheLongDeltaLagsOrASiblingJustFired() {
+        assertFalse(failsafe(longDelta = 3.5))
+        assertFalse(failsafe(readyBg3 = false))
+        assertFalse(failsafe(readyMild = false))
+        assertFalse(failsafe(tempTargetSet = true))
+    }
+
+    private fun failsafe(
+        minuteOfDay: Int = 10 * 60,
+        daytimeBypass: Boolean = false,
+        bg: Double = 120.0,
+        delta: Double = 5.4,
+        shortDelta: Double = 5.4,
+        longDelta: Double = 3.6,
+        iob: Double = 0.1,
+        smbCount20: Int = 0,
+        steps5: Int = 0,
+        steps30: Int = 0,
+        readyFailsafe: Boolean = true,
+        readyMild: Boolean = true,
+        readyBg3: Boolean = true,
+        tempTargetSet: Boolean = false,
+    ) = mildFailsafeShouldFire(
+        readyFailsafe = readyFailsafe,
+        readyMild = readyMild,
+        readyBg3 = readyBg3,
+        profilePercent = 100,
+        tempTargetSet = tempTargetSet,
+        boostAutomationsOn = true,
+        minuteOfDay = minuteOfDay,
+        daytimeBypass = daytimeBypass,
+        bg = bg,
+        delta = delta,
+        shortDelta = shortDelta,
+        longDelta = longDelta,
+        iob = iob,
+        smbCount20 = smbCount20,
+        steps5 = steps5,
+        steps30 = steps30,
+    )
 }

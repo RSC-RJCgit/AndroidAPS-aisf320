@@ -390,6 +390,28 @@ enum class IntKey(
         unitType = UnitType.PERCENT,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfIobThPercentNormal(
+        key = "autoisf_iob_threshold_percent_normal",
+        defaultValue = 70,
+        min = 10,
+        max = 100,
+        title = KeysStrings.pref_title_aps_iob_th_percent_normal,
+        summary = KeysStrings.pref_summary_aps_iob_th_percent_normal,
+        defaultedBySM = true,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfProfilePercentNormal(
+        key = "autoisf_profile_percent_normal",
+        defaultValue = 100,
+        min = 10,
+        max = 200,
+        title = KeysStrings.pref_title_aps_profile_percent_normal,
+        summary = KeysStrings.pref_summary_aps_profile_percent_normal,
+        defaultedBySM = true,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsDynIsfAdjustmentFactor(
         key = "DynISFAdjust",
         defaultValue = 100,

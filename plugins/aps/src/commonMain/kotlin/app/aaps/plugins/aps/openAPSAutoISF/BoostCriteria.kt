@@ -110,6 +110,42 @@ internal fun bg3BoostShouldFire(
         (deliverySuppressed || longDelta > 7.2)
 }
 
+/**
+ * Mild-failsafe gate. From 09:00 until 21:00, or at any hour when [daytimeBypass] is set.
+ * Glucose, delta, short delta, and long delta are mg/dL. 5.4 mg/dL is 0.3 mmol/L. 3.6 mg/dL is 0.2 mmol/L.
+ * 117 mg/dL is 6.5 mmol/L. The mark raises the post-meal weight only.
+ */
+internal fun mildFailsafeShouldFire(
+    readyFailsafe: Boolean,
+    readyMild: Boolean,
+    readyBg3: Boolean,
+    profilePercent: Int,
+    tempTargetSet: Boolean,
+    boostAutomationsOn: Boolean,
+    minuteOfDay: Int,
+    daytimeBypass: Boolean,
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    longDelta: Double,
+    iob: Double,
+    smbCount20: Int,
+    steps5: Int,
+    steps30: Int,
+): Boolean {
+    if (!(profilePercent == 100 && !tempTargetSet && boostAutomationsOn && readyFailsafe && readyMild && readyBg3)) return false
+    val inWindow = timeWindowContains(minuteOfDay, 9, 0, 21, 0) || daytimeBypass
+    return inWindow &&
+        bg > 117.0 &&
+        delta >= 5.4 &&
+        shortDelta >= 5.4 &&
+        longDelta >= 3.6 &&
+        iob <= 0.20 &&
+        smbCount20 == 0 &&
+        steps5 <= 100 &&
+        steps30 <= 200
+}
+
 /** True when a bg3 fire must not be marked. Matches the 60 minute re-arm and the IOB ceilings. */
 internal fun bg3BoostBlocked(recentBolusGiven: Boolean, recentMild: Boolean, recentMildFailsafe: Boolean, iob: Double): Boolean {
     if (recentBolusGiven) return true

@@ -16,6 +16,7 @@ internal data class WeightRevertDecision(
 internal val ppWeightBoostMarks: List<String> = listOf(
     "BolusGiven",
     "BolusGivenMild",
+    "BolusGivenMildFailsafe",
     "High6PP",
     "HighOldPod",
     "PodChangeHighPP130",

@@ -9,6 +9,9 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -541,6 +544,13 @@ open class OpenAPSAutoISFPlugin(
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
+            steps5 = stepSample?.steps5min ?: 0,
+            steps30 = stepSample?.steps30min ?: 0,
+        )
+        revertRaisedDose(
+            now = now,
+            bg = glucoseStatus.glucose,
+            profilePercent = profile_percentage,
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
         )
@@ -1198,8 +1208,11 @@ open class OpenAPSAutoISFPlugin(
                     DoubleKey.ApsAutoIsfHighBgWeight,
                     DoubleKey.ApsAutoIsfPpWeight,
                     DoubleKey.ApsAutoIsfPpWeightNormal,
+                    DoubleKey.ApsAutoIsfPpWeightHigh,
                     DoubleKey.ApsAutoIsfDuraWeight,
-                    IntKey.ApsAutoIsfIobThPercent
+                    IntKey.ApsAutoIsfIobThPercent,
+                    IntKey.ApsAutoIsfIobThPercentNormal,
+                    IntKey.ApsAutoIsfProfilePercentNormal
                 )
             ),
             PreferenceSubScreenDef(
@@ -1282,8 +1295,56 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "Weight revert reason=${decision.reason}")
     }
 
+    // Puts a raised IOB threshold, and a profile percent that sits above its baseline, back.
+    // The first run copies the live values into the baselines, so that pass does not change the dose.
+    // A value below the baseline is left as it is. A raw Libre high in the last 48 hours is not
+    // tracked yet, so that trigger stays open.
+    private suspend fun revertRaisedDose(now: Long, bg: Double, profilePercent: Int, steps5: Int, steps30: Int) {
+        val liveIobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent)
+        if (preferences.getIfExists(IntKey.ApsAutoIsfIobThPercentNormal) == null) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercentNormal, liveIobTh)
+        }
+        if (preferences.getIfExists(IntKey.ApsAutoIsfProfilePercentNormal) == null) {
+            preferences.put(IntKey.ApsAutoIsfProfilePercentNormal, profilePercent)
+        }
+        val decision = iobProfileRevert(
+            currentIobTh = liveIobTh,
+            baselineIobTh = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal),
+            currentProfilePercent = profilePercent,
+            baselineProfilePercent = preferences.get(IntKey.ApsAutoIsfProfilePercentNormal),
+            glucoseMgdl = bg,
+            steps5 = steps5,
+            steps30 = steps30,
+            steps60 = steps60(now),
+            noRecentHigh = true,
+            recentBoost = ppWeightBoostMarks.any { runMarks.recent(it, 15, now) },
+        )
+        if (!decision.restoreIobTh && !decision.restoreProfilePercent) return
+        if (!runMarks.ready(RunMark.IOB_PROFILE_REVERT, 5, now)) return
+        if (decision.restoreIobTh) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, preferences.get(IntKey.ApsAutoIsfIobThPercentNormal))
+        }
+        if (decision.restoreProfilePercent) {
+            val baseline = preferences.get(IntKey.ApsAutoIsfProfilePercentNormal)
+            val switched = profileFunction.createProfileSwitch(
+                durationInMinutes = 0,
+                percentage = baseline,
+                timeShiftInHours = 0,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = "AutoISF: profile percent back to baseline",
+                listValues = listOf(ValueWithUnit.Percent(baseline))
+            ) != null
+            if (!switched) aapsLogger.debug(LTag.APS, "Profile percent revert did not write a switch")
+        }
+        runMarks.mark(RunMark.IOB_PROFILE_REVERT, now)
+        aapsLogger.debug(LTag.APS, "Dose revert reason=${decision.reason}")
+    }
+
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
-    // The mark lets the FastRise restore see the boost. It does not write iobTH, profile percent, or the delivery ratio.
+    // A strong mark raises the IOB threshold to 71 and, unless caution applies, the profile percent to 110 for 2 minutes.
+    // Both marks raise the post-meal weight. A value that is not above its baseline is left alone.
+    // The acceleration weight and the SMB delivery ratio are not written.
     // Libre raw is used. A missing raw value is -9999, so the rise gate stays closed.
     private suspend fun markBolusBoosts(
         now: Long,
@@ -1301,6 +1362,7 @@ open class OpenAPSAutoISFPlugin(
         steps5: Int,
         steps30: Int,
     ) {
+        seedBaselines(profilePercent)
         val boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
         val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
         val profileName = profileFunction.getOriginalProfileName()
@@ -1312,7 +1374,7 @@ open class OpenAPSAutoISFPlugin(
         val iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L)
         val lastBolusMin = minutesSinceLastPositiveNormalBolus(now)
         val recentAlarm = now - preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt) <= 60 * 60_000L
-        val bypass = newPodHighBypass(now, bg)
+        val bypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now)
         val readyMild = runMarks.ready(RunMark.BOLUS_GIVEN_MILD, 5, now)
         val readyBg3 = runMarks.ready(RunMark.BOLUS_GIVEN_BG3, 5, now)
         val readyGiven = runMarks.ready(RunMark.BOLUS_GIVEN, 5, now)
@@ -1369,15 +1431,170 @@ open class OpenAPSAutoISFPlugin(
             recentMildFailsafe = runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 60, now),
             iob = iob,
         )
+        val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+        val caution = (statesOn && !states().inState("MJ", "NOMJremains")) ||
+            (standard110.isNotEmpty() && profileName == standard110) ||
+            steps30 > 200
         if (bg3 && !blocked) {
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
+            applyBoostRaise(boostRaises(strong = true, caution = caution))
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 marked")
         } else if (mild) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
+            applyBoostRaise(boostRaises(strong = false, caution = false))
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
+        } else if (mildFailsafeShouldFire(
+                readyFailsafe = runMarks.ready(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 5, now),
+                readyMild = readyMild,
+                readyBg3 = readyBg3,
+                profilePercent = profilePercent,
+                tempTargetSet = tempTargetSet,
+                boostAutomationsOn = boostOn,
+                minuteOfDay = minuteOfDay,
+                daytimeBypass = bypass,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+                iob = iob,
+                smbCount20 = smbCount20(now),
+                steps5 = steps5,
+                steps30 = steps30,
+            )
+        ) {
+            runMarks.mark(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, now)
+            applyBoostRaise(boostRaises(strong = false, caution = false))
+            aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
         } else if (blocked) {
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
+        }
+        val usualBlock = usual2Block(
+            ready = runMarks.ready(RunMark.USUAL2, 5, now),
+            profilePercent = profilePercent,
+            tempTargetSet = tempTargetSet,
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            steroidsOff = statesOn && states().inState("Steroids", "Steroids Off"),
+            minuteOfDay = minuteOfDay,
+            steps60 = steps60(now),
+            steps180 = steps180(now),
+            cob = cob,
+            earlyAfterShower = false,
+        )
+        if (usualBlock != null) {
+            runMarks.mark(RunMark.USUAL2, now)
+            applyUsual2(now)
+            aapsLogger.debug(LTag.APS, "Usual2 block $usualBlock")
+        }
+        // The prediction branch stays closed: it needs the UKF raw 5 minute change.
+        // The acceleration weight is not lowered. A drop to 0.10 would stay, because the restore only raises it.
+        val acceNow = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+        val hypo1 = alarmHypo1ShouldFire(
+            ready = runMarks.ready(RunMark.ALARM_HYPO_1, 15, now),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            acceWeight = acceNow,
+            minuteOfDay = minuteOfDay,
+            steps60 = steps60(now),
+            hp = null,
+            hp1 = null,
+            recentBolusOrCarbs = false,
+        )
+        val hypo2 = alarmHypo2ShouldFire(
+            ready = runMarks.ready(RunMark.ALARM_HYPO_2, 15, now),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            acceWeight = acceNow,
+            steps30 = steps30,
+            hp = null,
+            hp1 = null,
+            recentBolusOrCarbs = false,
+        )
+        if (hypo1 || hypo2) {
+            preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, now)
+            applyAlarmHypoState()
+            if (hypo1) runMarks.mark(RunMark.ALARM_HYPO_1, now)
+            if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
+            aapsLogger.debug(LTag.APS, "AlarmHypo marked 1=$hypo1 2=$hypo2")
+        }
+    }
+
+    // Records a real hypo alarm. The mild meal-leftover floor then stays at 7.0 mmol/L for 60 minutes.
+    // LowBG becomes 50recent, which also keeps the night FastRise skip closed.
+    private fun applyAlarmHypoState() {
+        val store = states()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        if (store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
+        if (store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "AlarmRecent")
+    }
+
+    // Puts a low IOB threshold back to 70, and an acceleration weight above 0.50 down to 0.50.
+    // A target that would sit above its baseline is left alone, so the restore does not undo it next loop.
+    // The post-meal weight returns to its baseline unless a boost mark is still inside 15 minutes.
+    private fun applyUsual2(now: Long) {
+        val iobBaseline = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal)
+        if (70 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+        val acceBaseline = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+        if (0.50 <= acceBaseline) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+        val recentBoost = ppWeightBoostMarks.any { runMarks.recent(it, 15, now) }
+        if (!recentBoost) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+        }
+        val store = states()
+        if (preferences.get(BooleanKey.AutomationStatesEnabled) && store.hasStateValues("LowBG")) {
+            store.setState("LowBG", "NO50rec")
+        }
+    }
+
+    private suspend fun smbCount20(now: Long): Int =
+        persistenceLayer.getBolusesFromTimeToTime(now - 20 * 60_000L, now, ascending = false)
+            .count { it.type == BS.Type.SMB }
+
+    // Copies a live value into its baseline the first time that baseline has no saved value.
+    // Runs before a boost write, so the baseline is the resting value and not the raised one.
+    private fun seedBaselines(profilePercent: Int) {
+        if (preferences.getIfExists(DoubleKey.ApsAutoIsfPpWeightNormal) == null) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, preferences.get(DoubleKey.ApsAutoIsfPpWeight))
+        }
+        if (preferences.getIfExists(DoubleKey.ApsAutoIsfBgAccelWeightNormal) == null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight))
+        }
+        if (preferences.getIfExists(IntKey.ApsAutoIsfIobThPercentNormal) == null) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercentNormal, preferences.get(IntKey.ApsAutoIsfIobThPercent))
+        }
+        if (preferences.getIfExists(IntKey.ApsAutoIsfProfilePercentNormal) == null) {
+            preferences.put(IntKey.ApsAutoIsfProfilePercentNormal, profilePercent)
+        }
+    }
+
+    // Writes a boost only when the new value sits above the saved baseline.
+    // The restore, which runs later in the same loop, sees the fresh mark and waits 15 minutes.
+    private suspend fun applyBoostRaise(raise: BoostRaise) {
+        val iobTarget = raiseAbove(raise.iobTh, preferences.get(IntKey.ApsAutoIsfIobThPercentNormal))
+        if (iobTarget != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, iobTarget)
+        val percentTarget = raiseAbove(raise.profilePercent, preferences.get(IntKey.ApsAutoIsfProfilePercentNormal))
+        if (percentTarget != null) {
+            val switched = profileFunction.createProfileSwitch(
+                durationInMinutes = raise.profileMinutes,
+                percentage = percentTarget,
+                timeShiftInHours = 0,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = "AutoISF: profile percent boost",
+                listValues = listOf(
+                    ValueWithUnit.Percent(percentTarget),
+                    ValueWithUnit.Minute(raise.profileMinutes)
+                )
+            ) != null
+            if (!switched) aapsLogger.debug(LTag.APS, "Profile percent boost did not write a switch")
+        }
+        if (raise.raisePpWeight) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
         }
     }
 
@@ -1394,7 +1611,7 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // A site change under 2 hours with glucose over 9.0 mmol/L may open the day window at any hour.
-    // The Usual2forTH bypass is not written here, so that half stays closed.
+    // A Usual2 mark in the last 90 minutes opens that same window. Shower12 is not written, so that early path stays closed.
     private suspend fun newPodHighBypass(now: Long, bg: Double): Boolean {
         val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return false
         val hours = (now - last.timestamp) / 3_600_000.0

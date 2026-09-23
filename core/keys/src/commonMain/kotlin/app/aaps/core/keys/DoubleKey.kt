@@ -306,6 +306,17 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_3,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfPpWeightHigh(
+        key = "autoisf_pp_isf_weight_high",
+        defaultValue = 0.15,
+        min = 0.0,
+        max = 0.15,
+        title = KeysStrings.pref_title_aps_pp_weight_high,
+        summary = KeysStrings.pref_summary_aps_pp_weight_high,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_3,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfDuraWeight(
         key = "dura_ISF_weight",
         defaultValue = 0.0,

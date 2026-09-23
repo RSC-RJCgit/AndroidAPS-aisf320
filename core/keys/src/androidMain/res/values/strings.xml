@@ -108,6 +108,12 @@
     <string name="pref_summary_aps_tdd_factor_fallback">Used when the TDD factor switch is off. 1.0 leaves the dose unchanged.</string>
     <string name="pref_title_aps_bg_accel_weight_normal">Acceleration weight baseline</string>
     <string name="pref_summary_aps_bg_accel_weight_normal" comment="A weight from 0.00 to 1.00. Default 0.70. The live acceleration weight returns to this after a boost.">Resting acceleration weight. A raised live weight returns to this. Default 0.70.</string>
+    <string name="pref_title_aps_iob_th_percent_normal">IOB threshold baseline</string>
+    <string name="pref_summary_aps_iob_th_percent_normal" comment="A percent from 10 to 100. Default 70. Example: a live value of 71 returns to 70.">Resting IOB threshold. A raised live value returns to this. Default 70.</string>
+    <string name="pref_title_aps_profile_percent_normal">Profile percent baseline</string>
+    <string name="pref_summary_aps_profile_percent_normal" comment="A percent from 10 to 200. Default 100. Example: a live profile of 110% returns to 100%.">Resting profile percent. A raised live percent returns to this. Default 100.</string>
+    <string name="pref_title_aps_pp_weight_high">Post-meal weight boost</string>
+    <string name="pref_summary_aps_pp_weight_high" comment="A weight from 0.000 to 0.150. Default 0.150. A strong or mild boost writes this into the live post-meal weight.">Post-meal weight used by a strong or mild boost. Default 0.150.</string>
     <string name="pref_title_aps_pp_weight_normal">Post-meal weight baseline</string>
     <string name="pref_summary_aps_pp_weight_normal" comment="A weight from 0.000 to 0.150. Default 0.080. The live post-meal weight returns to this after a boost.">Resting post-meal weight. The live weight returns to this after a boost. Default 0.080.</string>
     <string name="pref_title_aps_smb_delivery_baseline">SMB delivery baseline</string>

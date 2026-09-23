@@ -29,7 +29,7 @@ enum class LongNonKey(
     NsClientControlPairedAt("nsclient_control_paired_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
 
-    // Epoch millis of the last AlarmHypo. Nothing writes this until that alarm is ported.
+    // Epoch millis of the last AlarmHypo1 or AlarmHypo2. 0 means none yet.
     ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0L),
 
     // Epoch millis when the current rapid-SMB stack started. 0 means no stack. Local only.
