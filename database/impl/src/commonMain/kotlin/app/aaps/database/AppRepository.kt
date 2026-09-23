@@ -3,6 +3,7 @@ package app.aaps.database
 import androidx.room.Transactor.SQLiteTransactionType
 import androidx.room.useWriterConnection
 import app.aaps.database.entities.APSResult
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.CalibrationEntry
@@ -865,6 +866,12 @@ class AppRepository internal constructor(
 
     suspend fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long): StepsCount? =
         database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+
+    suspend fun insertAutoIsfValue(entry: AutoIsfValues): Long =
+        database.autoIsfValuesDao.insert(entry)
+
+    suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
+        database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)
 
     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),

@@ -4,6 +4,7 @@ import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
@@ -349,6 +350,7 @@ open class OpenAPSAutoISFPlugin(
         var autosensResult = AutosensResult()
         var variableSensitivity = profile.getProfileIsfMgdl()
         val sens = profile.getIsfMgdl("OpenAPSAutoISFPlugin")
+        val autoIsfFactors = AutoIsfFactors()
 
         if (constraintsChecker.isAutosensModeEnabled().value()) {
             val autosensData = iobCobCalculator.getLastAutosensDataWithWaitForCalculationFinish("OpenAPSAutoISFPlugin")
@@ -367,7 +369,7 @@ open class OpenAPSAutoISFPlugin(
         if (autoIsfMode) {
             consoleError = mutableListOf()
             consoleLog = mutableListOf()
-            variableSensitivity = autoISF(profile)
+            variableSensitivity = autoISF(profile, autoIsfFactors)
         }
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
@@ -610,6 +612,25 @@ open class OpenAPSAutoISFPlugin(
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
             lastAPSRun = now
+            if (autoIsfFactors.recorded) {
+                persistenceLayer.insertAutoIsfValue(
+                    AIV(
+                        timestamp = now,
+                        acceIsf = autoIsfFactors.acceIsf,
+                        bgIsf = autoIsfFactors.bgIsf,
+                        ppIsf = autoIsfFactors.ppIsf,
+                        duraIsf = autoIsfFactors.duraIsf,
+                        finalIsf = autoIsfFactors.finalIsf,
+                        glucose = autoIsfFactors.glucose,
+                        delta = autoIsfFactors.delta,
+                        shortAvgDelta = autoIsfFactors.shortAvgDelta,
+                        longAvgDelta = autoIsfFactors.longAvgDelta,
+                        bgAcceleration = autoIsfFactors.bgAcceleration,
+                        iob = iobData.iob,
+                        smbDelivered = determineBasalResult.smb,
+                    )
+                )
+            }
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
         }
@@ -691,7 +712,7 @@ open class OpenAPSAutoISFPlugin(
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
-    suspend fun autoISF(profile: Profile): Double {
+    suspend fun autoISF(profile: Profile, factors: AutoIsfFactors? = null): Double {
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData = false)
 
@@ -851,6 +872,7 @@ open class OpenAPSAutoISFPlugin(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            factors?.record(acce_ISF, bg_ISF, pp_ISF, 1.0, final_ISF, glucose_status)
             return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
@@ -904,11 +926,13 @@ open class OpenAPSAutoISFPlugin(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            factors?.record(acce_ISF, bg_ISF, pp_ISF, dura_ISF, final_ISF, glucose_status)
             return round(sens / final_ISF, 1)
         }
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
+        factors?.record(acce_ISF, bg_ISF, pp_ISF, dura_ISF, 1.0, glucose_status)
         return round(sens / sensitivityRatio, 1)     // nothing changed
     }
 
@@ -1114,6 +1138,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
+            BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
             StringKey.ApsAutoIsfLowProfileName,
             BooleanKey.ApsAutoIsfTddSensitivity,
@@ -1405,4 +1430,40 @@ open class OpenAPSAutoISFPlugin(
         return (readings[0].value - readings[1].value) / minutes * 5.0
     }
 
+}
+
+/** The four AutoISF factors from one call of autoISF, when that call actually worked them out. */
+class AutoIsfFactors {
+    var recorded: Boolean = false
+    var acceIsf: Double = 1.0
+    var bgIsf: Double = 1.0
+    var ppIsf: Double = 1.0
+    var duraIsf: Double = 1.0
+    var finalIsf: Double = 1.0
+    var glucose: Double = 0.0
+    var delta: Double = 0.0
+    var shortAvgDelta: Double = 0.0
+    var longAvgDelta: Double = 0.0
+    var bgAcceleration: Double = 0.0
+
+    fun record(
+        acce: Double,
+        bg: Double,
+        pp: Double,
+        dura: Double,
+        finalFactor: Double,
+        status: GlucoseStatusAutoIsf,
+    ) {
+        recorded = true
+        acceIsf = acce
+        bgIsf = bg
+        ppIsf = pp
+        duraIsf = dura
+        finalIsf = finalFactor
+        glucose = status.glucose
+        delta = status.delta
+        shortAvgDelta = status.shortAvgDelta
+        longAvgDelta = status.longAvgDelta
+        bgAcceleration = status.bgAcceleration
+    }
 }

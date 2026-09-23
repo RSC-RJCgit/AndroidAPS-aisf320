@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingFlat
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -25,6 +26,7 @@ import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
+import app.aaps.ui.compose.automation.NativeAutomationReviewDialog
 import app.aaps.ui.compose.loopSheet.LoopActionViewModel
 import app.aaps.ui.compose.maintenance.ImportSource
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel
@@ -111,6 +113,8 @@ fun OverviewScreen(
     onAutoShowConsumed: () -> Unit
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val codedAutomationReview by mainViewModel.codedAutomationReview.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { mainViewModel.offerCodedAutomationReview() }
     val searchState by searchViewModel.uiState.collectAsStateWithLifecycle()
     val calcProgress by mainViewModel.calcProgressFlow.collectAsStateWithLifecycle()
     val notifications by notificationManager.notifications.collectAsStateWithLifecycle()
@@ -253,4 +257,11 @@ fun OverviewScreen(
             }
         }
     )
+    if (codedAutomationReview.isNotEmpty()) {
+        NativeAutomationReviewDialog(
+            titles = codedAutomationReview,
+            onSave = { mainViewModel.saveCodedAutomationReview(it) },
+            onDismiss = { mainViewModel.dismissCodedAutomationReview() }
+        )
+    }
 }

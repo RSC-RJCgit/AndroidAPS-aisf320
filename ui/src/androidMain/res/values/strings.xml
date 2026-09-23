@@ -195,6 +195,8 @@
     <string name="edit_label">Edit</string>
     <string name="activate_label">Activate</string>
     <string name="activate_profile">Activate profile</string>
+    <string name="review_native_automations">Review native automations</string>
+    <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names stay blocked while that switch is on. Nothing is blocked yet, because those coded automations are not in this app.</string>
     <string name="coded_profiles">Coded profiles</string>
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>

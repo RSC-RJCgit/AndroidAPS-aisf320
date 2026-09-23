@@ -86,6 +86,8 @@
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
     <string name="pref_title_aps_boost_automations">Boost automations</string>
     <string name="pref_summary_aps_boost_automations">Allow the night FastRise skip. Off leaves that mark unset.</string>
+    <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>
+    <string name="pref_summary_aps_custom_automations">On blocks a native automation when its name matches a coded AutoISF automation, unless you allowed that name on the review list. Off leaves every native automation running. Nothing is blocked yet, because those coded automations are not in this app.</string>
     <string name="pref_title_aps_automation_states">Automation states</string>
     <string name="pref_summary_aps_automation_states">Remember named states such as MJ and LowBG. Off makes every state check false.</string>
     <string name="pref_title_aps_activity_detection">Step activity</string>

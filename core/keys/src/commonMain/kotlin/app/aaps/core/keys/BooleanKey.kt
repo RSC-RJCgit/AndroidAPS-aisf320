@@ -229,6 +229,13 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfCustomAutomationsEnabled(
+        "autoisf_custom_automations_enabled",
+        false,
+        KeysStrings.pref_title_aps_custom_automations,
+        KeysStrings.pref_summary_aps_custom_automations,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     AutomationStatesEnabled(
         "automation_states_enabled",
         true,

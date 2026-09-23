@@ -48,4 +48,16 @@ interface Automation {
      * Create new Automation event to alarm when is time to eat
      */
     fun scheduleAutomationEventEatReminder()
+
+    /**
+     * Native automation titles that are close to a coded AutoISF name and have no saved decision yet.
+     * Button actions are not included. An exact name is not included either.
+     */
+    fun pendingCodedAutomationReviews(): List<String>
+
+    /**
+     * Save the review. A true value allows that exact title to keep running while custom AutoISF
+     * automations are on. A false value keeps it blocked while that switch is on.
+     */
+    fun saveCodedAutomationDecisions(accepted: Map<String, Boolean>)
 }

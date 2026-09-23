@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import androidx.room.TypeConverters
 import app.aaps.database.daos.APSResultDao
+import app.aaps.database.daos.AutoIsfValuesDao
 import app.aaps.database.daos.BolusCalculatorResultDao
 import app.aaps.database.daos.BolusDao
 import app.aaps.database.daos.CalibrationEntryDao
@@ -26,6 +27,7 @@ import app.aaps.database.daos.TherapyEventDao
 import app.aaps.database.daos.TotalDailyDoseDao
 import app.aaps.database.daos.UserEntryDao
 import app.aaps.database.daos.VersionChangeDao
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.CalibrationEntry
@@ -47,7 +49,7 @@ import app.aaps.database.entities.TotalDailyDose
 import app.aaps.database.entities.UserEntry
 import app.aaps.database.entities.VersionChange
 
-const val DATABASE_VERSION = 35
+const val DATABASE_VERSION = 36
 
 @Database(
     version = DATABASE_VERSION,
@@ -56,7 +58,7 @@ const val DATABASE_VERSION = 35
         TemporaryBasal::class, TemporaryTarget::class, TherapyEvent::class, TotalDailyDose::class,
         PreferenceChange::class, VersionChange::class, UserEntry::class,
         Food::class, DeviceStatus::class, RunningMode::class, HeartRate::class, StepsCount::class,
-        CalibrationEntry::class],
+        CalibrationEntry::class, AutoIsfValues::class],
     exportSchema = true
 )
 // @ConstructedBy is what lets this class live in commonMain: Room generates the initialiser per target
@@ -106,6 +108,8 @@ internal abstract class AppDatabase : RoomDatabase(), AppDatabaseDaos {
     abstract override val stepsCountDao: StepsCountDao
 
     abstract override val calibrationEntryDao: CalibrationEntryDao
+
+    abstract override val autoIsfValuesDao: AutoIsfValuesDao
 }
 
 // Room supplies the actual per target. It must be `expect`, because the generated initialiser is

@@ -35,9 +35,11 @@ import app.aaps.core.interfaces.rx.events.EventBTChange
 import app.aaps.core.interfaces.rx.events.EventWearUpdateTiles
 import app.aaps.core.interfaces.scenes.SceneAutomationApi
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.ComposablePluginContent
@@ -222,6 +224,19 @@ class AutomationRuntime(
     private val btConnectsLock = AapsLock()
 
     override fun recentBtConnects(): List<EventBTChange> = btConnectsLock.withLock { ArrayList(btConnects) }
+
+    override fun pendingCodedAutomationReviews(): List<String> {
+        val events = eventsLock.withLock { automationEvents.map { it.title to it.userAction } }
+        return CodedAutomationNames.pendingCloseTitles(events, loadCodedAutomationDecisions())
+    }
+
+    override fun saveCodedAutomationDecisions(accepted: Map<String, Boolean>) {
+        val merged = loadCodedAutomationDecisions() + accepted
+        preferences.put(StringNonKey.CodedAutomationDecisions, CodedAutomationNames.encodeDecisions(merged))
+    }
+
+    private fun loadCodedAutomationDecisions(): Map<String, Boolean> =
+        CodedAutomationNames.decodeDecisions(preferences.get(StringNonKey.CodedAutomationDecisions))
 
     /**
      * Snapshot stream of [automationEvents]. Replaces the old `EventAutomationDataChanged` RxBus
@@ -561,10 +576,23 @@ class AutomationRuntime(
         }
 
         aapsLogger.debug(LTag.AUTOMATION, "processActions")
+        // Exact names stay blocked while this switch is on. Close names stay blocked unless the
+        // review allowed that exact title. Other names are never touched. The switch does nothing
+        // unless AutoISF is the running algorithm, because the coded names belong to that algorithm.
+        // codedAutomationBodiesPresent stays false until the coded automations themselves run here.
+        // An imported 3.2.1 file can already have this switch on. That must not stop a native
+        // automation while nothing in this app replaces it.
+        val codedAutomationBodiesPresent = false
+        val customAutomationsOn = codedAutomationBodiesPresent &&
+            preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled) &&
+            activePlugin.activeAPS?.algorithm?.name == "AUTO_ISF"
+        val codedDecisions = if (customAutomationsOn) loadCodedAutomationDecisions() else emptyMap()
         val iterator = eventsLock.withLock { automationEvents.toMutableList().iterator() }
         while (iterator.hasNext()) {
             val event = iterator.next()
-            if (event.isEnabled && !event.userAction && event.shouldRun())
+            val suppressed = CodedAutomationNames.nativeEventSuppressed(event.title, codedDecisions, customAutomationsOn)
+            if (suppressed) aapsLogger.debug(LTag.AUTOMATION, "Native automation suppressed: ${event.title}")
+            if (event.isEnabled && !event.userAction && event.shouldRun() && !suppressed)
                 if (event.systemAction || commonEventsEnabled) {
                     processEvent(event)
                     if (event.hasStopProcessing()) break

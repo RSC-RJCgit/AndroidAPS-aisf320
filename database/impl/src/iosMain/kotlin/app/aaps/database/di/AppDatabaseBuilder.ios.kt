@@ -7,6 +7,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import app.aaps.database.AppDatabase
 import app.aaps.database.AppRepository
+import app.aaps.database.migration35to36
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -85,6 +86,7 @@ class IosAppDatabaseBuilder(
                 }
             })
             .fallbackToDestructiveMigration(false)
+            .addMigrations(migration35to36)
             .build()
 
     /**

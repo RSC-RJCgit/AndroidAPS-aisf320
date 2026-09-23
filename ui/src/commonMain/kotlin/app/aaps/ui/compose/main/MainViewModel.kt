@@ -594,6 +594,30 @@ class MainViewModel(
         _eventState.update { it.copy(showAboutDialog = show) }
     }
 
+    private var codedReviewOffered = false
+    private val _codedAutomationReview = MutableStateFlow<List<String>>(emptyList())
+
+    /** Close-match native automation titles to review. Empty when there is nothing to show. */
+    val codedAutomationReview: StateFlow<List<String>> = _codedAutomationReview.asStateFlow()
+
+    /**
+     * Ask once per app start. Cancel leaves the choices unsaved, so the list comes back next start.
+     */
+    fun offerCodedAutomationReview() {
+        if (codedReviewOffered) return
+        codedReviewOffered = true
+        _codedAutomationReview.value = automation.pendingCodedAutomationReviews()
+    }
+
+    fun saveCodedAutomationReview(accepted: Map<String, Boolean>) {
+        automation.saveCodedAutomationDecisions(accepted)
+        _codedAutomationReview.value = emptyList()
+    }
+
+    fun dismissCodedAutomationReview() {
+        _codedAutomationReview.value = emptyList()
+    }
+
     fun setShowMaintenanceSheet(show: Boolean) {
         _eventState.update { it.copy(showMaintenanceSheet = show) }
     }
