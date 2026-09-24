@@ -5,7 +5,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 object Versions {
 
     // On change edit aaps-ci.yml
-    const val appVersion = "4.0.0-dev-c"
+    // UKF3426 is this port. The -dev keeps it a development build. A name with no hyphen is treated as a release.
+    const val appVersion = "UKF3426-dev"
     const val versionCode = 1500
 
     const val compileSdk = 37
