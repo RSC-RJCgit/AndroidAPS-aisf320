@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="cancel_action_with_details" comment="%1$s=the word Cancel, %2$s=the active item being cancelled (e.g. a running temp basal or extended bolus description). Example: 'Cancel 150% 30min'">%1$s %2$s</string>
     <string name="no_temp_basal_running">No temp basal running</string>
     <string name="start_activity_tt">Start Activity TT</string>
@@ -225,6 +225,11 @@
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>
     <string name="coded_profiles_blocked" comment="%1$d = how many names were refused. Example: Steroid names left unchanged: 2">Steroid names left unchanged: %1$d</string>
+    <string name="fill_tiers_from_standard">Fill tiers from Standard tier A</string>
+    <string name="fill_tiers_need_source">Set Standard tier A to a saved profile first.</string>
+    <string name="fill_tiers_replace_title">Replace profiles that are already set?</string>
+    <string name="fill_tiers_replace_message">Yes replaces the contents and keeps the names. No only fills empty roles.</string>
+    <string name="fill_tiers_done">Profile tiers filled.</string>
     <string name="coded_role_label">Profile role</string>
     <string name="coded_role_not_set">Not set</string>
     <string name="coded_role_no_change">No role change</string>
