@@ -79,6 +79,7 @@ fun AutoIsfHistoryDialog(
                         values = listOf(
                             stringResource(UiStrings.autoisf_history_time),
                             stringResource(UiStrings.autoisf_history_bgl),
+                            stringResource(UiStrings.autoisf_history_ukf),
                             stringResource(UiStrings.autoisf_history_final),
                             stringResource(UiStrings.autoisf_history_acce),
                             stringResource(UiStrings.autoisf_history_bg),
@@ -91,7 +92,7 @@ fun AutoIsfHistoryDialog(
                             stringResource(UiStrings.autoisf_history_iob),
                             stringResource(UiStrings.autoisf_history_smb)
                         ),
-                        colors = List(13) { MaterialTheme.colorScheme.onSurfaceVariant },
+                        colors = List(14) { MaterialTheme.colorScheme.onSurfaceVariant },
                         bold = true,
                         scroll = horizontal
                     )
@@ -101,6 +102,7 @@ fun AutoIsfHistoryDialog(
                                 values = listOf(
                                     row.time,
                                     row.glucose,
+                                    row.ukf,
                                     row.finalIsf,
                                     row.acceIsf,
                                     row.bgIsf,
@@ -132,6 +134,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
     val time = MaterialTheme.colorScheme.onSurface
     return listOf(
         time,
+        glucose,
         glucose,
         factorColor(row.finalFactor, AapsTheme.generalColors.finalIsf),
         AapsTheme.generalColors.acceIsf,

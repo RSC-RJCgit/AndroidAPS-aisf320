@@ -204,6 +204,7 @@
     <string name="autoisf_history_all" comment="Button. Shows every AutoISF row, not only SMB rows.">All</string>
     <string name="autoisf_history_time">Time</string>
     <string name="autoisf_history_bgl">BGL</string>
+    <string name="autoisf_history_ukf">UKF</string>
     <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
     <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
     <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>

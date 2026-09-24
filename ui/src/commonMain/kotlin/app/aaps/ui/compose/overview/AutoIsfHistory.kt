@@ -26,6 +26,7 @@ enum class AutoIsfFactor {
 data class AutoIsfHistoryRow(
     val time: String,
     val glucose: String,
+    val ukf: String,
     val finalIsf: String,
     val finalFactor: AutoIsfFactor,
     val acceIsf: String,
@@ -70,6 +71,7 @@ fun List<AIV>.autoIsfHistoryRows(
     AutoIsfHistoryRow(
         time = timeText(row.timestamp),
         glucose = glucoseText(row.glucose),
+        ukf = if (row.ukfRawBgl == 0.0) "--" else glucoseText(row.ukfRawBgl),
         finalIsf = format2(row.finalIsf),
         finalFactor = factor,
         acceIsf = autoIsfAdjustmentText(row.acceIsf, format2),

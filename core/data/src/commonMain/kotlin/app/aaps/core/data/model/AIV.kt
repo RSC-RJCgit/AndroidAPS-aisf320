@@ -18,4 +18,6 @@ data class AIV(
     val bgAcceleration: Double,
     val iob: Double,
     val smbDelivered: Double,
+    /** UKF-smoothed raw glucose, mg/dL. 0 means this row has none. */
+    val ukfRawBgl: Double = 0.0,
 )

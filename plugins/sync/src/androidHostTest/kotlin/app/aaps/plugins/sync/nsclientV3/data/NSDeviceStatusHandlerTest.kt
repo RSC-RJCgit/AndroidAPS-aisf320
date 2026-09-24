@@ -2,6 +2,8 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
@@ -34,6 +36,8 @@ internal class NSDeviceStatusHandlerTest {
     @Mock private lateinit var calculationWorkflow: CalculationWorkflow
     @Mock private lateinit var rxBus: RxBus
     @Mock private lateinit var nsClientV3Plugin: NSClientV3Plugin
+    @Mock private lateinit var activePlugin: ActivePlugin
+    @Mock private lateinit var profileUtil: ProfileUtil
 
     private lateinit var sut: NSDeviceStatusHandler
 
@@ -44,7 +48,8 @@ internal class NSDeviceStatusHandlerTest {
         sut = NSDeviceStatusHandler(
             preferences, config, dateUtil, processedDeviceStatusData, aapsLogger,
             persistenceLayer, overviewData, calculationWorkflow, rxBus,
-            CoroutineScope(Dispatchers.Unconfined), { nsClientV3Plugin }
+            CoroutineScope(Dispatchers.Unconfined), { nsClientV3Plugin },
+            activePlugin, profileUtil
         )
     }
 

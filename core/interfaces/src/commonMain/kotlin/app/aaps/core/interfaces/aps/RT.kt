@@ -43,6 +43,13 @@ data class RT(
     var IOB: Double? = null,
     var variable_sens: Double? = null,
     var isfMgdlForCarbs: Double? = null, // used to pass to AAPS client
+    var autoIsfAcce: Double? = null,
+    var autoIsfBg: Double? = null,
+    var autoIsfPp: Double? = null,
+    var autoIsfDura: Double? = null,
+    var autoIsfFinal: Double? = null,
+    /** UKF-smoothed raw glucose, mg/dL, from the phone that ran the loop. */
+    var autoIsfUkfRawBgl: Double? = null,
 
     var consoleLog: MutableList<String>? = null,
     var consoleError: MutableList<String>? = null

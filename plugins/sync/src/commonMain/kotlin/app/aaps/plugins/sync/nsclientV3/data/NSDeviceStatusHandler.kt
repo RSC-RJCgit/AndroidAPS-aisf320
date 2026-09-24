@@ -3,6 +3,9 @@ package app.aaps.plugins.sync.nsclientV3.data
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
@@ -90,7 +93,9 @@ class NSDeviceStatusHandler(
     private val rxBus: RxBus,
     // Plain CoroutineScope: @ApplicationScope is a javax qualifier and cannot appear in commonMain.
     private val appScope: CoroutineScope,
-    private val nsClientV3Plugin: () -> NSClientV3Plugin
+    private val nsClientV3Plugin: () -> NSClientV3Plugin,
+    private val activePlugin: ActivePlugin,
+    private val profileUtil: ProfileUtil,
 ) {
 
     /**
@@ -179,7 +184,9 @@ class NSDeviceStatusHandler(
                 // check if this is new data
                 if (clock > processedDeviceStatusData.openAPSData.clockSuggested) {
                     try {
-                        processedDeviceStatusData.openAPSData.suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        processedDeviceStatusData.openAPSData.suggested = suggested
+                        storeReceivedAutoIsf(suggested, clock)
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
@@ -203,6 +210,23 @@ class NSDeviceStatusHandler(
                     processedDeviceStatusData.openAPSData.clockEnacted = clock
                 }
             }
+        }
+    }
+
+    /** A client, or a full phone on the virtual pump, keeps the live phone's loop row. */
+    private fun keepsReceivedAutoIsf(): Boolean {
+        if (config.AAPSCLIENT) return true
+        if (!config.APS) return false
+        return activePlugin.activePump.selectedActivePump() is VirtualPump
+    }
+
+    private fun storeReceivedAutoIsf(rt: RT, clock: Long) {
+        if (!keepsReceivedAutoIsf()) return
+        val row = receivedAutoIsfRow(clock, rt) { profileUtil.convertToMgdl(it, profileUtil.units) } ?: return
+        appScope.launch {
+            val already = persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock)
+            if (already.any { it.timestamp == clock }) return@launch
+            persistenceLayer.insertAutoIsfValue(row)
         }
     }
 

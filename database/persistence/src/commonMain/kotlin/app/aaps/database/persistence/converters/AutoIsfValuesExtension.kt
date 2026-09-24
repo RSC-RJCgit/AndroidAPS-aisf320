@@ -18,6 +18,7 @@ fun AutoIsfValues.fromDb(): AIV =
         bgAcceleration = bgAcceleration,
         iob = iob,
         smbDelivered = smbDelivered,
+        ukfRawBgl = ukfRawBgl,
     )
 
 fun AIV.toDb(): AutoIsfValues =
@@ -35,4 +36,5 @@ fun AIV.toDb(): AutoIsfValues =
         bgAcceleration = bgAcceleration,
         iob = iob,
         smbDelivered = smbDelivered,
+        ukfRawBgl = ukfRawBgl,
     )

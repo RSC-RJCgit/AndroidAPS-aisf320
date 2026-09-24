@@ -25,4 +25,6 @@ data class AutoIsfValues(
     var bgAcceleration: Double,
     var iob: Double,
     var smbDelivered: Double,
+    /** UKF-smoothed raw glucose, mg/dL. Older rows are 0. */
+    var ukfRawBgl: Double = 0.0,
 )

@@ -13,7 +13,7 @@ fun NSSgvV3.toGV(): GV {
     return GV(
         timestamp = date ?: throw IllegalArgumentException(),
         value = sgv,
-        noise = noise,
+        noise = unfiltered?.takeIf { it > 0.0 } ?: noise,
         raw = filtered,
         trendArrow = TrendArrow.fromString(direction?.nsName),
         ids = IDs(nightscoutId = identifier),
@@ -29,7 +29,7 @@ fun GV.toNSSvgV3(): NSSgvV3 =
         date = timestamp,
         utcOffset = T.msecs(utcOffset).mins(),
         filtered = raw,
-        unfiltered = 0.0,
+        unfiltered = noise,
         sgv = value,
         units = NsUnits.MG_DL,
         direction = Direction.fromString(trendArrow.text),
