@@ -171,6 +171,7 @@
     <string name="wizard_fat">Fat</string>
     <string name="wizard_warsaw_dose">Protein and fat</string>
     <string name="wizard_warsaw_plan" comment="%1$.2f = total units, %2$d = number of doses, %3$d = hours. Example: Protein and fat: 2.40 U in 5 doses over 5 h">Protein and fat: %1$.2f U in %2$d doses over %3$d h</string>
+    <string name="wizard_split_leftover" comment="%1$.2f = units still to come, %2$d = minutes between parts. Example: Remaining 3.00 U, one part every 7 min">Remaining %1$.2f U, one part every %2$d min</string>
     <string name="wizard_notes_join" comment="%1$s = the note already written, %2$s = the next calculator line.">%1$s
 %2$s</string>
     <string name="format_insulin_units">%1$.2f U</string>
