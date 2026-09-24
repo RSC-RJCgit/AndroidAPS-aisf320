@@ -9,6 +9,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.InsulinManager
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -65,6 +66,7 @@ internal class ProfileManagementViewModelTest {
     @Mock private lateinit var nsClient: NsClient
     @Mock private lateinit var batchExecutor: BatchExecutor
     @Mock private lateinit var rxBus: RxBus
+    @Mock private lateinit var importExportPrefs: ImportExportPrefs
 
     private lateinit var sut: ProfileManagementViewModel
 
@@ -104,7 +106,7 @@ internal class ProfileManagementViewModelTest {
             profileUtil, decimalFormatter, persistenceLayer, insulinManager, preferences, config,
             nsClient, batchExecutor, rxBus, object : CodedProfileRoles {
                 override fun markSteroidsOff() = Unit
-            }, CoroutineScope(UnconfinedTestDispatcher())
+            }, importExportPrefs, CoroutineScope(UnconfinedTestDispatcher())
         )
     }
 

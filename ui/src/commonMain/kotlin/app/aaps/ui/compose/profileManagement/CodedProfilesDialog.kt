@@ -15,6 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,11 +50,16 @@ fun codedRoleLabel(key: String): String = when (key) {
 fun CodedProfilesDialog(
     profileNames: List<String>,
     initial: List<String>,
+    fillNonce: Int,
+    onFillTiers: () -> Unit,
     onSave: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val slots = codedProfileSlots()
     var selected by remember { mutableStateOf(slots.mapIndexed { index, _ -> initial.getOrElse(index) { "" } }) }
+    LaunchedEffect(fillNonce) {
+        if (fillNonce > 0) selected = slots.mapIndexed { index, _ -> initial.getOrElse(index) { "" } }
+    }
     var openIndex by remember { mutableStateOf<Int?>(null) }
     val notSet = stringResource(UiStrings.coded_role_not_set)
     Dialog(onDismissRequest = onDismiss) {
@@ -80,6 +86,9 @@ fun CodedProfilesDialog(
                             Text(text = if (value.isEmpty()) notSet else value, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
+                }
+                TextButton(onClick = onFillTiers, enabled = profileNames.isNotEmpty()) {
+                    Text(stringResource(UiStrings.fill_tiers_from_standard))
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text(stringResource(CoreUiStrings.cancel)) }

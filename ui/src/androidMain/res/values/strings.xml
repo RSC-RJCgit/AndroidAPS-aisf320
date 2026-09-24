@@ -225,6 +225,11 @@
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>
     <string name="coded_profiles_blocked" comment="%1$d = how many names were refused. Example: Steroid names left unchanged: 2">Steroid names left unchanged: %1$d</string>
+    <string name="fill_tiers_from_standard">Fill tiers from Standard tier A</string>
+    <string name="fill_tiers_need_source">Set Standard tier A to a profile in the list first.</string>
+    <string name="fill_tiers_replace_title">Replace set profiles?</string>
+    <string name="fill_tiers_replace_message">These roles already have a profile. Replace them with a copy scaled from Standard tier A? Empty roles are filled either way.</string>
+    <string name="fill_tiers_done">Tier profiles saved.</string>
     <string name="coded_role_label">Profile role</string>
     <string name="coded_role_not_set">Not set</string>
     <string name="coded_role_no_change">No role change</string>

@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.profileManagement
 
+import app.aaps.core.interfaces.profile.SingleProfile
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.StringKey
 
 /**
@@ -110,4 +112,99 @@ fun planSwitchRole(profileName: String, chosenKey: String?): CodedProfileSave {
     val slot = codedProfileSlots().firstOrNull { it.key == key } ?: return CodedProfileSave(emptyMap(), 0, false)
     val steroidsOff = routed == null && slot.steroidsOff
     return CodedProfileSave(mapOf(key to profileName), blocked = 0, steroidsOff = steroidsOff)
+}
+
+/** Preference that holds the profile every other tier is scaled from. */
+const val STANDARD_TIER_A_KEY = "autoisf_standard100_profile_name"
+
+/**
+ * One tier copied from Standard tier A.
+ * [percent] is applied to that profile as it is stored: basal rises, insulin sensitivity and the carb ratio fall, targets stay.
+ * [defaultName] is used only when the role is empty.
+ */
+data class TierProfileSpec(
+    val key: String,
+    val percent: Int,
+    val defaultName: String,
+)
+
+/**
+ * One profile to write.
+ * [replaceInPlace] overwrites the profile that already has [name]. Otherwise [name] is a new profile.
+ */
+data class TierWrite(
+    val key: String,
+    val percent: Int,
+    val name: String,
+    val replaceInPlace: Boolean,
+)
+
+data class TierFillPlan(
+    val sourceMissing: Boolean,
+    val sourceName: String,
+    val creates: List<TierWrite>,
+    val replaces: List<TierWrite>,
+)
+
+fun tierProfileSpecs(): List<TierProfileSpec> = listOf(
+    TierProfileSpec(StringKey.ApsAutoIsfStandard105ProfileName.key, 130, "Standard tier B"),
+    TierProfileSpec(StringKey.ApsAutoIsfStandard110ProfileName.key, 150, "Standard tier C"),
+    TierProfileSpec(StringKey.ApsAutoIsfLow70ProfileName.key, 80, "Low tier A"),
+    TierProfileSpec(StringKey.ApsAutoIsfLow80ProfileName.key, 90, "Low tier B"),
+    TierProfileSpec(StringKey.ApsAutoIsfLow90ProfileName.key, 95, "Low tier C"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid100ProfileName.key, 100, "Steroid tier A"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid110ProfileName.key, 110, "Steroid Profile110"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid130ProfileName.key, 130, "Steroid Profile130"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid150ProfileName.key, 150, "Steroid Profile150"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid190ProfileName.key, 190, "Steroid190"),
+    TierProfileSpec(StringKey.ApsAutoIsfSteroid250ProfileName.key, 250, "Steroid250"),
+)
+
+/**
+ * Decide which tiers to add and which already have a profile.
+ * A role that points at the Standard tier A profile is not overwritten in place. A new copy is offered instead.
+ */
+fun planTierFill(roleValues: Map<String, String>, profileNames: Set<String>): TierFillPlan {
+    val sourceName = roleValues[STANDARD_TIER_A_KEY].orEmpty().trim()
+    if (sourceName.isEmpty() || sourceName !in profileNames) {
+        return TierFillPlan(sourceMissing = true, sourceName = sourceName, creates = emptyList(), replaces = emptyList())
+    }
+    val taken = profileNames.toMutableSet()
+    val creates = mutableListOf<TierWrite>()
+    val replaces = mutableListOf<TierWrite>()
+    tierProfileSpecs().forEach { spec ->
+        val current = roleValues[spec.key].orEmpty().trim()
+        val hasProfile = current.isNotEmpty() && current in profileNames
+        if (hasProfile && current != sourceName) {
+            replaces += TierWrite(spec.key, spec.percent, current, replaceInPlace = true)
+        } else if (hasProfile) {
+            val name = freeProfileName(spec.defaultName, taken)
+            taken += name
+            replaces += TierWrite(spec.key, spec.percent, name, replaceInPlace = false)
+        } else {
+            val name = freeProfileName(current.ifEmpty { spec.defaultName }, taken)
+            taken += name
+            creates += TierWrite(spec.key, spec.percent, name, replaceInPlace = false)
+        }
+    }
+    return TierFillPlan(sourceMissing = false, sourceName = sourceName, creates = creates, replaces = replaces)
+}
+
+/** Basal is multiplied by the percent. Sensitivity and the carb ratio are divided by it. Targets are copied. */
+fun scaledTierProfile(source: SingleProfile, percent: Int, name: String): SingleProfile {
+    val up = percent / 100.0
+    val down = 100.0 / percent
+    return source.copy(
+        name = name,
+        basal = source.basal.map { it.copy(amount = Round.roundTo(it.amount * up, 0.001)) },
+        isf = source.isf.map { it.copy(amount = Round.roundTo(it.amount * down, 0.001)) },
+        ic = source.ic.map { it.copy(amount = Round.roundTo(it.amount * down, 0.001)) },
+    )
+}
+
+private fun freeProfileName(preferred: String, taken: Set<String>): String {
+    if (preferred !in taken) return preferred
+    var n = 2
+    while ("$preferred $n" in taken) n++
+    return "$preferred $n"
 }

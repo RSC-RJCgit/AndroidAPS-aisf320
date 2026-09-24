@@ -21,8 +21,12 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.db.compensateForClockSkew
 import app.aaps.core.interfaces.insulin.InsulinManager
+import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.maintenance.ExportDestination
+import app.aaps.core.interfaces.maintenance.ExportResult
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileErrorType
@@ -47,9 +51,13 @@ import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.ScreenMode
 import app.aaps.core.ui.compose.icons.IcProfile
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.profileManagement.TierFillPlan
+import app.aaps.ui.compose.profileManagement.TierWrite
 import app.aaps.ui.compose.profileManagement.codedProfileSlots
 import app.aaps.ui.compose.profileManagement.planCodedProfileSave
 import app.aaps.ui.compose.profileManagement.planSwitchRole
+import app.aaps.ui.compose.profileManagement.planTierFill
+import app.aaps.ui.compose.profileManagement.scaledTierProfile
 import app.aaps.ui.compose.profileManagement.stringKeyForCodedRole
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -112,6 +120,7 @@ class ProfileManagementViewModel(
     private val batchExecutor: BatchExecutor,
     private val rxBus: RxBus,
     private val codedProfileRoles: CodedProfileRoles,
+    private val importExportPrefs: ImportExportPrefs,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope
@@ -719,6 +728,125 @@ class ProfileManagementViewModel(
         if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
     }
 
+    private var pendingTierFill: TierFillPlan? = null
+
+    private val _tierReplace = MutableStateFlow<List<TierWrite>?>(null)
+    val tierReplace: StateFlow<List<TierWrite>?> = _tierReplace.asStateFlow()
+
+    /** Bumped after a fill so the coded-profiles dialog reloads the role names. */
+    private val _tierFillNonce = MutableStateFlow(0)
+    val tierFillNonce: StateFlow<Int> = _tierFillNonce.asStateFlow()
+
+    private val _settingsExport = MutableStateFlow<SettingsExportState>(SettingsExportState.Idle)
+    val settingsExport: StateFlow<SettingsExportState> = _settingsExport.asStateFlow()
+
+    /** Build missing tier profiles from Standard tier A. Already-set profiles wait for [confirmTierReplace]. */
+    fun requestTierFill() {
+        val roles = codedProfileSlots().associate { it.key to codedRoleValue(it.key) }
+        val names = profileRepository.profiles.value.map { it.name }.toSet()
+        val plan = planTierFill(roles, names)
+        if (plan.sourceMissing) {
+            _snackbarEvent.tryEmit(rh.gs(UiStrings.fill_tiers_need_source))
+            return
+        }
+        pendingTierFill = plan
+        if (plan.replaces.isEmpty()) {
+            pendingTierFill = null
+            viewModelScope.launch { applyTierFill(plan, replaceExisting = false) }
+        } else {
+            _tierReplace.value = plan.replaces
+        }
+    }
+
+    /** Yes replaces the profiles already set. No fills only the empty roles. */
+    fun confirmTierReplace(yes: Boolean) {
+        _tierReplace.value = null
+        val plan = pendingTierFill ?: return
+        pendingTierFill = null
+        viewModelScope.launch { applyTierFill(plan, replaceExisting = yes) }
+    }
+
+    fun onExportConfirmed() {
+        _settingsExport.value = SettingsExportState.AskPassword()
+    }
+
+    fun onExportPasswordEntered(password: String) {
+        if (!importExportPrefs.isMasterPasswordCorrect(password)) {
+            _settingsExport.value = SettingsExportState.AskPassword(wrongPassword = true)
+            return
+        }
+        _settingsExport.value = SettingsExportState.Idle
+        doSettingsExport(importExportPrefs.cacheExportPassword(password))
+    }
+
+    fun cancelSettingsExport() {
+        _settingsExport.value = SettingsExportState.Idle
+    }
+
+    private suspend fun applyTierFill(plan: TierFillPlan, replaceExisting: Boolean) {
+        val source = profileRepository.profiles.value.firstOrNull { it.name == plan.sourceName }
+        if (source == null) {
+            _snackbarEvent.tryEmit(rh.gs(UiStrings.fill_tiers_need_source))
+            return
+        }
+        val writes = plan.creates + if (replaceExisting) plan.replaces else emptyList()
+        if (writes.isEmpty()) return
+        for (write in writes) {
+            val scaled = scaledTierProfile(source, write.percent, write.name)
+            val result = if (write.replaceInPlace) {
+                val index = profileRepository.profiles.value.indexOfFirst { it.name == write.name }
+                if (index < 0) profileRepository.add(scaled) else profileRepository.replace(index, scaled)
+            } else {
+                profileRepository.add(scaled)
+            }
+            if (result.isFailure) {
+                _snackbarEvent.tryEmit(rh.gs(UiStrings.profile_no_longer_exists))
+                return
+            }
+            preferences.put(stringKeyForCodedRole(write.key), write.name)
+        }
+        _tierFillNonce.value = _tierFillNonce.value + 1
+        _snackbarEvent.tryEmit(rh.gs(UiStrings.fill_tiers_done))
+        startSettingsExport()
+    }
+
+    private fun startSettingsExport() {
+        if (!importExportPrefs.isMasterPasswordSet()) {
+            _settingsExport.value = SettingsExportState.MasterPasswordMissing
+            return
+        }
+        val preparation = importExportPrefs.prepareExport()
+        if (preparation == null) {
+            _snackbarEvent.tryEmit(rh.gs(CoreUiStrings.error))
+            return
+        }
+        val cached = preparation.cachedPassword
+        if (cached != null) doSettingsExport(cached)
+        else _settingsExport.value = SettingsExportState.ConfirmExport(
+            fileName = preparation.fileName,
+            destination = preparation.destination,
+            cloudDisplayName = preparation.cloudDisplayName,
+        )
+    }
+
+    private fun doSettingsExport(password: String) {
+        viewModelScope.launch {
+            val result = withContext(aapsIoDispatcher) { importExportPrefs.executeExport(password) }
+            _snackbarEvent.tryEmit(settingsExportMessage(result))
+        }
+    }
+
+    private fun settingsExportMessage(result: ExportResult): String {
+        val parts = mutableListOf<String>()
+        result.localSuccess?.let { ok ->
+            parts += rh.gs(if (ok) CoreUiStrings.export_result_message_exported else CoreUiStrings.export_result_message_failed)
+        }
+        result.cloudSuccess?.let { ok ->
+            parts += rh.gs(if (ok) CoreUiStrings.export_cloud_success else CoreUiStrings.export_cloud_failed)
+        }
+        return parts.joinToString("\n").ifEmpty { rh.gs(CoreUiStrings.export_result_message_failed) }
+    }
+
     companion object {
 
         /**
@@ -728,6 +856,18 @@ class ProfileManagementViewModel(
          */
         private const val UI_STATE_SETTLE_TIMEOUT_MS = 1_000L
     }
+}
+
+sealed interface SettingsExportState {
+    data object Idle : SettingsExportState
+    data object MasterPasswordMissing : SettingsExportState
+    data class ConfirmExport(
+        val fileName: String,
+        val destination: ExportDestination = ExportDestination.LOCAL,
+        val cloudDisplayName: String? = null,
+    ) : SettingsExportState
+
+    data class AskPassword(val wrongPassword: Boolean = false) : SettingsExportState
 }
 
 /**
