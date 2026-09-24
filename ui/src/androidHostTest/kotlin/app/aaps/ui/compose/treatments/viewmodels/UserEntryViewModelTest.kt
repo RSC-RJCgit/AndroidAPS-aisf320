@@ -43,14 +43,14 @@ internal class UserEntryViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no entries and loop hidden`() {
+    fun defaultUiStateHasNoEntriesAndLoopHidden() {
         val state = sut.uiState.value
         assertThat(state.userEntries).isEmpty()
         assertThat(state.showLoop).isFalse()
     }
 
     @Test
-    fun `toggleLoop flips the showLoop flag`() {
+    fun toggleLoopFlipsTheShowLoopFlag() {
         sut.toggleLoop()
         assertThat(sut.uiState.value.showLoop).isTrue()
 

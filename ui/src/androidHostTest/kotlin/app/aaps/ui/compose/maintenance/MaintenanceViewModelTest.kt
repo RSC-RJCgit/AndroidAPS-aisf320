@@ -87,7 +87,7 @@ internal class MaintenanceViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default state is idle export, hidden cloud directory, no config`() {
+    fun defaultStateIsIdleExportHiddenCloudDirectoryNoConfig() {
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.Idle)
         assertThat(sut.cloudDirectoryState.value).isEqualTo(MaintenanceViewModel.CloudDirectoryState.Hidden)
         assertThat(sut.exportConfig.value).isNull()
@@ -95,14 +95,14 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportConfirmed moves export state to AskPassword`() {
+    fun onExportConfirmedMovesExportStateToAskPassword() {
         sut.onExportConfirmed()
 
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.AskPassword())
     }
 
     @Test
-    fun `cancelExport resets export state to Idle`() {
+    fun cancelExportResetsExportStateToIdle() {
         sut.onExportConfirmed()
         sut.cancelExport()
 
@@ -110,7 +110,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportPasswordEntered rejects a password that is not the master password`() {
+    fun onExportPasswordEnteredRejectsAPasswordThatIsNotTheMasterPassword() {
         whenever(importExportPrefs.isMasterPasswordCorrect("not-the-master")).thenReturn(false)
         sut.onExportConfirmed()
 
@@ -123,7 +123,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportPasswordEntered accepts and caches the master password`() {
+    fun onExportPasswordEnteredAcceptsAndCachesTheMasterPassword() {
         whenever(importExportPrefs.isMasterPasswordCorrect("master")).thenReturn(true)
         whenever(importExportPrefs.cacheExportPassword("master")).thenReturn("master")
         sut.onExportConfirmed()
@@ -142,7 +142,7 @@ internal class MaintenanceViewModelTest {
     // the same reason, so the coroutine finishes on whichever thread resumed it.
 
     @Test
-    fun `sendLogs says so on screen when the platform has no way to send them`() = runBlocking {
+    fun sendLogsSaysSoOnScreenWhenThePlatformHasNoWayToSendThem() = runBlocking {
         // What iOS does: there is no mail composer, so Maintenance throws instead of pretending.
         // NotImplementedError is an Error rather than an Exception, so before the shared handler it
         // walked straight past `catch (e: Exception)` and took the app down.
@@ -157,7 +157,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `resetDatabases says so on screen when the platform cannot clear them`() = runBlocking {
+    fun resetDatabasesSaysSoOnScreenWhenThePlatformCannotClearThem() = runBlocking {
         // Desktop still answers this way, and iOS did until the tables were cleared with SQL.
         runEagerly()
         whenever(rh.gs(CoreUiStrings.not_implemented_yet)).thenReturn("not ready here")
@@ -170,7 +170,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `a real failure gets the plain error message, not the not-ready one`() = runBlocking {
+    fun aRealFailureGetsThePlainErrorMessageNotTheNotReadyOne() = runBlocking {
         runEagerly()
         whenever(rh.gs(CoreUiStrings.error)).thenReturn("error")
         whenever(persistenceLayer.cleanupDatabase(any(), any())).thenAnswer { throw IllegalStateException("database is locked") }
@@ -182,7 +182,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `cleanupDatabases reports what it removed when it works`() = runBlocking {
+    fun cleanupDatabasesReportsWhatItRemovedWhenItWorks() = runBlocking {
         runEagerly()
         whenever(persistenceLayer.cleanupDatabase(any(), any())).thenReturn("GlucoseValue 12")
         val event = expectEvent()

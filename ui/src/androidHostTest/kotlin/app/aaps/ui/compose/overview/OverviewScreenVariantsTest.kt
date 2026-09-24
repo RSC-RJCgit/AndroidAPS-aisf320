@@ -144,7 +144,7 @@ class OverviewScreenVariantsTest {
     // ---------------------------------------------------------------- BG circle
 
     @Test
-    fun `stacked layout shows the placeholder when there is no BG reading`() {
+    fun stackedLayoutShowsThePlaceholderWhenThereIsNoBGReading() {
         setScreen(Variant.STACKED)
 
         compose.onNodeWithText(NO_BG_PLACEHOLDER).assertIsDisplayed()
@@ -152,7 +152,7 @@ class OverviewScreenVariantsTest {
     }
 
     @Test
-    fun `stacked layout shows BG value, delta and time ago once a reading arrives`() {
+    fun stackedLayoutShowsBGValueDeltaAndTimeAgoOnceAReadingArrives() {
         viewModels.withBg()
         setScreen(Variant.STACKED)
 
@@ -164,7 +164,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `split layout keeps the BG time ago line`() {
+    fun splitLayoutKeepsTheBGTimeAgoLine() {
         viewModels.withBg()
         setScreen(Variant.SPLIT)
 
@@ -173,7 +173,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `tablet layout hides the BG time ago line`() {
+    fun tabletLayoutHidesTheBGTimeAgoLine() {
         viewModels.withBg()
         setScreen(Variant.TABLET)
 
@@ -184,7 +184,7 @@ class OverviewScreenVariantsTest {
     // ---------------------------------------------------------------- clock
 
     @Test
-    fun `stacked layout has no large clock`() {
+    fun stackedLayoutHasNoLargeClock() {
         viewModels.withBg()
         setScreen(Variant.STACKED)
 
@@ -193,7 +193,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `split layout shows the clock with the age of the BG reading`() {
+    fun splitLayoutShowsTheClockWithTheAgeOfTheBGReading() {
         viewModels.withBg()
         setScreen(Variant.SPLIT)
 
@@ -202,7 +202,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `tablet layout shows the clock with the age of the BG reading`() {
+    fun tabletLayoutShowsTheClockWithTheAgeOfTheBGReading() {
         viewModels.withBg()
         setScreen(Variant.TABLET)
 
@@ -212,7 +212,7 @@ class OverviewScreenVariantsTest {
     // ---------------------------------------------------------------- status card
 
     @Test
-    fun `stacked layout starts with the status card collapsed`() {
+    fun stackedLayoutStartsWithTheStatusCardCollapsed() {
         setScreen(Variant.STACKED)
 
         compose.onNodeWithContentDescription(expandLabel).assertIsDisplayed()
@@ -222,7 +222,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `split layout starts with the status card expanded`() {
+    fun splitLayoutStartsWithTheStatusCardExpanded() {
         setScreen(Variant.SPLIT)
 
         compose.onNodeWithText(statusHeading).assertIsDisplayed()
@@ -232,7 +232,7 @@ class OverviewScreenVariantsTest {
 
     @Test
     @Config(qualifiers = WIDE)
-    fun `tablet layout starts with the status card expanded`() {
+    fun tabletLayoutStartsWithTheStatusCardExpanded() {
         setScreen(Variant.TABLET)
 
         compose.onNodeWithText(statusHeading).assertIsDisplayed()

@@ -73,7 +73,7 @@ internal class TreatmentDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `updateInsulin and updateCarbs update the state`() {
+    fun updateInsulinAndUpdateCarbsUpdateTheState() {
         sut.updateInsulin(2.5)
         sut.updateCarbs(30)
 

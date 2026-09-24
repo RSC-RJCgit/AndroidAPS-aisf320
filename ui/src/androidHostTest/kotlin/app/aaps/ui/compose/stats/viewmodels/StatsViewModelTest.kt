@@ -62,7 +62,7 @@ internal class StatsViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has dialogs hidden and zero cycle offset`() {
+    fun defaultUiStateHasDialogsHiddenAndZeroCycleOffset() {
         val state = sut.uiState.value
         assertThat(state.showRecalculateDialog).isFalse()
         assertThat(state.showResetActivityDialog).isFalse()
@@ -70,7 +70,7 @@ internal class StatsViewModelTest {
     }
 
     @Test
-    fun `toggleTddExpanded flips the expanded flag`() {
+    fun toggleTddExpandedFlipsTheExpandedFlag() {
         val initial = sut.uiState.value.tddExpanded
         sut.toggleTddExpanded()
         assertThat(sut.uiState.value.tddExpanded).isEqualTo(!initial)
@@ -79,28 +79,28 @@ internal class StatsViewModelTest {
     }
 
     @Test
-    fun `toggleTirExpanded flips the expanded flag`() {
+    fun toggleTirExpandedFlipsTheExpandedFlag() {
         val initial = sut.uiState.value.tirExpanded
         sut.toggleTirExpanded()
         assertThat(sut.uiState.value.tirExpanded).isEqualTo(!initial)
     }
 
     @Test
-    fun `toggleDexcomTirExpanded flips the expanded flag`() {
+    fun toggleDexcomTirExpandedFlipsTheExpandedFlag() {
         val initial = sut.uiState.value.dexcomTirExpanded
         sut.toggleDexcomTirExpanded()
         assertThat(sut.uiState.value.dexcomTirExpanded).isEqualTo(!initial)
     }
 
     @Test
-    fun `toggleActivityExpanded flips the expanded flag`() {
+    fun toggleActivityExpandedFlipsTheExpandedFlag() {
         val initial = sut.uiState.value.activityExpanded
         sut.toggleActivityExpanded()
         assertThat(sut.uiState.value.activityExpanded).isEqualTo(!initial)
     }
 
     @Test
-    fun `recalculate dialog is shown then dismissed`() {
+    fun recalculateDialogIsShownThenDismissed() {
         sut.showRecalculateDialog()
         assertThat(sut.uiState.value.showRecalculateDialog).isTrue()
         sut.dismissRecalculateDialog()
@@ -108,7 +108,7 @@ internal class StatsViewModelTest {
     }
 
     @Test
-    fun `reset activity dialog is shown then dismissed`() {
+    fun resetActivityDialogIsShownThenDismissed() {
         sut.showResetActivityDialog()
         assertThat(sut.uiState.value.showResetActivityDialog).isTrue()
         sut.dismissResetActivityDialog()

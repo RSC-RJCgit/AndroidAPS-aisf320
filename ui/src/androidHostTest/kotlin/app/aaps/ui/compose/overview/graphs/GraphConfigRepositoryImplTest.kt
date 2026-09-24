@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
 class GraphConfigRepositoryImplTest {
 
     @Test
-    fun `a configuration survives a round trip`() {
+    fun aConfigurationSurvivesARoundTrip() {
         val config = GraphConfig(
             bgOverlays = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS),
             iobOverlays = listOf(SeriesType.ACTIVITY),
@@ -32,7 +32,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `the legacy shape, a bare array of series names, still reads`() {
+    fun theLegacyShapeABareArrayOfSeriesNamesStillReads() {
         // Before secondary graphs had their own height, each entry was just the list of series.
         val legacy = """{"secondaryGraphs":[["COB"]]}"""
 
@@ -44,7 +44,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `a series name this version does not know is skipped, not fatal`() {
+    fun aSeriesNameThisVersionDoesNotKnowIsSkippedNotFatal() {
         // Forward compatibility: a newer build may have written a series this one cannot name.
         val restored = GraphConfigRepositoryImpl.fromJson("""{"secondaryGraphs":[{"series":["COB","NOT_A_SERIES"]}]}""")
 
@@ -52,7 +52,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `IOB is dropped from a configurable graph`() {
+    fun iOBIsDroppedFromAConfigurableGraph() {
         // IOB has its own fixed graph now; an older document may still list it here.
         val restored = GraphConfigRepositoryImpl.fromJson("""{"secondaryGraphs":[{"series":["IOB","COB"]}]}""")
 
@@ -60,14 +60,14 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `a graph left with no series at all is dropped`() {
+    fun aGraphLeftWithNoSeriesAtAllIsDropped() {
         val restored = GraphConfigRepositoryImpl.fromJson("""{"secondaryGraphs":[{"series":["IOB"]}]}""")
 
         assertThat(restored.secondaryGraphs).isEmpty()
     }
 
     @Test
-    fun `a repeated series is kept once, and at most two are kept`() {
+    fun aRepeatedSeriesIsKeptOnceAndAtMostTwoAreKept() {
         val restored = GraphConfigRepositoryImpl.fromJson(
             """{"secondaryGraphs":[{"series":["COB","COB","ACTIVITY","DEVIATIONS"]}]}"""
         )
@@ -76,7 +76,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `heights are clamped to the allowed range`() {
+    fun heightsAreClampedToTheAllowedRange() {
         val restored = GraphConfigRepositoryImpl.fromJson("""{"bgHeight":10,"iobHeight":100000}""")
 
         assertThat(restored.bgHeight).isEqualTo(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP)
@@ -84,7 +84,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `missing overlays fall back to the defaults`() {
+    fun missingOverlaysFallBackToTheDefaults() {
         val restored = GraphConfigRepositoryImpl.fromJson("{}")
 
         assertThat(restored.bgOverlays).containsExactly(SeriesType.ACTIVITY, SeriesType.PREDICTIONS).inOrder()
@@ -92,7 +92,7 @@ class GraphConfigRepositoryImplTest {
     }
 
     @Test
-    fun `an empty overlay list is kept empty, not replaced by the default`() {
+    fun anEmptyOverlayListIsKeptEmptyNotReplacedByTheDefault() {
         // Written explicitly means the user turned them all off - that is not the same as absent.
         val restored = GraphConfigRepositoryImpl.fromJson("""{"bgOverlays":[]}""")
 

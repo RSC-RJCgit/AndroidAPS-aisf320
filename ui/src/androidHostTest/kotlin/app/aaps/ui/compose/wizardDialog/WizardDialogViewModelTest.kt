@@ -79,7 +79,7 @@ internal class WizardDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `updateNotes and toggleAlarm update the state`() {
+    fun updateNotesAndToggleAlarmUpdateTheState() {
         sut.updateNotes("wizard note")
         sut.toggleAlarm(true)
 

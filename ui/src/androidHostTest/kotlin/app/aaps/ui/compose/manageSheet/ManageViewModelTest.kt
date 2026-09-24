@@ -93,7 +93,7 @@ internal class ManageViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes ManageUiState defaults and the cast pump plugin`() {
+    fun defaultUiStateExposesManageUiStateDefaultsAndTheCastPumpPlugin() {
         val state = sut.uiState.value
         // refreshState() is deferred, so these are the untouched constructor defaults.
         assertThat(state.showMutatingActions).isTrue()
