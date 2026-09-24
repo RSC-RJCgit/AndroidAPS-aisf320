@@ -135,8 +135,11 @@ android {
         create("full") {
             isDefault = true
             applicationId = "info.nightscout.androidaps"
+            // Side by side with an already installed AAPS. The same id is refused when the
+            // signature differs, and uninstalling that copy is what would stop the old app.
+            applicationIdSuffix = ".ukf"
             dimension = "standard"
-            resValue("string", "app_name", "AAPS")
+            resValue("string", "app_name", "AAPS UKF")
             versionName = Versions.appVersion
             manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
             manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
