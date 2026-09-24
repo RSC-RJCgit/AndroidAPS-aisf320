@@ -20,6 +20,10 @@ data class QuickWizardManagementUiState(
     val editorButtonText: String = "",
     val editorInsulin: Double = 0.0,
     val editorCarbs: Int = 0,
+    val editorProtein: Int = 0,
+    val editorFat: Int = 0,
+    val editorWarsawDurationHours: Double = 5.0,
+    val editorMaxBolus: Double = 0.0,
     val editorCarbTime: Int = 0,
     val editorValidFrom: Int = 0,           // seconds from midnight
     val editorValidTo: Int = 86340,         // seconds from midnight (23:59)

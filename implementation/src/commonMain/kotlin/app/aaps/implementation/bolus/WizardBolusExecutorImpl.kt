@@ -241,7 +241,14 @@ class WizardBolusExecutorImpl(
         val pump = activePlugin.activePump
         if (!pump.isInitialized()) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_pump_not_available))
 
-        val wizard = entry.doCalc(profile, profileName, actualBg)
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val buttonMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+        if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
+        val wizard = try {
+            entry.doCalc(profile, profileName, actualBg)
+        } finally {
+            if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
 
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
         if (carbsAfterConstraints != entry.carbs()) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
@@ -264,6 +271,7 @@ class WizardBolusExecutorImpl(
             notes = entry.buttonText(),
             warsawPlan = wizard.warsawPlan,
             warsawIobBaseline = wizard.warsawIobBaseline,
+            wizardMaxBolus = buttonMax,
         ))
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
@@ -282,7 +290,7 @@ class WizardBolusExecutorImpl(
                 eCarbsDurationHours = if (eCarbsGrams > 0) entry.duration() else 0,
                 carbTimeMinutes = entry.carbTime(),
                 alarm = entry.useAlarm() == QuickWizardEntry.ALWAYS && entry.carbTime() > 0,
-                maxBolus = constraintChecker.getMaxBolusAllowed().value(),
+                maxBolus = buttonMax ?: constraintChecker.getMaxBolusAllowed().value(),
                 bolusStep = pump.pumpDescription.pumpType.determineCorrectBolusStepSize(wizard.insulinAfterConstraints),
             ),
         )
