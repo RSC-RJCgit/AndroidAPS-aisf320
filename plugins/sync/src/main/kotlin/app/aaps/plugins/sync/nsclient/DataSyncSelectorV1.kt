@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclient
 
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -18,6 +19,7 @@ import app.aaps.core.utils.waitMillis
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiQueue
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsShared.extensions.onlyNsIdAdded
+import app.aaps.plugins.sync.nsShared.uploadBlockedOnVirtualPump
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +37,8 @@ class DataSyncSelectorV1 @Inject constructor(
     private val profileFunction: ProfileFunction,
     private val activePlugin: ActivePlugin,
     private val persistenceLayer: PersistenceLayer,
-    private val rxBus: RxBus
+    private val rxBus: RxBus,
+    private val config: Config
 ) : DataSyncSelector {
 
     private var scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -75,6 +78,10 @@ class DataSyncSelectorV1 @Inject constructor(
     private val queueCounter = QueueCounter()
     private val isPaused get() = preferences.get(NsclientBooleanKey.NsPaused)
 
+    /** True for a full AAPS on VirtualPump: upload is braked whatever the switch says (see UploadBrake.kt). */
+    val uploadBlockedOnVirtualPump get() = activePlugin.uploadBlockedOnVirtualPump(config)
+    private var uploadBrakeLogged = false
+
     override fun queueSize(): Long = queueCounter.size()
 
     private var running = false
@@ -91,7 +98,13 @@ class DataSyncSelectorV1 @Inject constructor(
             running = true
         }
         rxBus.send(EventNSClientUpdateGuiStatus())
-        if (preferences.get(BooleanKey.NsClientUploadData) && !isPaused) {
+        if (uploadBlockedOnVirtualPump) {
+            if (!uploadBrakeLogged) {
+                uploadBrakeLogged = true
+                aapsLogger.debug(LTag.NSCLIENT, "Upload blocked: full AAPS on VirtualPump")
+            }
+        } else uploadBrakeLogged = false
+        if (preferences.get(BooleanKey.NsClientUploadData) && !uploadBlockedOnVirtualPump && !isPaused) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)
             queueCounter.bcrRemaining = (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L) - preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)

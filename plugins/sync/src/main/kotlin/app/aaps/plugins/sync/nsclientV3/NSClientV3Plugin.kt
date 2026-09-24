@@ -479,7 +479,7 @@ class NSClientV3Plugin @Inject constructor(
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
         if (!isEnabled()) return
-        if (!preferences.get(BooleanKey.NsClientUploadData)) {
+        if (!preferences.get(BooleanKey.NsClientUploadData) || dataSyncSelectorV3.uploadBlockedOnVirtualPump) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
             return
         }
@@ -947,7 +947,12 @@ class NSClientV3Plugin @Inject constructor(
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientUploadData, summary = R.string.ns_upload_summary, title = R.string.ns_upload))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientUploadData, summary = R.string.ns_upload_summary, title = R.string.ns_upload).also {
+                    if (dataSyncSelectorV3.uploadBlockedOnVirtualPump) {
+                        it.disableKeepingParent()
+                        it.setSummary(R.string.ns_upload_blocked_virtual_summary)
+                    }
+                })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.BgSourceUploadToNs, title = app.aaps.core.ui.R.string.do_ns_upload_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCgmData, summary = R.string.ns_receive_cgm_summary, title = R.string.ns_receive_cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileStore, summary = R.string.ns_receive_profile_store_summary, title = R.string.ns_receive_profile_store))

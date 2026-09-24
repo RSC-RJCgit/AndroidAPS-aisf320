@@ -63,13 +63,22 @@ class AdaptiveSwitchPreference(
         }
     }
 
+    // Greys this switch out without greying its parent screen (onAttached mirrors isEnabled onto the parent for
+    // hideParentScreenIfHidden keys, which would grey every sibling switch too).
+    private var greyedOnly = false
+
+    fun disableKeepingParent() {
+        greyedOnly = true
+        isEnabled = false
+    }
+
     override fun onAttached() {
         super.onAttached()
         // PreferenceScreen is final so we cannot extend and modify behavior
         val preferenceKey = preferences.get(key) as BooleanPreferenceKey
         if (preferenceKey.hideParentScreenIfHidden) {
             parent?.isVisible = isVisible
-            parent?.isEnabled = isEnabled
+            parent?.isEnabled = isEnabled || greyedOnly
         }
     }
 }
