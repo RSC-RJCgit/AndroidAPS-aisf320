@@ -465,14 +465,14 @@ fun BgGraphCompose(
     val activeSeries by activeSeriesState
     val rawLine = remember {
         LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF757575))),
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFFFF0000))),
             stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null
         )
     }
     val ukfLine = remember {
         LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF6A1B9A))),
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF4FC3F7))),
             stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null
         )

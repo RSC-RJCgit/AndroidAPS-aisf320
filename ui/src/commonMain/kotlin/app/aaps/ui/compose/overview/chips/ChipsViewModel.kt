@@ -22,6 +22,8 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
@@ -203,13 +205,20 @@ class ChipsViewModel(
     suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
         val now = dateUtil.now()
         val units = profileFunction.getUnits()
+        val fromLivePhone = config.APS && !config.AAPSCLIENT &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            activePlugin.activePump.selectedActivePump() is VirtualPump
+        val steps = persistenceLayer.getStepsCountFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
         return persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
             .sortedByDescending { it.timestamp }
             .autoIsfHistoryRows(
                 timeText = { dateUtil.timeString(it) },
                 glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
                 deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },
-                format2 = { decimalFormatter.to2Decimal(it) }
+                format2 = { decimalFormatter.to2Decimal(it) },
+                steps = steps,
+                fromLivePhone = fromLivePhone,
+                ownDevice = "openaps://${config.deviceModelForUpload}"
             )
     }
 

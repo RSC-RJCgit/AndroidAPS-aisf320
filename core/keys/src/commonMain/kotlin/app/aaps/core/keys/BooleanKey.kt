@@ -221,6 +221,13 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfUseLiveStepsOnVirtual(
+        "autoisf_use_live_steps_on_virtual",
+        false,
+        KeysStrings.pref_title_aps_use_live_steps,
+        KeysStrings.pref_summary_aps_use_live_steps,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfBoostAutomationsEnabled(
         "autoisf_boost_automations_enabled",
         true,

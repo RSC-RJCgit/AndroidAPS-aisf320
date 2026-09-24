@@ -216,6 +216,11 @@
     <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
     <string name="autoisf_history_iob">IOB</string>
     <string name="autoisf_history_smb">SMB</string>
+    <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
+    <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>
+    <string name="autoisf_history_steps_30" comment="Steps in the last 30 minutes.">S30</string>
+    <string name="autoisf_history_steps_60" comment="Steps in the last 60 minutes.">S60</string>
+    <string name="autoisf_history_steps_180" comment="Steps in the last 180 minutes.">S180</string>
     <string name="coded_profiles">Coded profiles</string>
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>

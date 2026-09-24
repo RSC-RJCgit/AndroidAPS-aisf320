@@ -1179,8 +1179,8 @@ data class SeriesColors(
         SeriesType.STEPS           -> steps
         SeriesType.ACTIVITY        -> activity
         SeriesType.PREDICTIONS     -> activity // unused — PREDICTIONS is a BG overlay flag, not a secondary series
-        SeriesType.RAW_BG          -> Color(0xFF757575)
-        SeriesType.UKF_BG          -> Color(0xFF6A1B9A)
+        SeriesType.RAW_BG          -> Color(0xFFFF0000)
+        SeriesType.UKF_BG          -> Color(0xFF4FC3F7)
         SeriesType.ACCE_ISF        -> acceIsf
         SeriesType.BG_ISF          -> bgIsf
         SeriesType.PP_ISF          -> ppIsf

@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.overview
 
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.dominantIsf
 
@@ -40,7 +42,12 @@ data class AutoIsfHistoryRow(
     val iob: String,
     val smb: String,
     val smbFactor: AutoIsfFactor,
-    val hasSmb: Boolean
+    val hasSmb: Boolean,
+    val steps5: String,
+    val steps15: String,
+    val steps30: String,
+    val steps60: String,
+    val steps180: String
 )
 
 /** The largest of the four factors, using the same order as the graph colours. */
@@ -65,9 +72,13 @@ fun List<AIV>.autoIsfHistoryRows(
     timeText: (Long) -> String,
     glucoseText: (Double) -> String,
     deltaText: (Double) -> String,
-    format2: (Double) -> String
+    format2: (Double) -> String,
+    steps: List<SC> = emptyList(),
+    fromLivePhone: Boolean = false,
+    ownDevice: String = ""
 ): List<AutoIsfHistoryRow> = map { row ->
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
+    val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
     AutoIsfHistoryRow(
         time = timeText(row.timestamp),
         glucose = glucoseText(row.glucose),
@@ -85,6 +96,11 @@ fun List<AIV>.autoIsfHistoryRows(
         iob = autoIsfAmountText(row.iob, format2),
         smb = autoIsfAmountText(row.smbDelivered, format2),
         smbFactor = if (row.smbDelivered == 0.0) AutoIsfFactor.NONE else factor,
-        hasSmb = row.smbDelivered > 0.0
+        hasSmb = row.smbDelivered > 0.0,
+        steps5 = sample?.steps5min?.toString() ?: "--",
+        steps15 = sample?.steps15min?.toString() ?: "--",
+        steps30 = sample?.steps30min?.toString() ?: "--",
+        steps60 = sample?.steps60min?.toString() ?: "--",
+        steps180 = sample?.steps180min?.toString() ?: "--"
     )
 }

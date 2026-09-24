@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3.data
 
+import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -14,6 +16,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
@@ -114,6 +117,7 @@ class NSDeviceStatusHandler(
             }
             if (config.APS) {
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
+                receiveLiveLoop(nsDeviceStatus)
             }
         }
         if (config.AAPSCLIENT && deviceStatuses.isNotEmpty()) {
@@ -210,6 +214,52 @@ class NSDeviceStatusHandler(
                     processedDeviceStatusData.openAPSData.clockEnacted = clock
                 }
             }
+        }
+    }
+
+    /**
+     * A full phone on the virtual pump keeps the live phone's loop row and step counts.
+     * It does not copy the live phone's pump state, and it ignores its own Nightscout echo.
+     */
+    private fun receiveLiveLoop(deviceStatus: NSDeviceStatus) {
+        if (config.AAPSCLIENT) return
+        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
+        val device = deviceStatus.device ?: return
+        val own = "openaps://${config.deviceModelForUpload}"
+        if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) return
+        val suggested = deviceStatus.openaps?.suggested ?: return
+        val timestamp = suggested.safeGetString("timestamp") ?: return
+        val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
+        val now = dateUtil.now()
+        if (clock <= 0L || clock > now) return
+        val rt = runCatching { RT.deserialize(suggested.toString()).apply { this.timestamp = clock } }.getOrNull() ?: return
+        storeReceivedAutoIsf(rt, clock)
+        if (preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && now - clock <= LiveSteps.MAX_AGE_MS) {
+            storeReceivedSteps(device, clock, rt.reason.toString())
+        }
+    }
+
+    private fun storeReceivedSteps(device: String, clock: Long, reason: String) {
+        val buckets = LiveSteps.buckets(reason)
+        if (!LiveSteps.hasDosingBuckets(buckets)) return
+        appScope.launch {
+            val already = persistenceLayer.getStepsCountFromTimeToTime(clock, clock)
+            if (already.any { it.timestamp == clock && it.device.equals(device, ignoreCase = true) }) return@launch
+            persistenceLayer.insertOrUpdateStepsCounts(
+                listOf(
+                    SC(
+                        timestamp = clock,
+                        duration = 5 * 60_000L,
+                        steps5min = buckets.getValue(5),
+                        steps10min = buckets[10] ?: 0,
+                        steps15min = buckets.getValue(15),
+                        steps30min = buckets.getValue(30),
+                        steps60min = buckets.getValue(60),
+                        steps180min = buckets.getValue(180),
+                        device = device
+                    )
+                )
+            )
         }
     }
 

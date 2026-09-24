@@ -90,9 +90,14 @@ fun AutoIsfHistoryDialog(
                             stringResource(UiStrings.autoisf_history_short_delta),
                             stringResource(UiStrings.autoisf_history_long_delta),
                             stringResource(UiStrings.autoisf_history_iob),
-                            stringResource(UiStrings.autoisf_history_smb)
+                            stringResource(UiStrings.autoisf_history_smb),
+                            stringResource(UiStrings.autoisf_history_steps_5),
+                            stringResource(UiStrings.autoisf_history_steps_15),
+                            stringResource(UiStrings.autoisf_history_steps_30),
+                            stringResource(UiStrings.autoisf_history_steps_60),
+                            stringResource(UiStrings.autoisf_history_steps_180)
                         ),
-                        colors = List(14) { MaterialTheme.colorScheme.onSurfaceVariant },
+                        colors = List(19) { MaterialTheme.colorScheme.onSurfaceVariant },
                         bold = true,
                         scroll = horizontal
                     )
@@ -113,7 +118,12 @@ fun AutoIsfHistoryDialog(
                                     row.shortDelta,
                                     row.longDelta,
                                     row.iob,
-                                    row.smb
+                                    row.smb,
+                                    row.steps5,
+                                    row.steps15,
+                                    row.steps30,
+                                    row.steps60,
+                                    row.steps180
                                 ),
                                 colors = rowColors(row),
                                 bold = false,
@@ -146,7 +156,12 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         glucose,
         glucose,
         insulin,
-        factorColor(row.smbFactor, insulin)
+        factorColor(row.smbFactor, insulin),
+        time,
+        time,
+        time,
+        time,
+        time
     )
 }
 

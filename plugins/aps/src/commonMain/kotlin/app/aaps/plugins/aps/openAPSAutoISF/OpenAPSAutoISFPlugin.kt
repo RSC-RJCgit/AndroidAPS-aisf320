@@ -5,6 +5,8 @@ import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
@@ -48,6 +50,7 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
@@ -335,6 +338,11 @@ open class OpenAPSAutoISFPlugin(
         val advancedFiltering = constraintsChecker.isAdvancedFilteringEnabled().also { inputConstraints.copyReasons(it) }.value()
 
         val now = dateUtil.now()
+        if (usesLiveSteps() && freshLiveSteps(now) == null) {
+            aapsLogger.debug(LTag.APS, "Live steps missing or older than 20 minutes. Calculation skipped.")
+            rxBus.send(EventResetOpenAPSGui(rh.gs(ApsStrings.live_steps_missing)))
+            return@withContext
+        }
         val tb = processedTbrEbData.getTempBasalIncludingConvertedExtended(now)
         val currentTemp = CurrentTemp(
             duration = tb?.plannedRemainingMinutes ?: 0,
@@ -504,7 +512,8 @@ open class OpenAPSAutoISFPlugin(
         if (sub75Note == "clear") aapsLogger.debug(LTag.APS, "sc7.5 cooldown cleared")
         val uamRecent = runMarks.recent(RunMark.UAM_BST, 20, now)
         val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
-        val stepSample = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)
+        val stepSample = if (usesLiveSteps()) freshLiveSteps(now)
+        else persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)
         val statesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
         if (nightFrSkipShouldFire(
                 ready = runMarks.ready(RunMark.NIGHT_FR_SKIP, 60, now),
@@ -656,6 +665,11 @@ open class OpenAPSAutoISFPlugin(
             smbIntervalSec = smbInterval5Sec(now),
             smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
         ).also {
+            if (!usesLiveSteps()) {
+                it.reason.append(
+                    LiveSteps.reasonText(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now), steps180(now))
+                )
+            }
             determineBasalAutoISF.smbStackStartToStore?.let { start ->
                 preferences.put(LongNonKey.ApsAutoIsfSmbStackStart, start)
             }
@@ -802,7 +816,8 @@ open class OpenAPSAutoISFPlugin(
             }
         }
         val nowMs = dateUtil.now()
-        val stepSample = persistenceLayer.getLastStepsCountFromTimeToTime(nowMs - 60 * 60 * 1000L, nowMs)
+        val stepSample = if (usesLiveSteps()) freshLiveSteps(nowMs)
+        else persistenceLayer.getLastStepsCountFromTimeToTime(nowMs - 60 * 60 * 1000L, nowMs)
         val startedAt = if (processStartedAtMs == 0L) nowMs else processStartedAtMs
         val activityRatio = if (glucose_status == null) 1.0 else activitySensitivityRatio(
             enabled = preferences.get(BooleanKey.ApsActivityDetection),
@@ -1195,6 +1210,7 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
+            BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
@@ -1274,22 +1290,43 @@ open class OpenAPSAutoISFPlugin(
         icon = pluginDescription.icon
     )
 
+    private fun usesLiveSteps(): Boolean =
+        config.APS && !config.AAPSCLIENT &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            activePlugin.activePump.selectedActivePump() is VirtualPump
+
+    /** Newest live-phone sample from the last 20 minutes. Null when this phone measures its own steps. */
+    private suspend fun freshLiveSteps(now: Long): SC? {
+        if (!usesLiveSteps()) return null
+        val own = "openaps://${config.deviceModelForUpload}"
+        return persistenceLayer.getStepsCountFromTimeToTime(now - LiveSteps.MAX_AGE_MS, now)
+            .let { LiveSteps.sampleFor(now, it, fromLivePhone = true, ownDevice = own) }
+            ?.takeIf { LiveSteps.hasDosingBuckets(it.toBuckets()) }
+    }
+
+    private fun SC.toBuckets(): Map<Int, Int> = mapOf(
+        5 to steps5min, 10 to steps10min, 15 to steps15min, 30 to steps30min, 60 to steps60min, 180 to steps180min
+    )
+
+    private suspend fun liveOrLocal(now: Long, windowMs: Long, read: (SC) -> Int): Int {
+        freshLiveSteps(now)?.let { return read(it) }
+        if (usesLiveSteps()) return 0
+        return persistenceLayer.getLastStepsCountFromTimeToTime(now - windowMs, now)?.let(read) ?: 0
+    }
+
     // Steps a watch stored in the last hour. No sample means 0, so the quiet morning cap can apply.
-    private suspend fun steps60(now: Long): Int =
-        persistenceLayer.getLastStepsCountFromTimeToTime(now - 60 * 60 * 1000L, now)?.steps60min ?: 0
+    private suspend fun steps60(now: Long): Int = liveOrLocal(now, 60 * 60 * 1000L) { it.steps60min }
 
-    private suspend fun steps30(now: Long): Int =
-        persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)?.steps30min ?: 0
+    private suspend fun steps30(now: Long): Int = liveOrLocal(now, 30 * 60 * 1000L) { it.steps30min }
 
-    private suspend fun steps5(now: Long): Int =
-        persistenceLayer.getLastStepsCountFromTimeToTime(now - 5 * 60 * 1000L, now)?.steps5min ?: 0
+    private suspend fun steps10(now: Long): Int = liveOrLocal(now, 10 * 60 * 1000L) { it.steps10min }
 
-    private suspend fun steps15(now: Long): Int =
-        persistenceLayer.getLastStepsCountFromTimeToTime(now - 15 * 60 * 1000L, now)?.steps15min ?: 0
+    private suspend fun steps5(now: Long): Int = liveOrLocal(now, 5 * 60 * 1000L) { it.steps5min }
+
+    private suspend fun steps15(now: Long): Int = liveOrLocal(now, 15 * 60 * 1000L) { it.steps15min }
 
     // The 3-hour count is stored on the sample, so the lookback is the sample age, not a second sum.
-    private suspend fun steps180(now: Long): Int =
-        persistenceLayer.getLastStepsCountFromTimeToTime(now - 180 * 60 * 1000L, now)?.steps180min ?: 0
+    private suspend fun steps180(now: Long): Int = liveOrLocal(now, 180 * 60 * 1000L) { it.steps180min }
 
     // Autosens on keeps the ratio at 1.0, matching 3.2.1. The live blend is used only when autosens is off.
     private suspend fun tddRatioForFactor(): Double {

@@ -809,9 +809,8 @@ class PrepareGraphDataRunner(
     }
 
     private fun ukfNear(timestamp: Long, rows: List<AIV>): Double? {
-        val row = rows.minByOrNull { abs(it.timestamp - timestamp) } ?: return null
+        val row = rows.filter { it.ukfRawBgl > 0.0 }.minByOrNull { abs(it.timestamp - timestamp) } ?: return null
         if (abs(row.timestamp - timestamp) > 6 * 60_000L) return null
-        if (row.ukfRawBgl <= 0.0) return null
         return row.ukfRawBgl
     }
 
