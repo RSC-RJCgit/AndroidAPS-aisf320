@@ -478,7 +478,7 @@ class BolusWizard(
         SplitScheduleGate.next()
     }
 
-    fun scheduleLeftoverSplit(requested: Double, delivered: Double, iobBaseline: Double, source: Sources) {
+    suspend fun scheduleLeftoverSplit(requested: Double, delivered: Double, iobBaseline: Double, source: Sources) {
         val token = SplitScheduleGate.next()
         val profile = profileFunction.getProfile() ?: return
         if (profileSwitchPercent(profile) < 100) return
@@ -722,15 +722,12 @@ class BolusWizard(
                     rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60)
                 )
             }
-            if (!useSuperBolus) {
-                val active = profileFunction.getProfile()
-                if (active != null && profileSwitchPercent(active) >= 100) {
-                    splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, ch.bolusStep(insulinAfterConstraints))?.let { residual ->
-                        line(
-                            ConfirmationRole.INFO,
-                            rh.gs(InterfacesStrings.wizard_split_leftover, residual, SPLIT_LEFTOVER_INTERVAL_MINUTES)
-                        )
-                    }
+            if (!useSuperBolus && profileSwitchPercent(profile) >= 100) {
+                splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, ch.bolusStep(insulinAfterConstraints))?.let { residual ->
+                    line(
+                        ConfirmationRole.INFO,
+                        rh.gs(InterfacesStrings.wizard_split_leftover, residual, SPLIT_LEFTOVER_INTERVAL_MINUTES)
+                    )
                 }
             }
         }
