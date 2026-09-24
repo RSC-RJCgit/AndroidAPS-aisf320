@@ -91,7 +91,7 @@ internal class InsulinManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has empty nickname, U100 and default dia`() {
+    fun defaultUiStateHasEmptyNicknameU100AndDefaultDia() {
         val state = sut.uiState.value
         assertThat(state.editorNickname).isEqualTo("")
         assertThat(state.editorConcentration).isEqualTo(ConcentrationType.U100)
@@ -102,7 +102,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `updateEditorNickname sets the name and disables auto-name`() {
+    fun updateEditorNicknameSetsTheNameAndDisablesAutoName() {
         sut.updateEditorNickname("Humalog")
 
         val state = sut.uiState.value
@@ -111,28 +111,28 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `updateEditorConcentration sets the concentration`() {
+    fun updateEditorConcentrationSetsTheConcentration() {
         sut.updateEditorConcentration(ConcentrationType.U200)
 
         assertThat(sut.uiState.value.editorConcentration).isEqualTo(ConcentrationType.U200)
     }
 
     @Test
-    fun `updateEditorDia sets the dia hours`() {
+    fun updateEditorDiaSetsTheDiaHours() {
         sut.updateEditorDia(7.5)
 
         assertThat(sut.uiState.value.editorDiaHours).isEqualTo(7.5)
     }
 
     @Test
-    fun `dismissPendingNavigation clears any pending navigation`() {
+    fun dismissPendingNavigationClearsAnyPendingNavigation() {
         sut.dismissPendingNavigation()
 
         assertThat(sut.uiState.value.pendingNavigation).isNull()
     }
 
     @Test
-    fun `dismissExternalUpdate clears the external-update flag`() {
+    fun dismissExternalUpdateClearsTheExternalUpdateFlag() {
         sut.dismissExternalUpdate()
 
         assertThat(sut.uiState.value.externalUpdatePending).isFalse()
@@ -141,7 +141,7 @@ internal class InsulinManagementViewModelTest {
     // --- Issue B: Activate FAB gate — activeConcentration must be null (not a defaulted 1.0) when unknown ---
 
     @Test
-    fun `activeConcentration is null when there is no active profile`() {
+    fun activeConcentrationIsNullWhenThereIsNoActiveProfile() {
         whenever(insulinManager.insulins).thenReturn(arrayListOf(icfg(concentration = 1.0)))
         whenever(insulinManager.insulinIndex(anyOrNull())).thenReturn(0)
         // getProfile() defaults to null → activeConcentration must stay null, never fall back to 1.0 (== U100).
@@ -151,7 +151,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `activeConcentration reflects the running insulin concentration`() {
+    fun activeConcentrationReflectsTheRunningInsulinConcentration() {
         val running = mock<EffectiveProfile>()
         whenever(running.iCfg).thenReturn(icfg(concentration = 2.0))
         runBlocking { whenever(profileFunction.getProfile()).thenReturn(running) }
@@ -165,7 +165,7 @@ internal class InsulinManagementViewModelTest {
     // --- Issue A: the master's own store echo must NOT raise the "a client changed it" popup ---
 
     @Test
-    fun `self-echo of own store does not raise external-update popup on a standalone master`() {
+    fun selfEchoOfOwnStoreDoesNotRaiseExternalUpdatePopupOnAStandaloneMaster() {
         whenever(config.AAPSCLIENT).thenReturn(false)
         whenever(insulinManager.insulins).thenReturn(arrayListOf(icfg(1.0, "Rapid")))
         whenever(insulinManager.insulinIndex(anyOrNull())).thenReturn(0)
@@ -183,7 +183,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `genuine external change still raises the popup on a master with unsaved edits`() {
+    fun genuineExternalChangeStillRaisesThePopupOnAMasterWithUnsavedEdits() {
         whenever(config.AAPSCLIENT).thenReturn(false)
         whenever(insulinManager.insulins).thenReturn(arrayListOf(icfg(1.0, "Rapid")))
         whenever(insulinManager.insulinIndex(anyOrNull())).thenReturn(0)
@@ -210,7 +210,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `save sends the edit to the insulin of the card, by its label`() {
+    fun saveSendsTheEditToTheInsulinOfTheCardByItsLabel() {
         whenever(insulinManager.updateInsulin(any(), any())).thenReturn(UpdateResult.Updated("B2 75m 5h"))
         loadTwoInsulinsOnCard(1)
         sut.updateEditorNickname("B2")
@@ -224,7 +224,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `save of an insulin that a sync removed reports it and does not claim success`() {
+    fun saveOfAnInsulinThatASyncRemovedReportsItAndDoesNotClaimSuccess() {
         whenever(insulinManager.updateInsulin(any(), any())).thenReturn(UpdateResult.NotFound)
         loadTwoInsulinsOnCard(1)
         sut.updateEditorNickname("B2")
@@ -235,7 +235,7 @@ internal class InsulinManagementViewModelTest {
     }
 
     @Test
-    fun `delete removes the insulin of the card, by its label`() {
+    fun deleteRemovesTheInsulinOfTheCardByItsLabel() {
         loadTwoInsulinsOnCard(1)
 
         assertThat(sut.deleteCurrentInsulin()).isTrue()

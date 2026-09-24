@@ -55,7 +55,7 @@ internal class SearchViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is inactive and empty`() {
+    fun defaultUiStateIsInactiveAndEmpty() {
         val state = sut.uiState.value
         assertThat(state.isSearchActive).isFalse()
         assertThat(state.query).isEqualTo("")
@@ -65,14 +65,14 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `onQueryChanged updates the query`() {
+    fun onQueryChangedUpdatesTheQuery() {
         sut.onQueryChanged("insulin")
 
         assertThat(sut.uiState.value.query).isEqualTo("insulin")
     }
 
     @Test
-    fun `onSearchModeActivated activates search and clears state`() {
+    fun onSearchModeActivatedActivatesSearchAndClearsState() {
         sut.onQueryChanged("stale")
         sut.onSearchModeActivated()
 
@@ -84,7 +84,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `onSearchModeDeactivated deactivates search and clears state`() {
+    fun onSearchModeDeactivatedDeactivatesSearchAndClearsState() {
         sut.onSearchModeActivated()
         sut.onQueryChanged("something")
         sut.onSearchModeDeactivated()
@@ -96,7 +96,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `clearQuery empties the query but keeps search active`() {
+    fun clearQueryEmptiesTheQueryButKeepsSearchActive() {
         sut.onSearchModeActivated()
         sut.onQueryChanged("temp target")
         sut.clearQuery()
@@ -108,7 +108,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `togglePlugin on a single-select plugin raises the swap confirmation`() {
+    fun togglePluginOnASingleSelectPluginRaisesTheSwapConfirmation() {
         val current = mock<PluginBase>()
         whenever(current.isEnabled(PluginType.PUMP)).thenReturn(true)
         whenever(current.name).thenReturn("Old Pump")
@@ -128,7 +128,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `togglePlugin on a multi-select plugin raises no confirmation`() {
+    fun togglePluginOnAMultiSelectPluginRaisesNoConfirmation() {
         val target = mock<PluginBase>()
         whenever(target.getType()).thenReturn(PluginType.SYNC)
         whenever(target.isEnabled()).thenReturn(false)
@@ -139,7 +139,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `dismissPluginSwitch clears the confirmation`() {
+    fun dismissPluginSwitchClearsTheConfirmation() {
         val current = mock<PluginBase>()
         whenever(current.isEnabled(PluginType.PUMP)).thenReturn(true)
         whenever(current.name).thenReturn("Old Pump")
@@ -157,7 +157,7 @@ internal class SearchViewModelTest {
     }
 
     @Test
-    fun `togglePlugin is blocked for a synced selection on an offline client`() {
+    fun togglePluginIsBlockedForASyncedSelectionOnAnOfflineClient() {
         whenever(config.AAPSCLIENT).thenReturn(true)
         whenever(nsClient.masterReachable).thenReturn(MutableStateFlow(false))
         val target = mock<PluginBase>()

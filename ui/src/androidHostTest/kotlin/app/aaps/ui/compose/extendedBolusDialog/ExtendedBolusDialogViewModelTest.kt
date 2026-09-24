@@ -59,7 +59,7 @@ internal class ExtendedBolusDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `updateInsulin and updateDuration update the state`() {
+    fun updateInsulinAndUpdateDurationUpdateTheState() {
         sut.updateInsulin(2.0)
         sut.updateDuration(60.0)
 
@@ -68,7 +68,7 @@ internal class ExtendedBolusDialogViewModelTest {
     }
 
     @Test
-    fun `acceptLoopStopWarning marks the warning accepted`() {
+    fun acceptLoopStopWarningMarksTheWarningAccepted() {
         sut.acceptLoopStopWarning()
         assertThat(sut.uiState.value.loopStopWarningAccepted).isTrue()
     }

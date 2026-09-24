@@ -63,7 +63,7 @@ internal class ProfileHelperViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has empty selections and is loading stats`() {
+    fun defaultUiStateHasEmptySelectionsAndIsLoadingStats() {
         val state = sut.uiState.value
         assertThat(state.currentProfileName).isEqualTo("")
         assertThat(state.currentProfile).isNull()
@@ -74,14 +74,14 @@ internal class ProfileHelperViewModelTest {
     }
 
     @Test
-    fun `getUnits delegates to profileFunction`() {
+    fun getUnitsDelegatesToProfileFunction() {
         whenever(profileFunction.getUnits()).thenReturn(GlucoseUnit.MGDL)
 
         assertThat(sut.getUnits()).isEqualTo(GlucoseUnit.MGDL)
     }
 
     @Test
-    fun `getProfileName for CURRENT returns the default current profile name`() {
+    fun getProfileNameForCURRENTReturnsTheDefaultCurrentProfileName() {
         val name = sut.getProfileName(
             age = 10, tdd = 0.0, weight = 30.0, basalPct = 0.5,
             profileType = ProfileType.CURRENT, profileIndex = 0, profileSwitchIndex = 0
@@ -90,7 +90,7 @@ internal class ProfileHelperViewModelTest {
     }
 
     @Test
-    fun `getProfileName for PROFILE_SWITCH out of range returns empty string`() {
+    fun getProfileNameForPROFILESWITCHOutOfRangeReturnsEmptyString() {
         val name = sut.getProfileName(
             age = 10, tdd = 0.0, weight = 30.0, basalPct = 0.5,
             profileType = ProfileType.PROFILE_SWITCH, profileIndex = 0, profileSwitchIndex = 0
@@ -99,7 +99,7 @@ internal class ProfileHelperViewModelTest {
     }
 
     @Test
-    fun `getProfile for CURRENT returns the default null current profile`() {
+    fun getProfileForCURRENTReturnsTheDefaultNullCurrentProfile() {
         val profile = sut.getProfile(
             age = 10, tdd = 0.0, weight = 30.0, basalPct = 0.5,
             profileType = ProfileType.CURRENT, profileIndex = 0, profileSwitchIndex = 0
@@ -108,7 +108,7 @@ internal class ProfileHelperViewModelTest {
     }
 
     @Test
-    fun `getProfile for PROFILE_SWITCH out of range returns null`() {
+    fun getProfileForPROFILESWITCHOutOfRangeReturnsNull() {
         val profile = sut.getProfile(
             age = 10, tdd = 0.0, weight = 30.0, basalPct = 0.5,
             profileType = ProfileType.PROFILE_SWITCH, profileIndex = 0, profileSwitchIndex = 0

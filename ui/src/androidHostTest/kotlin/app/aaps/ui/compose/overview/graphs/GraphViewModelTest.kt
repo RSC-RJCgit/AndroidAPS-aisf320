@@ -72,7 +72,7 @@ internal class GraphViewModelTest {
      * offline for a while and started loading data again.
      */
     @Test
-    fun `predictions alone do not pull the left edge of the axis up to now`() = runTest {
+    fun predictionsAloneDoNotPullTheLeftEdgeOfTheAxisUpToNow() = runTest {
         val now = 1_700_000_000_000L
         val windowStart = now - 24 * 3600_000L
         whenever(dateUtil.now()).thenReturn(now)
@@ -98,14 +98,14 @@ internal class GraphViewModelTest {
     }
 
     @Test
-    fun `chart config reflects the high and low mark preferences`() {
+    fun chartConfigReflectsTheHighAndLowMarkPreferences() {
         val config = sut.chartConfigFlow.value
         assertThat(config.highMark).isEqualTo(180.0)
         assertThat(config.lowMark).isEqualTo(72.0)
     }
 
     @Test
-    fun `onGraphInteraction records the interaction timestamp`() {
+    fun onGraphInteractionRecordsTheInteractionTimestamp() {
         // The time comes from DateUtil rather than the wall clock, so it can be pinned here instead
         // of only being asserted as "some number above zero".
         whenever(dateUtil.now()).thenReturn(1_700_000_000_000L)

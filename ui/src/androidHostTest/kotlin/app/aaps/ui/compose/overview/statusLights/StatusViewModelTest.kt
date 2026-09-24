@@ -68,7 +68,7 @@ internal class StatusViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no status items and hidden actions`() {
+    fun defaultUiStateHasNoStatusItemsAndHiddenActions() {
         val state = sut.uiState.value
         assertThat(state.sensorStatus).isNull()
         assertThat(state.insulinStatus).isNull()

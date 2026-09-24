@@ -60,13 +60,13 @@ internal class CalibrationDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `no action when bg is zero`() {
+    fun noActionWhenBgIsZero() {
         assertThat(sut.uiState.value.bg).isEqualTo(0.0)
         assertThat(sut.hasAction()).isFalse()
     }
 
     @Test
-    fun `updateBg sets the value and enables the action`() {
+    fun updateBgSetsTheValueAndEnablesTheAction() {
         sut.updateBg(120.0)
 
         assertThat(sut.uiState.value.bg).isEqualTo(120.0)

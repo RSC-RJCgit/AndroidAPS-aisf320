@@ -61,7 +61,7 @@ internal class TreatmentsViewModelTest {
     }
 
     @Test
-    fun `showExtendedBolusTab is true when pump is extended-bolus capable and not faking`() {
+    fun showExtendedBolusTabIsTrueWhenPumpIsExtendedBolusCapableAndNotFaking() {
         whenever(pump.isFakingTempsByExtendedBoluses).thenReturn(false)
         whenever(pumpDescription.isExtendedBolusCapable).thenReturn(true)
 
@@ -69,7 +69,7 @@ internal class TreatmentsViewModelTest {
     }
 
     @Test
-    fun `showExtendedBolusTab is false when pump fakes temps by extended boluses`() {
+    fun showExtendedBolusTabIsFalseWhenPumpFakesTempsByExtendedBoluses() {
         whenever(pump.isFakingTempsByExtendedBoluses).thenReturn(true)
         whenever(pumpDescription.isExtendedBolusCapable).thenReturn(true)
 

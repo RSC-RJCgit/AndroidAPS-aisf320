@@ -47,7 +47,7 @@ internal class ConfigurationViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is simple mode with no categories and no confirmation`() {
+    fun defaultUiStateIsSimpleModeWithNoCategoriesAndNoConfirmation() {
         val state = sut.uiState.value
         assertThat(state.isSimpleMode).isTrue()
         assertThat(state.categories).isEmpty()
@@ -56,7 +56,7 @@ internal class ConfigurationViewModelTest {
     }
 
     @Test
-    fun `dismissHardwarePumpDialog clears confirmation and refreshes categories synchronously`() {
+    fun dismissHardwarePumpDialogClearsConfirmationAndRefreshesCategoriesSynchronously() {
         // refreshCategories() reads preferences.simpleMode (false by default) and builds categories from
         // activePlugin; no visible plugins -> empty categories.
         whenever(activePlugin.getSpecificPluginsVisibleInList(any())).thenReturn(ArrayList<PluginBase>())
@@ -86,7 +86,7 @@ internal class ConfigurationViewModelTest {
     }
 
     @Test
-    fun `enabling a single-select plugin opens the swap confirmation and defers the switch`() {
+    fun enablingASingleSelectPluginOpensTheSwapConfirmationAndDefersTheSwitch() {
         val target = mock<PluginBase>()
         whenever(target.pluginDescription).thenReturn(PluginDescription())
         whenever(target.name).thenReturn("Omnipod")
@@ -103,7 +103,7 @@ internal class ConfigurationViewModelTest {
     }
 
     @Test
-    fun `dismissPluginSwitchDialog clears the pending swap confirmation`() {
+    fun dismissPluginSwitchDialogClearsThePendingSwapConfirmation() {
         val target = mock<PluginBase>()
         whenever(target.pluginDescription).thenReturn(PluginDescription())
         whenever(target.name).thenReturn("Omnipod")
@@ -118,7 +118,7 @@ internal class ConfigurationViewModelTest {
     }
 
     @Test
-    fun `toggling a multi-select plugin does not open the swap confirmation`() {
+    fun togglingAMultiSelectPluginDoesNotOpenTheSwapConfirmation() {
         val target = mock<PluginBase>()
         whenever(target.pluginDescription).thenReturn(PluginDescription())
         whenever(target.name).thenReturn("Wear")

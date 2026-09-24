@@ -252,12 +252,10 @@ class WizardBolusExecutorImpl(
 
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
         if (carbsAfterConstraints != entry.carbs()) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
+        // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
+        // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
-        val minStep = pump.pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints)
-        if (abs(insulinAfterConstraints - wizard.calculatedTotalInsulin) >= minStep)
-            return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
-        // A correction-only QuickWizard (0 carbs) that nets to nothing → reject rather than show an empty confirm.
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
+        if (insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
 
         evictStalePending()
@@ -278,7 +276,7 @@ class WizardBolusExecutorImpl(
         val advisorApplies = wizard.needsBolusAdvisor()
         val eCarbsGrams = if (entry.useEcarbs() == QuickWizardEntry.ALWAYS) entry.carbs2() else 0
         return WizardBolusExecutor.PrepareResult.Preview(
-            insulin = wizard.calculatedTotalInsulin,
+            insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
             bolusId = wizard.timeStamp,
             lines = wizard.buildConfirmationLines(advisor = false, quickWizardEntry = entry),
@@ -336,14 +334,12 @@ class WizardBolusExecutorImpl(
         } finally {
             if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
+        // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
+        // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
-        val minStep = pump.pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints)
-        if (abs(insulinAfterConstraints - wizard.calculatedTotalInsulin) >= minStep)
-            return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
-        // Nothing to deliver (e.g. BG below target + high IOB, no carbs): reject so the caller shows the standard
-        // "no insulin required" instead of an empty confirmation. The guard lives here so every surface that recomputes
-        // through this path — phone wizard dialog, client relay, watch — gets it (it was previously only in the wear handler).
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
+        // Nothing to deliver (e.g. BG below target + high IOB, no carbs, or the whole dose was capped to 0):
+        // reject so the caller shows "no insulin required" instead of an empty confirmation.
+        if (insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
         evictStalePending()
         pending.park(wizard.timeStamp,
@@ -366,7 +362,7 @@ class WizardBolusExecutorImpl(
         )
         val advisorApplies = wizard.needsBolusAdvisor()
         return WizardBolusExecutor.PrepareResult.Preview(
-            insulin = wizard.calculatedTotalInsulin,
+            insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
             bolusId = wizard.timeStamp,
             // Pass the eCarbs split (food type → extended carbs) so the delivery confirmation shows the eCarbs line too —
@@ -700,6 +696,12 @@ class WizardBolusExecutorImpl(
             )
         else p.bcr
         deliverWizardBolus(correctedInsulin, p.carbs, carbTimeOffset.toInt(), p.bcr?.glucoseValue, correctedBcr, notes, source, onError)
+        if (p.bcr != null) {
+            val requested = p.insulin + correctionU
+            bolusWizardProvider().scheduleLeftoverSplit(requested, correctedInsulin, p.warsawIobBaseline + correctionU, source)
+        } else {
+            bolusWizardProvider().cancelLeftoverSplit()
+        }
         p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source) }
         if (carbs2 > 0) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
         if (useAlarm && p.carbs > 0 && carbTimeOffset > 0)
