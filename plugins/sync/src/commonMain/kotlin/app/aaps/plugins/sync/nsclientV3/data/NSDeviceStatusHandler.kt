@@ -232,7 +232,10 @@ class NSDeviceStatusHandler(
         val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
         val now = dateUtil.now()
         if (clock <= 0L || clock > now) return
-        val rt = runCatching { RT.deserialize(suggested.toString()).apply { this.timestamp = clock } }.getOrNull() ?: return
+        val rt = runCatching { RT.deserialize(suggested.toString()).apply { this.timestamp = clock } }.getOrElse { error ->
+            aapsLogger.error(LTag.NSCLIENT, "Live loop result was not stored: ${error.message}")
+            return
+        }
         storeReceivedAutoIsf(rt, clock)
         if (preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && now - clock <= LiveSteps.MAX_AGE_MS) {
             storeReceivedSteps(device, clock, rt.reason.toString())

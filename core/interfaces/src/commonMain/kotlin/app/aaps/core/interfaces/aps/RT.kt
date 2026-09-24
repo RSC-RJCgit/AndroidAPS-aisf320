@@ -18,7 +18,8 @@ import kotlin.time.Instant
 @Serializable
 data class RT(
     var algorithm: APSResult.Algorithm = APSResult.Algorithm.UNKNOWN,
-    var runningDynamicIsf: Boolean,
+    /** The live phone sends runningAutoIsf and often omits this older name. A missing value must not reject the whole result. */
+    var runningDynamicIsf: Boolean = false,
     @Serializable(with = TimestampToIsoSerializer::class)
     var timestamp: Long? = null,
     val temp: String = "absolute",
