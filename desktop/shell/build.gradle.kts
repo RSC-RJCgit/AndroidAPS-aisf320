@@ -240,9 +240,10 @@ compose.desktop {
             // launcher this produces, so a package called "AAPS" would put the master name on a
             // follower every time a notification appeared.
             packageName = desktopPackageName
-            // jpackage demands a plain numeric version - an MSI rejects anything else - so the
-            // `-dev-b-kmp` style suffix that Versions.appVersion carries is trimmed off here.
-            packageVersion = Versions.appVersion.substringBefore('-')
+            // jpackage checks this while the project is configured, before any package task runs.
+            // Debian, a DMG and an MSI each refuse a name such as UKF3426. The installer gets a
+            // numeric version; the app itself still shows Versions.appVersion.
+            packageVersion = nativePackageVersion(Versions.appVersion)
             // jpackage embeds a JRE, so the user installs an app rather than a JVM.
             targetFormats(
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
@@ -263,4 +264,24 @@ compose.desktop {
 // matter of ordering.
 configurations.configureEach {
     exclude(group = "org.json", module = "json")
+}
+
+/**
+ * A version Debian, a DMG and an MSI will all accept: `MAJOR.MINOR.BUILD`.
+ *
+ * `4.0.0-dev-c` stays `4.0.0`. A name with no dotted number, such as `UKF3426`, keeps the digits
+ * as the build component (`0.0.3426`). MSI's build component cannot exceed 65535.
+ */
+fun nativePackageVersion(raw: String): String {
+    val dotted = GenerateVersionXcconfigTask.marketingVersionOf(raw)
+    val plain = raw.substringBefore('-').trim()
+    val alreadyNumeric = plain.isNotEmpty() && plain.all { it.isDigit() || it == '.' }
+    val parts = if (dotted == "0.0.1" && !alreadyNumeric) {
+        val digits = Regex("\\d+").find(raw)?.value?.toIntOrNull() ?: 1
+        listOf("0", "0", digits.coerceIn(0, 65535).toString())
+    } else {
+        dotted.split('.')
+    }
+    val padded = (parts + listOf("0", "0")).take(3)
+    return padded.joinToString(".")
 }
