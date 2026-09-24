@@ -84,8 +84,8 @@
     <string name="pref_summary_aps_low_rebound_guard_enabled" comment="0.10 U and 0.25 U are insulin amounts. Three quarters and half are the SMB size cuts.">On turns the LoReb guard on. After a recent low, a carb or artifact rebound trims SMB above 0.10 U: three quarters up to 0.25 U, and half above that. FastRise size tiers also stay off during that window. Off means the guard never runs.</string>
     <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
-    <string name="pref_title_aps_use_live_steps">Use the live phone's steps</string>
-    <string name="pref_summary_aps_use_live_steps">Virtual pump only. On uses the step counts the live phone sent to Nightscout, for dosing and for the history table. Off uses this phone's own steps.</string>
+    <string name="pref_title_aps_use_live_steps">Use the live phone\'s steps</string>
+    <string name="pref_summary_aps_use_live_steps">Virtual pump only. On uses the step counts the live phone sent to Nightscout, for dosing and for the history table. Off uses this phone\'s own steps.</string>
     <string name="pref_title_aps_boost_automations">Boost automations</string>
     <string name="pref_summary_aps_boost_automations">Allow the night FastRise skip. Off leaves that mark unset.</string>
     <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>
