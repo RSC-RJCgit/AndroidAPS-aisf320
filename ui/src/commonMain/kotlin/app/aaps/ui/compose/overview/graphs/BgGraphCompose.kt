@@ -56,6 +56,8 @@ private const val showBasalOnBgGraph = false
 
 private const val SERIES_REGULAR = "regular"
 private const val SERIES_BUCKETED = "bucketed"
+private const val SERIES_RAW = "raw"
+private const val SERIES_UKF = "ukf"
 private const val SERIES_PRED_IOB = "pred_iob"
 private const val SERIES_PRED_COB = "pred_cob"
 private const val SERIES_PRED_ACOB = "pred_acob"
@@ -125,6 +127,8 @@ fun BgGraphCompose(
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
+    val showRaw = SeriesType.RAW_BG in bgOverlays
+    val showUkf = SeriesType.UKF_BG in bgOverlays
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
     val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
@@ -228,6 +232,17 @@ fun BgGraphCompose(
                         .sortedBy { it.first }
                     series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
                     activeSeries.add(SERIES_BUCKETED)
+                }
+
+                for (extra in listOf(SERIES_RAW, SERIES_UKF)) {
+                    val extraPoints = seriesRegistry[extra]
+                    if (!extraPoints.isNullOrEmpty()) {
+                        val dataPoints = extraPoints
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                        activeSeries.add(extra)
+                    }
                 }
 
                 // Prediction series - each type as a separate line
@@ -347,9 +362,18 @@ fun BgGraphCompose(
     }
 
     // Single LaunchedEffect for all data - ensures atomic updates
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange) {
+    val rawPoints = if (showRaw) bgReadings.mapNotNull { point ->
+        point.rawValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
+    } else emptyList()
+    val ukfPoints = if (showUkf) bgReadings.mapNotNull { point ->
+        point.ukfValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
+    } else emptyList()
+
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
+        seriesRegistry[SERIES_RAW] = rawPoints
+        seriesRegistry[SERIES_UKF] = ukfPoints
         for ((key, points) in predictionsByType) {
             seriesRegistry[key] = points
         }
@@ -374,8 +398,8 @@ fun BgGraphCompose(
         // prediction data (no real BG readings) makes the windowed set empty, falling back to the
         // full unwindowed history's max instead of the actually-visible prediction values.
         fun inWindow(timestamp: Long) = visibleTimeRange == null || timestamp in visibleTimeRange.first..visibleTimeRange.second
-        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions).map { it.value }
-        val windowedValues = (bgReadings + bucketedData + predictions).filter { inWindow(it.timestamp) }.map { it.value }
+        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).map { it.value }
+        val windowedValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).filter { inWindow(it.timestamp) }.map { it.value }
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
@@ -439,10 +463,27 @@ fun BgGraphCompose(
     val ztPredLine = remember(ztPredColor) { createPredictionLine(ztPredColor) }
 
     val activeSeries by activeSeriesState
-    val bgLines = remember(activeSeries, regularLine, bucketedLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, normalizerLine) {
+    val rawLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF757575))),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+            areaFill = null
+        )
+    }
+    val ukfLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF6A1B9A))),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+            areaFill = null
+        )
+    }
+
+    val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, normalizerLine) {
         buildList {
             if (SERIES_REGULAR in activeSeries) add(regularLine)
             if (SERIES_BUCKETED in activeSeries) add(bucketedLine)
+            if (SERIES_RAW in activeSeries) add(rawLine)
+            if (SERIES_UKF in activeSeries) add(ukfLine)
             if (SERIES_PRED_IOB in activeSeries) add(iobPredLine)
             if (SERIES_PRED_COB in activeSeries) add(cobPredLine)
             if (SERIES_PRED_ACOB in activeSeries) add(aCobPredLine)

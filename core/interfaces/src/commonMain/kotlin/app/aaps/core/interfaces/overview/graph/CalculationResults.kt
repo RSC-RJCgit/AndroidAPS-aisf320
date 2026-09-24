@@ -52,7 +52,11 @@ data class BgDataPoint(
     val range: BgRange,            // Range classification (high/in-range/low)
     val type: BgType,              // Type determines rendering style and color
     val filledGap: Boolean = false, // For bucketed data - if true, render semi-transparent
-    val dominantIsf: DominantIsf = DominantIsf.NONE // colour of the dot when an AutoISF factor moved the ISF
+    val dominantIsf: DominantIsf = DominantIsf.NONE, // colour of the dot when an AutoISF factor moved the ISF
+    /** Libre raw glucose in the user's units. 0 means this point has none. */
+    val rawValue: Double = 0.0,
+    /** UKF-smoothed raw glucose in the user's units. 0 means this point has none. */
+    val ukfValue: Double = 0.0,
 )
 
 // ============================================================================

@@ -243,7 +243,9 @@ class PrepareGraphDataRunner(
                         else                           -> BgRange.IN_RANGE
                     },
                     type = BgType.REGULAR,
-                    dominantIsf = dominantFor(bg.timestamp, autoIsfRows)
+                    dominantIsf = dominantFor(bg.timestamp, autoIsfRows),
+                    rawValue = bg.noise?.takeIf { it > 10.0 }?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
+                    ukfValue = ukfNear(bg.timestamp, autoIsfRows)?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
                 )
             }
 
@@ -804,6 +806,13 @@ class PrepareGraphDataRunner(
         )
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100)
+    }
+
+    private fun ukfNear(timestamp: Long, rows: List<AIV>): Double? {
+        val row = rows.minByOrNull { abs(it.timestamp - timestamp) } ?: return null
+        if (abs(row.timestamp - timestamp) > 6 * 60_000L) return null
+        if (row.ukfRawBgl <= 0.0) return null
+        return row.ukfRawBgl
     }
 
     private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =

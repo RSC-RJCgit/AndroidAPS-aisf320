@@ -30,7 +30,9 @@ enum class SeriesType {
     BG_ISF,
     PP_ISF,
     DURA_ISF,
-    FINAL_ISF
+    FINAL_ISF,
+    RAW_BG,
+    UKF_BG
 }
 
 /**

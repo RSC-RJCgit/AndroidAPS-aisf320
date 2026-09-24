@@ -1140,6 +1140,8 @@
     <!-- Graph series short names (used as graph labels, keep very short) -->
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>
     <string name="activity_shortname" comment="Short label for Activity graph series">ACT</string>
+    <string name="raw_bg_shortname" comment="Short label for the raw glucose line on the main graph">RAW</string>
+    <string name="ukf_bg_shortname" comment="Short label for the UKF glucose line on the main graph">UKF</string>
     <string name="bgi_shortname" comment="Short label for Blood Glucose Impact graph series">-BGI</string>
     <string name="abs_insulin_shortname" comment="Short label for Absolute Insulin graph series">ABS</string>
     <string name="devslope_shortname" comment="Short label for Deviation Slope graph series">DEVSLOPE</string>

@@ -88,11 +88,11 @@ private val SIMPLE_MODE_CONFIG = GraphConfig(
 )
 
 /** Series types available as BG graph overlays */
-private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS)
+private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.RAW_BG, SeriesType.UKF_BG)
 
 /** Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded) */
 private val CONFIGURABLE_SERIES = SeriesType.entries.filter {
-    it != SeriesType.IOB && it != SeriesType.PREDICTIONS
+    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.RAW_BG && it != SeriesType.UKF_BG
 }
 
 @OptIn(FlowPreview::class)
@@ -595,6 +595,8 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.PP_ISF          -> CoreUiStrings.pp_isf_shortname
     SeriesType.DURA_ISF        -> CoreUiStrings.dura_isf_shortname
     SeriesType.FINAL_ISF       -> CoreUiStrings.final_isf_shortname
+    SeriesType.RAW_BG          -> CoreUiStrings.raw_bg_shortname
+    SeriesType.UKF_BG          -> CoreUiStrings.ukf_bg_shortname
 }
 
 // =========================================================================
