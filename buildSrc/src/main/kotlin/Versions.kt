@@ -6,7 +6,7 @@ object Versions {
 
     // On change edit aaps-ci.yml
     // UKF3426 is this port. The -dev keeps it a development build. A name with no hyphen is treated as a release.
-    const val appVersion = "UKF3426-dev"
+    const val appVersion = "4.0.0-dev-c"
     const val versionCode = 1500
 
     const val compileSdk = 37
