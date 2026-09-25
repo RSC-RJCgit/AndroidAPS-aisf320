@@ -510,6 +510,7 @@ open class OpenAPSAutoISFPlugin(
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
 
         val raw5 = rawDelta5MinMgdl(now)
+        val ukf = ukfRawNow(now)
         val smb10 = smbSum(now, 10 * 60 * 1000L)
         val sub75Note = updateSub75Mark(runMarks, now, glucoseStatus.glucose, glucoseStatus.delta, smb10)
         if (sub75Note == "arm") aapsLogger.debug(LTag.APS, "sc7.5 cooldown armed, 10 min SMB $smb10")
@@ -528,7 +529,7 @@ open class OpenAPSAutoISFPlugin(
                 bg = glucoseStatus.glucose,
                 delta = glucoseStatus.delta,
                 shortDelta = glucoseStatus.shortAvgDelta,
-                rawDelta5 = raw5 ?: -9999.0,
+                rawDelta5 = ukf.delta5 ?: -9999.0,
                 iob = iobData.iob,
                 smbSum10 = smb10,
                 lowBgRecent = statesOn && states().inState("LowBG", "50recent"),
@@ -545,7 +546,6 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
         )
-        val ukf = ukfRawNow(now)
         markBolusBoosts(
             now = now,
             profilePercent = profile_percentage,
@@ -631,7 +631,7 @@ open class OpenAPSAutoISFPlugin(
             auto_isf_consoleLog = consoleLog,
             fastRiseSettingOn = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled),
             libreActive = libreActive(now),
-            rawDelta5Mgdl = raw5 ?: 0.0,
+            rawDelta5Mgdl = ukf.delta5 ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
@@ -661,7 +661,7 @@ open class OpenAPSAutoISFPlugin(
                 bolusGivenBg3 = runMarks.recent(RunMark.BOLUS_GIVEN_BG3, 30, now),
                 uamBoost = uamRecent,
                 cob = mealData.mealCOB,
-                rawDelta5 = raw5,
+                rawDelta5 = ukf.delta5,
                 longAvgDelta = glucoseStatus.longAvgDelta,
             ),
             nightFrSkipActive = runMarks.recent(RunMark.NIGHT_FR_SKIP, 2, now),
@@ -2175,7 +2175,8 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // mg/dL over about five minutes, from the Libre raw value stored in GV.noise.
-    // Null when that raw value is missing. The caller then passes 0, so the FastRise gate stays closed.
+    // FastRise sizing and the night FastRise skip use the smoothed UKF change instead.
+    // This unsmoothed value is the early-morning reversal check. Null when the raw value is missing.
     private suspend fun rawDelta5MinMgdl(now: Long): Double? {
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60 * 1000L, now, ascending = false)
         if (readings.size < 2) return null
