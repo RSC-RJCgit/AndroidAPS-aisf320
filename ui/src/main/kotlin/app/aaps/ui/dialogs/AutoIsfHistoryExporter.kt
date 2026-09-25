@@ -146,6 +146,26 @@ class AutoIsfHistoryExporter @Inject constructor(
         persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
             .filterNot { hideLiveUamBoostEchoes() && CodedAutomationNames.isUamBoostNote(it.note) }
             .filterNot { hideLiveAnyDeskLaunchEchoes() && CodedAutomationNames.isAnyDeskLaunchNote(it.note) }
+            .filterNot { hideLiveEchoesOnVirtual() && it.ids.nightscoutId != null && !keepLiveEchoOnVirtual(it.note) }
+
+    // 2026-09-26, per explicit request: on the Virtual phone the AIV Notes column mixed its own automation notes with Live's,
+    // which arrive through Nightscout (25 Sep 22:34:58 Virtual's own Gntl5, 22:38:59 Live's echo of a different fire -- read
+    // as a 4-minute repeat of a 30-minute throttle). The raw Virtual log shows Virtual's own notes are stored with no
+    // Nightscout id (it never uploads them) and Live's echoes with one, so an NS id marks an echo. Because this list also
+    // feeds the MJ column (mjStateStr) and the graph/history dialog, the exceptions below are the echoes Virtual actually
+    // acts on; every other echo, including Live's NOMJremains / MJ2 / MJ3 / MoreMJ / A1 / MJoff*, is dropped so Virtual's
+    // own state machine is the only source of those. "MJ active" stays so Virtual knows when Live's cycle started.
+    // Client (Live's mirror) and Live itself are unaffected. Steps and raw BGL are not notes-based, so also unaffected.
+    private fun hideLiveEchoesOnVirtual(): Boolean =
+        virtualPump.isEnabled() && !config.AAPSCLIENT
+
+    private fun keepLiveEchoOnVirtual(note: String?): Boolean {
+        val t = note?.trim() ?: return false
+        return t == "MJ active" ||
+            t.startsWith("Steroids") ||
+            t.startsWith("SetRole") ||
+            t.startsWith("StLow ") || t.startsWith("StorageLow ")
+    }
 
     // Virtual shares Live's NS site, so Live's UamBst notes land here even when this phone's
     // Tier 3 toggle is off. Client must still see Live's own fires. Local Virtual fires only
