@@ -810,6 +810,10 @@ class DetermineBasalAutoISF(
     var smbStackStartToStore: Long? = null
         private set
 
+    // Set only when a Tier 3 raise is still the SMB that gets delivered.
+    var uamBoostFiredThisCycle: Boolean = false
+        private set
+
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -1021,10 +1025,22 @@ class DetermineBasalAutoISF(
         sub75Cooldown: Boolean = false,
         smbIntervalSec: Double = 9999.0,
         smbStackStart: Long = 0L,
+        mildOffsetZero: Boolean = false,
+        mildThisCycle: Boolean = false,
+        bg3ThisCycle: Boolean = false,
+        mildFailsafeThisCycle: Boolean = false,
+        uamBoostEnabled: Boolean = false,
+        uamBoostUnrestricted: Boolean = false,
+        uamBoostMaxBolus: Double = 2.5,
+        uamBoostMaxIobPercent: Double = 10.0,
+        uamBoostScale: Double = 1.0,
+        daytimeGateBypass: Boolean = false,
+        recentLowBg: Double = 999.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
         smbStackStartToStore = null
+        uamBoostFiredThisCycle = false
         var rT = RT(
             algorithm = APSResult.Algorithm.AUTO_ISF,
             runningDynamicIsf = autoIsfMode,
@@ -1971,6 +1987,39 @@ class DetermineBasalAutoISF(
                 microBolus = stacked.microBolus
                 if (stacked.reason.isNotEmpty()) rT.reason.append(stacked.reason)
                 smbStackStartToStore = stacked.stackStart
+                val tier3Hour = if (hour in 0..23) hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                val tier3 = tier3BoostMicroBolus(
+                    enabled = uamBoostEnabled,
+                    hour = tier3Hour,
+                    daytimeBypass = daytimeGateBypass,
+                    unrestricted = uamBoostUnrestricted,
+                    mildThisCycle = mildThisCycle,
+                    bg3ThisCycle = bg3ThisCycle,
+                    uamBoostRecent = uamBoostRecent,
+                    smbDeliveryRatio = profile.smb_delivery_ratio,
+                    microBolus = microBolus,
+                    insulinReq = insulinReq,
+                    basal = basal,
+                    maxBolusSetting = uamBoostMaxBolus,
+                    maxIob = profile.max_iob,
+                    maxIobPercent = uamBoostMaxIobPercent,
+                    scaleSetting = uamBoostScale,
+                    profilePercent = profile_percentage,
+                    bg = bg,
+                    targetBg = target_bg,
+                    iob = iob_data.iob,
+                    cob = meal_data.mealCOB,
+                    delta = glucose_status.delta,
+                    longAvgDelta = glucose_status.longAvgDelta,
+                    bgAcceleration = bgAcceleration,
+                    recentLowBg = recentLowBg,
+                    roundSmbTo = roundSMBTo,
+                )
+                microBolus = tier3.microBolus
+                val tier3Enhanced = tier3.enhanced
+                val tier3Allowance = tier3.finalIobAllowance
+                if (tier3.reason.isNotEmpty()) rT.reason.append(tier3.reason)
                 if (fastRiseSettingOn != null) {
                     val nowHour = if (hour in 0..23) hour
                     else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
@@ -2154,9 +2203,37 @@ class DetermineBasalAutoISF(
                 val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                tier3Allowance?.let { allowance ->
+                    if (microBolus > allowance) microBolus = allowance
+                }
+                val offsetHour = if (hour in 0..23) hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                val carbAgeMin = if (meal_data.carbs > 0.0) round((systemTime - meal_data.lastCarbTime) / 60000.0, 2) else 363.0
+                val offset = targetOffset(
+                    smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
+                    todOffsetMgdl = 0.0,
+                    mildOffsetZero = mildOffsetZero,
+                    tempTargetSet = profile.temptargetSet,
+                    minBg = profile.min_bg,
+                    hour = offsetHour,
+                    bg = bg,
+                    cob = meal_data.mealCOB,
+                    carbAgeMin = carbAgeMin,
+                )
+                val gated = applyTargetOffsetToSmb(
+                    microBolus = microBolus,
+                    bg = bg,
+                    offset = offset,
+                    roundSmbTo = roundSMBTo,
+                    skipCarbBand = mildThisCycle || bg3ThisCycle || mildFailsafeThisCycle || tier3Enhanced,
+                    mildOffsetZero = mildOffsetZero,
+                )
+                microBolus = gated.first
+                if (gated.second.isNotEmpty()) rT.reason.append(gated.second)
                 if (lastBolusAge > SMBInterval - 6.0) {   // 6s tolerance
                     if (microBolus > 0) {
                         rT.units = microBolus
+                        if (tier3Enhanced) uamBoostFiredThisCycle = true
                         rT.reason.append("Microbolusing ${microBolus}U. ")
                     }
                 } else {

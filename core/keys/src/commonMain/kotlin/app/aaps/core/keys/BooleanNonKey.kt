@@ -47,4 +47,8 @@ enum class BooleanNonKey(
     // set on the next launch, the previous VACUUM died below the JVM (native abort / OOM) — used to
     // break the boot-crash loop. Transient device state, not a user setting → not exportable.
     VacuumInProgress("vacuum_in_progress", false, exportable = false),
+
+    // Set when a mild boost fires under 5.9 mmol. DetermineBasal forces the target offset to 0 while this is set.
+    // Cleared when no temp target is active.
+    ApsAutoIsfMildOffsetZeroActive("autoisf_mild_offset_zero_active", false, exportable = false),
 }

@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.profiling.Profiler
@@ -61,6 +62,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
@@ -124,7 +126,8 @@ open class OpenAPSAutoISFPlugin(
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: () -> APSResult,
     private val ch: ConcentrationHelper,
-    private val tddCalculator: TddCalculator
+    private val tddCalculator: TddCalculator,
+    private val displayRawSmoothing: DisplayRawSmoothing,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -542,6 +545,7 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
         )
+        val ukf = ukfRawNow(now)
         markBolusBoosts(
             now = now,
             profilePercent = profile_percentage,
@@ -551,12 +555,13 @@ open class OpenAPSAutoISFPlugin(
             delta = glucoseStatus.delta,
             shortDelta = glucoseStatus.shortAvgDelta,
             longDelta = glucoseStatus.longAvgDelta,
-            rawDelta5 = raw5 ?: -9999.0,
+            rawDelta5 = ukf.delta5 ?: -9999.0,
             cob = mealData.mealCOB,
             iob = iobData.iob,
             statesOn = statesOn,
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
+            ukfDelta1 = ukf.delta1 ?: -9999.0,
         )
         applyOvernightDuraRescue(
             now = now,
@@ -665,6 +670,17 @@ open class OpenAPSAutoISFPlugin(
             sub75Cooldown = runMarks.recent(RunMark.SUB75, 10, now),
             smbIntervalSec = smbInterval5Sec(now),
             smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
+            mildOffsetZero = preferences.get(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive),
+            mildThisCycle = mildThisCycle,
+            bg3ThisCycle = bg3ThisCycle,
+            mildFailsafeThisCycle = mildFailsafeThisCycle,
+            uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled),
+            uamBoostUnrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled),
+            uamBoostMaxBolus = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus),
+            uamBoostMaxIobPercent = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent),
+            uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale),
+            daytimeGateBypass = newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now),
+            recentLowBg = 999.0,
         ).also {
             if (!usesLiveSteps()) {
                 it.reason.append(
@@ -673,6 +689,9 @@ open class OpenAPSAutoISFPlugin(
             }
             determineBasalAutoISF.smbStackStartToStore?.let { start ->
                 preferences.put(LongNonKey.ApsAutoIsfSmbStackStart, start)
+            }
+            if (determineBasalAutoISF.uamBoostFiredThisCycle) {
+                runMarks.mark(RunMark.UAM_BST, now)
             }
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -701,6 +720,7 @@ open class OpenAPSAutoISFPlugin(
                         bgAcceleration = autoIsfFactors.bgAcceleration,
                         iob = iobData.iob,
                         smbDelivered = determineBasalResult.smb,
+                        ukfRawBgl = ukf.glucose ?: 0.0,
                     )
                 )
             }
@@ -1216,6 +1236,11 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
             DoubleKey.ApsAutoIsfMildBoostRatio,
+            BooleanKey.ApsAutoIsfUamBoostEnabled,
+            BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled,
+            DoubleKey.ApsAutoIsfUamBoostMaxBolus,
+            DoubleKey.ApsAutoIsfUamBoostMaxIobPercent,
+            DoubleKey.ApsAutoIsfUamBoostScale,
             StringKey.ApsAutoIsfLowProfileName,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
@@ -1427,6 +1452,9 @@ open class OpenAPSAutoISFPlugin(
     // baseline minus 0.03 instead. A boost mark from the last 3 minutes is left alone.
     // This runs before the boost marks, so a later write in the same loop is not undone here.
     private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double) {
+        if (!tempTargetSet && preferences.get(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive)) {
+            preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, false)
+        }
         val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
         val resting = baseline.coerceAtMost(smb_delivery_ratio_max)
         val hardStackTarget = (baseline - 0.03).coerceAtLeast(0.1)
@@ -1462,6 +1490,10 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
+    private var mildThisCycle = false
+    private var bg3ThisCycle = false
+    private var mildFailsafeThisCycle = false
+
     // A strong mark raises the IOB threshold to 71 and, unless caution applies, the profile percent to 110 for 2 minutes.
     // Both marks raise the post-meal weight. A value that is not above its baseline is left alone.
     // The SMB delivery ratio is raised. A mild mark also holds a 5.0 target for 2 minutes, and that
@@ -1483,7 +1515,11 @@ open class OpenAPSAutoISFPlugin(
         statesOn: Boolean,
         steps5: Int,
         steps30: Int,
+        ukfDelta1: Double,
     ) {
+        mildThisCycle = false
+        bg3ThisCycle = false
+        mildFailsafeThisCycle = false
         seedBaselines(profilePercent)
         val boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
         val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
@@ -1491,7 +1527,7 @@ open class OpenAPSAutoISFPlugin(
         val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
         val onLowProfile = profileName == lowName
         val mjActive = statesOn && states().inState("MJ", "MJ active")
-        val rawDelta1 = rawDelta1MinMgdl(now) ?: -9999.0
+        val rawDelta1 = ukfDelta1
         val interval = smbInterval5Sec(now)
         val iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L)
         val lastBolusMin = minutesSinceLastPositiveNormalBolus(now)
@@ -1561,10 +1597,13 @@ open class OpenAPSAutoISFPlugin(
         if (bg3 && !blocked) {
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
+            bg3ThisCycle = true
             applyBoostRaise(boostRaises(strong = true, caution = caution), boostedDeliveryRatio(mildBase, strong = true, caution = caution))
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 marked")
         } else if (mild) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
+            mildThisCycle = true
+            if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution))
             startMildHoldTarget()
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
@@ -1588,6 +1627,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, now)
+            mildFailsafeThisCycle = true
+            if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false))
             startMildHoldTarget()
             aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
@@ -2102,6 +2143,35 @@ open class OpenAPSAutoISFPlugin(
         return newest.sourceSensor == SourceSensor.LIBRE_2 ||
             newest.sourceSensor == SourceSensor.LIBRE_2_NATIVE ||
             newest.sourceSensor == SourceSensor.LIBRE_3
+    }
+
+    private data class UkfRaw(val glucose: Double?, val delta1: Double?, val delta5: Double?, val delta15: Double?)
+
+    // Libre raw (noise) through the display UKF. Newest point is glucose. Deltas are mg/dL per 5 minutes.
+    private suspend fun ukfRawNow(now: Long): UkfRaw {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 60 * 60_000L, now, ascending = false)
+            .filter { (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return UkfRaw(null, null, null, null)
+        val smoothed = displayRawSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        if (smoothed.isEmpty()) return UkfRaw(null, null, null, null)
+        val glucose = smoothed[0]
+        val delta1 = if (smoothed.size >= 2) {
+            val minutes = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
+            if (minutes > 0.0) (smoothed[0] - smoothed[1]) / minutes * 5.0 else null
+        } else null
+        val fiveMinAgo = now - 5 * 60_000L
+        val ref5 = readings.indices.minByOrNull { abs(readings[it].timestamp - fiveMinAgo) }
+        val delta5 = ref5?.takeIf { it != 0 }?.let { glucose - smoothed[it] }
+        val fifteenMinAgo = now - 15 * 60_000L
+        val ref15 = readings.indices.minByOrNull { abs(readings[it].timestamp - fifteenMinAgo) }
+        val delta15 = ref15?.takeIf { it != 0 }?.let { idx ->
+            val anchor = readings[idx].timestamp
+            if (abs(anchor - fifteenMinAgo) > 3 * 60_000L) return@let null
+            val mins = (readings[0].timestamp - anchor) / 60_000.0
+            if (mins > 0.0) (glucose - smoothed[idx]) / mins * 5.0 else null
+        }
+        return UkfRaw(glucose, delta1, delta5, delta15)
     }
 
     // mg/dL over about five minutes, from the Libre raw value stored in GV.noise.

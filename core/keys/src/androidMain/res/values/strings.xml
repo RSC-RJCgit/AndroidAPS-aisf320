@@ -122,6 +122,16 @@
     <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
     <string name="pref_title_aps_mild_boost_ratio">Mild SMB boost base</string>
     <string name="pref_summary_aps_mild_boost_ratio" comment="A ratio with no unit. Default 0.20. A mild rise adds 0.15. A strong rise adds 0.03.">Starting SMB delivery ratio for a rise boost. A mild rise adds 0.15. A strong rise adds 0.03. Default 0.20.</string>
+    <string name="pref_title_aps_uam_boost">Tier 3 UAM boost</string>
+    <string name="pref_summary_aps_uam_boost">On lets a mild or strong rise raise the SMB above the ordinary amount, between 09:00 and 21:00. Default off.</string>
+    <string name="pref_title_aps_uam_boost_unrestricted">Tier 3 unrestricted</string>
+    <string name="pref_summary_aps_uam_boost_unrestricted">On skips the Tier 3 size cap, the 20 minute gap, and the IOB percent gate. Default off.</string>
+    <string name="pref_title_aps_uam_boost_max_bolus">Tier 3 max SMB</string>
+    <string name="pref_summary_aps_uam_boost_max_bolus" comment="Insulin units. Default 2.5. The delivered SMB is also capped by max IOB divided by 9.5.">Largest SMB Tier 3 may propose. Default 2.5 U. A second cap is max IOB divided by 9.5.</string>
+    <string name="pref_title_aps_uam_boost_max_iob_percent">Tier 3 max IOB percent</string>
+    <string name="pref_summary_aps_uam_boost_max_iob_percent" comment="Percent of max IOB. Default 10. Example: 10 percent of 9.5 U is 0.95 U.">Tier 3 stops raising the SMB once IOB reaches this percent of max IOB. Default 10.</string>
+    <string name="pref_title_aps_uam_boost_scale">Tier 3 scale</string>
+    <string name="pref_summary_aps_uam_boost_scale" comment="A multiplier from 0.1 to 3.0. Default 1.0. The live profile percent scales it again.">Multiplier for the Tier 3 SMB. The current profile percent scales it again. Default 1.0.</string>
     <string name="pref_title_aps_low_profile_name">Low profile name</string>
     <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
     <string name="pref_title_aps_standard_profile_name">Standard profile name</string>

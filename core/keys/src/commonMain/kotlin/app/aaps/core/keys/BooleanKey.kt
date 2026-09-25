@@ -236,6 +236,22 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfUamBoostEnabled(
+        "autoisf_uam_boost_enabled",
+        false,
+        KeysStrings.pref_title_aps_uam_boost,
+        KeysStrings.pref_summary_aps_uam_boost,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostUnrestrictedEnabled(
+        "autoisf_uam_boost_unrestricted_enabled",
+        false,
+        KeysStrings.pref_title_aps_uam_boost_unrestricted,
+        KeysStrings.pref_summary_aps_uam_boost_unrestricted,
+        dependency = ApsAutoIsfUamBoostEnabled,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfCustomAutomationsEnabled(
         "autoisf_custom_automations_enabled",
         false,

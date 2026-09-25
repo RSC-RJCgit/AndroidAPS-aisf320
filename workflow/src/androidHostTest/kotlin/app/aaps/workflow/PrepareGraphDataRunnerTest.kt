@@ -54,7 +54,7 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
         PrepareGraphDataRunner(
             aapsLogger, workflowChainData, dateUtil, mockedRxBus, persistenceLayer,
             activePlugin, profileFunction, profileUtil, preferences, config, profiler, decimalFormatter,
-            processedDeviceStatusData, TestScope(), autosensDataProvider
+            processedDeviceStatusData, TestScope(), autosensDataProvider, mock()
         )
 
     // The runner asks this between phases; nothing in these tests stops a run part way.

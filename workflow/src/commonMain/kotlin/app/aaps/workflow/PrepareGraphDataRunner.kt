@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.workflow.CalculationSignalsEmitter
@@ -94,7 +95,8 @@ class PrepareGraphDataRunner(
     private val decimalFormatter: DecimalFormatter,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
     private val scope: CoroutineScope,
-    private val autosensDataProvider: () -> AutosensData
+    private val autosensDataProvider: () -> AutosensData,
+    private val displayRawSmoothing: DisplayRawSmoothing,
 ) {
 
     /**
@@ -230,6 +232,14 @@ class PrepareGraphDataRunner(
         val lowMarkInUnits = preferences.get(UnitDoubleKey.OverviewLowMark)
         val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, toTime)
 
+        val newestFirstRaw = bgReadingsArray
+            .filter { it.timestamp in fromTime..toTime && (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        val smoothedRaw = displayRawSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
+        val ukfByTime = newestFirstRaw.mapIndexedNotNull { index, bg ->
+            smoothedRaw.getOrNull(index)?.let { bg.timestamp to it }
+        }.toMap()
+
         val bgDataPoints = bgReadingsArray
             .filter { it.timestamp in fromTime..toTime }
             .map { bg ->
@@ -245,7 +255,7 @@ class PrepareGraphDataRunner(
                     type = BgType.REGULAR,
                     dominantIsf = dominantFor(bg.timestamp, autoIsfRows),
                     rawValue = bg.noise?.takeIf { it > 10.0 }?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
-                    ukfValue = ukfNear(bg.timestamp, autoIsfRows)?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
+                    ukfValue = ukfByTime[bg.timestamp]?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
                 )
             }
 
@@ -806,12 +816,6 @@ class PrepareGraphDataRunner(
         )
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100)
-    }
-
-    private fun ukfNear(timestamp: Long, rows: List<AIV>): Double? {
-        val row = rows.filter { it.ukfRawBgl > 0.0 }.minByOrNull { abs(it.timestamp - timestamp) } ?: return null
-        if (abs(row.timestamp - timestamp) > 6 * 60_000L) return null
-        return row.ukfRawBgl
     }
 
     private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =

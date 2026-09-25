@@ -361,6 +361,42 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfUamBoostMaxBolus(
+        key = "boost_bolus_cap",
+        defaultValue = 2.5,
+        min = 0.1,
+        max = 10.0,
+        title = KeysStrings.pref_title_aps_uam_boost_max_bolus,
+        summary = KeysStrings.pref_summary_aps_uam_boost_max_bolus,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
+        unitType = UnitType.INSULIN,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostMaxIobPercent(
+        key = "boost_max_iob_percent",
+        defaultValue = 10.0,
+        min = 1.0,
+        max = 100.0,
+        title = KeysStrings.pref_title_aps_uam_boost_max_iob_percent,
+        summary = KeysStrings.pref_summary_aps_uam_boost_max_iob_percent,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostScale(
+        key = "boost_scale_value",
+        defaultValue = 1.0,
+        min = 0.1,
+        max = 3.0,
+        title = KeysStrings.pref_title_aps_uam_boost_scale,
+        summary = KeysStrings.pref_summary_aps_uam_boost_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsActivityScaleFactor(
         key = "activity_scale_factor",
         defaultValue = 1.0,
