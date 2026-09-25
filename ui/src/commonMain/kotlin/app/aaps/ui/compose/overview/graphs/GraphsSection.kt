@@ -338,18 +338,9 @@ fun GraphsSection(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        // Treatment Belt Graph - running mode background + therapy events
-        TreatmentBeltGraphCompose(
-            viewModel = graphViewModel,
-            scrollState = beltScrollState,
-            zoomState = beltZoomState,
-            derivedTimeRange = derivedTimeRange,
-            nowTimestamp = nowTimestamp,
-            modifier = Modifier.fillMaxWidth()
-        )
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
-        Box(modifier = Modifier.offset(y = (-16).dp)) {
+        Box {
             BgGraphCompose(
                 viewModel = graphViewModel,
                 bgOverlays = graphConfig.bgOverlays,

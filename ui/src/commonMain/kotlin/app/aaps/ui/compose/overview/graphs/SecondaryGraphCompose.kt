@@ -485,12 +485,6 @@ fun SecondaryGraphCompose(
             if (processedIob.isNotEmpty())
                 add(PrimarySeriesSpec(processedIob.map { it.first }, processedIob.map { it.second }, SeriesSlot.IobLine))
             // IOB overlays: SMBs (small, medium, large), normal boluses, extended boluses
-            if (processedIobTreatments.smallSmbs.isNotEmpty())
-                add(PrimarySeriesSpec(processedIobTreatments.smallSmbs.map { it.first }, processedIobTreatments.smallSmbs.map { it.second }, SeriesSlot.SmallSmb))
-            if (processedIobTreatments.mediumSmbs.isNotEmpty())
-                add(PrimarySeriesSpec(processedIobTreatments.mediumSmbs.map { it.first }, processedIobTreatments.mediumSmbs.map { it.second }, SeriesSlot.MediumSmb))
-            if (processedIobTreatments.largeSmbs.isNotEmpty())
-                add(PrimarySeriesSpec(processedIobTreatments.largeSmbs.map { it.first }, processedIobTreatments.largeSmbs.map { it.second }, SeriesSlot.LargeSmb))
             if (processedIobTreatments.normalBoluses.isNotEmpty())
                 add(PrimarySeriesSpec(processedIobTreatments.normalBoluses.map { it.first }, processedIobTreatments.normalBoluses.map { it.second }, SeriesSlot.NormalBolus))
             processedIobTreatments.extBoluses.forEach { (start, end, amount) ->
