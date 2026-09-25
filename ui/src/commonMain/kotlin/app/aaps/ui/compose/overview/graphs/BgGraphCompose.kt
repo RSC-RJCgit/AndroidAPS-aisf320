@@ -844,22 +844,35 @@ fun BgGraphCompose(
     )
 }
 
-/** One drag scrolls the graph sideways, or the page up and down. It does not do both at once. */
+/**
+ * In landscape a drag on the graph must scroll one way only.
+ * Sideways moves the graph. Up or down moves the page.
+ * The choice waits until the finger has moved far enough, so a small sideways
+ * start does not block an up or down swipe. The other direction is not applied,
+ * so the screen is not pulled on a diagonal.
+ */
 private class GraphAxisLock : NestedScrollConnection {
     private var orientation: Orientation? = null
+    private var accX = 0f
+    private var accY = 0f
     private var lastMs = 0L
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (source != NestedScrollSource.UserInput) return Offset.Zero
         val now = System.currentTimeMillis()
-        if (now - lastMs > 80L) orientation = null
-        lastMs = now
-        val dx = abs(available.x)
-        val dy = abs(available.y)
-        if (orientation == null && (dx > 2f || dy > 2f)) {
-            orientation = if (dx >= dy) Orientation.Horizontal else Orientation.Vertical
+        if (now - lastMs > 120L) {
+            orientation = null
+            accX = 0f
+            accY = 0f
         }
-        return when (orientation) {
+        lastMs = now
+        accX += available.x
+        accY += available.y
+        if (orientation == null && (abs(accX) > 48f || abs(accY) > 48f)) {
+            orientation = if (abs(accX) >= abs(accY)) Orientation.Horizontal else Orientation.Vertical
+        }
+        val axis = orientation ?: if (abs(accX) >= abs(accY)) Orientation.Horizontal else Orientation.Vertical
+        return when (axis) {
             Orientation.Horizontal -> Offset(x = 0f, y = available.y)
             Orientation.Vertical -> Offset(x = available.x, y = 0f)
             else -> Offset.Zero
