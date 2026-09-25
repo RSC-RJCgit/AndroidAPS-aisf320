@@ -583,6 +583,14 @@ open class OpenAPSAutoISFPlugin(
             longDelta = glucoseStatus.longAvgDelta,
             statesOn = statesOn,
         )
+        applyBasalUp(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            profilePercent = profile_percentage,
+            statesOn = statesOn,
+        )
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
@@ -1846,6 +1854,106 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "High night -> $standardName for 30 min")
     }
 
+    // A stable or rising glucose on a Low-family profile moves to Standard at the same A, B, or C letter.
+    // The letter comes from the running profile name, so a stale Low Current name cannot block it.
+    // The acceleration weight goes back to 0.50. From 07:00 until midnight. Profile stays at 100%.
+    private suspend fun applyBasalUp(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        profilePercent: Int,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val podHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        if (!basalUpShouldFire(
+                ready = runMarks.ready(RunMark.BASAL_UP, 5, now),
+                bg = bg,
+                delta = delta,
+                profilePercent = profilePercent,
+                minuteOfDay = minuteOfDay,
+                steps60 = steps60(now),
+                steps30 = steps30(now),
+                podHours = podHours,
+                onLowFamily = runningOnLowLadder(
+                    profileFunction.getOriginalProfileName(),
+                    preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
+                    lowLadderNames(),
+                ),
+                mj3 = statesOn && store.inState("MJ", "MJ3"),
+                noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+            )
+        ) return
+        switchToStandardAtSharedTier(now)
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+        runMarks.mark(RunMark.BASAL_UP, now)
+        aapsLogger.debug(LTag.APS, "BasalUp -> standard at 100%, acceleration weight 0.50")
+    }
+
+    // Align Low Current and Standard Current to the letter already in force, then switch to that Standard name.
+    // A band change nudges the SMB baseline by 0.01 and the mild ratio by 0.25. B and C share one band.
+    private suspend fun switchToStandardAtSharedTier(now: Long) {
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val running = profileFunction.getOriginalProfileName()
+        val index = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs).coerceAtLeast(0)
+        val names = sharedRungNames(
+            index = index,
+            lowRungs = lowRungs,
+            standardRungs = standardRungs,
+            lowCurrent = lowCurrent,
+            standardAnchor = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
+            standardCurrent = standardCurrent,
+        ) ?: return
+        val (newLow, newStandard) = names
+        if (newLow != lowCurrent || newStandard != standardCurrent) {
+            val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(standardCurrent, lowCurrent, standardRungs, lowRungs))
+            preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
+            preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
+            val nudge = roleTierDeliveryNudge(
+                previousBand = previousBand,
+                newBand = roleTierBandForIndex(index),
+                smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
+                mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
+            )
+            if (nudge != null) {
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
+                preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
+                aapsLogger.debug(LTag.APS, "Role tier nudge smb ${nudge.smbBaseline} mild ${nudge.mildRatio}")
+            }
+        }
+        keepSteroidsOff()
+        if (newStandard.isNotBlank() && profileFunction.getOriginalProfileName() != newStandard) {
+            val switched = switchToStandardFor(newStandard, 0, now, "AutoISF: BasalUp")
+            if (!switched) aapsLogger.debug(LTag.APS, "BasalUp: standard profile was not switched")
+        }
+    }
+
+    // Standard and Low role writes stay on Steroids Off. This does not turn steroids on.
+    private fun keepSteroidsOff() {
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        val store = states()
+        if (store.hasStateValues("Steroids") && !store.inState("Steroids", "Steroids Off")) {
+            store.setState("Steroids", "Steroids Off")
+        }
+    }
+
+    private fun lowLadderNames(): List<String> = listOf(
+        preferences.get(StringKey.ApsAutoIsfLow70ProfileName).trim(),
+        preferences.get(StringKey.ApsAutoIsfLow80ProfileName).trim(),
+        preferences.get(StringKey.ApsAutoIsfLow90ProfileName).trim(),
+    )
+
+    private fun standardLadderNames(): List<String> = listOf(
+        preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
+        preferences.get(StringKey.ApsAutoIsfStandard105ProfileName).trim(),
+        preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim(),
+    )
+
     // A 6.8 mmol/L activity temp target, with glucose at or under 8.5 mmol/L and not rising,
     // sets the current profile to 50% for 180 minutes. The acceleration weight is left alone.
     private suspend fun applyActivityProf50(
@@ -1955,12 +2063,17 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "Activity off -> $standardName at 100%")
     }
 
-    // Switches to [profileName] at 100% for [minutes]. Returns false when the name is missing.
-    private suspend fun switchToStandardFor(profileName: String, minutes: Int, now: Long): Boolean {
+    // Switches to [profileName] at 100% for [minutes]. A zero duration has no end time. Returns false when the name is missing.
+    private suspend fun switchToStandardFor(profileName: String, minutes: Int, now: Long, note: String = "AutoISF: high night"): Boolean {
         if (profileName.isBlank()) return false
         val iCfg = profileFunction.getRunningOrRequestedICfg() ?: return false
         val store = profileRepository.profile.value ?: return false
         if (store.getSpecificProfile(profileName) == null) return false
+        val units = mutableListOf<ValueWithUnit>(
+            ValueWithUnit.SimpleString(profileName),
+            ValueWithUnit.Percent(100),
+        )
+        if (minutes > 0) units.add(ValueWithUnit.Minute(minutes))
         return profileFunction.createProfileSwitch(
             profileStore = store,
             profileName = profileName,
@@ -1970,12 +2083,8 @@ open class OpenAPSAutoISFPlugin(
             timestamp = now,
             action = Action.PROFILE_SWITCH,
             source = Sources.Automation,
-            note = "AutoISF: high night",
-            listValues = listOf(
-                ValueWithUnit.SimpleString(profileName),
-                ValueWithUnit.Percent(100),
-                ValueWithUnit.Minute(minutes)
-            ),
+            note = note,
+            listValues = units,
             iCfg = iCfg,
         ) != null
     }
