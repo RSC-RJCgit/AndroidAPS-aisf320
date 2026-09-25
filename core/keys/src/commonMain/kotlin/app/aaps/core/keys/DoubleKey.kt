@@ -373,18 +373,6 @@ enum class DoubleKey(
         unitType = UnitType.INSULIN,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
-    ApsAutoIsfUamBoostMaxIobPercent(
-        key = "boost_max_iob_percent",
-        defaultValue = 10.0,
-        min = 1.0,
-        max = 100.0,
-        title = KeysStrings.pref_title_aps_uam_boost_max_iob_percent,
-        summary = KeysStrings.pref_summary_aps_uam_boost_max_iob_percent,
-        defaultedBySM = true,
-        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
-        unitType = UnitType.PERCENT,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
-    ),
     ApsAutoIsfUamBoostScale(
         key = "boost_scale_value",
         defaultValue = 1.0,
