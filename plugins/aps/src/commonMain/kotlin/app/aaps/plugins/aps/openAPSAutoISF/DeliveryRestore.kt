@@ -15,7 +15,7 @@ internal fun smbIsStacking(intervalSec: Double, count5: Int): Boolean =
 
 /**
  * Put the delivery ratio back to [restingBaseline] when no temp target is on.
- * Leave it for 2 minutes after a rise boost. No temp target is used as that timer.
+ * Leave it for 2 minutes after a rise boost. A temp target holds it as well.
  * Leave it while SMBs are stacking and the ratio is already at the lower stacking target.
  * The caller does not add the higher-tier bump. That ladder is not in this app.
  */

@@ -4,7 +4,8 @@ package app.aaps.plugins.aps.openAPSAutoISF
  * Settings a strong or mild boost raises.
  * A strong boost sets the IOB threshold to 71 and, unless [caution] is set, the profile percent to 110 for 2 minutes.
  * Both boosts raise the post-meal weight. Neither raises the acceleration weight.
- * The SMB delivery ratio is a separate number from [boostedDeliveryRatio]. No temp target is set.
+ * The SMB delivery ratio is a separate number from [boostedDeliveryRatio].
+ * A mild mark also starts a 2-minute 5.0 target when no temp target is already active.
  */
 internal data class BoostRaise(
     val iobTh: Int?,

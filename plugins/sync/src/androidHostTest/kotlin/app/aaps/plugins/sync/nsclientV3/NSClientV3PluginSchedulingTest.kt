@@ -3,6 +3,7 @@ package app.aaps.plugins.sync.nsclientV3
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.nsclient.NSClientRepository
+import app.aaps.core.keys.BooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
@@ -134,5 +135,17 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
 
         verify(nsLoadExecutor, never()).runChain(any())
         verify(nsLoadExecutor, never()).runReplacing(any())
+    }
+
+    /** A dead or paused primary site must not stop the secondary carbs and bolus download. */
+    @Test
+    fun `secondary treatments are still requested while the client is paused`() = runTest {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+
+        sut.executeLoop("TEST")
+
+        verify(nsLoadExecutor).enqueueSecondaryTreatments()
+        verify(nsLoadExecutor, never()).runChain(any())
     }
 }

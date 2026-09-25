@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.sync.Sync
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.KeysStrings
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
@@ -372,6 +373,9 @@ class NSClientV3Plugin(
                     }
                 // Polls when websockets are switched off, and also when the platform has none at all -
                 // otherwise a desktop client would wait for pushes that can never arrive.
+                // The secondary site has its own address. A dead token on this phone's Nightscout,
+                // or a websocket that never calls the load round, must not stop carbs and boluses.
+                enqueueSecondaryTreatments()
                 if (!preferences.get(BooleanKey.NsClient3UseWs) || !nsConnection.supportsWebsocket)
                     executeLoop("MAIN_LOOP")
                 else
@@ -1128,7 +1132,15 @@ class NSClientV3Plugin(
         preferences.put(NsclientStringKey.V3LastModified, Json.encodeToString(LastModified.serializer(), lastLoadedSrvModified))
     }
 
+    private fun enqueueSecondaryTreatments() {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
+        nsLoadExecutor.enqueueSecondaryTreatments()
+    }
+
     internal fun executeLoop(origin: String) {
+        // Before the pause and token checks. Virtual 5 Sep: a 401 on the primary site blocked
+        // this download all morning, so the virtual pump never saw carbs or boluses.
+        enqueueSecondaryTreatments()
         if (preferences.get(BooleanKey.NsClient3UseWs) && initialLoadFinished) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             nsClientRepository.addLog("● RUN", "paused  $origin")
@@ -1216,6 +1228,16 @@ class NSClientV3Plugin(
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,
                     BooleanKey.NsClientAcceptTbrEb
+                )
+            ),
+            PreferenceSubScreenDef(
+                key = "ns_secondary_settings",
+                title = KeysStrings.ns_secondary_settings,
+                items = listOf(
+                    BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientSecondaryAcceptTherapyEvent,
+                    StringKey.NsClientSecondaryUrl,
+                    StringKey.NsClientSecondaryAccessToken
                 )
             ),
             PreferenceSubScreenDef(

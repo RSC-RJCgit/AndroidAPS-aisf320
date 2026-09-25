@@ -217,6 +217,22 @@ enum class StringKey(
         isPassword = true,
         validator = StringValidator.minLength(17)
     ),
+    NsClientSecondaryUrl(
+        key = "nsclient_secondary_url",
+        defaultValue = "",
+        title = KeysStrings.ns_secondary_url,
+        summary = KeysStrings.ns_secondary_url_summary,
+        dependency = BooleanKey.NsClientSecondaryEnabled,
+        validator = StringValidator.httpsUrl()
+    ),
+    NsClientSecondaryAccessToken(
+        key = "nsclient_secondary_token",
+        defaultValue = "",
+        title = KeysStrings.ns_secondary_token,
+        summary = KeysStrings.ns_secondary_token_summary,
+        isPassword = true,
+        dependency = BooleanKey.NsClientSecondaryEnabled
+    ),
     ApsAutoIsfLowProfileName(
         key = "autoisf_low_profile_name",
         defaultValue = "",

@@ -11,6 +11,7 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TT
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
@@ -1463,7 +1464,8 @@ open class OpenAPSAutoISFPlugin(
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
     // A strong mark raises the IOB threshold to 71 and, unless caution applies, the profile percent to 110 for 2 minutes.
     // Both marks raise the post-meal weight. A value that is not above its baseline is left alone.
-    // The SMB delivery ratio is raised for 2 minutes. No temp target is set. The restore then puts the ratio back.
+    // The SMB delivery ratio is raised. A mild mark also holds a 5.0 target for 2 minutes, and that
+    // hold is skipped when a temp target is already active. The restore then puts the ratio back.
     // The acceleration weight is not written.
     // Libre raw is used. A missing raw value is -9999, so the rise gate stays closed.
     private suspend fun markBolusBoosts(
@@ -1564,6 +1566,7 @@ open class OpenAPSAutoISFPlugin(
         } else if (mild) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution))
+            startMildHoldTarget()
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
         } else if (mildFailsafeShouldFire(
                 readyFailsafe = runMarks.ready(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 5, now),
@@ -1586,6 +1589,7 @@ open class OpenAPSAutoISFPlugin(
         ) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, now)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false))
+            startMildHoldTarget()
             aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
         } else if (blocked) {
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
@@ -2025,6 +2029,32 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
         }
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, deliveryRatio)
+    }
+
+    // Holds 5.0 mmol for 2 minutes. Skipped when a temp target is already active.
+    // While any temp target is on, the delivery-ratio restore stays off.
+    private suspend fun startMildHoldTarget() {
+        if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) return
+        val now = dateUtil.now()
+        val targetMgdl = 90.1
+        val minutes = 2
+        persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = TT(
+                timestamp = now,
+                duration = T.mins(minutes.toLong()).msecs(),
+                reason = TT.Reason.AUTOMATION,
+                lowTarget = targetMgdl,
+                highTarget = targetMgdl
+            ),
+            action = Action.TT,
+            source = Sources.Automation,
+            note = "AutoISF mild boost temp target",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                ValueWithUnit.Mgdl(targetMgdl),
+                ValueWithUnit.Minute(minutes)
+            )
+        )
     }
 
     private suspend fun iobAt(time: Long): Double {

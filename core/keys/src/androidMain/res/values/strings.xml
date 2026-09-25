@@ -410,6 +410,15 @@
     <string name="ns_client_secret_summary">Enter your Nightscout API secret (min. 12 characters)</string>
     <string name="nsclient_token_title">Nightscout access token</string>
     <string name="nsclient_token_summary">Enter your Nightscout access token (min. 17 characters)</string>
+    <string name="ns_secondary_settings">Secondary NS (bolus and carbs source)</string>
+    <string name="ns_secondary_enabled">Download bolus and carbs from secondary NS</string>
+    <string name="ns_secondary_enabled_summary">Pull manual boluses and carbs from a separate Nightscout site, for example the main phone, while this phone keeps its own Nightscout for everything else.</string>
+    <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
+    <string name="ns_secondary_receive_therapy_events_summary">Also pull sensor, site, insulin, and pump-battery changes from the secondary Nightscout, so cannula and sensor age on this phone stay correct. Turn off if this phone should not receive those events.</string>
+    <string name="ns_secondary_url">Secondary NS URL</string>
+    <string name="ns_secondary_url_summary" comment="Example of a Nightscout address.">Nightscout URL to download bolus and carbs from (for example https://mymainns.herokuapp.com)</string>
+    <string name="ns_secondary_token">Secondary NS access token</string>
+    <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site. Leave blank if that site does not use one.</string>
     <string name="ns_wifi_ssids">WiFi SSID</string>
     <string name="ns_wifi_ssids_summary">Allowed SSIDs (semicolon separated)</string>
 

@@ -37,5 +37,9 @@ enum class LongNonKey(
 
     // Epoch millis until an overnight duration rescue must not start another one. Local only.
     ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0L, exportable = false),
+
+    // Server-modified time of the last secondary Nightscout page. 0 means the first download
+    // still has to walk back 16 days. Local only: restoring it would skip treatments.
+    NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),
 }
 
