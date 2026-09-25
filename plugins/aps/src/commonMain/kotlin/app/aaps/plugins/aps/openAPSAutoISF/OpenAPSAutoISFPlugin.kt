@@ -680,7 +680,7 @@ open class OpenAPSAutoISFPlugin(
             uamBoostMaxIobPercent = preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toDouble(),
             uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale),
             daytimeGateBypass = newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now),
-            recentLowBg = 999.0,
+            recentLowBg = recentLowBgMgdl(now),
         ).also {
             if (!usesLiveSteps()) {
                 it.reason.append(
@@ -2144,6 +2144,12 @@ open class OpenAPSAutoISFPlugin(
             newest.sourceSensor == SourceSensor.LIBRE_2_NATIVE ||
             newest.sourceSensor == SourceSensor.LIBRE_3
     }
+
+    // Lowest stored glucose in the last hour, mg/dL. 999 when the hour has no reading,
+    // so the Tier 3 low brake stays closed.
+    private suspend fun recentLowBgMgdl(now: Long): Double =
+        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 60 * 60_000L, now, ascending = false)
+            .minOfOrNull { it.value } ?: 999.0
 
     private data class UkfRaw(val glucose: Double?, val delta1: Double?, val delta5: Double?, val delta15: Double?)
 
