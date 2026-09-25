@@ -339,6 +339,8 @@ data class SmbStackItem(
     val stackIndex: Int,
     val anchorY: Double? = null,
     val color: Color = Color.White,
+    val columnX: Double? = null,
+    val stemUnits: Int = 1,
 )
 
 // Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
@@ -364,6 +366,30 @@ internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 35 * 60_000L
     return index.toList()
 }
 
+/** Newest time in each stack bucket. Older doses draw on that column instead of their own time. */
+internal fun smbColumnTimes(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Long> {
+    if (timestamps.isEmpty()) return emptyList()
+    val result = LongArray(timestamps.size)
+    val order = timestamps.indices.sortedBy { timestamps[it] }
+    var anchor = Long.MIN_VALUE
+    var start = 0
+    fun close(end: Int) {
+        if (end <= start) return
+        val newest = timestamps[order[end - 1]]
+        for (i in start until end) result[order[i]] = newest
+    }
+    for (pos in order.indices) {
+        val time = timestamps[order[pos]]
+        if (anchor != Long.MIN_VALUE && time - anchor >= windowMs) {
+            close(pos)
+            start = pos
+        }
+        if (anchor == Long.MIN_VALUE || time - anchor >= windowMs) anchor = time
+    }
+    close(order.size)
+    return result.toList()
+}
+
 /** Arrow at an SMB time. The tip points up. [pinToBottom] sits it on the bottom edge of the graph. */
 class SmbArrows(
     private val items: List<SmbStackItem>,
@@ -382,27 +408,35 @@ class SmbArrows(
                     layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
                     scroll
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
-                val tip: Float
-                val base: Float
-                if (pinToBottom) {
-                    base = layerBounds.bottom - 2f
-                    tip = base - 16f
-                } else {
-                    val anchorY = item.anchorY ?: continue
-                    val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
-                    tip = dotY + 10f
-                    base = tip + 16f
-                }
-                val half = 6f
-                val path = Path().apply {
-                    moveTo(canvasX, tip)
-                    lineTo(canvasX + half, base)
-                    lineTo(canvasX - half, base)
-                    close()
-                }
                 with(mutableDrawScope) {
+                    val unit = 18.sp.toPx() * 0.25f
+                    val tip: Float
+                    val base: Float
+                    val foot: Float
+                    val stroke: Float
+                    if (pinToBottom) {
+                        val units = item.stemUnits.coerceAtLeast(1)
+                        foot = layerBounds.bottom - 2f
+                        base = foot - unit * units
+                        tip = base - 16f
+                        stroke = if (units >= 4) 4f else 2f
+                    } else {
+                        val anchorY = item.anchorY ?: return@with
+                        val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
+                        tip = dotY + 10f
+                        base = tip + 16f
+                        foot = base + unit
+                        stroke = 2f
+                    }
+                    val half = 6f
+                    val path = Path().apply {
+                        moveTo(canvasX, tip)
+                        lineTo(canvasX + half, base)
+                        lineTo(canvasX - half, base)
+                        close()
+                    }
                     drawPath(path, item.color)
-                    drawLine(item.color, Offset(canvasX, base), Offset(canvasX, base + 12f), strokeWidth = 2f)
+                    drawLine(item.color, Offset(canvasX, base), Offset(canvasX, foot), strokeWidth = stroke)
                 }
             }
         }
@@ -423,13 +457,16 @@ class SmbStackLabels(
             for (item in items) {
                 if (item.label.isEmpty()) continue
                 val style = TextStyle(color = item.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val xValue = item.columnX ?: item.x
                 val canvasX = layerBounds.left +
                     layerDimensions.startPadding +
-                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    layerDimensions.xSpacing * ((xValue - ranges.minX) / xStep).toFloat() -
                     scroll
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
                 val layout = textMeasurer.measure(item.label, style)
-                val step = layout.size.height * stackStepFraction
+                val steep = item.columnX != null
+                val step = layout.size.height * if (steep) 1.2f else stackStepFraction
+                val drawX = canvasX - if (steep) item.stackIndex * 4f else 0f
                 val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
                 val yLength = yRange.length
                 val anchor = if (pinToBottom || item.anchorY == null || yLength == 0.0) {
@@ -439,7 +476,7 @@ class SmbStackLabels(
                 }
                 val top = anchor - layout.size.height - item.stackIndex * step
                 with(mutableDrawScope) {
-                    drawText(layout, topLeft = Offset(canvasX - layout.size.width / 2f, top))
+                    drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
                 }
             }
         }

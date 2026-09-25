@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -9,7 +10,11 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
@@ -35,6 +40,7 @@ import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.icons.IcProfile
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
@@ -44,7 +50,6 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
-import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
@@ -155,7 +160,6 @@ fun BgGraphCompose(
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
-    val treatmentLabels = remember { mutableMapOf<Double, String>() }
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -437,22 +441,14 @@ fun BgGraphCompose(
         startAxisRangeProvider.maxY = niceBgScale.max
         startAxisRangeProvider.yStep = niceBgScale.step
 
-        treatmentLabels.clear()
-        fun pin(base: Double, label: String): Double {
-            var key = base
-            while (treatmentLabels.containsKey(key)) key += 0.001
-            treatmentLabels[key] = label
-            return key
-        }
-        val low = chartConfig.lowMark
-        val drop = if (low > 30.0) 12.0 else 0.7
         fun nearest(timestamp: Long): Double? =
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
+        val bolusDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
         val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
-            nearest(bolus.timestamp)?.let { bolus.timestamp to pin(it - drop, bolus.label) }
+            nearest(bolus.timestamp)?.let { bolus.timestamp to (it - bolusDrop) }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
-            nearest(carb.timestamp)?.let { carb.timestamp to pin(it, carb.label) }
+            nearest(carb.timestamp)?.let { carb.timestamp to it }
         }
         rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange, bolusPoints, carbPoints)
     }
@@ -524,17 +520,24 @@ fun BgGraphCompose(
         )
     }
 
-    val markLabel = rememberTextComponent(style = TextStyle(color = Color.White, fontSize = 10.sp))
-    val markFormatter = remember {
-        CartesianValueFormatter { _, value, _ -> treatmentLabels[value].orEmpty() }
-    }
     val smbMarkColor = AapsTheme.elementColors.insulin
-    val carbMarkColor = AapsTheme.generalColors.cobPrediction
-    val bolusMarkLine = remember(markLabel, markFormatter) {
-        markerLine(Color(0xFFFF00FF), InvertedTriangleShape, 16.dp, markLabel, markFormatter)
+    val bolusMarkLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFE53935)), shape = TriangleShape), size = 28.dp)
+            )
+        )
     }
-    val carbMarkLine = remember(markLabel, markFormatter, carbMarkColor) {
-        markerLine(carbMarkColor, TriangleShape, 14.dp, markLabel, markFormatter)
+    val carbMarkLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF9800)), shape = TriangleShape), size = 28.dp)
+            )
+        )
     }
 
     val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, bolusMarkLine, carbMarkLine, normalizerLine) {
@@ -699,7 +702,9 @@ fun BgGraphCompose(
     val smbStack = remember(treatments, bgReadings, minTimestamp, graphDisplay.showSmbLabels) {
         if (!graphDisplay.showSmbLabels) return@remember emptyList()
         val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB && it.label.isNotEmpty() }
-        val stack = smbStackIndex(smbs.map { it.timestamp })
+        val times = smbs.map { it.timestamp }
+        val stack = smbStackIndex(times)
+        val columns = smbColumnTimes(times)
         smbs.mapIndexed { index, smb ->
             val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
             SmbStackItem(
@@ -708,6 +713,7 @@ fun BgGraphCompose(
                 stackIndex = stack[index],
                 anchorY = dot?.value,
                 color = isfColor(dot?.dominantIsf),
+                columnX = timestampToX(columns[index], minTimestamp),
             )
         }
     }
@@ -736,13 +742,31 @@ fun BgGraphCompose(
                 stackIndex = 0,
                 anchorY = lowMark,
                 color = isfColor(dot?.dominantIsf),
+                stemUnits = 1 + (((smb.amount - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
             )
         }
     }
+    val bolusText = rememberTextMeasurer()
+    val bolusStack = remember(treatments, minTimestamp, lowMark) {
+        val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
+        val stack = smbStackIndex(boluses.map { it.timestamp })
+        boluses.mapIndexed { index, bolus ->
+            SmbStackItem(
+                x = timestampToX(bolus.timestamp, minTimestamp),
+                label = bolus.label,
+                stackIndex = stack[index],
+                anchorY = lowMark,
+                color = Color(0xFFE53935),
+            )
+        }
+    }
+    val bolusNumbers = remember(bolusStack, bolusText) {
+        SmbStackLabels(bolusStack, bolusText, pinToBottom = false)
+    }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers)
     }
 
     // =========================================================================
@@ -759,6 +783,7 @@ fun BgGraphCompose(
     // Chart — multi layer
     // =========================================================================
 
+    val axisLock = remember { GraphAxisLock() }
     CartesianChartHost(
         chart = rememberCartesianChart(
             // Layer 0: BG (start axis, visible)
@@ -811,25 +836,33 @@ fun BgGraphCompose(
             getXStep = { _, _, _ -> 1.0 }
         ),
         modelProducer = modelProducer,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().then(
+            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
+        ),
         scrollState = scrollState,
         zoomState = zoomState
     )
 }
 
-private fun markerLine(
-    color: Color,
-    shape: Shape,
-    size: Dp,
-    label: TextComponent,
-    formatter: CartesianValueFormatter,
-): LineCartesianLayer.Line = LineCartesianLayer.Line(
-    fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
-    areaFill = null,
-    pointProvider = LineCartesianLayer.PointProvider.single(
-        LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = size)
-    ),
-    dataLabel = label,
-    dataLabelPosition = Position.Vertical.Top,
-    dataLabelValueFormatter = formatter,
-)
+/** One drag scrolls the graph sideways, or the page up and down. It does not do both at once. */
+private class GraphAxisLock : NestedScrollConnection {
+    private var orientation: Orientation? = null
+    private var lastMs = 0L
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        val now = System.currentTimeMillis()
+        if (now - lastMs > 80L) orientation = null
+        lastMs = now
+        val dx = abs(available.x)
+        val dy = abs(available.y)
+        if (orientation == null && (dx > 2f || dy > 2f)) {
+            orientation = if (dx >= dy) Orientation.Horizontal else Orientation.Vertical
+        }
+        return when (orientation) {
+            Orientation.Horizontal -> Offset(x = 0f, y = available.y)
+            Orientation.Vertical -> Offset(x = available.x, y = 0f)
+            else -> Offset.Zero
+        }
+    }
+}
