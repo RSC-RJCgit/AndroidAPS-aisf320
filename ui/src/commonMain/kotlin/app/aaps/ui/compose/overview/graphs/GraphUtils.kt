@@ -341,6 +341,7 @@ data class SmbStackItem(
     val color: Color = Color.White,
     val columnX: Double? = null,
     val stemUnits: Int = 1,
+    val belowAnchor: Boolean = false,
 )
 
 // Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
@@ -474,8 +475,12 @@ class SmbStackLabels(
                 } else {
                     layerBounds.bottom - layerBounds.height * ((item.anchorY - yRange.minY) / yLength).toFloat()
                 }
-                val top = anchor - layout.size.height - item.stackIndex * step
                 with(mutableDrawScope) {
+                    val top = if (item.belowAnchor) {
+                        anchor + 16.dp.toPx()
+                    } else {
+                        anchor - layout.size.height - item.stackIndex * step
+                    }
                     drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
                 }
             }

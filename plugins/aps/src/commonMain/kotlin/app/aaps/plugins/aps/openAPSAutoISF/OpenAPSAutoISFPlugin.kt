@@ -601,6 +601,43 @@ open class OpenAPSAutoISFPlugin(
             steps5 = stepSample?.steps5min ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
         )
+        applyHighBrakes(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            ukfDelta5 = ukf.delta5,
+            ukfDelta15 = ukf.delta15,
+            factors = autoIsfFactors,
+            iob = iobData.iob,
+            cob = mealData.mealCOB,
+            rawDelta5 = raw5,
+            statesOn = statesOn,
+        )
+        applyHigh6(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            statesOn = statesOn,
+        )
+        applyPodBoosts(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            livePump = activePlugin.activePump !is VirtualPump,
+        )
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
@@ -628,6 +665,21 @@ open class OpenAPSAutoISFPlugin(
             lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
             bg = glucoseStatus.glucose,
             delta = glucoseStatus.delta,
+        )
+        applyHypo50(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            steps30 = stepSample?.steps30min ?: 0,
+            steps60 = stepSample?.steps60min ?: 0,
+            livePump = activePlugin.activePump !is VirtualPump,
         )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
@@ -1705,6 +1757,16 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.EXTRA50, now)
             aapsLogger.debug(LTag.APS, "Extra50 block $extraBlock")
         }
+        applyShowerAndPodAge(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            profilePercent = profilePercent,
+            cob = cob,
+            statesOn = statesOn,
+        )
         val usualBlock = usual2Block(
             ready = runMarks.ready(RunMark.USUAL2, 5, now),
             profilePercent = profilePercent,
@@ -1718,7 +1780,7 @@ open class OpenAPSAutoISFPlugin(
             steps60 = steps60(now),
             steps180 = steps180(now),
             cob = cob,
-            earlyAfterShower = false,
+            earlyAfterShower = shower12OpensUsual2(runMarks.minutesAgo(RunMark.SHOWER12, now)),
         )
         if (usualBlock != null) {
             runMarks.mark(RunMark.USUAL2, now)
@@ -1947,6 +2009,554 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, 0L)
         runMarks.mark(RunMark.PERSISTENT_RISE, now)
         aapsLogger.debug(LTag.APS, "Persistent rise release, offset zero, ${clock.persistentMinutes.toInt()} min")
+    }
+
+    // Plateau brakes. Night and day set a 4.0 mmol target for 2 minutes and raise the pp weight.
+    // Dawn sets a 4.2 mmol target only. Each one waits 30 minutes after the others.
+    // A fast IOB rise, or a delta that leaves the plateau, cancels that brake's own target.
+    private suspend fun applyHighBrakes(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        ukfDelta5: Double?,
+        ukfDelta15: Double?,
+        factors: AutoIsfFactors,
+        iob: Double,
+        cob: Double,
+        rawDelta5: Double?,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        val active = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val twilightAt = preferences.get(LongNonKey.ApsAutoIsfHiBrkTwilightTtAt)
+        val plan = highBrakePlan(
+            HighBrakeSnapshot(
+                minuteOfDay = minuteOfDay,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+                ukfDelta5 = ukfDelta5,
+                ukfDelta15 = ukfDelta15,
+                factorsReady = factors.recorded,
+                duraIsf = factors.duraIsf,
+                acceIsf = factors.acceIsf,
+                bgIsf = factors.bgIsf,
+                ppIsf = factors.ppIsf,
+                hp1Mmol = rawDelta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) },
+                iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L),
+                ttLowMgdl = active?.lowTarget,
+                steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+                nightReady30 = runMarks.ready(RunMark.HIGH_EVE_NIGHT_BRAKE, 30, now),
+                dayReady30 = runMarks.ready(RunMark.HIGH_DAYTIME_BRAKE, 30, now),
+                twilightReady30 = runMarks.ready(RunMark.HI_BRK_TWILIGHT, 30, now),
+                twilightReady15 = runMarks.ready(RunMark.HI_BRK_TWILIGHT, 15, now),
+                nightMarkedWithin6 = runMarks.recent(RunMark.HIGH_EVE_NIGHT_BRAKE, 6, now),
+                dayMarkedWithin6 = runMarks.recent(RunMark.HIGH_DAYTIME_BRAKE, 6, now),
+                twilightOwn = twilightAt > 0L && active?.timestamp == twilightAt,
+                mj3OrNoMj = statesOn && (store.inState("MJ", "MJ3") || store.inState("MJ", "NOMJremains")),
+                lowBg50Recent = statesOn && store.inState("LowBG", "50recent"),
+                daytimeBypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now),
+            )
+        )
+        if (plan.cutNight || plan.cutDay || plan.cutTwilight) {
+            persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                timestamp = now,
+                action = Action.CANCEL_TT,
+                source = Sources.Automation,
+                note = "AutoISF: high brake cut",
+                listValues = emptyList(),
+            )
+            aapsLogger.debug(LTag.APS, "High brake cut night=${plan.cutNight} day=${plan.cutDay} twilight=${plan.cutTwilight}")
+        }
+        if (plan.fireNight || plan.fireDayHigh || plan.fireDayMid) {
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+            startBrakeTarget(now, 72.1, "AutoISF: high brake 4.0")
+            if (plan.fireNight) runMarks.mark(RunMark.HIGH_EVE_NIGHT_BRAKE, now)
+            if (plan.fireDayHigh || plan.fireDayMid) runMarks.mark(RunMark.HIGH_DAYTIME_BRAKE, now)
+            aapsLogger.debug(LTag.APS, "High brake fire night=${plan.fireNight} dayHigh=${plan.fireDayHigh} dayMid=${plan.fireDayMid}")
+        }
+        if (plan.fireTwilight) {
+            startBrakeTarget(now, 4.2 * 18.0, "AutoISF: twilight brake 4.2")
+            preferences.put(LongNonKey.ApsAutoIsfHiBrkTwilightTtAt, now)
+            runMarks.mark(RunMark.HI_BRK_TWILIGHT, now)
+            aapsLogger.debug(LTag.APS, "Twilight brake, 4.2 mmol for 2 min")
+        }
+    }
+
+    // PrepareSet50, GentleHypo, and Skittles run in that order so a same-loop drop is visible to the next one.
+    // 50SetRecent and 50pcMakes5.7 look at the profile percent from the start of the loop.
+    // PP50Off is not written yet, so its 15 minute lock on 50SetRecent stays open.
+    // ConnectPod only writes a log. The SMS is not sent.
+    private suspend fun applyHypo50(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps30: Int,
+        steps60: Int,
+        livePump: Boolean,
+    ) {
+        val store = states()
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        val lastConnection = activePlugin.activePump.lastDataTime.value
+        val minutesSinceConnection = if (lastConnection <= 0L) Long.MAX_VALUE else (now - lastConnection) / 60_000L
+        if (connectPodShouldFire(
+                ready = runMarks.ready(RunMark.CONNECT_POD, 20, now),
+                livePump = livePump,
+                minutesSinceConnection = minutesSinceConnection,
+                minuteOfDay = minuteOfDay,
+                cannulaHours = cannulaHours,
+            )
+        ) {
+            runMarks.mark(RunMark.CONNECT_POD, now)
+            aapsLogger.debug(LTag.APS, "ConnectPod: no pump data for $minutesSinceConnection min")
+        }
+        val prepare = prepareSet50Block(
+            ready = runMarks.ready(RunMark.PREPARE_SET50, 5, now),
+            profilePercent = profilePercent,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            iob = iob,
+            cob = cob,
+            steps30 = steps30,
+            minuteOfDay = minuteOfDay,
+        )
+        if (prepare != null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.07)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+            if (!writeNamedPercent(now, lowName, 50, 360, "AutoISF: prepare 50%")) {
+                aapsLogger.debug(LTag.APS, "PrepareSet50 did not write a profile switch")
+            }
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
+            runMarks.mark(RunMark.PREPARE_SET50, now)
+            aapsLogger.debug(LTag.APS, "PrepareSet50 block $prepare")
+        }
+        val ukf = ukfRawNow(now)
+        val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val gentle = gentleHypoBlock(
+            ready = runMarks.ready(RunMark.GENTLE_HYPO_RISK, 30, now),
+            acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            profilePercent = profilePercent,
+            ukfGlucose = ukf.glucose,
+            ukfDelta1 = ukf.delta1,
+            ukfDelta5 = ukf.delta5,
+            hp = hp,
+            steps60 = steps60,
+        )
+        if (gentle != null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.02)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+            runMarks.mark(RunMark.GENTLE_HYPO_RISK, now)
+            aapsLogger.debug(LTag.APS, "GentleHypoRisk block $gentle")
+        }
+        val skittles = skittlesBlock(
+            ready = runMarks.ready(RunMark.SKITTLES_HYPO_RISK, 5, now),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            iob = iob,
+            cob = cob,
+            profilePercent = profilePercent,
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+        )
+        if (skittles != null && persistenceLayer.getTemporaryTargetActiveAt(now) == null) {
+            startBrakeTarget(now, 102.7, "AutoISF: Skittles 5.7", 180)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.02)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+            val currentName = profileFunction.getOriginalProfileName().trim()
+            if (!writeNamedPercent(now, currentName, 100, 0, "AutoISF: Skittles reset to 100%")) {
+                aapsLogger.debug(LTag.APS, "Skittles did not write a profile switch")
+            }
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
+            runMarks.mark(RunMark.SKITTLES_HYPO_RISK, now)
+            aapsLogger.debug(LTag.APS, "Skittles block $skittles")
+        }
+        if (fiftySetRecentShouldFire(
+                ready = runMarks.ready(RunMark.SET50_RECENT, 5, now),
+                pp50OffReady = runMarks.ready(RunMark.PP50_OFF, 15, now),
+                profilePercent = profilePercent,
+                lowBgClear = statesOn && store.inState("LowBG", "NO50rec"),
+            )
+        ) {
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
+            runMarks.mark(RunMark.SET50_RECENT, now)
+            aapsLogger.debug(LTag.APS, "50SetRecent")
+        }
+        if (fiftyPcMakes57ShouldFire(
+                ready = runMarks.ready(RunMark.FIFTY_PC_MAKES_57, 10, now),
+                profilePercent = profilePercent,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                bg = bg,
+                delta = delta,
+            )
+        ) {
+            startBrakeTarget(now, 102.7, "AutoISF: 50% makes 5.7", 150)
+            runMarks.mark(RunMark.FIFTY_PC_MAKES_57, now)
+            aapsLogger.debug(LTag.APS, "50pc makes 5.7")
+        }
+    }
+
+    // Shower12 drops the IOB threshold to 12% before Usual2, so Usual2 can still raise it in the same loop.
+    // Pod2 and Pod1 run before a pod-change 130% switch, so they do not undo that switch.
+    // The phone alert and SMS are not sent. Pod2 still sets Profile to PP130 and switches to Standard.
+    // Bolus2 stays off. OldPod2 stays off.
+    private suspend fun applyShowerAndPodAge(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        val tt = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        val livePump = activePlugin.activePump !is VirtualPump
+        if (shower12ShouldFire(
+                ready = runMarks.ready(RunMark.SHOWER12, 5, now),
+                profilePercent = profilePercent,
+                iobThPercent = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+                steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+                minuteOfDay = minuteOfDay,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                steps60 = steps60(now),
+                cob = cob,
+                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                ttLowMgdl = tt?.lowTarget,
+            )
+        ) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
+            runMarks.mark(RunMark.SHOWER12, now)
+            aapsLogger.debug(LTag.APS, "Shower12 iobTH -> 12")
+        }
+        if (pod2ShouldFire(
+                ready = runMarks.ready(RunMark.POD2, 10, now),
+                livePump = livePump,
+                cannulaHours = cannulaHours,
+                minuteOfDay = minuteOfDay,
+            )
+        ) {
+            if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "PP130")
+            switchToStandardAtSharedTier(now)
+            runMarks.mark(RunMark.POD2, now)
+            aapsLogger.debug(LTag.APS, "Pod2 at 78 hours")
+        }
+        if (pod1ShouldFire(
+                ready = runMarks.ready(RunMark.POD1, 10, now),
+                livePump = livePump,
+                cannulaHours = cannulaHours,
+                minuteOfDay = minuteOfDay,
+            )
+        ) {
+            runMarks.mark(RunMark.POD1, now)
+            aapsLogger.debug(LTag.APS, "Pod1 at 79 hours")
+        }
+    }
+
+    // Pod change raises the profile to 130% for 60 minutes. RecentPod raises it to 130% for 5 minutes
+    // and sets 4.2 mmol. HighPP130Off puts a 110% or 130% profile back on Standard at 100%.
+    private suspend fun applyPodBoosts(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        livePump: Boolean,
+    ) {
+        val store = states()
+        val tt = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        val libreHigh = libreRawOver12Within(now, 48)
+        if (podChangeHighPp130ShouldFire(
+                ready = runMarks.ready(RunMark.POD_CHANGE_HIGH_PP130, 5, now),
+                livePump = livePump,
+                profilePercent = profilePercent,
+                libreOver12Recent = libreHigh,
+                profilePp130 = statesOn && store.inState("Profile", "PP130"),
+                minuteOfDay = minuteOfDay,
+                bg = bg,
+                delta = delta,
+                cannulaHours = cannulaHours,
+            )
+        ) {
+            if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "C100")
+            switchToStandardAtSharedTier(now)
+            if (writeProfilePercent(130, 60, "AutoISF: pod change 130%")) {
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                runMarks.mark(RunMark.POD_CHANGE_HIGH_PP130, now)
+                aapsLogger.debug(LTag.APS, "Pod change 130% for 60 min")
+            }
+        }
+        if (highPp130OffShouldFire(
+                ready = runMarks.ready(RunMark.HIGH_PP130_OFF, 2, now),
+                profilePercent = profilePercent,
+                bg = bg,
+                delta = delta,
+                ttActive = tt != null,
+            )
+        ) {
+            if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "C100")
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
+            switchToStandardAtSharedTier(now)
+            runMarks.mark(RunMark.HIGH_PP130_OFF, now)
+            aapsLogger.debug(LTag.APS, "PP130 off -> standard at 100%")
+        }
+        val acceNow = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+        val acceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+        if (recentPodOffShouldFire(
+                ready = runMarks.ready(RunMark.RECENT_POD_OFF, 5, now),
+                acceWeight = acceNow,
+                acceHigh = acceHigh,
+                ttActive = tt != null,
+                podBoostRecent = runMarks.recent(RunMark.RECENT_POD, 60, now) || runMarks.recent(RunMark.OLD_POD2, 60, now),
+            )
+        ) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+            switchToStandardAtSharedTier(now)
+            runMarks.mark(RunMark.RECENT_POD_OFF, now)
+            aapsLogger.debug(LTag.APS, "RecentPodOff -> accel normal, standard at 100%")
+        }
+        if (!recentPodShouldFire(
+                ready = runMarks.ready(RunMark.RECENT_POD, 5, now),
+                livePump = livePump,
+                profilePercent = profilePercent,
+                ttActive = tt != null,
+                libreOver12Recent = libreHigh,
+                bg = bg,
+                delta = delta,
+                cob = cob,
+                iob = iob,
+                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                cannulaHours = cannulaHours,
+            )
+        ) return
+        if (!writeProfilePercent(130, 5, "AutoISF: recent pod 130%")) {
+            aapsLogger.debug(LTag.APS, "RecentPod did not write a profile switch")
+            return
+        }
+        startBrakeTarget(now, 75.7, "AutoISF: recent pod 4.2", 5)
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
+        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+        runMarks.mark(RunMark.RECENT_POD, now)
+        aapsLogger.debug(LTag.APS, "RecentPod 130% and 4.2 mmol for 5 min")
+    }
+
+    private suspend fun writeNamedPercent(now: Long, name: String, percent: Int, minutes: Int, note: String): Boolean {
+        val trimmed = name.trim()
+        val values = listOf(ValueWithUnit.Percent(percent), ValueWithUnit.Minute(minutes))
+        if (trimmed.isBlank()) {
+            return profileFunction.createProfileSwitch(
+                durationInMinutes = minutes,
+                percentage = percent,
+                timeShiftInHours = 0,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = note,
+                listValues = values,
+            ) != null
+        }
+        val iCfg = profileFunction.getRunningOrRequestedICfg() ?: return false
+        val profileStore = profileRepository.profile.value ?: return false
+        if (profileStore.getSpecificProfile(trimmed) == null) return false
+        return profileFunction.createProfileSwitch(
+            profileStore = profileStore,
+            profileName = trimmed,
+            durationInMinutes = minutes,
+            percentage = percent,
+            timeShiftInHours = 0,
+            timestamp = now,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = note,
+            listValues = listOf(ValueWithUnit.SimpleString(trimmed)) + values,
+            iCfg = iCfg,
+        ) != null
+    }
+
+    private suspend fun writeProfilePercent(percent: Int, minutes: Int, note: String): Boolean =
+        profileFunction.createProfileSwitch(
+            durationInMinutes = minutes,
+            percentage = percent,
+            timeShiftInHours = 0,
+            action = Action.PROFILE_SWITCH,
+            source = Sources.Automation,
+            note = note,
+            listValues = listOf(ValueWithUnit.Percent(percent), ValueWithUnit.Minute(minutes)),
+        ) != null
+
+    // High6PP raises the profile to 120% for 5 minutes. High6PPoff puts it back on Standard at 100%.
+    // HighOldPod, on a fresh or stale pod, sets 5.0 mmol for 5 minutes and 110% for 5 minutes.
+    private suspend fun applyHigh6(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        val tt = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        if (high6ppOffShouldFire(
+                ready = runMarks.ready(RunMark.HIGH_6_PP_OFF, 5, now),
+                profilePercent = profilePercent,
+                minuteOfDay = minuteOfDay,
+                bg = bg,
+                delta = delta,
+                ttActive = tt != null,
+            )
+        ) {
+            switchToStandardAtSharedTier(now)
+            runMarks.mark(RunMark.HIGH_6_PP_OFF, now)
+            aapsLogger.debug(LTag.APS, "High6PPoff -> standard at 100%")
+            return
+        }
+        if (high6ppShouldFire(
+                ready = runMarks.ready(RunMark.HIGH_6_PP, 30, now),
+                profilePercent = profilePercent,
+                minuteOfDay = minuteOfDay,
+                libreOver12Recent = libreRawOver12Within(now, 48),
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+                ttLowMgdl = tt?.lowTarget,
+                cob = cob,
+            )
+        ) {
+            val switched = profileFunction.createProfileSwitch(
+                durationInMinutes = 5,
+                percentage = 120,
+                timeShiftInHours = 0,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = "AutoISF: High6PP 120%",
+                listValues = listOf(ValueWithUnit.Percent(120), ValueWithUnit.Minute(5)),
+            ) != null
+            if (switched) {
+                preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+                runMarks.mark(RunMark.HIGH_6_PP, now)
+                aapsLogger.debug(LTag.APS, "High6PP 120% for 5 min")
+            }
+            return
+        }
+        if (!highOldPodShouldFire(
+                ready = runMarks.ready(RunMark.HIGH_OLD_POD, 5, now),
+                profilePercent = profilePercent,
+                ttActive = tt != null,
+                noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                cannulaHours = cannulaHours,
+            )
+        ) return
+        startBrakeTarget(now, 90.1, "AutoISF: HighOldPod 5.0", 5)
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val switched = if (standardName.isBlank()) {
+            profileFunction.createProfileSwitch(
+                durationInMinutes = 5,
+                percentage = 110,
+                timeShiftInHours = 0,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = "AutoISF: HighOldPod 110%",
+                listValues = listOf(ValueWithUnit.Percent(110), ValueWithUnit.Minute(5)),
+            ) != null
+        } else {
+            val iCfg = profileFunction.getRunningOrRequestedICfg()
+            val profileStore = profileRepository.profile.value
+            if (iCfg == null || profileStore?.getSpecificProfile(standardName) == null) false
+            else profileFunction.createProfileSwitch(
+                profileStore = profileStore,
+                profileName = standardName,
+                durationInMinutes = 5,
+                percentage = 110,
+                timeShiftInHours = 0,
+                timestamp = now,
+                action = Action.PROFILE_SWITCH,
+                source = Sources.Automation,
+                note = "AutoISF: HighOldPod 110%",
+                listValues = listOf(
+                    ValueWithUnit.SimpleString(standardName),
+                    ValueWithUnit.Percent(110),
+                    ValueWithUnit.Minute(5),
+                ),
+                iCfg = iCfg,
+            ) != null
+        }
+        if (!switched) {
+            aapsLogger.debug(LTag.APS, "HighOldPod did not write a profile switch")
+            return
+        }
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
+        runMarks.mark(RunMark.HIGH_OLD_POD, now)
+        aapsLogger.debug(LTag.APS, "HighOldPod 5.0 mmol and 110% for 5 min")
+    }
+
+    private suspend fun libreRawOver12Within(now: Long, hours: Int): Boolean {
+        val from = now - hours * 3_600_000L
+        val limit = 12.0 * 18.0
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = false)
+            .any { (it.noise ?: 0.0) > limit }
+    }
+
+    private suspend fun startBrakeTarget(now: Long, targetMgdl: Double, note: String, minutes: Int = 2) {
+        if (persistenceLayer.getTemporaryTargetActiveAt(now) != null) return
+        persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = TT(
+                timestamp = now,
+                duration = T.mins(minutes.toLong()).msecs(),
+                reason = TT.Reason.AUTOMATION,
+                lowTarget = targetMgdl,
+                highTarget = targetMgdl
+            ),
+            action = Action.TT,
+            source = Sources.Automation,
+            note = note,
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                ValueWithUnit.Mgdl(targetMgdl),
+                ValueWithUnit.Minute(minutes)
+            )
+        )
     }
 
     // Align Low Current and Standard Current to the letter already in force, then switch to that Standard name.
@@ -2277,7 +2887,7 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // A site change under 2 hours with glucose over 9.0 mmol/L may open the day window at any hour.
-    // A Usual2 mark in the last 90 minutes opens that same window. Shower12 is not written, so that early path stays closed.
+    // A Usual2 mark in the last 90 minutes opens that same window.
     private suspend fun newPodHighBypass(now: Long, bg: Double): Boolean {
         val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return false
         val hours = (now - last.timestamp) / 3_600_000.0

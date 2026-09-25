@@ -443,12 +443,12 @@ fun BgGraphCompose(
 
         fun nearest(timestamp: Long): Double? =
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
-        val bolusDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
+        val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
         val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
-            nearest(bolus.timestamp)?.let { bolus.timestamp to (it - bolusDrop) }
+            nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
-            nearest(carb.timestamp)?.let { carb.timestamp to it }
+            nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
         rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange, bolusPoints, carbPoints)
     }
@@ -526,7 +526,7 @@ fun BgGraphCompose(
             fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
             areaFill = null,
             pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFE53935)), shape = TriangleShape), size = 28.dp)
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF2DFF)), shape = TriangleShape), size = 28.dp)
             )
         )
     }
@@ -746,6 +746,24 @@ fun BgGraphCompose(
             )
         }
     }
+    val carbDrop = if (lowMark > 30.0) 15.0 else 0.8
+    val carbLabels = remember(treatments, bgReadings, minTimestamp, carbDrop) {
+        treatments.carbs.mapNotNull { carb ->
+            val y = bgReadings.minByOrNull { abs(it.timestamp - carb.timestamp) }?.value ?: return@mapNotNull null
+            SmbStackItem(
+                x = timestampToX(carb.timestamp, minTimestamp),
+                label = carb.label,
+                stackIndex = 0,
+                anchorY = y - carbDrop,
+                color = Color(0xFFFF9800),
+                belowAnchor = true,
+            )
+        }
+    }
+    val carbText = rememberTextMeasurer()
+    val carbNumbers = remember(carbLabels, carbText) {
+        SmbStackLabels(carbLabels, carbText, pinToBottom = false)
+    }
     val bolusText = rememberTextMeasurer()
     val bolusStack = remember(treatments, minTimestamp, lowMark) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
@@ -765,8 +783,8 @@ fun BgGraphCompose(
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers)
     }
 
     // =========================================================================

@@ -3,7 +3,8 @@ package app.aaps.plugins.aps.openAPSAutoISF
 /**
  * Which Usual2 block fires, or null when none do.
  * Glucose and deltas are mg/dL. 99.1 is 5.5 mmol/L. 153.1 is 8.5 mmol/L. 18.0 is 1.0 mmol/L.
- * [earlyAfterShower] is the Shower12 path. This app does not write that mark, so the caller passes false.
+ * [earlyAfterShower] is true when Shower12 ran 15 minutes to 4 hours ago.
+ * Glucose over 7.0 mmol/L and a short delta over 0.10 mmol/L are still required here.
  * Block 1 wins, then block 2, then block 3.
  */
 internal fun usual2Block(

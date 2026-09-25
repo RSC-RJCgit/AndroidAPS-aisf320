@@ -110,6 +110,8 @@
     <string name="pref_summary_aps_tdd_factor_fallback">Used when the TDD factor switch is off. 1.0 leaves the dose unchanged.</string>
     <string name="pref_title_aps_bg_accel_weight_normal">Acceleration weight baseline</string>
     <string name="pref_summary_aps_bg_accel_weight_normal" comment="A weight from 0.00 to 1.00. Default 0.70. The live acceleration weight returns to this after a boost.">Resting acceleration weight. A raised live weight returns to this. Default 0.70.</string>
+    <string name="pref_title_aps_bg_accel_weight_high">Acceleration weight boost</string>
+    <string name="pref_summary_aps_bg_accel_weight_high" comment="A weight from 0.00 to 1.00. Default 0.95. RecentPod raises the live acceleration weight to this.">Boosted acceleration weight. RecentPod raises the live weight to this. Default 0.95.</string>
     <string name="pref_title_aps_iob_th_percent_normal">IOB threshold baseline</string>
     <string name="pref_summary_aps_iob_th_percent_normal" comment="A percent from 10 to 100. Default 70. Example: a live value of 71 returns to 70.">Resting IOB threshold. A raised live value returns to this. Default 70.</string>
     <string name="pref_title_aps_profile_percent_normal">Profile percent baseline</string>
