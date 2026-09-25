@@ -839,8 +839,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // restores exactly that. A re-fire while already active is a no-op -- the captured prior roles must
     // stay the ORIGINAL pre-escalation ones across repeated fires, not get overwritten by an intermediate
     // (already-escalated) state.
+    // True while a hypo alarm is recent AND an MJ cycle is still active -- exactly AlarmHypoRoleRevert's own trigger.
+    // Shared so the escalation below and that revert can never disagree about it.
+    private fun hypoRoleRevertConditionActive(): Boolean =
+        checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")
+
     private fun escalateToStuckHighTierC() {
         if (preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return
+        // 2026-09-25, per explicit request: no role escalation while the hypo-alarm revert condition holds. 25 Sep 16:02 (Live)
+        // StuckHighRescue escalated to Tier C (Profile150) and AlarmHypoRoleRevert reset the roles to Tier A in the SAME
+        // cycle; the revert only switches the running profile when it matches the role it replaces, and the escalation's
+        // switch had not landed yet on the real pump, so Live stayed on Profile150 (Virtual, 16:20, switched back within
+        // 0.6 s). The ratio/TT part of the rescue is unaffected; only the Tier C role/profile escalation is skipped,
+        // consistent with recent-hypo caution outweighing finishing a high-BG rescue (see LowBgTierAReset).
+        if (hypoRoleRevertConditionActive()) {
+            aapsLogger.debug(LTag.APS, "escalateToStuckHighTierC skipped: hypo-alarm revert condition active")
+            return
+        }
         val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
         val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
         val targetLow = resolveTieredProfileName(StringKey.ApsAutoIsfLow90ProfileName, StringKey.ApsAutoIsfLowProfileName)
@@ -8429,7 +8444,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // throttles/notifies) when a role is actually not already at its target, so this doesn't spam a
         // note every cycle while the alarm state persists.
         run {
-            if (checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")) {
+            if (hypoRoleRevertConditionActive()) {
                 resetStandardAndLowTiersToA(
                     reason = "AlarmHypoRoleRevert (hypo alarm during active MJ)",
                     note = "HypoRevert",
