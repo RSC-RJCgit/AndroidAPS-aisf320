@@ -28,7 +28,7 @@ fun VersionOverlay(
             else                                                                      -> colors.versionUncommitted
         }
         Text(
-            text = "UKF3426 (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
+            text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
             color = versionColor,
             fontSize = 10.sp,
             modifier = modifier.padding(top = 4.dp, end = 4.dp)
