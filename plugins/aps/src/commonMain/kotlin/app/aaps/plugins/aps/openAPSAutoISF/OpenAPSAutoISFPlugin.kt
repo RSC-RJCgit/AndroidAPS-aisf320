@@ -591,6 +591,16 @@ open class OpenAPSAutoISFPlugin(
             profilePercent = profile_percentage,
             statesOn = statesOn,
         )
+        applyPersistentRise(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            delta = glucoseStatus.delta,
+            bg = glucoseStatus.glucose,
+            tempTargetSet = isTempTarget,
+            statesOn = statesOn,
+            steps5 = stepSample?.steps5min ?: 0,
+            steps30 = stepSample?.steps30min ?: 0,
+        )
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
@@ -1890,6 +1900,53 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
         runMarks.mark(RunMark.BASAL_UP, now)
         aapsLogger.debug(LTag.APS, "BasalUp -> standard at 100%, acceleration weight 0.50")
+    }
+
+    // A mild rise with no SMB for 10 minutes clears a temp target and forces the target offset to 0.
+    // The clock keeps running when the release itself is not allowed. One SMB or a flat delta resets it.
+    private suspend fun applyPersistentRise(
+        now: Long,
+        minuteOfDay: Int,
+        delta: Double,
+        bg: Double,
+        tempTargetSet: Boolean,
+        statesOn: Boolean,
+        steps5: Int,
+        steps30: Int,
+    ) {
+        val holding = delta >= 1.8 && smbCount5(now) <= 0
+        val startedAt = preferences.get(LongNonKey.ApsAutoIsfPersistentRiseStartedAt)
+        val clock = persistentRiseClock(holding, startedAt, now)
+        if (clock.startedAt != startedAt) {
+            preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, clock.startedAt)
+        }
+        val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        if (!persistentRiseShouldFire(
+                ready = runMarks.ready(RunMark.PERSISTENT_RISE, 5, now),
+                boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled),
+                minuteOfDay = minuteOfDay,
+                daytimeBypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now),
+                holding = holding,
+                persistentMinutes = clock.persistentMinutes,
+                onLowCurrent = profileFunction.getOriginalProfileName() == lowName,
+                mjActive = statesOn && states().inState("MJ", "MJ active"),
+                steps5 = steps5,
+                steps30 = steps30,
+            )
+        ) return
+        if (tempTargetSet) {
+            persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                timestamp = now,
+                action = Action.CANCEL_TT,
+                source = Sources.Automation,
+                note = "AutoISF: persistent rise",
+                listValues = emptyList(),
+            )
+        }
+        preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
+        preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, 0L)
+        runMarks.mark(RunMark.PERSISTENT_RISE, now)
+        aapsLogger.debug(LTag.APS, "Persistent rise release, offset zero, ${clock.persistentMinutes.toInt()} min")
     }
 
     // Align Low Current and Standard Current to the letter already in force, then switch to that Standard name.

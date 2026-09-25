@@ -19,6 +19,7 @@ internal object RunMark {
     const val OVERNIGHT_DURA_RESCUE = "OvernightDuraRescue"
     const val HIGH_NIGHT = "HighNight00AM"
     const val BASAL_UP = "BasalUp"
+    const val PERSISTENT_RISE = "PersistentRiseRelease"
     const val ACTIVITY_PROF_50 = "ActivityProf50"
     const val ACTIVITY_OFF = "ActivityOff"
 }
