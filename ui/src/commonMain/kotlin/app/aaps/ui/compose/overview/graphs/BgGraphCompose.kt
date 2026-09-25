@@ -10,10 +10,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
 import app.aaps.core.data.configuration.Constants
@@ -24,6 +27,7 @@ import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -37,10 +41,12 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.common.Position
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
@@ -63,6 +69,9 @@ private const val SERIES_PRED_COB = "pred_cob"
 private const val SERIES_PRED_ACOB = "pred_acob"
 private const val SERIES_PRED_UAM = "pred_uam"
 private const val SERIES_PRED_ZT = "pred_zt"
+private const val SERIES_SMB = "smb"
+private const val SERIES_BOLUS = "bolus"
+private const val SERIES_CARBS = "carbs"
 
 /** All prediction series identifiers */
 private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_PRED_ACOB, SERIES_PRED_UAM, SERIES_PRED_ZT)
@@ -142,6 +151,8 @@ fun BgGraphCompose(
     val showActivity = SeriesType.ACTIVITY in bgOverlays
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
+    val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
+    val treatmentLabels = remember { mutableMapOf<Double, String>() }
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -204,7 +215,10 @@ fun BgGraphCompose(
         currentActivityData: ActivityGraphData,
         currentMinBgY: Double,
         currentMaxBgY: Double,
-        currentVisibleTimeRange: Pair<Long, Long>?
+        currentVisibleTimeRange: Pair<Long, Long>?,
+        smbPoints: List<Pair<Long, Double>>,
+        bolusPoints: List<Pair<Long, Double>>,
+        carbPoints: List<Pair<Long, Double>>,
     ) {
         val regularPoints = seriesRegistry[SERIES_REGULAR] ?: emptyList()
         val bucketedPoints = seriesRegistry[SERIES_BUCKETED] ?: emptyList()
@@ -256,6 +270,18 @@ fun BgGraphCompose(
                         activeSeries.add(predSeries)
                     }
                 }
+
+                fun addMarks(points: List<Pair<Long, Double>>, key: String) {
+                    if (points.isEmpty()) return
+                    val dataPoints = points
+                        .map { timestampToX(it.first, minTimestamp) to it.second }
+                        .sortedBy { it.first }
+                    series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                    activeSeries.add(key)
+                }
+                addMarks(smbPoints, SERIES_SMB)
+                addMarks(bolusPoints, SERIES_BOLUS)
+                addMarks(carbPoints, SERIES_CARBS)
 
                 // Normalizer series
                 series(x = normalizerX(maxX), y = NORMALIZER_Y)
@@ -369,7 +395,7 @@ fun BgGraphCompose(
         point.ukfValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
     } else emptyList()
 
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange) {
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
@@ -409,7 +435,25 @@ fun BgGraphCompose(
         startAxisRangeProvider.maxY = niceBgScale.max
         startAxisRangeProvider.yStep = niceBgScale.step
 
-        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange)
+        treatmentLabels.clear()
+        fun pin(base: Double, label: String): Double {
+            var key = base
+            while (treatmentLabels.containsKey(key)) key += 0.001
+            treatmentLabels[key] = label
+            return key
+        }
+        val low = chartConfig.lowMark
+        val drop = if (low > 30.0) 12.0 else 0.7
+        fun nearest(timestamp: Long): Double? =
+            bgReadings.minByOrNull { kotlin.math.abs(it.timestamp - timestamp) }?.value
+        val smbPoints = treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { it.timestamp to pin(low, it.label) }
+        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
+            nearest(bolus.timestamp)?.let { bolus.timestamp to pin(it - drop, bolus.label) }
+        }
+        val carbPoints = treatments.carbs.mapNotNull { carb ->
+            nearest(carb.timestamp)?.let { carb.timestamp to pin(it, carb.label) }
+        }
+        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange, smbPoints, bolusPoints, carbPoints)
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
@@ -478,7 +522,23 @@ fun BgGraphCompose(
         )
     }
 
-    val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, normalizerLine) {
+    val markLabel = rememberTextComponent(style = TextStyle(color = Color.White, fontSize = 10.sp))
+    val markFormatter = remember {
+        CartesianValueFormatter { _, value, _ -> treatmentLabels[value].orEmpty() }
+    }
+    val smbMarkColor = AapsTheme.elementColors.insulin
+    val carbMarkColor = AapsTheme.generalColors.cobPrediction
+    val smbMarkLine = remember(markLabel, markFormatter, smbMarkColor) {
+        markerLine(smbMarkColor, TriangleShape, 12.dp, markLabel, markFormatter)
+    }
+    val bolusMarkLine = remember(markLabel, markFormatter) {
+        markerLine(Color(0xFFFF00FF), InvertedTriangleShape, 16.dp, markLabel, markFormatter)
+    }
+    val carbMarkLine = remember(markLabel, markFormatter, carbMarkColor) {
+        markerLine(carbMarkColor, TriangleShape, 14.dp, markLabel, markFormatter)
+    }
+
+    val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, smbMarkLine, bolusMarkLine, carbMarkLine, normalizerLine) {
         buildList {
             if (SERIES_REGULAR in activeSeries) add(regularLine)
             if (SERIES_BUCKETED in activeSeries) add(bucketedLine)
@@ -489,6 +549,9 @@ fun BgGraphCompose(
             if (SERIES_PRED_ACOB in activeSeries) add(aCobPredLine)
             if (SERIES_PRED_UAM in activeSeries) add(uamPredLine)
             if (SERIES_PRED_ZT in activeSeries) add(ztPredLine)
+            if (SERIES_SMB in activeSeries) add(smbMarkLine)
+            if (SERIES_BOLUS in activeSeries) add(bolusMarkLine)
+            if (SERIES_CARBS in activeSeries) add(carbMarkLine)
             add(normalizerLine)
         }
     }
@@ -700,3 +763,20 @@ fun BgGraphCompose(
         zoomState = zoomState
     )
 }
+
+private fun markerLine(
+    color: Color,
+    shape: Shape,
+    size: Dp,
+    label: TextComponent,
+    formatter: CartesianValueFormatter,
+): LineCartesianLayer.Line = LineCartesianLayer.Line(
+    fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+    areaFill = null,
+    pointProvider = LineCartesianLayer.PointProvider.single(
+        LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = size)
+    ),
+    dataLabel = label,
+    dataLabelPosition = Position.Vertical.Top,
+    dataLabelValueFormatter = formatter,
+)

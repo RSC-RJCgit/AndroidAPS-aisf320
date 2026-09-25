@@ -135,7 +135,7 @@ class GraphConfigRepositoryImpl(
             val obj = Json.parseToJsonElement(json) as JsonObject
             val bgOverlays = overlaysFromJson(obj.array(KEY_BG_OVERLAYS), listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS))
             val iobOverlays = overlaysFromJson(obj.array(KEY_IOB_OVERLAYS), listOf(SeriesType.ACTIVITY))
-            val bgHeight = obj.height(KEY_BG_HEIGHT)
+            val bgHeight = obj.height(KEY_BG_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
             val iobHeight = obj.height(KEY_IOB_HEIGHT)
             val graphs = mutableListOf<SecondaryGraph>()
             for (raw in obj.array(KEY_SECONDARY_GRAPHS).orEmpty()) {
@@ -161,9 +161,9 @@ class GraphConfigRepositoryImpl(
         private fun JsonObject.array(key: String): JsonArray? = this[key] as? JsonArray
 
         /** A stored height, defaulted when absent and always brought inside the allowed range. */
-        private fun JsonObject.height(key: String): Int =
+        private fun JsonObject.height(key: String, max: Int = GraphConfig.MAX_GRAPH_HEIGHT_DP): Int =
             ((this[key] as? JsonPrimitive)?.let { runCatching { it.int }.getOrNull() } ?: GraphConfig.DEFAULT_GRAPH_HEIGHT_DP)
-                .coerceIn(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP, GraphConfig.MAX_GRAPH_HEIGHT_DP)
+                .coerceIn(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP, max)
 
         /** The series this element names, or null if it is not a name this version knows. */
         private fun JsonElement.seriesTypeOrNull(): SeriesType? =

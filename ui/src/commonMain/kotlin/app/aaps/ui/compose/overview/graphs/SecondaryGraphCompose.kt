@@ -146,6 +146,7 @@ fun SecondaryGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     activityOverlay: Boolean = false,
+    showSmbDoseLabels: Boolean = false,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -198,7 +199,7 @@ fun SecondaryGraphCompose(
     // Collect flows for primary series (includes share flow for DEV and BGI if together on the same graph with shareAxis true)
     val iobData = if (hasIob) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     val cobData = if (hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null
-    val treatmentData = if (hasIob || hasCob) viewModel.treatmentGraphFlow.collectAsStateWithLifecycle().value else null
+    val treatmentData = if (hasIob || hasCob || showSmbDoseLabels) viewModel.treatmentGraphFlow.collectAsStateWithLifecycle().value else null
     val absIobData = if (primaryType == SeriesType.ABS_IOB) viewModel.absIobGraphFlow.collectAsStateWithLifecycle().value else null
     val bgiData = if (SeriesType.BGI in primaryTypes) viewModel.bgiGraphFlow.collectAsStateWithLifecycle().value else null
     val deviationsData = if (SeriesType.DEVIATIONS in primaryTypes) viewModel.deviationsGraphFlow.collectAsStateWithLifecycle().value else null
@@ -447,7 +448,9 @@ fun SecondaryGraphCompose(
     // stale 0..1 axis until the next recomposition ("renders wrong, then fixes itself").
     val primarySeries = remember(
         processedDeviationLines, processedIob, processedIobTreatments, processedCob,
-        processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedActivityOverlay
+        processedCarbs, processedSimpleSeries, processedDevSlopeMin,         processedActivityOverlay,
+        showSmbDoseLabels,
+        treatmentData,
     ) {
         buildList {
             // Deviation lines (per-type step lines) — first so other series draw on top
@@ -491,6 +494,15 @@ fun SecondaryGraphCompose(
                 add(PrimarySeriesSpec(actHist.map { it.first }, actHist.map { it.second }, SeriesSlot.ActivityOverlay))
             if (actPred.isNotEmpty())
                 add(PrimarySeriesSpec(actPred.map { it.first }, actPred.map { it.second }, SeriesSlot.ActivityOverlay))
+            if (showSmbDoseLabels) {
+                val smbDoses = treatmentData?.boluses.orEmpty()
+                    .filter { it.bolusType == BolusType.SMB }
+                    .map { timestampToX(it.timestamp, minTimestamp) to it.amount }
+                val inRange = filterToRange(smbDoses, minX, maxX)
+                if (inRange.isNotEmpty()) {
+                    add(PrimarySeriesSpec(inRange.map { it.first }, inRange.map { it.second }, SeriesSlot.SmbDoseLabel))
+                }
+            }
         }
     }
     val hasPrimaryData = primarySeries.isNotEmpty()
@@ -567,7 +579,22 @@ fun SecondaryGraphCompose(
     val cobLineStyle = rememberCobLineStyles()
     val normalizerLine = remember { createNormalizerLine() }
 
-    val lines = remember(primarySeries, seriesColors, iobLineStyle, cobLineStyle, normalizerLine) {
+    val smbDoseFormatter = LocalDecimalFormatter.current
+    val smbDoseColor = AapsTheme.elementColors.insulin
+    val smbDoseLine = remember(smbDoseColor, smbDoseFormatter) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(smbDoseColor), shape = TriangleShape), size = 10.dp)
+            ),
+            dataLabel = TextComponent(textStyle = TextStyle(color = Color.White, fontSize = 10.sp)),
+            dataLabelPosition = Position.Vertical.Top,
+            dataLabelValueFormatter = CartesianValueFormatter { _, value, _ -> formatBolusLabel(value, smbDoseFormatter) }
+        )
+    }
+
+    val lines = remember(primarySeries, seriesColors, iobLineStyle, cobLineStyle, normalizerLine, smbDoseLine) {
         buildList {
             for (spec in primarySeries) {
                 add(
@@ -582,6 +609,7 @@ fun SecondaryGraphCompose(
                         SeriesSlot.CobLine          -> cobLineStyle.cobLine
                         SeriesSlot.FailoverDots     -> cobLineStyle.failoverDotsLine
                         SeriesSlot.CarbsMarker      -> cobLineStyle.carbsLine
+                        SeriesSlot.SmbDoseLabel     -> smbDoseLine
                         SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
                         SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
@@ -955,6 +983,7 @@ private sealed class SeriesSlot {
     data object CobLine : SeriesSlot()
     data object FailoverDots : SeriesSlot()
     data object CarbsMarker : SeriesSlot()
+    data object SmbDoseLabel : SeriesSlot()
     data class SimpleLine(val type: SeriesType) : SeriesSlot()
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()

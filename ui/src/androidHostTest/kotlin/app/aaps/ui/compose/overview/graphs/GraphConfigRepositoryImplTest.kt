@@ -81,6 +81,8 @@ class GraphConfigRepositoryImplTest {
 
         assertThat(restored.bgHeight).isEqualTo(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP)
         assertThat(restored.iobHeight).isEqualTo(GraphConfig.MAX_GRAPH_HEIGHT_DP)
+        val tallBg = GraphConfigRepositoryImpl.fromJson("""{"bgHeight":500}""")
+        assertThat(tallBg.bgHeight).isEqualTo(GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
     }
 
     @Test

@@ -382,6 +382,7 @@ fun GraphsSection(
                 selectedSeries = graphConfig.bgOverlays,
                 availableSeries = BG_OVERLAY_SERIES,
                 height = graphConfig.bgHeight,
+                maxHeight = GraphConfig.MAX_BG_GRAPH_HEIGHT_DP,
                 onHeightChange = { h ->
                     graphViewModel.updateGraphConfig(graphConfig.copy(bgHeight = h))
                 },
@@ -398,7 +399,10 @@ fun GraphsSection(
         Box(modifier = Modifier.offset(y = (-8).dp)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
-                seriesTypes = listOf(SeriesType.IOB),
+                seriesTypes = buildList {
+                    add(SeriesType.IOB)
+                    if (SeriesType.COB in graphConfig.iobOverlays) add(SeriesType.COB)
+                },
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,
@@ -430,7 +434,7 @@ fun GraphsSection(
             GraphSeriesBottomSheet(
                 title = stringResource(CoreUiStrings.iob) + " / " + stringResource(CoreUiStrings.basal_shortname),
                 selectedSeries = graphConfig.iobOverlays,
-                availableSeries = listOf(SeriesType.ACTIVITY),
+                availableSeries = listOf(SeriesType.ACTIVITY, SeriesType.COB),
                 height = graphConfig.iobHeight,
                 onHeightChange = { h ->
                     graphViewModel.updateGraphConfig(graphConfig.copy(iobHeight = h))
@@ -452,6 +456,7 @@ fun GraphsSection(
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
                     seriesTypes = secondary.series,
+                    showSmbDoseLabels = i == 0,
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
                     derivedTimeRange = derivedTimeRange,
@@ -632,6 +637,7 @@ private fun GraphSeriesBottomSheet(
     selectedSeries: List<SeriesType>,
     availableSeries: List<SeriesType>,
     height: Int,
+    maxHeight: Int = GraphConfig.MAX_GRAPH_HEIGHT_DP,
     onHeightChange: (Int) -> Unit,
     onToggle: (SeriesType) -> Unit,
     onDismiss: () -> Unit,
@@ -669,7 +675,7 @@ private fun GraphSeriesBottomSheet(
                 labelRef = CoreUiStrings.graph_height,
                 value = height.toDouble(),
                 onValueChange = { onHeightChange(it.toInt()) },
-                valueRange = GraphConfig.DEFAULT_GRAPH_HEIGHT_DP.toDouble()..GraphConfig.MAX_GRAPH_HEIGHT_DP.toDouble(),
+                valueRange = GraphConfig.DEFAULT_GRAPH_HEIGHT_DP.toDouble()..maxHeight.toDouble(),
                 step = 10.0,
                 formatAsInt = true
             )
