@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.chips
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import app.aaps.core.ui.compose.icons.IcTbrLow
 fun TbrChip(
     state: TbrState,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val iconColor = AapsTheme.elementColors.tempBasal
@@ -43,10 +45,14 @@ fun TbrChip(
     // (same guard IobChip uses).
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Surface(
-            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
             color = containerColor,
-            modifier = modifier.height(AapsSpacing.chipHeight)
+            modifier = modifier
+                .height(AapsSpacing.chipHeight)
+                .combinedClickable(
+                    onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
+                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+                )
         ) {
             Box(
                 contentAlignment = Alignment.Center,

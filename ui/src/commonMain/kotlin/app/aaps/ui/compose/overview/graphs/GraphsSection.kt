@@ -273,27 +273,19 @@ fun GraphsSection(
                 lastBgTimestamp = newTimestamp
                 return@LaunchedEffect
             }
-            // Reset scroll+zoom to their defaults by recreating the state objects (see
-            // bgViewportResetTrigger doc above) instead of driving VicoZoomState.zoom(Zoom) to an
-            // absolute target, which was found to land on the wrong zoom/scroll combination.
-            bgViewportResetTrigger++
+            // Keep the hours the user is already looking at. Only slide the window so the new
+            // reading stays at the live edge. Recreating the zoom state here used to snap back to 6 hours.
+            val showPredictions = SeriesType.PREDICTIONS in graphConfig.bgOverlays
+            val timeRange = derivedTimeRange
+            if (showPredictions && predictions.isNotEmpty() && timeRange != null) {
+                val (minTimestamp, _) = timeRange
+                val nowX = timestampToX(dateUtil.now(), minTimestamp)
+                bgScrollState.animateScroll(Scroll.Absolute.x(nowX + 120.0, bias = 1f))
+            } else {
+                bgScrollState.scroll(Scroll.Absolute.End)
+            }
         }
         lastBgTimestamp = newTimestamp
-    }
-
-    // After a reset, the recreated bgScrollState defaults to Scroll.Absolute.End. If predictions
-    // are visible, nudge it further so "now + 2h" sits at the right edge instead, leaving room to
-    // see the forecast — same positioning as before, reapplied once the fresh scrollState (a new
-    // instance, since it's keyed on bgViewportResetTrigger too) is composed and ready.
-    LaunchedEffect(bgViewportResetTrigger, bgScrollState) {
-        if (bgViewportResetTrigger == 0) return@LaunchedEffect
-        val showPredictions = SeriesType.PREDICTIONS in graphConfig.bgOverlays
-        val timeRange = derivedTimeRange
-        if (showPredictions && predictions.isNotEmpty() && timeRange != null) {
-            val (minTimestamp, _) = timeRange
-            val nowX = timestampToX(dateUtil.now(), minTimestamp)
-            bgScrollState.animateScroll(Scroll.Absolute.x(nowX + 120.0, bias = 1f))
-        }
     }
 
     // Correct secondary graph scroll drift — Vico may internally adjust scroll

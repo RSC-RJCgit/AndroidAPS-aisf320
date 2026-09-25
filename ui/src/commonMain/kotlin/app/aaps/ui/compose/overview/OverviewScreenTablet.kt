@@ -165,7 +165,9 @@ fun OverviewScreenTablet(
                             onLoadAutoIsfHistory = chipsViewModel::loadAutoIsfHistory,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
+                            onTbrChipLongClick = graphViewModel::onBasalIconLongPress,
                             onIobChipClick = onIobChipClick,
+                            onIobChipLongClick = graphViewModel::onIobIconLongPress,
                             commandsAllowed = commandsAllowed
                         )
                     }

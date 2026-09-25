@@ -700,9 +700,10 @@ fun SecondaryGraphCompose(
     val nowLineColor = MaterialTheme.colorScheme.onSurface
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
     val smbText = rememberTextMeasurer()
+    val graphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
     val bgDots = if (showSmbDoseLabels) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
-    val smbStack = remember(showSmbDoseLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
-        if (!showSmbDoseLabels) return@remember emptyList()
+    val smbStack = remember(showSmbDoseLabels, graphDisplay.showSmbLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
+        if (!showSmbDoseLabels || !graphDisplay.showSmbLabels) return@remember emptyList()
         val smbs = treatmentData?.boluses.orEmpty().filter { it.bolusType == BolusType.SMB && it.amount > 0.0 }
         val dots = bgDots
         val stack = smbStackIndex(smbs.map { it.timestamp })
@@ -723,7 +724,7 @@ fun SecondaryGraphCompose(
         }
     }
     val smbNumbers = remember(smbStack, smbText) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = true)
+        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f)
     }
     val decorations = remember(nowLine, visibleRangeReporter, smbNumbers) { listOf(nowLine, visibleRangeReporter, smbNumbers) }
 

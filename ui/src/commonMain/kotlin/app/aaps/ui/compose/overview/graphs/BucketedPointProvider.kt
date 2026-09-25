@@ -26,7 +26,8 @@ class BucketedPointProvider(
     acceColor: Color,
     bgColor: Color,
     ppColor: Color,
-    duraColor: Color
+    duraColor: Color,
+    uniformColor: Color? = null,
 ) : LineCartesianLayer.PointProvider {
 
     // Pre-build point components for efficiency
@@ -37,6 +38,7 @@ class BucketedPointProvider(
     private val bgPoint = createFilledPoint(bgColor)
     private val ppPoint = createFilledPoint(ppColor)
     private val duraPoint = createFilledPoint(duraColor)
+    private val uniformPoint = uniformColor?.let { createFilledPoint(it) }
 
     private fun createFilledPoint(color: Color) = LineCartesianLayer.Point(
         component = ShapeComponent(
@@ -50,6 +52,7 @@ class BucketedPointProvider(
         entry: LineCartesianLayerModel.Entry,
         extraStore: ExtraStore
     ): LineCartesianLayer.Point? {
+        uniformPoint?.let { return it }
         val dataPoint = dataLookup[entry.x] ?: return inRangePoint // fallback
         return factorPoint(dataPoint.dominantIsf) ?: when (dataPoint.range) {
             BgRange.LOW      -> lowPoint
@@ -80,7 +83,8 @@ class ReadingPointProvider(
     acceColor: Color,
     bgColor: Color,
     ppColor: Color,
-    duraColor: Color
+    duraColor: Color,
+    uniformColor: Color? = null,
 ) : LineCartesianLayer.PointProvider {
 
     private val regularPoint = LineCartesianLayer.Point(
@@ -96,6 +100,7 @@ class ReadingPointProvider(
     private val bgPoint = filled(bgColor)
     private val ppPoint = filled(ppColor)
     private val duraPoint = filled(duraColor)
+    private val uniformPoint = uniformColor?.let { filled(it) }
 
     private fun filled(color: Color) = LineCartesianLayer.Point(
         component = ShapeComponent(fill = Fill(color), shape = CircleShape),
@@ -106,6 +111,7 @@ class ReadingPointProvider(
         entry: LineCartesianLayerModel.Entry,
         extraStore: ExtraStore
     ): LineCartesianLayer.Point? {
+        uniformPoint?.let { return it }
         val factor = dataLookup[entry.x]?.dominantIsf ?: return regularPoint
         return when (factor) {
             DominantIsf.ACCE -> accePoint

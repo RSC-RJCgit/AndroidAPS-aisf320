@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextMeasurer
@@ -362,10 +363,48 @@ internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 10 * 60_000L
     return index.toList()
 }
 
+/** Arrow under a glucose point at an SMB time. The tip points up at the dot. */
+class SmbArrows(
+    private val items: List<SmbStackItem>,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            val yRange = ranges.getYRange(null)
+            val yLength = yRange.length
+            if (xStep == 0.0 || yLength == 0.0) return
+            for (item in items) {
+                val anchorY = item.anchorY ?: continue
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
+                val tip = dotY + 8f
+                val base = tip + 16f
+                val half = 6f
+                val path = Path().apply {
+                    moveTo(canvasX, tip)
+                    lineTo(canvasX + half, base)
+                    lineTo(canvasX - half, base)
+                    close()
+                }
+                with(mutableDrawScope) {
+                    drawPath(path, item.color)
+                    drawLine(item.color, Offset(canvasX, base), Offset(canvasX, base + 12f), strokeWidth = 2f)
+                }
+            }
+        }
+    }
+}
+
 class SmbStackLabels(
     private val items: List<SmbStackItem>,
     private val textMeasurer: TextMeasurer,
     private val pinToBottom: Boolean,
+    private val stackStepFraction: Float = 0.6f,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
@@ -381,7 +420,7 @@ class SmbStackLabels(
                     scroll
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
                 val layout = textMeasurer.measure(item.label, style)
-                val step = layout.size.height * 0.9f
+                val step = layout.size.height * stackStepFraction
                 val yRange = ranges.getYRange(null)
                 val yLength = yRange.length
                 val anchor = if (pinToBottom || item.anchorY == null || yLength == 0.0) {

@@ -35,6 +35,16 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
+/** What a long press on the basal-rate icon or the IOB icon shows on the main graph. */
+@Immutable
+data class GraphDisplay(
+    val basalToggleIndex: Int = 0,
+    val showSmbLabels: Boolean = true,
+) {
+    val showSmbArrows: Boolean get() = basalToggleIndex == 0
+    val uniformGreenBg: Boolean get() = basalToggleIndex == 2
+}
+
 /**
  * ViewModel for Overview graphs (Compose/Vico version).
  *
@@ -70,6 +80,19 @@ class GraphViewModel(
          *   remaining hours empty.
          */
         fun create(cache: OverviewDataCache, fullWindow: Boolean): GraphViewModel
+    }
+
+    private val _graphDisplay = MutableStateFlow(GraphDisplay())
+    val graphDisplay: StateFlow<GraphDisplay> = _graphDisplay.asStateFlow()
+
+    /** Basal-rate icon: arrows on, arrows off, then plain green dots. */
+    fun onBasalIconLongPress() {
+        _graphDisplay.update { it.copy(basalToggleIndex = (it.basalToggleIndex + 1) % 3) }
+    }
+
+    /** IOB icon: show or hide the SMB numbers, and go back to coloured dots with arrows. */
+    fun onIobIconLongPress() {
+        _graphDisplay.update { it.copy(showSmbLabels = !it.showSmbLabels, basalToggleIndex = 0) }
     }
 
     // Chart config - updates when high/low mark preferences change
