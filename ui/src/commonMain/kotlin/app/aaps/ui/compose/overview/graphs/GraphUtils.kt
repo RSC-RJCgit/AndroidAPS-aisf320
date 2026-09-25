@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
@@ -341,7 +342,7 @@ data class SmbStackItem(
 )
 
 // Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
-internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 10 * 60_000L): List<Int> {
+internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Int> {
     if (timestamps.isEmpty()) return emptyList()
     val order = timestamps.indices.sortedBy { timestamps[it] }
     val index = IntArray(timestamps.size)
@@ -363,27 +364,35 @@ internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 10 * 60_000L
     return index.toList()
 }
 
-/** Arrow under a glucose point at an SMB time. The tip points up at the dot. */
+/** Arrow at an SMB time. The tip points up. [pinToBottom] sits it on the bottom edge of the graph. */
 class SmbArrows(
     private val items: List<SmbStackItem>,
+    private val pinToBottom: Boolean = false,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
         with(context) {
             val xStep = ranges.xStep
-            val yRange = ranges.getYRange(null)
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
             val yLength = yRange.length
             if (xStep == 0.0 || yLength == 0.0) return
             for (item in items) {
-                val anchorY = item.anchorY ?: continue
                 val canvasX = layerBounds.left +
                     layerDimensions.startPadding +
                     layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
                     scroll
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
-                val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
-                val tip = dotY + 8f
-                val base = tip + 16f
+                val tip: Float
+                val base: Float
+                if (pinToBottom) {
+                    base = layerBounds.bottom - 2f
+                    tip = base - 16f
+                } else {
+                    val anchorY = item.anchorY ?: continue
+                    val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
+                    tip = dotY + 10f
+                    base = tip + 16f
+                }
                 val half = 6f
                 val path = Path().apply {
                     moveTo(canvasX, tip)
@@ -421,7 +430,7 @@ class SmbStackLabels(
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
                 val layout = textMeasurer.measure(item.label, style)
                 val step = layout.size.height * stackStepFraction
-                val yRange = ranges.getYRange(null)
+                val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
                 val yLength = yRange.length
                 val anchor = if (pinToBottom || item.anchorY == null || yLength == 0.0) {
                     layerBounds.bottom - 4f

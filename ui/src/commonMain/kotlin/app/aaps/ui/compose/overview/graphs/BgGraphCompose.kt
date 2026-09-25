@@ -740,7 +740,7 @@ fun BgGraphCompose(
         }
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
-    val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows) }
+    val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
     val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks) {
         listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks)
     }

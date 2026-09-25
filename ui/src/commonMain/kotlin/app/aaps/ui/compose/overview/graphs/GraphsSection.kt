@@ -60,6 +60,7 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 
 /**
@@ -239,8 +240,9 @@ fun GraphsSection(
         sec4scroll, sec4zoom
     ) {
         var initialValue = true
+        var lastZoom = Float.NaN
         snapshotFlow { bgScrollState.value to bgZoomState.value }
-            .debounce(30) // Wait for gesture to settle
+            .conflate()
             .collect { (scroll, zoom) ->
                 if (initialValue) {
                     initialValue = false
@@ -248,11 +250,12 @@ fun GraphsSection(
                     graphViewModel.onGraphInteraction()
                 }
                 val count = activeCount
-                // Sync zoom first, then scroll (order matters for proper positioning)
-                beltZoomState.zoom(Zoom.fixed(zoom))
-                iobZoomState.zoom(Zoom.fixed(zoom))
-                for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
-                delay(10)
+                if (zoom != lastZoom) {
+                    lastZoom = zoom
+                    beltZoomState.zoom(Zoom.fixed(zoom))
+                    iobZoomState.zoom(Zoom.fixed(zoom))
+                    for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
+                }
                 beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
                 iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
                 for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
@@ -446,7 +449,7 @@ fun GraphsSection(
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
                     seriesTypes = secondary.series,
-                    showSmbDoseLabels = i == 0,
+                    showSmbDoseLabels = false,
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
                     derivedTimeRange = derivedTimeRange,
