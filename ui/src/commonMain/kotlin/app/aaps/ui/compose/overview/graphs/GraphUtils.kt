@@ -8,6 +8,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -326,6 +331,73 @@ class NowLine(
  * Remember a [NowLine] decoration for the current time.
  * @param nowTimestamp current time in millis — pass a ticker value so the line updates periodically
  */
+data class SmbStackItem(
+    val x: Double,
+    val label: String,
+    val stackIndex: Int,
+    val anchorY: Double? = null,
+    val color: Color = Color.White,
+)
+
+// Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
+internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 10 * 60_000L): List<Int> {
+    if (timestamps.isEmpty()) return emptyList()
+    val order = timestamps.indices.sortedBy { timestamps[it] }
+    val index = IntArray(timestamps.size)
+    var anchor = Long.MIN_VALUE
+    var bucketStart = 0
+    fun close(end: Int) {
+        val count = end - bucketStart
+        for (i in 0 until count) index[order[bucketStart + i]] = count - i - 1
+    }
+    for (pos in order.indices) {
+        val time = timestamps[order[pos]]
+        if (anchor != Long.MIN_VALUE && time - anchor >= windowMs) {
+            close(pos)
+            bucketStart = pos
+        }
+        if (anchor == Long.MIN_VALUE || time - anchor >= windowMs) anchor = time
+    }
+    close(order.size)
+    return index.toList()
+}
+
+class SmbStackLabels(
+    private val items: List<SmbStackItem>,
+    private val textMeasurer: TextMeasurer,
+    private val pinToBottom: Boolean,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            for (item in items) {
+                if (item.label.isEmpty()) continue
+                val style = TextStyle(color = item.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                val layout = textMeasurer.measure(item.label, style)
+                val step = layout.size.height * 0.9f
+                val yRange = ranges.getYRange(null)
+                val yLength = yRange.length
+                val anchor = if (pinToBottom || item.anchorY == null || yLength == 0.0) {
+                    layerBounds.bottom - 4f
+                } else {
+                    layerBounds.bottom - layerBounds.height * ((item.anchorY - yRange.minY) / yLength).toFloat()
+                }
+                val top = anchor - layout.size.height - item.stackIndex * step
+                with(mutableDrawScope) {
+                    drawText(layout, topLeft = Offset(canvasX - layout.size.width / 2f, top))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun rememberNowLine(minTimestamp: Long, nowTimestamp: Long, color: Color): NowLine {
     return remember(minTimestamp, nowTimestamp, color) {

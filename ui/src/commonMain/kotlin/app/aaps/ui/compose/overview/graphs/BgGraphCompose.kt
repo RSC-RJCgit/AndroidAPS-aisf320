@@ -15,10 +15,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
@@ -28,6 +30,7 @@ import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BolusType
+import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -445,7 +448,7 @@ fun BgGraphCompose(
         val low = chartConfig.lowMark
         val drop = if (low > 30.0) 12.0 else 0.7
         fun nearest(timestamp: Long): Double? =
-            bgReadings.minByOrNull { kotlin.math.abs(it.timestamp - timestamp) }?.value
+            bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
         val smbPoints = treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { it.timestamp to pin(low, it.label) }
         val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to pin(it - drop, bolus.label) }
@@ -528,8 +531,14 @@ fun BgGraphCompose(
     }
     val smbMarkColor = AapsTheme.elementColors.insulin
     val carbMarkColor = AapsTheme.generalColors.cobPrediction
-    val smbMarkLine = remember(markLabel, markFormatter, smbMarkColor) {
-        markerLine(smbMarkColor, TriangleShape, 12.dp, markLabel, markFormatter)
+    val smbMarkLine = remember(smbMarkColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(smbMarkColor), shape = TriangleShape), size = 12.dp)
+            )
+        )
     }
     val bolusMarkLine = remember(markLabel, markFormatter) {
         markerLine(Color(0xFFFF00FF), InvertedTriangleShape, 16.dp, markLabel, markFormatter)
@@ -690,7 +699,32 @@ fun BgGraphCompose(
         )
     }
 
-    val decorations = remember(inRangeBox, nowLine) { listOf(inRangeBox, nowLine) }
+    fun isfColor(kind: DominantIsf?): Color = when (kind) {
+        DominantIsf.ACCE -> acceColor
+        DominantIsf.BG   -> bgIsfColor
+        DominantIsf.PP   -> ppColor
+        DominantIsf.DURA -> duraColor
+        else             -> smbMarkColor
+    }
+    val smbText = rememberTextMeasurer()
+    val smbStack = remember(treatments, bgReadings, minTimestamp) {
+        val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB && it.label.isNotEmpty() }
+        val stack = smbStackIndex(smbs.map { it.timestamp })
+        smbs.mapIndexed { index, smb ->
+            val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label,
+                stackIndex = stack[index],
+                anchorY = dot?.value,
+                color = isfColor(dot?.dominantIsf),
+            )
+        }
+    }
+    val smbNumbers = remember(smbStack, smbText, smbMarkColor) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = false)
+    }
+    val decorations = remember(inRangeBox, nowLine, smbNumbers) { listOf(inRangeBox, nowLine, smbNumbers) }
 
     // =========================================================================
     // Range providers — hoisted out of rememberCartesianChart so keys are re-evaluated on recomposition

@@ -399,10 +399,8 @@ fun GraphsSection(
         Box(modifier = Modifier.offset(y = (-8).dp)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
-                seriesTypes = buildList {
-                    add(SeriesType.IOB)
-                    if (SeriesType.COB in graphConfig.iobOverlays) add(SeriesType.COB)
-                },
+                seriesTypes = listOf(SeriesType.IOB),
+                cobOverlay = SeriesType.COB in graphConfig.iobOverlays,
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,

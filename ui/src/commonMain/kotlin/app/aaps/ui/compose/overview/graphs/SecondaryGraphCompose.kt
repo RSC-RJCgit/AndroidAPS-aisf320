@@ -16,14 +16,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.abs
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.overview.graph.BolusType
+import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.DeviationType
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -146,6 +149,7 @@ fun SecondaryGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     activityOverlay: Boolean = false,
+    cobOverlay: Boolean = false,
     showSmbDoseLabels: Boolean = false,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -199,6 +203,7 @@ fun SecondaryGraphCompose(
     // Collect flows for primary series (includes share flow for DEV and BGI if together on the same graph with shareAxis true)
     val iobData = if (hasIob) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     val cobData = if (hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null
+    val cobOverlayData = if (cobOverlay && hasIob && !hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null
     val treatmentData = if (hasIob || hasCob || showSmbDoseLabels) viewModel.treatmentGraphFlow.collectAsStateWithLifecycle().value else null
     val absIobData = if (primaryType == SeriesType.ABS_IOB) viewModel.absIobGraphFlow.collectAsStateWithLifecycle().value else null
     val bgiData = if (SeriesType.BGI in primaryTypes) viewModel.bgiGraphFlow.collectAsStateWithLifecycle().value else null
@@ -370,6 +375,14 @@ fun SecondaryGraphCompose(
         val pts = processStepPoints(basalData.profileBasal, minTimestamp, minX, maxX)
         pts.map { (x, y) -> x to -y } // negate: y=0 at top, -maxBasal at bottom
     }
+    fun flipBasal(points: List<GraphDataPoint>): List<Pair<Double, Double>> {
+        if (!hasRealTimeRange || basalData == null) return emptyList()
+        return processStepPoints(points, minTimestamp, minX, maxX).map { (x, y) -> x to -y }
+    }
+    val processedAcceBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.acceTemp.orEmpty()) }
+    val processedBgBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.bgTemp.orEmpty()) }
+    val processedPpBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.ppTemp.orEmpty()) }
+    val processedDuraBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.duraTemp.orEmpty()) }
     val processedBasalActual = remember(basalData, stableTimeRange) {
         if (!hasRealTimeRange || basalData == null) return@remember emptyList()
         val pts = processStepPoints(basalData.actualBasal, minTimestamp, minX, maxX)
@@ -392,6 +405,16 @@ fun SecondaryGraphCompose(
             .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scale) }
             .let { filterToRange(it, minX, maxX) }
         hist to pred
+    }
+
+    // COB drawn on the IOB axis so the basal columns stay. Scaled like the activity overlay.
+    val processedCobOverlay = remember(cobOverlay, hasIob, cobOverlayData, processedIob, stableTimeRange) {
+        if (!hasRealTimeRange || !cobOverlay || !hasIob || cobOverlayData == null) return@remember emptyList()
+        val pts = processPoints(cobOverlayData.cob, minTimestamp, minX, maxX)
+        val maxCob = pts.maxOfOrNull { it.second }?.coerceAtLeast(0.1) ?: return@remember emptyList()
+        val iobMaxY = processedIob.maxOfOrNull { it.second }?.coerceAtLeast(0.1) ?: 0.1
+        val scale = iobMaxY * 0.5 / maxCob
+        pts.map { it.first to it.second * scale }
     }
 
     // Process secondary (right axis) series
@@ -448,7 +471,8 @@ fun SecondaryGraphCompose(
     // stale 0..1 axis until the next recomposition ("renders wrong, then fixes itself").
     val primarySeries = remember(
         processedDeviationLines, processedIob, processedIobTreatments, processedCob,
-        processedCarbs, processedSimpleSeries, processedDevSlopeMin,         processedActivityOverlay,
+        processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedActivityOverlay,
+        processedCobOverlay,
         showSmbDoseLabels,
         treatmentData,
     ) {
@@ -494,15 +518,8 @@ fun SecondaryGraphCompose(
                 add(PrimarySeriesSpec(actHist.map { it.first }, actHist.map { it.second }, SeriesSlot.ActivityOverlay))
             if (actPred.isNotEmpty())
                 add(PrimarySeriesSpec(actPred.map { it.first }, actPred.map { it.second }, SeriesSlot.ActivityOverlay))
-            if (showSmbDoseLabels) {
-                val smbDoses = treatmentData?.boluses.orEmpty()
-                    .filter { it.bolusType == BolusType.SMB }
-                    .map { timestampToX(it.timestamp, minTimestamp) to it.amount }
-                val inRange = filterToRange(smbDoses, minX, maxX)
-                if (inRange.isNotEmpty()) {
-                    add(PrimarySeriesSpec(inRange.map { it.first }, inRange.map { it.second }, SeriesSlot.SmbDoseLabel))
-                }
-            }
+            if (processedCobOverlay.isNotEmpty())
+                add(PrimarySeriesSpec(processedCobOverlay.map { it.first }, processedCobOverlay.map { it.second }, SeriesSlot.CobLine))
         }
     }
     val hasPrimaryData = primarySeries.isNotEmpty()
@@ -517,8 +534,13 @@ fun SecondaryGraphCompose(
         processedCarbs,
         processedBasalProfile,
         processedBasalActual,
+        processedAcceBasal,
+        processedBgBasal,
+        processedPpBasal,
+        processedDuraBasal,
         processedSecondary,
         processedActivityOverlay,
+        processedCobOverlay,
         maxX,
         visibleMinX,
         visibleMaxX
@@ -549,6 +571,14 @@ fun SecondaryGraphCompose(
                     } else {
                         series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     }
+                    fun addFactor(points: List<Pair<Double, Double>>) {
+                        if (points.size >= 2) series(x = points.map { it.first }, y = points.map { it.second })
+                        else series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    }
+                    addFactor(processedAcceBasal)
+                    addFactor(processedBgBasal)
+                    addFactor(processedPpBasal)
+                    addFactor(processedDuraBasal)
                 }
             } else if (isDualAxis) {
                 lineModel {
@@ -643,8 +673,22 @@ fun SecondaryGraphCompose(
             interpolator = Square
         )
     }
-    val basalLines = remember(basalActualLine, basalProfileLine) {
-        listOf(basalActualLine, basalProfileLine)
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
+    fun coloredBasal(color: Color) = LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
+        areaFill = LineCartesianLayer.AreaFill.single(Fill(color.copy(alpha = 0.7f))),
+        interpolator = Square
+    )
+    val acceBasalLine = remember(acceColor) { coloredBasal(acceColor) }
+    val bgBasalLine = remember(bgIsfColor) { coloredBasal(bgIsfColor) }
+    val ppBasalLine = remember(ppColor) { coloredBasal(ppColor) }
+    val duraBasalLine = remember(duraColor) { coloredBasal(duraColor) }
+    val basalLines = remember(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine) {
+        listOf(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine)
     }
 
     // =========================================================================
@@ -655,7 +699,33 @@ fun SecondaryGraphCompose(
     val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp)
     val nowLineColor = MaterialTheme.colorScheme.onSurface
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
-    val decorations = remember(nowLine, visibleRangeReporter) { listOf(nowLine, visibleRangeReporter) }
+    val smbText = rememberTextMeasurer()
+    val bgDots = if (showSmbDoseLabels) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
+    val smbStack = remember(showSmbDoseLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
+        if (!showSmbDoseLabels) return@remember emptyList()
+        val smbs = treatmentData?.boluses.orEmpty().filter { it.bolusType == BolusType.SMB && it.amount > 0.0 }
+        val dots = bgDots
+        val stack = smbStackIndex(smbs.map { it.timestamp })
+        smbs.mapIndexed { index, smb ->
+            val kind = dots.minByOrNull { abs(it.timestamp - smb.timestamp) }?.dominantIsf
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label.ifBlank { smb.amount.toString() },
+                stackIndex = stack[index],
+                color = when (kind) {
+                    DominantIsf.ACCE -> acceColor
+                    DominantIsf.BG   -> bgIsfColor
+                    DominantIsf.PP   -> ppColor
+                    DominantIsf.DURA -> duraColor
+                    else             -> Color.White
+                },
+            )
+        }
+    }
+    val smbNumbers = remember(smbStack, smbText) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = true)
+    }
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers) { listOf(nowLine, visibleRangeReporter, smbNumbers) }
 
     // Union of Y values across all primary-layer series (IOB, COB, simple series, DevSlope-min,
     // deviation lines), windowed to the visible scroll/zoom range — computed once here since the
