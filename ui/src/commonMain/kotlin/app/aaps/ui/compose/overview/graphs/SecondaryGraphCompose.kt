@@ -186,17 +186,26 @@ fun SecondaryGraphCompose(
     // Collect data flows — only for selected series types
     // =========================================================================
 
-    // Primary series = left axis (orderedTypes[0]), secondary series = right axis (orderedTypes[1])
+    // Primary series = left axis. Up to two more lines can share that axis when they use the
+    // same units, or the second line can take the right axis.
     val primaryType = orderedTypes[0]
     val secondaryType = orderedTypes.getOrNull(1)
-
-    // Specific case: BGI and DEVIATIONS share the same mg/dL unit and should share the vertical scale
-    val shareAxis = (primaryType == SeriesType.BGI && secondaryType == SeriesType.DEVIATIONS) ||
-        (primaryType == SeriesType.DEVIATIONS && secondaryType == SeriesType.BGI) ||
-        (primaryType in AUTO_ISF_SERIES_TYPES && secondaryType in AUTO_ISF_SERIES_TYPES)
-
+    val thirdType = orderedTypes.getOrNull(2)
+    val shareAxis = orderedTypes.size >= 2 && (
+        orderedTypes.all { it in AUTO_ISF_SERIES_TYPES } ||
+            orderedTypes.all { it == SeriesType.BGI || it == SeriesType.DEVIATIONS }
+        )
     val isDualAxis = secondaryType != null && !shareAxis
-    val primaryTypes = if (shareAxis) orderedTypes else listOf(primaryType)
+    val primaryTypes = when {
+        shareAxis -> orderedTypes
+        thirdType != null && thirdType in AUTO_ISF_SERIES_TYPES && primaryType in AUTO_ISF_SERIES_TYPES ->
+            listOf(primaryType, thirdType)
+        thirdType != null &&
+            (thirdType == SeriesType.BGI || thirdType == SeriesType.DEVIATIONS) &&
+            (primaryType == SeriesType.BGI || primaryType == SeriesType.DEVIATIONS) ->
+            listOf(primaryType, thirdType)
+        else -> listOf(primaryType) + listOfNotNull(thirdType)
+    }
 
     val hasIob = primaryType == SeriesType.IOB
     val hasCob = primaryType == SeriesType.COB
@@ -211,8 +220,7 @@ fun SecondaryGraphCompose(
     val deviationsData = if (SeriesType.DEVIATIONS in primaryTypes) viewModel.deviationsGraphFlow.collectAsStateWithLifecycle().value else null
     val ratioData = if (primaryType == SeriesType.SENSITIVITY) viewModel.ratioGraphFlow.collectAsStateWithLifecycle().value else null
     val varSensData = if (primaryType == SeriesType.VAR_SENSITIVITY) viewModel.varSensGraphFlow.collectAsStateWithLifecycle().value else null
-    val needsAutoIsf = primaryType in AUTO_ISF_SERIES_TYPES || secondaryType in AUTO_ISF_SERIES_TYPES ||
-        primaryType == SeriesType.IOB_TH || secondaryType == SeriesType.IOB_TH
+    val needsAutoIsf = orderedTypes.any { it in AUTO_ISF_SERIES_TYPES || it == SeriesType.IOB_TH }
     val autoIsfData = if (needsAutoIsf) viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value else null
     val devSlopeData = if (primaryType == SeriesType.DEV_SLOPE) viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value else null
     val hrData = if (primaryType == SeriesType.HEART_RATE) viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value else null
@@ -1363,7 +1371,7 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
         )
         SeriesType.FINAL_ISF -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
-            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 4.dp),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 2.dp),
             areaFill = null
         )
         // Dashed, same weight as the UK IOB threshold line.

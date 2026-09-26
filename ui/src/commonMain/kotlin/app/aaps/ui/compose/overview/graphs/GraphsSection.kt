@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -158,15 +159,15 @@ fun GraphsSection(
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
     // These are always created to keep Compose's remember slots stable
-    val sec0scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec0scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec0zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec1scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec1scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec1zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec2scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec2scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec2zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec3scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec3scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec3zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec4scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec4scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec4zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
@@ -205,7 +206,7 @@ fun GraphsSection(
 
     // Treatment belt graph - non-interactive, synced from BG
     val beltScrollState = rememberVicoScrollState(
-        scrollEnabled = false,
+        scrollEnabled = true,
         initialScroll = Scroll.Absolute.End
     )
     val beltZoomState = rememberVicoZoomState(
@@ -214,7 +215,7 @@ fun GraphsSection(
     )
 
     // Fixed IOB graph - non-interactive, synced from BG
-    val iobScrollState = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val iobScrollState = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -301,6 +302,7 @@ fun GraphsSection(
     // reset, otherwise this keeps comparing secondary graphs against a stale, abandoned pre-reset
     // reference forever and fires wrong corrections (the actual cause of the "dancing" regression
     // in the first attempt at this feature).
+    var lastLeaderScroll by remember { mutableFloatStateOf(Float.NaN) }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             // Only read states that are attached to a chart (belt + IOB fixed + active secondary)
@@ -317,19 +319,29 @@ fun GraphsSection(
             .collect { states ->
                 val bgScroll = bgScrollState.value
                 val bgZoom = bgZoomState.value
-                val threshold = 1f
-                val needsSync = states.any { (scroll, zoom) ->
-                    abs(scroll - bgScroll) > threshold || abs(zoom - bgZoom) > 0.001f
+                if (lastLeaderScroll.isNaN()) lastLeaderScroll = bgScroll
+                val finger = states.firstOrNull { (scroll, _) -> abs(scroll - bgScroll) > 24f }
+                val leader = when {
+                    abs(bgScroll - lastLeaderScroll) > 1f -> bgScroll
+                    finger != null -> finger.first
+                    else -> bgScroll
+                }
+                val needsSync = leader != bgScroll || states.any { (scroll, zoom) ->
+                    abs(scroll - leader) > 1f || abs(zoom - bgZoom) > 0.001f
                 }
                 if (needsSync) {
+                    lastLeaderScroll = leader
+                    if (abs(bgScrollState.value - leader) > 1f) {
+                        bgScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    }
                     val count = activeCount
                     beltZoomState.zoom(Zoom.fixed(bgZoom))
                     iobZoomState.zoom(Zoom.fixed(bgZoom))
                     for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
                     delay(10)
-                    beltScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
-                    iobScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
-                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(bgScroll))
+                    beltScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    iobScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
                 }
             }
     }
@@ -489,7 +501,7 @@ fun GraphsSection(
                         current.remove(type)
                     } else {
                         current.add(type)
-                        if (current.size > 2) current.removeAt(0) // FIFO: drop oldest
+                        if (current.size > 3) current.removeAt(0) // FIFO: drop oldest
                     }
                     if (current.isEmpty()) {
                         // Auto-remove graph when all series deselected
@@ -535,7 +547,7 @@ fun GraphsSection(
                             current.remove(type)
                         } else {
                             current.add(type)
-                            if (current.size > 2) current.removeAt(0)
+                            if (current.size > 3) current.removeAt(0)
                         }
                         newGraphSeries = current
                     },

@@ -172,7 +172,7 @@ val LightGeneralColors = GeneralColors(
     bgIsf = Color(0xFFFF1493),                      // pink when bg ISF is the largest change
     ppIsf = Color(0xFF00BB00),                      // green when pp ISF is the largest change
     duraIsf = Color(0xFFFF8800),                    // orange when dura ISF is the largest change
-    finalIsf = Color(0xFFFF6060)                    // red for the final factor when none of the four moved it
+    finalIsf = Color(0xFF00FFFF)                    // light blue, same as the UK final ISF line
 )
 
 /**
@@ -234,7 +234,7 @@ val DarkGeneralColors = GeneralColors(
     bgIsf = Color(0xFFFF1493),
     ppIsf = Color(0xFF00FF00),                      // brighter green on a dark background
     duraIsf = Color(0xFFFF8800),
-    finalIsf = Color(0xFFFF6060)
+    finalIsf = Color(0xFF00FFFF)                    // light blue, same as the UK final ISF line
 )
 
 /**

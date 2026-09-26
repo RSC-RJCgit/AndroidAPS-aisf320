@@ -205,6 +205,8 @@
     <string name="autoisf_history_time">Time</string>
     <string name="autoisf_history_bgl">BGL</string>
     <string name="autoisf_history_ukf">UKF</string>
+    <string name="autoisf_history_ukf_delta_5" comment="Change in the UKF glucose over about 5 minutes.">UKF d5</string>
+    <string name="autoisf_history_ukf_delta_15" comment="Change in the UKF glucose over about 15 minutes.">UKF d15</string>
     <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
     <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
     <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>
@@ -215,6 +217,7 @@
     <string name="autoisf_history_short_delta" comment="Short average BG delta.">Short delta</string>
     <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
     <string name="autoisf_history_iob">IOB</string>
+    <string name="autoisf_history_iob_th" comment="Effective IOB threshold for this row, in units.">iobTH</string>
     <string name="autoisf_history_smb">SMB</string>
     <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
     <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>

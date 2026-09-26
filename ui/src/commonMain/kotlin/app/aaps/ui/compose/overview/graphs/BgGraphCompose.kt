@@ -354,25 +354,25 @@ fun BgGraphCompose(
                 }
             }
 
-            // Block 5 → Activity layer (layer 4, start axis — Y-values normalized to BG coordinate space)
-            // Scale so maxActivity maps to 80% of the BG axis height (same as legacy: maxY * 0.8 /
-            // maxIAValue), anchored at currentMinBgY for the same reason as the EPS layer above.
+            // Block 5 → Activity layer. UK graph 0 starts at 0 and puts the activity peak at
+            // 80% of that top (maxY * 0.8 / max activity). The same scale is used for the carb model.
             lineModel {
                 val maxAct = currentActivityData.maxActivity
+                val activityTop = currentMaxBgY * 0.8
                 if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                 } else {
-                    val scaleFactor = (currentMaxBgY - currentMinBgY) * 0.8 / maxAct
+                    val scaleFactor = activityTop / maxAct
 
                     val pts = currentActivityData.activity
-                        .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
+                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
                         .sortedBy { it.first }
                     series(x = pts.map { it.first }, y = pts.map { it.second })
 
                     if (currentActivityData.activityPrediction.size >= 2) {
                         val predPts = currentActivityData.activityPrediction
-                            .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
+                            .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
                             .sortedBy { it.first }
                         series(x = predPts.map { it.first }, y = predPts.map { it.second })
                     } else {
@@ -384,9 +384,9 @@ fun BgGraphCompose(
                 if (maxCarb <= 0.0 || carbs.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                 } else {
-                    val carbScale = (currentMaxBgY - currentMinBgY) * 0.8 / maxCarb
+                    val carbScale = activityTop / maxCarb
                     val carbPts = carbs
-                        .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * carbScale) }
+                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * carbScale) }
                         .sortedBy { it.first }
                     series(x = carbPts.map { it.first }, y = carbPts.map { it.second })
                 }
@@ -453,7 +453,8 @@ fun BgGraphCompose(
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
-        val niceBgScale = niceScale(dataMin, dataMax)
+        // Activity is drawn from 0, so the axis has to start at 0 or the bottom of the curve is cut off.
+        val niceBgScale = if (showActivity) niceScale(0.0, dataMax) else niceScale(dataMin, dataMax)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
@@ -468,7 +469,8 @@ fun BgGraphCompose(
         val carbPoints = treatments.carbs.mapNotNull { carb ->
             nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
-        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange, bolusPoints, carbPoints)
+        val activityAxisMax = if (showActivity) niceBgScale.max else maxBgY
+        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints)
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)

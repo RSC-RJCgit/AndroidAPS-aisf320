@@ -5,6 +5,7 @@ import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.dominantIsf
+import kotlin.math.abs
 
 /** How far back the history table looks. */
 const val AUTO_ISF_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
@@ -29,6 +30,8 @@ data class AutoIsfHistoryRow(
     val time: String,
     val glucose: String,
     val ukf: String,
+    val ukfDelta5: String,
+    val ukfDelta15: String,
     val finalIsf: String,
     val finalFactor: AutoIsfFactor,
     val acceIsf: String,
@@ -40,6 +43,7 @@ data class AutoIsfHistoryRow(
     val shortDelta: String,
     val longDelta: String,
     val iob: String,
+    val iobTh: String,
     val smb: String,
     val smbFactor: AutoIsfFactor,
     val hasSmb: Boolean,
@@ -68,6 +72,18 @@ fun autoIsfAdjustmentText(value: Double, format2: (Double) -> String): String =
 fun autoIsfAmountText(value: Double, format2: (Double) -> String): String =
     if (value == 0.0) "--" else format2(value)
 
+/** UKF change over about 5 or 15 minutes, in the same units as the other deltas. */
+fun ukfDeltaText(rows: List<AIV>, index: Int, minutesBack: Int, deltaText: (Double) -> String): String {
+    val row = rows[index]
+    if (row.ukfRawBgl <= 0.0) return "--"
+    val target = row.timestamp - minutesBack * 60_000L
+    val prior = rows.minByOrNull { abs(it.timestamp - target) } ?: return "--"
+    if (abs(prior.timestamp - target) > 3 * 60_000L || prior.ukfRawBgl <= 0.0) return "--"
+    val actualMin = (row.timestamp - prior.timestamp) / 60_000.0
+    if (actualMin <= 0.0) return "--"
+    return deltaText((row.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0)
+}
+
 fun List<AIV>.autoIsfHistoryRows(
     timeText: (Long) -> String,
     glucoseText: (Double) -> String,
@@ -76,13 +92,15 @@ fun List<AIV>.autoIsfHistoryRows(
     steps: List<SC> = emptyList(),
     fromLivePhone: Boolean = false,
     ownDevice: String = ""
-): List<AutoIsfHistoryRow> = map { row ->
+): List<AutoIsfHistoryRow> = mapIndexed { index, row ->
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
     val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
     AutoIsfHistoryRow(
         time = timeText(row.timestamp),
         glucose = glucoseText(row.glucose),
         ukf = if (row.ukfRawBgl == 0.0) "--" else glucoseText(row.ukfRawBgl),
+        ukfDelta5 = ukfDeltaText(this, index, 5, deltaText),
+        ukfDelta15 = ukfDeltaText(this, index, 15, deltaText),
         finalIsf = format2(row.finalIsf),
         finalFactor = factor,
         acceIsf = autoIsfAdjustmentText(row.acceIsf, format2),
@@ -94,6 +112,7 @@ fun List<AIV>.autoIsfHistoryRows(
         shortDelta = deltaText(row.shortAvgDelta),
         longDelta = deltaText(row.longAvgDelta),
         iob = autoIsfAmountText(row.iob, format2),
+        iobTh = autoIsfAmountText(row.iobThEffective, format2),
         smb = autoIsfAmountText(row.smbDelivered, format2),
         smbFactor = if (row.smbDelivered == 0.0) AutoIsfFactor.NONE else factor,
         hasSmb = row.smbDelivered > 0.0,

@@ -75,60 +75,29 @@ fun AutoIsfHistoryDialog(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 } else {
-                    HistoryLine(
-                        values = listOf(
-                            stringResource(UiStrings.autoisf_history_time),
-                            stringResource(UiStrings.autoisf_history_bgl),
-                            stringResource(UiStrings.autoisf_history_ukf),
-                            stringResource(UiStrings.autoisf_history_final),
-                            stringResource(UiStrings.autoisf_history_acce),
-                            stringResource(UiStrings.autoisf_history_bg),
-                            stringResource(UiStrings.autoisf_history_pp),
-                            stringResource(UiStrings.autoisf_history_dura),
-                            stringResource(UiStrings.autoisf_history_accel),
-                            stringResource(UiStrings.autoisf_history_delta),
-                            stringResource(UiStrings.autoisf_history_short_delta),
-                            stringResource(UiStrings.autoisf_history_long_delta),
-                            stringResource(UiStrings.autoisf_history_iob),
-                            stringResource(UiStrings.autoisf_history_smb),
-                            stringResource(UiStrings.autoisf_history_steps_5),
-                            stringResource(UiStrings.autoisf_history_steps_15),
-                            stringResource(UiStrings.autoisf_history_steps_30),
-                            stringResource(UiStrings.autoisf_history_steps_60),
-                            stringResource(UiStrings.autoisf_history_steps_180)
-                        ),
-                        colors = List(19) { MaterialTheme.colorScheme.onSurfaceVariant },
-                        bold = true,
-                        scroll = horizontal
-                    )
-                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        shown.forEach { row ->
+                    val headerColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    val vertical = rememberScrollState()
+                    Column(modifier = Modifier.weight(1f).verticalScroll(vertical)) {
+                        Row {
+                            HistoryCell(stringResource(UiStrings.autoisf_history_time), headerColor, bold = true)
                             HistoryLine(
-                                values = listOf(
-                                    row.time,
-                                    row.glucose,
-                                    row.ukf,
-                                    row.finalIsf,
-                                    row.acceIsf,
-                                    row.bgIsf,
-                                    row.ppIsf,
-                                    row.duraIsf,
-                                    row.acceleration,
-                                    row.delta,
-                                    row.shortDelta,
-                                    row.longDelta,
-                                    row.iob,
-                                    row.smb,
-                                    row.steps5,
-                                    row.steps15,
-                                    row.steps30,
-                                    row.steps60,
-                                    row.steps180
-                                ),
-                                colors = rowColors(row),
-                                bold = false,
+                                values = historyHeaders(),
+                                colors = List(historyHeaders().size) { headerColor },
+                                bold = true,
                                 scroll = horizontal
                             )
+                        }
+                        shown.forEach { row ->
+                            val colors = rowColors(row)
+                            Row {
+                                HistoryCell(row.time, colors.first(), bold = false)
+                                HistoryLine(
+                                    values = row.scrollingCells(),
+                                    colors = colors.drop(1),
+                                    bold = false,
+                                    scroll = horizontal
+                                )
+                            }
                         }
                     }
                 }
@@ -138,12 +107,45 @@ fun AutoIsfHistoryDialog(
 }
 
 @Composable
+private fun historyHeaders(): List<String> = listOf(
+    stringResource(UiStrings.autoisf_history_bgl),
+    stringResource(UiStrings.autoisf_history_ukf),
+    stringResource(UiStrings.autoisf_history_ukf_delta_5),
+    stringResource(UiStrings.autoisf_history_ukf_delta_15),
+    stringResource(UiStrings.autoisf_history_final),
+    stringResource(UiStrings.autoisf_history_acce),
+    stringResource(UiStrings.autoisf_history_bg),
+    stringResource(UiStrings.autoisf_history_pp),
+    stringResource(UiStrings.autoisf_history_dura),
+    stringResource(UiStrings.autoisf_history_accel),
+    stringResource(UiStrings.autoisf_history_delta),
+    stringResource(UiStrings.autoisf_history_short_delta),
+    stringResource(UiStrings.autoisf_history_long_delta),
+    stringResource(UiStrings.autoisf_history_iob),
+    stringResource(UiStrings.autoisf_history_iob_th),
+    stringResource(UiStrings.autoisf_history_smb),
+    stringResource(UiStrings.autoisf_history_steps_5),
+    stringResource(UiStrings.autoisf_history_steps_15),
+    stringResource(UiStrings.autoisf_history_steps_30),
+    stringResource(UiStrings.autoisf_history_steps_60),
+    stringResource(UiStrings.autoisf_history_steps_180)
+)
+
+private fun AutoIsfHistoryRow.scrollingCells(): List<String> = listOf(
+    glucose, ukf, ukfDelta5, ukfDelta15, finalIsf, acceIsf, bgIsf, ppIsf, duraIsf,
+    acceleration, delta, shortDelta, longDelta, iob, iobTh, smb,
+    steps5, steps15, steps30, steps60, steps180
+)
+
+@Composable
 private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
     val glucose = AapsTheme.generalColors.bgInRange
     val insulin = AapsTheme.generalColors.activeInsulinText
     val time = MaterialTheme.colorScheme.onSurface
     return listOf(
         time,
+        glucose,
+        glucose,
         glucose,
         glucose,
         factorColor(row.finalFactor, AapsTheme.generalColors.finalIsf),
@@ -155,6 +157,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         glucose,
         glucose,
         glucose,
+        insulin,
         insulin,
         factorColor(row.smbFactor, insulin),
         time,
@@ -172,6 +175,20 @@ private fun factorColor(factor: AutoIsfFactor, fallback: Color): Color = when (f
     AutoIsfFactor.PP -> AapsTheme.generalColors.ppIsf
     AutoIsfFactor.DURA -> AapsTheme.generalColors.duraIsf
     AutoIsfFactor.NONE -> fallback
+}
+
+@Composable
+private fun HistoryCell(value: String, color: Color, bold: Boolean) {
+    Text(
+        text = value,
+        color = color,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier
+            .width(historyColumnWidth)
+            .padding(vertical = AapsTheme.spacing.small)
+    )
 }
 
 @Composable
