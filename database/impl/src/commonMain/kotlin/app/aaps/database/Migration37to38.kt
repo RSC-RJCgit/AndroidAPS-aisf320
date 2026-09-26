@@ -14,5 +14,12 @@ internal val migration37to38 = object : Migration(37, 38) {
         connection.execSQL(
             "ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `iobThEffective` REAL NOT NULL DEFAULT 0"
         )
+        // These indexes are added again after the database opens. Room rejects the upgrade if they
+        // are still present when it checks the schema.
+        connection.execSQL("DROP INDEX IF EXISTS `index_temporaryBasals_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_extendedBoluses_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_temporaryTargets_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_carbs_end`")
+        connection.execSQL("DROP INDEX IF EXISTS `index_runningModes_end`")
     }
 }
