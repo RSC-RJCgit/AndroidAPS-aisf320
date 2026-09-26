@@ -259,9 +259,13 @@ fun GraphsSection(
                     iobZoomState.zoom(Zoom.fixed(zoom))
                     for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
                 }
-                beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
-                iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
-                for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
+                // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
+                // the initial "recent time" position on the other graphs.
+                if (bgScrollState.maxValue > 1f) {
+                    beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
+                    iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
+                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
+                }
             }
     }
 
@@ -303,6 +307,7 @@ fun GraphsSection(
     // reference forever and fires wrong corrections (the actual cause of the "dancing" regression
     // in the first attempt at this feature).
     var lastLeaderScroll by remember { mutableFloatStateOf(Float.NaN) }
+    var lastLeaderMax by remember { mutableFloatStateOf(Float.NaN) }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             // Only read states that are attached to a chart (belt + IOB fixed + active secondary)
@@ -318,11 +323,35 @@ fun GraphsSection(
             .debounce(100) // Let Vico settle after model update
             .collect { states ->
                 val bgScroll = bgScrollState.value
+                val bgMax = bgScrollState.maxValue
                 val bgZoom = bgZoomState.value
+                // The first layout often happens while the chart width is still 0, so the
+                // "recent time" start is stored as 0. Once there is a real width, and the
+                // user has not moved the graph yet, go to the end.
+                val neverPlaced = lastLeaderScroll.isNaN() || lastLeaderScroll < 1f
+                val neverHadWidth = lastLeaderMax.isNaN() || lastLeaderMax < 1f
+                if (bgMax > 24f && bgScroll < 1f && neverPlaced && neverHadWidth) {
+                    lastLeaderMax = bgMax
+                    bgScrollState.scroll(Scroll.Absolute.End)
+                    return@collect
+                }
+                // A model rebuild can drop the width to 0 and clamp the scroll to the oldest
+                // time. That is not a finger drag. Put the recent end back, or the last place.
+                val wasAtEnd = !lastLeaderScroll.isNaN() && abs(lastLeaderScroll - lastLeaderMax) < 48f
+                val rebuiltToStart = bgMax > 24f && bgScroll < 1f && lastLeaderScroll > 24f && abs(bgMax - lastLeaderMax) > 24f
+                lastLeaderMax = bgMax
+                if (rebuiltToStart) {
+                    if (wasAtEnd) bgScrollState.scroll(Scroll.Absolute.End)
+                    else bgScrollState.scroll(Scroll.Absolute.pixels(lastLeaderScroll.coerceAtMost(bgMax)))
+                    return@collect
+                }
                 if (lastLeaderScroll.isNaN()) lastLeaderScroll = bgScroll
                 val finger = states.firstOrNull { (scroll, _) -> abs(scroll - bgScroll) > 24f }
+                // A subgraph rebuild lands on 0 while the main graph is still on a real time.
+                val subgraphReset = finger != null && finger.first < 1f && bgScroll > 24f
                 val leader = when {
                     abs(bgScroll - lastLeaderScroll) > 1f -> bgScroll
+                    subgraphReset -> bgScroll
                     finger != null -> finger.first
                     else -> bgScroll
                 }
