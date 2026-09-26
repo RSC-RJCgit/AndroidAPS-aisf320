@@ -50,6 +50,7 @@ import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardActivitySteps
+import app.aaps.core.objects.wizard.CarbTimeFromRise
 import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.ui.extensions.runOnUiThread
@@ -125,6 +126,11 @@ class WizardDialog : DaggerDialogFragment() {
     // (same pattern as Walking Soon). The programmatic untick is never saved to WizardIncludeCob.
     private var cobRecentUserOverride = false
     private var applyingCobRecentDefault = false
+    // Carb time pre-filled from an ongoing rise (CarbTimeFromRise, 2026-09-26). The checkbox means "use the estimate"; typing a
+    // different carb time by hand unticks it (without touching the typed value), ticking it again re-applies the estimate,
+    // unticking it puts the carb time back to 0.
+    private var carbTimeRiseEstimate: CarbTimeFromRise.Estimate? = null
+    private var applyingCarbTimeRise = false
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -141,6 +147,14 @@ class WizardDialog : DaggerDialogFragment() {
         override fun afterTextChanged(s: Editable) {
             _binding?.let { binding ->
                 binding.alarm.isChecked = binding.carbTimeInput.value > 0
+                val estimate = carbTimeRiseEstimate
+                if (!applyingCarbTimeRise && estimate != null && binding.carbTimeRiseCheckbox.isChecked &&
+                    binding.carbTimeInput.value.toInt() != estimate.offsetMinutes
+                ) {
+                    applyingCarbTimeRise = true
+                    binding.carbTimeRiseCheckbox.isChecked = false
+                    applyingCarbTimeRise = false
+                }
             }
         }
 
@@ -278,6 +292,7 @@ class WizardDialog : DaggerDialogFragment() {
             savedInstanceState?.getDouble("carb_time_input")
                 ?: 0.0, -60.0, 60.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, timeTextWatcher
         )
+        setupCarbTimeFromRise(savedInstanceState)
         handler.post { initDialog() }
         calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
@@ -530,6 +545,31 @@ class WizardDialog : DaggerDialogFragment() {
         else gs?.glucose ?: 999.0
         val low = bgMgdl < 108.1 /* 6.0 mmol */
         return movingNow && low && notRisingFast
+    }
+
+    // Carb time pre-filled from the rise the wizard is opened in (CarbTimeFromRise). Computed once when the dialog opens (not on
+    // rotation restore, which keeps whatever was typed); the row is hidden when there is no estimate.
+    private fun setupCarbTimeFromRise(savedInstanceState: Bundle?) {
+        val estimate = if (savedInstanceState == null) CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now()) else null
+        carbTimeRiseEstimate = estimate
+        if (estimate == null) {
+            binding.carbTimeRiseRow.visibility = View.GONE
+            return
+        }
+        binding.carbTimeRiseRow.visibility = View.VISIBLE
+        binding.carbTimeRiseCheckbox.text =
+            "Carb time from rise (began ~${estimate.minutesSinceOnset} min ago, +${CarbTimeFromRise.LAG_MINUTES} min lag: ${estimate.offsetMinutes} min)"
+        binding.carbTimeRiseCheckbox.setOnCheckedChangeListener { _, checked ->
+            if (applyingCarbTimeRise) return@setOnCheckedChangeListener
+            applyingCarbTimeRise = true
+            binding.carbTimeInput.value = if (checked) estimate.offsetMinutes.toDouble() else 0.0
+            applyingCarbTimeRise = false
+            calculateInsulin()
+        }
+        applyingCarbTimeRise = true
+        binding.carbTimeRiseCheckbox.isChecked = true
+        binding.carbTimeInput.value = estimate.offsetMinutes.toDouble()
+        applyingCarbTimeRise = false
     }
 
     private fun applyWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double) {
