@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.configuration.ExternalOptions
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -77,7 +78,8 @@ import java.util.TimeZone
 @MetroIntKey(240)
 @ContributesBinding(AppScope::class, binding = binding<Autotune>())
 @SingleIn(AppScope::class)
-class AutotunePlugin @Inject constructor(
+@Inject
+class AutotunePlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -94,7 +96,8 @@ class AutotunePlugin @Inject constructor(
     private val uel: UserEntryLogger,
     private val loop: Loop,
     private val profileStoreProvider: () -> ProfileStore,
-    private val atProfileProvider: () -> ATProfile
+    private val atProfileProvider: () -> ATProfile,
+    notificationManager: NotificationManager
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -121,7 +124,7 @@ class AutotunePlugin @Inject constructor(
         .showInList { config.isEngineeringMode() && config.isDev() || config.isEnabled(ExternalOptions.ENABLE_AUTOTUNE) }
         .description(TextRef.AndroidRes(R.string.autotune_description)),
     ownPreferences = AutotuneStringKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ), Autotune {
 
     @Volatile override var lastRunSuccess: Boolean = false

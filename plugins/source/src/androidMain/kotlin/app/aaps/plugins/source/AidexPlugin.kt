@@ -46,12 +46,13 @@ import kotlinx.coroutines.Dispatchers
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @IntKey(450)
 @SingleIn(AppScope::class)
-class AidexPlugin @Inject constructor(
+@Inject
+class AidexPlugin(
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     config: Config,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
 ) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -66,7 +67,7 @@ class AidexPlugin @Inject constructor(
         .preferencesVisibleInSimpleMode(false)
         .description(TextRef.AndroidRes(R.string.description_source_aidex)),
     ownPreferences = emptyList(),
-    aapsLogger, rh, preferences, config
+    aapsLogger, rh, preferences, config, notificationManager
 ), BgSource {
 
     @Volatile
@@ -87,7 +88,8 @@ class AidexPlugin @Inject constructor(
     }
 
 
-    class AidexWorker @AssistedInject constructor(
+    @AssistedInject
+    class AidexWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,

@@ -93,6 +93,11 @@
     <string name="pref_show_week_number">Show Week number</string>
     <string name="pref_show_date">Show Date</string>
     <string name="pref_show_seconds">Show Seconds</string>
+    <string name="pref_show_complication1">Show Complication 1</string>
+    <string name="pref_show_complication2">Show Complication 2</string>
+    <string name="pref_show_complication3">Show Complication 3</string>
+    <string name="pref_show_complication4">Show Complication 4</string>
+    <string name="pref_show_complication5">Show Complication 5</string>
     <string name="default_custom_watchface_comment">Default watchface, you can click on EXPORT WATCHFACE button to generate a template</string>
     <string name="default_custom_watchface_external_comment">Default watchface including external views for followers, you can click on EXPORT WATCHFACE button to generate a template</string>
     <string name="wear_default_watchface">Default Watchface</string>
@@ -157,5 +162,19 @@
     <string name="bolus_recorded_only">Bolus will be recorded only (not delivered by pump)</string>
     <string name="advisoralarm">Run alarm when is time to eat</string>
     <string name="wizard_ecarbs">eCarbs %1$dg / %2$dh (+%3$dmin)</string>
+    <string name="wizard_carbs_halved">Carb insulin halved for a recent low.</string>
+    <string name="wizard_hp_safety" comment="%1$.2f = units before the cut, %2$.2f = units after the cut, %3$.2f = carb-on-board insulin removed. Example: HP safety: 1.20 U to 0.68 U, carbs on board removed 0.30 U">HP safety: %1$.2f U to %2$.2f U, carbs on board removed %3$.2f U</string>
+    <string name="wizard_rise_boost" comment="%1$.2f = units before the boost, %2$.2f = units after the boost. Example: Rise boost: 1.00 U to 1.33 U">Rise boost: %1$.2f U to %2$.2f U</string>
+    <string name="wizard_max_bolus_this_bolus">Max bolus (this bolus only)</string>
+    <string name="wizard_fpu_duration">Protein and fat hours</string>
+    <string name="wizard_protein">Protein</string>
+    <string name="wizard_fat">Fat</string>
+    <string name="wizard_warsaw_dose">Protein and fat</string>
+    <string name="wizard_warsaw_plan" comment="%1$.2f = total units, %2$d = number of doses, %3$d = hours. Example: Protein and fat: 2.40 U in 5 doses over 5 h">Protein and fat: %1$.2f U in %2$d doses over %3$d h</string>
+    <string name="wizard_split_leftover" comment="%1$.2f = units still to come, %2$d = minutes between parts. Example: Remaining 3.00 U, one part every 7 min">Remaining %1$.2f U, one part every %2$d min</string>
+    <string name="wizard_notes_join" comment="%1$s = the note already written, %2$s = the next calculator line.">%1$s
+%2$s</string>
     <string name="format_insulin_units">%1$.2f U</string>
+    <string name="plugin_start_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when a plugin threw while starting. It stays switched on, but it may not work.">Plugin %1$s failed to start and may not work. Please restart AndroidAPS.</string>
+    <string name="plugin_work_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when background work the plugin started ended with an error. The plugin is still switched on, but part of it has stopped.">Plugin %1$s hit an error and part of it has stopped. Please restart AndroidAPS.</string>
 </resources>

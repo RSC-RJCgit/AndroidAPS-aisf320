@@ -192,6 +192,10 @@ fun WizardDialogScreen(
         unitsLabel = uiState.units.displayLabel,
         onBgChange = { viewModel.updateBg(it) },
         onCarbsChange = { viewModel.updateCarbs(it.toInt()) },
+        onProteinChange = { viewModel.updateProtein(it.toInt()) },
+        onFatChange = { viewModel.updateFat(it.toInt()) },
+        onWarsawDurationChange = { viewModel.updateWarsawDuration(it) },
+        onMaxBolusChange = { viewModel.updateMaxBolus(it) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -220,6 +224,10 @@ internal fun WizardDialogContent(
     unitsLabel: String,
     onBgChange: (Double) -> Unit,
     onCarbsChange: (Double) -> Unit,
+    onProteinChange: (Double) -> Unit = {},
+    onFatChange: (Double) -> Unit = {},
+    onWarsawDurationChange: (Double) -> Unit = {},
+    onMaxBolusChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -614,6 +622,15 @@ internal fun WizardDialogContent(
                     // Carbs Input
                     Column(modifier = itemModifier) {
                         NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                            value = uiState.maxBolus,
+                            onValueChange = onMaxBolusChange,
+                            valueRange = 0.1..60.0,
+                            step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                            unitLabel = TextRef.Literal("U"),
+                            decimalPlaces = 2
+                        )
+                        NumberInputRow(
                             labelRef = InterfacesStrings.carbs,
                             value = uiState.carbs.toDouble(),
                             onValueChange = onCarbsChange,
@@ -626,6 +643,31 @@ internal fun WizardDialogContent(
                             increment2 = uiState.carbsButtonIncrement2,
                             increment3 = uiState.carbsButtonIncrement3,
                             onAddCarbs = onAddCarbs
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_protein,
+                            value = uiState.protein.toDouble(),
+                            onValueChange = onProteinChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fat,
+                            value = uiState.fat.toDouble(),
+                            onValueChange = onFatChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fpu_duration,
+                            value = uiState.warsawDurationHours,
+                            onValueChange = onWarsawDurationChange,
+                            valueRange = 0.0..24.0,
+                            step = 0.5,
+                            unitLabel = TextRef.Literal("h"),
+                            decimalPlaces = 1
                         )
 
                         // Carbs type selector

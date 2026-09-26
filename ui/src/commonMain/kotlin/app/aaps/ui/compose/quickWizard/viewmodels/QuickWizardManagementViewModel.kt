@@ -50,7 +50,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 @ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
 @ViewModelKey
 @Stable
-class QuickWizardManagementViewModel @Inject constructor(
+@Inject
+class QuickWizardManagementViewModel(
     private val quickWizard: QuickWizard,
     private val rxBus: RxBus,
     private val constraintChecker: ConstraintsChecker,
@@ -159,6 +160,10 @@ class QuickWizardManagementViewModel @Inject constructor(
             editorButtonText = entry.buttonText(),
             editorInsulin = entry.insulin(),
             editorCarbs = entry.carbs(),
+            editorProtein = entry.protein(),
+            editorFat = entry.fat(),
+            editorWarsawDurationHours = entry.warsawDurationHours(),
+            editorMaxBolus = entry.maxBolus(),
             editorCarbTime = entry.carbTime(),
             editorValidFrom = entry.validFrom(),
             editorValidTo = entry.validTo(),
@@ -352,6 +357,10 @@ class QuickWizardManagementViewModel @Inject constructor(
                     buttonText = currentState.editorButtonText,
                     insulin = currentState.editorInsulin,
                     carbs = currentState.editorCarbs,
+                    protein = currentState.editorProtein,
+                    fat = currentState.editorFat,
+                    warsawDurationHours = currentState.editorWarsawDurationHours,
+                    maxBolus = currentState.editorMaxBolus,
                     carbTime = currentState.editorCarbTime,
                     useAlarm = booleanToRadioNumber(currentState.editorUseAlarm),
                     validFrom = currentState.editorValidFrom,
@@ -479,6 +488,22 @@ class QuickWizardManagementViewModel @Inject constructor(
 
     fun updateCarbs(value: Int) {
         _uiState.update { it.copy(editorCarbs = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateProtein(value: Int) {
+        _uiState.update { it.copy(editorProtein = value.coerceIn(0, 250), hasUnsavedChanges = true) }
+    }
+
+    fun updateFat(value: Int) {
+        _uiState.update { it.copy(editorFat = value.coerceIn(0, 250), hasUnsavedChanges = true) }
+    }
+
+    fun updateWarsawDuration(value: Double) {
+        _uiState.update { it.copy(editorWarsawDurationHours = value.coerceIn(0.0, 24.0), hasUnsavedChanges = true) }
+    }
+
+    fun updateMaxBolus(value: Double) {
+        _uiState.update { it.copy(editorMaxBolus = value.coerceIn(0.0, 60.0), hasUnsavedChanges = true) }
     }
 
     fun updateCarbTime(value: Int) {

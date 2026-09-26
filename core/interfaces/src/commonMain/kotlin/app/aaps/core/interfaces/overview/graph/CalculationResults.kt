@@ -52,6 +52,11 @@ data class BgDataPoint(
     val range: BgRange,            // Range classification (high/in-range/low)
     val type: BgType,              // Type determines rendering style and color
     val filledGap: Boolean = false, // For bucketed data - if true, render semi-transparent
+    val dominantIsf: DominantIsf = DominantIsf.NONE, // colour of the dot when an AutoISF factor moved the ISF
+    /** Libre raw glucose in the user's units. 0 means this point has none. */
+    val rawValue: Double = 0.0,
+    /** UKF-smoothed raw glucose in the user's units. 0 means this point has none. */
+    val ukfValue: Double = 0.0,
 )
 
 // ============================================================================
@@ -149,7 +154,9 @@ data class CobGraphData(
 data class ActivityGraphData(
     val activity: List<GraphDataPoint>,
     val activityPrediction: List<GraphDataPoint>,
-    val maxActivity: Double = 0.0
+    val maxActivity: Double = 0.0,
+    val carbModel: List<GraphDataPoint> = emptyList(),
+    val maxCarbModel: Double = 0.0,
 )
 
 /**
@@ -190,6 +197,36 @@ data class VarSensGraphData(
 )
 
 /**
+ * The five AutoISF factor lines. Each value is the factor itself (1.0 means no change).
+ */
+data class AutoIsfGraphData(
+    val acce: List<GraphDataPoint> = emptyList(),
+    val bg: List<GraphDataPoint> = emptyList(),
+    val pp: List<GraphDataPoint> = emptyList(),
+    val dura: List<GraphDataPoint> = emptyList(),
+    val finalIsf: List<GraphDataPoint> = emptyList(),
+    /** Effective IOB threshold in units. Points of 0 are left out. */
+    val iobTh: List<GraphDataPoint> = emptyList(),
+    /** Latest hypo prediction in mmol, or null when the UKF 5 minute change is missing. */
+    val hypoPrediction: Double? = null,
+    /** Target, boost, and IOB threshold line for the main graph. Null before the first loop row. */
+    val statusTarget: String? = null,
+    /** ISF factor line for the main graph. Null before the first loop row. */
+    val statusIsf: String? = null,
+) {
+
+    fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {
+        SeriesType.ACCE_ISF  -> acce
+        SeriesType.BG_ISF    -> bg
+        SeriesType.PP_ISF    -> pp
+        SeriesType.DURA_ISF  -> dura
+        SeriesType.FINAL_ISF -> finalIsf
+        SeriesType.IOB_TH    -> iobTh
+        else                 -> emptyList()
+    }
+}
+
+/**
  * Heart rate graph data: BPM readings from smartwatch or similar device.
  * Each point spans (timestamp - duration) to timestamp.
  */
@@ -213,7 +250,11 @@ data class StepsGraphData(
 data class BasalGraphData(
     val profileBasal: List<GraphDataPoint>,
     val actualBasal: List<GraphDataPoint>,
-    val maxBasal: Double
+    val maxBasal: Double,
+    val acceTemp: List<GraphDataPoint> = emptyList(),
+    val bgTemp: List<GraphDataPoint> = emptyList(),
+    val ppTemp: List<GraphDataPoint> = emptyList(),
+    val duraTemp: List<GraphDataPoint> = emptyList()
 )
 
 /**

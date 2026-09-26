@@ -113,7 +113,8 @@ import kotlin.time.Duration.Companion.hours
 @PumpDriver
 @IntKey(1080)
 @SingleIn(AppScope::class)
-class OmnipodDashPumpPlugin @Inject constructor(
+@Inject
+class OmnipodDashPumpPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -125,7 +126,7 @@ class OmnipodDashPumpPlugin @Inject constructor(
     private val rxBus: RxBus,
     private val aapsSchedulers: AapsSchedulers,
     private val uiInteraction: UiInteraction,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val pumpEnactResultProvider: () -> PumpEnactResult,
     private val bolusProgressData: BolusProgressData,
     private val dashHistoryDatabase: DashHistoryDatabase,
@@ -147,7 +148,7 @@ class OmnipodDashPumpPlugin @Inject constructor(
         .description(TextRef.AndroidRes(R.string.omnipod_dash_pump_description)),
     ownPreferences = OmnipodBooleanPreferenceKey.entries + OmnipodIntPreferenceKey.entries + DashBooleanPreferenceKey.entries +
         DashStringNonPreferenceKey.entries,
-    aapsLogger, rh, preferences, commandQueue
+    aapsLogger, rh, preferences, commandQueue, notificationManager
 ),
     Pump, OmnipodDash, OwnDatabasePlugin {
 

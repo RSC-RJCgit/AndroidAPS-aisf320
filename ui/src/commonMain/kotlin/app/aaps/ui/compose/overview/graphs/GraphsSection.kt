@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +52,7 @@ import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -60,6 +63,7 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 
 /**
@@ -88,11 +92,11 @@ private val SIMPLE_MODE_CONFIG = GraphConfig(
 )
 
 /** Series types available as BG graph overlays */
-private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS)
+private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.RAW_BG, SeriesType.UKF_BG)
 
 /** Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded) */
 private val CONFIGURABLE_SERIES = SeriesType.entries.filter {
-    it != SeriesType.IOB && it != SeriesType.PREDICTIONS
+    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.RAW_BG && it != SeriesType.UKF_BG
 }
 
 @OptIn(FlowPreview::class)
@@ -155,15 +159,15 @@ fun GraphsSection(
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
     // These are always created to keep Compose's remember slots stable
-    val sec0scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec0scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec0zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec1scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec1scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec1zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec2scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec2scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec2zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec3scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec3scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec3zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec4scroll = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec4scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec4zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
@@ -202,7 +206,7 @@ fun GraphsSection(
 
     // Treatment belt graph - non-interactive, synced from BG
     val beltScrollState = rememberVicoScrollState(
-        scrollEnabled = false,
+        scrollEnabled = true,
         initialScroll = Scroll.Absolute.End
     )
     val beltZoomState = rememberVicoZoomState(
@@ -211,7 +215,7 @@ fun GraphsSection(
     )
 
     // Fixed IOB graph - non-interactive, synced from BG
-    val iobScrollState = rememberVicoScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val iobScrollState = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -239,8 +243,9 @@ fun GraphsSection(
         sec4scroll, sec4zoom
     ) {
         var initialValue = true
+        var lastZoom = Float.NaN
         snapshotFlow { bgScrollState.value to bgZoomState.value }
-            .debounce(30) // Wait for gesture to settle
+            .conflate()
             .collect { (scroll, zoom) ->
                 if (initialValue) {
                     initialValue = false
@@ -248,11 +253,12 @@ fun GraphsSection(
                     graphViewModel.onGraphInteraction()
                 }
                 val count = activeCount
-                // Sync zoom first, then scroll (order matters for proper positioning)
-                beltZoomState.zoom(Zoom.fixed(zoom))
-                iobZoomState.zoom(Zoom.fixed(zoom))
-                for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
-                delay(10)
+                if (zoom != lastZoom) {
+                    lastZoom = zoom
+                    beltZoomState.zoom(Zoom.fixed(zoom))
+                    iobZoomState.zoom(Zoom.fixed(zoom))
+                    for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
+                }
                 beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
                 iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
                 for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
@@ -273,27 +279,19 @@ fun GraphsSection(
                 lastBgTimestamp = newTimestamp
                 return@LaunchedEffect
             }
-            // Reset scroll+zoom to their defaults by recreating the state objects (see
-            // bgViewportResetTrigger doc above) instead of driving VicoZoomState.zoom(Zoom) to an
-            // absolute target, which was found to land on the wrong zoom/scroll combination.
-            bgViewportResetTrigger++
+            // Keep the hours the user is already looking at. Only slide the window so the new
+            // reading stays at the live edge. Recreating the zoom state here used to snap back to 6 hours.
+            val showPredictions = SeriesType.PREDICTIONS in graphConfig.bgOverlays
+            val timeRange = derivedTimeRange
+            if (showPredictions && predictions.isNotEmpty() && timeRange != null) {
+                val (minTimestamp, _) = timeRange
+                val nowX = timestampToX(dateUtil.now(), minTimestamp)
+                bgScrollState.animateScroll(Scroll.Absolute.x(nowX + 120.0, bias = 1f))
+            } else {
+                bgScrollState.scroll(Scroll.Absolute.End)
+            }
         }
         lastBgTimestamp = newTimestamp
-    }
-
-    // After a reset, the recreated bgScrollState defaults to Scroll.Absolute.End. If predictions
-    // are visible, nudge it further so "now + 2h" sits at the right edge instead, leaving room to
-    // see the forecast — same positioning as before, reapplied once the fresh scrollState (a new
-    // instance, since it's keyed on bgViewportResetTrigger too) is composed and ready.
-    LaunchedEffect(bgViewportResetTrigger, bgScrollState) {
-        if (bgViewportResetTrigger == 0) return@LaunchedEffect
-        val showPredictions = SeriesType.PREDICTIONS in graphConfig.bgOverlays
-        val timeRange = derivedTimeRange
-        if (showPredictions && predictions.isNotEmpty() && timeRange != null) {
-            val (minTimestamp, _) = timeRange
-            val nowX = timestampToX(dateUtil.now(), minTimestamp)
-            bgScrollState.animateScroll(Scroll.Absolute.x(nowX + 120.0, bias = 1f))
-        }
     }
 
     // Correct secondary graph scroll drift — Vico may internally adjust scroll
@@ -304,6 +302,7 @@ fun GraphsSection(
     // reset, otherwise this keeps comparing secondary graphs against a stale, abandoned pre-reset
     // reference forever and fires wrong corrections (the actual cause of the "dancing" regression
     // in the first attempt at this feature).
+    var lastLeaderScroll by remember { mutableFloatStateOf(Float.NaN) }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             // Only read states that are attached to a chart (belt + IOB fixed + active secondary)
@@ -320,19 +319,29 @@ fun GraphsSection(
             .collect { states ->
                 val bgScroll = bgScrollState.value
                 val bgZoom = bgZoomState.value
-                val threshold = 1f
-                val needsSync = states.any { (scroll, zoom) ->
-                    abs(scroll - bgScroll) > threshold || abs(zoom - bgZoom) > 0.001f
+                if (lastLeaderScroll.isNaN()) lastLeaderScroll = bgScroll
+                val finger = states.firstOrNull { (scroll, _) -> abs(scroll - bgScroll) > 24f }
+                val leader = when {
+                    abs(bgScroll - lastLeaderScroll) > 1f -> bgScroll
+                    finger != null -> finger.first
+                    else -> bgScroll
+                }
+                val needsSync = leader != bgScroll || states.any { (scroll, zoom) ->
+                    abs(scroll - leader) > 1f || abs(zoom - bgZoom) > 0.001f
                 }
                 if (needsSync) {
+                    lastLeaderScroll = leader
+                    if (abs(bgScrollState.value - leader) > 1f) {
+                        bgScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    }
                     val count = activeCount
                     beltZoomState.zoom(Zoom.fixed(bgZoom))
                     iobZoomState.zoom(Zoom.fixed(bgZoom))
                     for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
                     delay(10)
-                    beltScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
-                    iobScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
-                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(bgScroll))
+                    beltScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    iobScrollState.scroll(Scroll.Absolute.pixels(leader))
+                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
                 }
             }
     }
@@ -342,19 +351,11 @@ fun GraphsSection(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
+            .then(if (isLandscape()) Modifier.systemGestureExclusion() else Modifier)
     ) {
-        // Treatment Belt Graph - running mode background + therapy events
-        TreatmentBeltGraphCompose(
-            viewModel = graphViewModel,
-            scrollState = beltScrollState,
-            zoomState = beltZoomState,
-            derivedTimeRange = derivedTimeRange,
-            nowTimestamp = nowTimestamp,
-            modifier = Modifier.fillMaxWidth()
-        )
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
-        Box(modifier = Modifier.offset(y = (-16).dp)) {
+        Box {
             BgGraphCompose(
                 viewModel = graphViewModel,
                 bgOverlays = graphConfig.bgOverlays,
@@ -382,6 +383,7 @@ fun GraphsSection(
                 selectedSeries = graphConfig.bgOverlays,
                 availableSeries = BG_OVERLAY_SERIES,
                 height = graphConfig.bgHeight,
+                maxHeight = GraphConfig.MAX_BG_GRAPH_HEIGHT_DP,
                 onHeightChange = { h ->
                     graphViewModel.updateGraphConfig(graphConfig.copy(bgHeight = h))
                 },
@@ -399,6 +401,7 @@ fun GraphsSection(
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
                 seriesTypes = listOf(SeriesType.IOB),
+                cobOverlay = SeriesType.COB in graphConfig.iobOverlays,
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,
@@ -430,7 +433,7 @@ fun GraphsSection(
             GraphSeriesBottomSheet(
                 title = stringResource(CoreUiStrings.iob) + " / " + stringResource(CoreUiStrings.basal_shortname),
                 selectedSeries = graphConfig.iobOverlays,
-                availableSeries = listOf(SeriesType.ACTIVITY),
+                availableSeries = listOf(SeriesType.ACTIVITY, SeriesType.COB),
                 height = graphConfig.iobHeight,
                 onHeightChange = { h ->
                     graphViewModel.updateGraphConfig(graphConfig.copy(iobHeight = h))
@@ -452,6 +455,12 @@ fun GraphsSection(
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
                     seriesTypes = secondary.series,
+                    showSmbDoseLabels = i == 0,
+                    secondaryMarks = when (i) {
+                        1 -> SecondaryMarks.SMB_TOTALS
+                        2 -> SecondaryMarks.NOTES
+                        else -> SecondaryMarks.NONE
+                    },
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
                     derivedTimeRange = derivedTimeRange,
@@ -497,7 +506,7 @@ fun GraphsSection(
                         current.remove(type)
                     } else {
                         current.add(type)
-                        if (current.size > 2) current.removeAt(0) // FIFO: drop oldest
+                        if (current.size > 3) current.removeAt(0) // FIFO: drop oldest
                     }
                     if (current.isEmpty()) {
                         // Auto-remove graph when all series deselected
@@ -543,7 +552,7 @@ fun GraphsSection(
                             current.remove(type)
                         } else {
                             current.add(type)
-                            if (current.size > 2) current.removeAt(0)
+                            if (current.size > 3) current.removeAt(0)
                         }
                         newGraphSeries = current
                     },
@@ -590,6 +599,14 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.STEPS           -> CoreUiStrings.steps_shortname
     SeriesType.ACTIVITY        -> CoreUiStrings.activity_shortname
     SeriesType.PREDICTIONS     -> CoreUiStrings.predictions_shortname
+    SeriesType.ACCE_ISF        -> CoreUiStrings.acce_isf_shortname
+    SeriesType.BG_ISF          -> CoreUiStrings.bg_isf_shortname
+    SeriesType.PP_ISF          -> CoreUiStrings.pp_isf_shortname
+    SeriesType.DURA_ISF        -> CoreUiStrings.dura_isf_shortname
+    SeriesType.FINAL_ISF       -> CoreUiStrings.final_isf_shortname
+    SeriesType.IOB_TH          -> CoreUiStrings.iob_threshold_shortname
+    SeriesType.RAW_BG          -> CoreUiStrings.raw_bg_shortname
+    SeriesType.UKF_BG          -> CoreUiStrings.ukf_bg_shortname
 }
 
 // =========================================================================
@@ -625,6 +642,7 @@ private fun GraphSeriesBottomSheet(
     selectedSeries: List<SeriesType>,
     availableSeries: List<SeriesType>,
     height: Int,
+    maxHeight: Int = GraphConfig.MAX_GRAPH_HEIGHT_DP,
     onHeightChange: (Int) -> Unit,
     onToggle: (SeriesType) -> Unit,
     onDismiss: () -> Unit,
@@ -662,7 +680,7 @@ private fun GraphSeriesBottomSheet(
                 labelRef = CoreUiStrings.graph_height,
                 value = height.toDouble(),
                 onValueChange = { onHeightChange(it.toInt()) },
-                valueRange = GraphConfig.DEFAULT_GRAPH_HEIGHT_DP.toDouble()..GraphConfig.MAX_GRAPH_HEIGHT_DP.toDouble(),
+                valueRange = GraphConfig.DEFAULT_GRAPH_HEIGHT_DP.toDouble()..maxHeight.toDouble(),
                 step = 10.0,
                 formatAsInt = true
             )

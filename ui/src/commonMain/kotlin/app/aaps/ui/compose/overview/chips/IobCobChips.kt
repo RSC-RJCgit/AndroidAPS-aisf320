@@ -15,6 +15,8 @@ fun IobCobChipsRow(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     onIobChipClick: () -> Unit,
+    onIobChipLongClick: () -> Unit = {},
+    onIobChipDoubleClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val spacingDp = AapsSpacing.small
@@ -27,7 +29,7 @@ fun IobCobChipsRow(
 
         // First pass: measure intrinsic widths with icons
         val withIcons = subcompose("withIcons") {
-            IobChip(state = iobUiState, onClick = onIobChipClick, showIcon = true)
+            IobChip(state = iobUiState, onClick = onIobChipClick, onLongClick = onIobChipLongClick, onDoubleClick = onIobChipDoubleClick, showIcon = true)
             CobChip(state = cobUiState, showIcon = true)
         }
         val intrinsicsWithIcons = withIcons.map { it.maxIntrinsicWidth(constraints.maxHeight) }
@@ -40,7 +42,7 @@ fun IobCobChipsRow(
             withIcons
         } else {
             subcompose("withoutIcons") {
-                IobChip(state = iobUiState, onClick = onIobChipClick, showIcon = false)
+                IobChip(state = iobUiState, onClick = onIobChipClick, onLongClick = onIobChipLongClick, onDoubleClick = onIobChipDoubleClick, showIcon = false)
                 CobChip(state = cobUiState, showIcon = false)
             }
         }

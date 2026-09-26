@@ -17,12 +17,13 @@ class MaintenanceImplTest : TestBaseWithProfile() {
     @Mock lateinit var loggerUtils: LoggerUtils
     @Mock lateinit var fileListProvider: FileListProvider
     @Mock lateinit var cloudStorageManager: CloudStorageManager
+    @Mock lateinit var historyFilesWriter: HistoryFilesWriter
 
     private lateinit var sut: MaintenanceImpl
 
     @BeforeEach
     fun mock() {
-        sut = MaintenanceImpl(context, rh, preferences, nsClient, aapsLogger, config, fileListProvider, loggerUtils, cloudStorageManager)
+        sut = MaintenanceImpl(context, rh, preferences, nsClient, aapsLogger, config, fileListProvider, loggerUtils, cloudStorageManager, historyFilesWriter)
         whenever(loggerUtils.suffix).thenReturn(".log.zip")
         whenever(loggerUtils.logDirectory).thenReturn("src/androidHostTest/assets/logger")
     }

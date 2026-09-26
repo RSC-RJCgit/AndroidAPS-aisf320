@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
@@ -13,7 +14,7 @@ import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.WizardBolusExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
-import app.aaps.core.interfaces.clientcontrol.FailureReason
+import app.aaps.core.interfaces.clientcontrol.isNotDeliveryError
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -31,6 +32,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -40,6 +42,8 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.wizardMaxBolusDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
@@ -65,7 +69,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @Stable
-class WizardDialogViewModel @AssistedInject constructor(
+@AssistedInject
+class WizardDialogViewModel(
     @Assisted private val savedStateHandle: SavedStateHandle,
     private val bolusWizardProvider: () -> BolusWizard,
     private val constraintChecker: ConstraintsChecker,
@@ -110,6 +115,14 @@ class WizardDialogViewModel @AssistedInject constructor(
     val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
 
     private var wizard: BolusWizard? = null
+    private var savedSafetyMaxBolus: Double? = null
+    private var maxBolusOverridden = false
+    private var maxBolusTouched = false
+
+    override fun onCleared() {
+        if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
+        super.onCleared()
+    }
 
     init {
         viewModelScope.launch { initialize() }
@@ -124,7 +137,6 @@ class WizardDialogViewModel @AssistedInject constructor(
         val units = profileFunction.getUnits()
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
-        val maxBolus = constraintChecker.getMaxBolusAllowed().value()
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
 
@@ -153,6 +165,8 @@ class WizardDialogViewModel @AssistedInject constructor(
         val hasBgData = actualBg != null
         val currentBg = actualBg?.valueToUnits(units) ?: 0.0
         val bgAgeMinutes = if (actualBg != null) ((dateUtil.now() - actualBg.timestamp) / 60000).toInt() else 0
+        val startingMaxBolus = suggestedMaxBolus(currentBg, units, bolusStep)
+        applyWizardMaxBolus(startingMaxBolus)
 
         // IOB for display
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
@@ -184,7 +198,7 @@ class WizardDialogViewModel @AssistedInject constructor(
                 calculationExpanded = false,
                 // Config
                 maxCarbs = maxCarbs,
-                maxBolus = maxBolus,
+                maxBolus = startingMaxBolus,
                 bolusStep = bolusStep,
                 units = units,
                 profileNames = profileList,
@@ -223,6 +237,44 @@ class WizardDialogViewModel @AssistedInject constructor(
         val clamped = value.coerceIn(0, state.maxCarbs)
         _uiState.update { it.copy(carbs = clamped) }
         recalculate()
+    }
+
+    fun updateProtein(value: Int) {
+        _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
+    fun updateFat(value: Int) {
+        _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
+    fun updateWarsawDuration(value: Double) {
+        _uiState.update { it.copy(warsawDurationHours = value.coerceIn(0.0, 24.0)) }
+        recalculate()
+    }
+
+    fun updateMaxBolus(value: Double) {
+        maxBolusTouched = true
+        val clamped = value.coerceIn(0.1, 60.0)
+        applyWizardMaxBolus(clamped)
+        _uiState.update { it.copy(maxBolus = clamped) }
+        recalculate()
+    }
+
+    private suspend fun suggestedMaxBolus(bg: Double, units: GlucoseUnit, bolusStep: Double): Double {
+        val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
+        val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, units)
+        else iobCobCalculator.ads.actualBg()?.value ?: 999.0
+        val recent = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl)
+        return wizardMaxBolusDefault(saved, bgMgdl, recent, bolusStep)
+    }
+
+    private fun applyWizardMaxBolus(value: Double) {
+        val saved = savedSafetyMaxBolus ?: return
+        if (!maxBolusOverridden && abs(saved - value) < 0.001) return
+        preferences.put(DoubleKey.SafetyMaxBolus, value)
+        maxBolusOverridden = true
     }
 
     fun addCarbs(increment: Int) {
@@ -345,7 +397,15 @@ class WizardDialogViewModel @AssistedInject constructor(
     }
 
     private suspend fun recalculateSuspend() {
-        val state = uiState.value
+        var state = uiState.value
+        if (!maxBolusTouched) {
+            val suggested = suggestedMaxBolus(state.bg, state.units, state.bolusStep)
+            if (abs(state.maxBolus - suggested) >= 0.001) {
+                applyWizardMaxBolus(suggested)
+                _uiState.update { it.copy(maxBolus = suggested) }
+                state = uiState.value
+            }
+        }
         val profileStore = profileRepository.profile.value ?: return
 
         // Resolve profile
@@ -406,7 +466,10 @@ class WizardDialogViewModel @AssistedInject constructor(
             state.useTrend,
             state.alarmChecked,
             state.notes,
-            state.carbTime
+            state.carbTime,
+            protein = state.protein,
+            fat = state.fat,
+            warsawDurationHours = state.warsawDurationHours,
         )
 
         wizard = w
@@ -447,7 +510,7 @@ class WizardDialogViewModel @AssistedInject constructor(
                 targetBGLow = 0.0, // not exposed directly
                 targetBGHigh = 0.0,
                 hasResult = true,
-                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0,
+                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
                 hasTempTarget = hasTT,
                 effectiveCarbs = effectiveCarbs,
                 eCarbs = eCarbs,
@@ -460,7 +523,7 @@ class WizardDialogViewModel @AssistedInject constructor(
     // --- Action methods ---
 
     fun hasAction(): Boolean =
-        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 } ?: false
+        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 || it.warsawPlan != null } ?: false
 
     fun getConfirmationSummary(): List<ConfirmationLine> {
         val state = uiState.value
@@ -483,7 +546,13 @@ class WizardDialogViewModel @AssistedInject constructor(
         val state = uiState.value
         appScope.launch {
             wizard?.executeNormal(
-                onError = { comment -> _sideEffect.tryEmit(SideEffect.ShowDeliveryError(comment)) },
+                // ShowDeliveryError is the full screen BOLUS_ERROR alarm, so a command dropped on purpose takes the
+                // plain dialog instead. The record-only path should never see one (it writes straight to the
+                // database and never queues a pump command), but the guard is one line and the alarm is not.
+                onError = { failure ->
+                    if (failure.cancelled) rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.command_cancelled_title), message = failure.comment))
+                    else _sideEffect.tryEmit(SideEffect.ShowDeliveryError(failure.comment))
+                },
                 eCarbsGrams = state.eCarbs,
                 eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime,
                 eCarbsDurationHours = state.eCarbsDurationHours,
@@ -516,7 +585,8 @@ class WizardDialogViewModel @AssistedInject constructor(
             carbTime = state.carbTime, useBg = state.useBg, useCob = state.useCOB, useIob = state.useIOB,
             useTt = state.useTT, useTrend = state.useTrend, alarm = state.alarmChecked, notes = state.notes,
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
-            profileName = profileName
+            profileName = profileName, protein = state.protein, fat = state.fat,
+            warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         appScope.launch {
@@ -542,7 +612,7 @@ class WizardDialogViewModel @AssistedInject constructor(
                     }
                 // Master-local compute failure (no modal) or client offline; a client round-trip failure already showed on the app modal.
                 is ActionProgress.Rejected ->
-                    if (!config.AAPSCLIENT || prepared.reason == FailureReason.NotReachable || prepared.reason == FailureReason.ControlDisabled)
+                    if (!config.AAPSCLIENT || prepared.reason.isNotDeliveryError())
                         rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.boluswizard), message = prepared.detail ?: rh.gs(prepared.reason.failText())))
 
                 else                       -> Unit // Unconfirmed → app modal

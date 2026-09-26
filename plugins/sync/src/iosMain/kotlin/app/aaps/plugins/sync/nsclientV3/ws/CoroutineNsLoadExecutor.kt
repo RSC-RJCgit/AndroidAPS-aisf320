@@ -10,6 +10,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSettingsRunner
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsRunner
 import dev.zacsweers.metro.AppScope
@@ -44,7 +45,8 @@ import kotlinx.coroutines.launch
  */
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class)
-class CoroutineNsLoadExecutor @Inject constructor(
+@Inject
+class CoroutineNsLoadExecutor(
     private val aapsLogger: AAPSLogger,
     private val scope: CoroutineScope,
     private val loadStatus: () -> LoadStatusRunner,
@@ -55,11 +57,15 @@ class CoroutineNsLoadExecutor @Inject constructor(
     private val loadProfileStore: () -> LoadProfileStoreRunner,
     private val loadSettings: () -> LoadSettingsRunner,
     private val loadDeviceStatus: () -> LoadDeviceStatusRunner,
-    private val dataSync: () -> DataSyncRunner
+    private val dataSync: () -> DataSyncRunner,
+    private val loadSecondary: () -> LoadSecondaryTreatmentsRunner
 ) : NsLoadExecutor {
 
     /** The one round. Replaced by each new one, which is what "under a shared name" means here. */
     private var round: Job? = null
+
+    /** The secondary download. Left alone while a round is replaced. */
+    private var secondary: Job? = null
 
     private val _idle = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -91,6 +97,11 @@ class CoroutineNsLoadExecutor @Inject constructor(
 
     override fun cancel() {
         round?.cancel()
+    }
+
+    override fun enqueueSecondaryTreatments() {
+        if (secondary?.isActive == true) return
+        secondary = scope.launch { loadSecondary().run() }
     }
 
     /**

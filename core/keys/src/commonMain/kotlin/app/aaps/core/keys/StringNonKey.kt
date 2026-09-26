@@ -37,6 +37,12 @@ enum class StringNonKey(
     // Standalone Automation runtime. In core/keys (not the automation module) so the client→master
     // sync publisher/receiver in :plugins:sync can observe it without an inter-module dependency.
     AutomationEvents(key = "AUTOMATION_EVENTS", defaultValue = "", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Current automation state values and their allowed lists. Local to the loop phone.
+    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}"),
+    AutomationStateValues(key = "automation_state_values", defaultValue = "{}"),
+    // Saved review of native automations whose names are close to a coded AutoISF name.
+    // The value is a JSON object of title to allowed (true or false). A missing title is not reviewed yet.
+    CodedAutomationDecisions(key = "automation_coded_decisions", defaultValue = ""),
     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"wizard\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ComposeGraphConfig("compose_graphconfig", ""),
@@ -68,5 +74,12 @@ enum class StringNonKey(
     NsClientControlMasterInstallId(key = "nsclient_control_master_install_id", defaultValue = "", exportable = false),
     NsClientControlClientId(key = "nsclient_control_client_id", defaultValue = "", exportable = false),
     NsClientControlMasterSecretEnc(key = "nsclient_control_master_secret_enc", defaultValue = "", exportable = false),
+
+    // Role names saved before a stuck-high tier C escalation. Local only.
+    ApsAutoIsfStuckHighPrevLow(key = "autoisf_stuck_high_prev_low", defaultValue = "", exportable = false),
+    ApsAutoIsfStuckHighPrevStandard(key = "autoisf_stuck_high_prev_standard", defaultValue = "", exportable = false),
+
+    // Profile used when the phone battery is at 1% or below. Local only.
+    ApsAutoIsfSafetyProfileName(key = "autoisf_safety_profile_name", defaultValue = "Current Profile50", exportable = false),
 
 }

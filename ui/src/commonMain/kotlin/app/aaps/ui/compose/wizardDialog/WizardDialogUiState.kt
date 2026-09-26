@@ -20,6 +20,9 @@ data class WizardDialogUiState(
     // User inputs
     val bg: Double = 0.0,
     val carbs: Int = 0,
+    val protein: Int = 0,
+    val fat: Int = 0,
+    val warsawDurationHours: Double = 5.0,
     val carbsType: CarbsType = CarbsType.BREAD,
     val percentage: Int = 100,
     val directCorrection: Double = 0.0,

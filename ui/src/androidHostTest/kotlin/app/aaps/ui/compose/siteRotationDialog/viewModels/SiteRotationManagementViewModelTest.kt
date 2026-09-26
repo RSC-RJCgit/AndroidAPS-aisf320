@@ -60,7 +60,7 @@ internal class SiteRotationManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState shows all sites with no location filter`() {
+    fun defaultUiStateShowsAllSitesWithNoLocationFilter() {
         val state = sut.uiState.value
         assertThat(state.showPumpSites).isTrue()
         assertThat(state.showCgmSites).isTrue()
@@ -70,14 +70,14 @@ internal class SiteRotationManagementViewModelTest {
     }
 
     @Test
-    fun `selectLocation sets the selected location`() {
+    fun selectLocationSetsTheSelectedLocation() {
         sut.selectLocation(TE.Location.SIDE_RIGHT_UPPER_ARM)
 
         assertThat(sut.uiState.value.selectedLocation).isEqualTo(TE.Location.SIDE_RIGHT_UPPER_ARM)
     }
 
     @Test
-    fun `setShowPumpSites and setShowCgmSites toggle the view filters`() {
+    fun setShowPumpSitesAndSetShowCgmSitesToggleTheViewFilters() {
         sut.setShowPumpSites(false)
         sut.setShowCgmSites(false)
 
@@ -87,7 +87,7 @@ internal class SiteRotationManagementViewModelTest {
     }
 
     @Test
-    fun `updateEditLocation sets selectedLocation and marks edited`() {
+    fun updateEditLocationSetsSelectedLocationAndMarksEdited() {
         sut.updateEditLocation(TE.Location.SIDE_RIGHT_UPPER_ARM)
 
         val state = sut.uiState.value
@@ -96,7 +96,7 @@ internal class SiteRotationManagementViewModelTest {
     }
 
     @Test
-    fun `onZoneClick toggles the location filter on and off`() {
+    fun onZoneClickTogglesTheLocationFilterOnAndOff() {
         sut.onZoneClick(TE.Location.SIDE_RIGHT_UPPER_ARM)
         assertThat(sut.uiState.value.selectedLocation).isEqualTo(TE.Location.SIDE_RIGHT_UPPER_ARM)
 
@@ -105,7 +105,7 @@ internal class SiteRotationManagementViewModelTest {
     }
 
     @Test
-    fun `cancelEditing clears editing state and resets location`() {
+    fun cancelEditingClearsEditingStateAndResetsLocation() {
         sut.updateEditLocation(TE.Location.SIDE_RIGHT_UPPER_ARM)
 
         sut.cancelEditing()

@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PermissionGroup
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -81,7 +82,8 @@ import kotlin.time.Clock
 @IntKey(1000)
 @ContributesBinding(AppScope::class, binding = binding<VirtualPump>())
 @SingleIn(AppScope::class)
-open class VirtualPumpPlugin @Inject constructor(
+@Inject
+open class VirtualPumpPlugin(
     aapsLogger: AAPSLogger,
     private val rxBus: RxBus,
     override val rh: TextResolver,
@@ -99,7 +101,8 @@ open class VirtualPumpPlugin @Inject constructor(
     private val ch: ConcentrationHelper,
     private val profileFunction: ProfileFunction,
     private val bolusProgressData: BolusProgressData,
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    notificationManager: NotificationManager
 ) : PumpPluginBase(
     pluginDescription = PluginDescription()
         .mainType(PluginType.PUMP)
@@ -123,7 +126,7 @@ open class VirtualPumpPlugin @Inject constructor(
         .setDefault()
         .showInList { !config.AAPSCLIENT },
     ownPreferences = VirtualBooleanNonPreferenceKey.entries,
-    aapsLogger, rh, preferences, commandQueue
+    aapsLogger, rh, preferences, commandQueue, notificationManager
 ), Pump, VirtualPump {
 
     private var scope: CoroutineScope? = null

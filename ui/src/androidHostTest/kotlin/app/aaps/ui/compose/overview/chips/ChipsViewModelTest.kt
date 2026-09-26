@@ -73,7 +73,7 @@ internal class ChipsViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes empty initial values`() {
+    fun defaultUiStateExposesEmptyInitialValues() {
         assertThat(sut.iobUiState.value.iobTotal).isEqualTo(0.0)
         assertThat(sut.iobUiState.value.text).isEmpty()
         assertThat(sut.cobUiState.value.text).isEmpty()

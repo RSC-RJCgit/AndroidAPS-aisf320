@@ -1,5 +1,6 @@
 package app.aaps.core.interfaces.db
 
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
@@ -1633,6 +1634,12 @@ interface PersistenceLayer {
      * Caller owns any vendor-specific interpretation of pumpId semantics.
      */
     suspend fun getGlucoseValuesByPumpIdRange(source: SourceSensor, startPumpId: Long, endPumpId: Long): List<GV>
+
+    /** Stores one AutoISF loop row. */
+    suspend fun insertAutoIsfValue(value: AIV)
+
+    /** AutoISF loop rows whose time is inside the interval, oldest first. */
+    suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV>
 }
 
 /**

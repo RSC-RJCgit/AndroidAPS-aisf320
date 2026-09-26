@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="cancel_action_with_details" comment="%1$s=the word Cancel, %2$s=the active item being cancelled (e.g. a running temp basal or extended bolus description). Example: 'Cancel 150% 30min'">%1$s %2$s</string>
     <string name="no_temp_basal_running">No temp basal running</string>
     <string name="start_activity_tt">Start Activity TT</string>
@@ -195,6 +195,71 @@
     <string name="edit_label">Edit</string>
     <string name="activate_label">Activate</string>
     <string name="activate_profile">Activate profile</string>
+    <string name="review_native_automations">Review native automations</string>
+    <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names stay blocked while that switch is on. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="autoisf_history_title">AutoISF history</string>
+    <string name="autoisf_history_empty">No AutoISF data in the last 6 hours</string>
+    <string name="autoisf_history_no_smb">No SMB in the last 6 hours</string>
+    <string name="autoisf_history_smb_only" comment="Button. Shows only rows where an SMB was given.">SMB only</string>
+    <string name="autoisf_history_all" comment="Button. Shows every AutoISF row, not only SMB rows.">All</string>
+    <string name="autoisf_history_time">Time</string>
+    <string name="autoisf_history_bgl">BGL</string>
+    <string name="autoisf_history_ukf">UKF</string>
+    <string name="autoisf_history_ukf_delta_5" comment="Change in the UKF glucose over about 5 minutes.">UKF d5</string>
+    <string name="autoisf_history_ukf_delta_15" comment="Change in the UKF glucose over about 15 minutes.">UKF d15</string>
+    <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
+    <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
+    <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>
+    <string name="autoisf_history_pp" comment="The pp ISF factor. Example: 0.90">pp</string>
+    <string name="autoisf_history_dura" comment="The dura ISF factor. Example: 1.05">dura</string>
+    <string name="autoisf_history_accel" comment="BG acceleration. This is not the acce ISF factor.">accel</string>
+    <string name="autoisf_history_delta">Delta</string>
+    <string name="autoisf_history_short_delta" comment="Short average BG delta.">Short delta</string>
+    <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
+    <string name="autoisf_history_iob">IOB</string>
+    <string name="autoisf_history_iob_th" comment="Effective IOB threshold for this row, in units.">iobTH</string>
+    <string name="autoisf_history_target" comment="Glucose target for this loop, in the user's units.">Target</string>
+    <string name="autoisf_history_uam" comment="Unannounced meal for this loop, in grams.">UAMci</string>
+    <string name="autoisf_history_smb_ratio" comment="SMB delivery ratio in force for this loop. Example: 0.50">SMB ratio</string>
+    <string name="autoisf_history_acce_weight" comment="Acceleration ISF weight in force for this loop. Example: 0.50">acWt</string>
+    <string name="autoisf_history_pp_weight" comment="Post-prandial ISF weight in force for this loop. Example: 0.25">ppWt</string>
+    <string name="autoisf_history_slope" comment="Libre calibration slope in force for this loop. Example: 1.00">slope</string>
+    <string name="autoisf_history_cob" comment="Carbs still on board, in grams.">COB</string>
+    <string name="autoisf_history_basal" comment="Running basal rate, in U/h. Example: 0.80">basal</string>
+    <string name="autoisf_history_note" comment="Care-portal notes written during this loop.">notes</string>
+    <string name="autoisf_history_smb">SMB</string>
+    <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
+    <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>
+    <string name="autoisf_history_steps_30" comment="Steps in the last 30 minutes.">S30</string>
+    <string name="autoisf_history_steps_60" comment="Steps in the last 60 minutes.">S60</string>
+    <string name="autoisf_history_steps_180" comment="Steps in the last 180 minutes.">S180</string>
+    <string name="coded_profiles">Coded profiles</string>
+    <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
+    <string name="coded_profiles_empty">Add a profile first.</string>
+    <string name="coded_profiles_blocked" comment="%1$d = how many names were refused. Example: Steroid names left unchanged: 2">Steroid names left unchanged: %1$d</string>
+    <string name="fill_tiers_from_standard">Fill tiers from Standard tier A</string>
+    <string name="fill_tiers_need_source">Set Standard tier A to a profile in the list first.</string>
+    <string name="fill_tiers_replace_title">Replace set profiles?</string>
+    <string name="fill_tiers_replace_message">These roles already have a profile. Replace them with a copy scaled from Standard tier A? Empty roles are filled either way.</string>
+    <string name="fill_tiers_done">Tier profiles saved.</string>
+    <string name="coded_role_label">Profile role</string>
+    <string name="coded_role_not_set">Not set</string>
+    <string name="coded_role_no_change">No role change</string>
+    <string name="coded_role_auto" comment="%1$s = role name. Example: This profile is stored as Steroid tier B">This profile is stored as %1$s</string>
+    <string name="coded_role_standard">Standard, current</string>
+    <string name="coded_role_low">Low, current</string>
+    <string name="coded_role_standard_a">Standard tier A</string>
+    <string name="coded_role_standard_b">Standard tier B</string>
+    <string name="coded_role_standard_c">Standard tier C</string>
+    <string name="coded_role_low_a">Low tier A</string>
+    <string name="coded_role_low_b">Low tier B</string>
+    <string name="coded_role_low_c">Low tier C</string>
+    <string name="coded_role_steroid_a">Steroid tier A</string>
+    <string name="coded_role_steroid_b">Steroid tier B</string>
+    <string name="coded_role_steroid_c">Steroid tier C</string>
+    <string name="coded_role_steroid_d">Steroid tier D</string>
+    <string name="coded_role_steroid_e">Steroid tier E</string>
+    <string name="coded_role_steroid_f">Steroid tier F</string>
     <string name="remove_label">Remove</string>
     <string name="active_profile_indicator">ACTIVE</string>
     <string name="confirm_remove_profile">Remove profile \"%1$s\"?</string>

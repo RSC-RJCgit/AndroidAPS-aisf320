@@ -54,7 +54,7 @@ internal class ProfileSwitchViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -63,7 +63,7 @@ internal class ProfileSwitchViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = link()
 
         sut.enterSelectionMode(item)
@@ -73,7 +73,7 @@ internal class ProfileSwitchViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection`() {
+    fun exitSelectionModeClearsSelection() {
         sut.enterSelectionMode(link())
 
         sut.exitSelectionMode()
@@ -83,7 +83,7 @@ internal class ProfileSwitchViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds then removes an item`() {
+    fun toggleSelectionAddsThenRemovesAnItem() {
         val first = link()
         val second = link()
         sut.enterSelectionMode(first)
@@ -96,13 +96,13 @@ internal class ProfileSwitchViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the flag`() {
+    fun toggleInvalidatedFlipsTheFlag() {
         sut.toggleInvalidated()
         assertThat(sut.uiState.value.showInvalidated).isTrue()
     }
 
     @Test
-    fun `getDeleteConfirmationMessage empty when nothing selected, plural for many`() {
+    fun getDeleteConfirmationMessageEmptyWhenNothingSelectedPluralForMany() {
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
 
         whenever(rh.gs(CoreUiStrings.confirm_remove_multiple_items, 2)).thenReturn("Remove 2 items")

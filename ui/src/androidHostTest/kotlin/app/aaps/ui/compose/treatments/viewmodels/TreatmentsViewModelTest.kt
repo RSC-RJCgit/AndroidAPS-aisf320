@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -39,6 +40,7 @@ internal class TreatmentsViewModelTest {
     @Mock private lateinit var uiInteraction: UiInteraction
     @Mock private lateinit var userEntryPresentationHelper: UserEntryPresentationHelper
     @Mock private lateinit var importExportPrefs: ImportExportPrefs
+    @Mock private lateinit var maintenance: Maintenance
     @Mock private lateinit var uel: UserEntryLogger
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var rxBus: RxBus
@@ -56,12 +58,12 @@ internal class TreatmentsViewModelTest {
         sut = TreatmentsViewModel(
             persistenceLayer, profileUtil, profileFunction, activePlugin, profileRepository,
             rh, translator, dateUtil, decimalFormatter, uiInteraction, userEntryPresentationHelper,
-            importExportPrefs, uel, aapsLogger, rxBus
+            importExportPrefs, maintenance, uel, aapsLogger, rxBus
         )
     }
 
     @Test
-    fun `showExtendedBolusTab is true when pump is extended-bolus capable and not faking`() {
+    fun showExtendedBolusTabIsTrueWhenPumpIsExtendedBolusCapableAndNotFaking() {
         whenever(pump.isFakingTempsByExtendedBoluses).thenReturn(false)
         whenever(pumpDescription.isExtendedBolusCapable).thenReturn(true)
 
@@ -69,7 +71,7 @@ internal class TreatmentsViewModelTest {
     }
 
     @Test
-    fun `showExtendedBolusTab is false when pump fakes temps by extended boluses`() {
+    fun showExtendedBolusTabIsFalseWhenPumpFakesTempsByExtendedBoluses() {
         whenever(pump.isFakingTempsByExtendedBoluses).thenReturn(true)
         whenever(pumpDescription.isExtendedBolusCapable).thenReturn(true)
 

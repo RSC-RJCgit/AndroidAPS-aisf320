@@ -89,7 +89,7 @@ import app.aaps.ui.UiStrings
  *        choose from rather than a source of "the current one", so the user picks and activation stays
  *        disabled until they do. Empty in the normal case, where the master resolves the in-force insulin.
  * @param preselectedInsulin Suggested entry from the most recent profile switch, or null to force a choice.
- * @param onActivate Callback when profile is activated with (duration, percentage, timeshift, withTT, notes, timestamp, timeChanged, iCfg)
+ * @param onActivate Callback when profile is activated. The last value is the coded role key, or null when the role stays unchanged. It is written only after the switch commits.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +105,7 @@ fun ProfileActivationScreen(
     checkPumpCompatible: (percentage: Int) -> Boolean = { true },
     insulinChoices: List<ICfg> = emptyList(),
     preselectedInsulin: ICfg? = null,
-    onActivate: (durationMinutes: Int, percentage: Int, timeshiftHours: Int, withTT: Boolean, notes: String, timestamp: Long, timeChanged: Boolean, iCfg: ICfg?) -> Unit
+    onActivate: (durationMinutes: Int, percentage: Int, timeshiftHours: Int, withTT: Boolean, notes: String, timestamp: Long, timeChanged: Boolean, iCfg: ICfg?, chosenRoleKey: String?) -> Unit
 ) {
     val dateUtil = LocalDateUtil.current
     val focusManager = LocalFocusManager.current
@@ -117,6 +117,8 @@ fun ProfileActivationScreen(
     // Only meaningful when insulinChoices is non-empty; null then means "user hasn't chosen yet".
     var selectedInsulin by remember { mutableStateOf(preselectedInsulin) }
     val insulinChoiceSatisfied = insulinChoices.isEmpty() || selectedInsulin != null
+    var chosenRoleKey by remember { mutableStateOf<String?>(null) }
+    val routedRoleKey = steroidSlotKeyForName(profileName)
 
     // Date/time state
     val originalTimestamp = remember { initialTimestamp }
@@ -189,7 +191,8 @@ fun ProfileActivationScreen(
                         notes,
                         eventTime,
                         eventTimeChanged,
-                        selectedInsulin
+                        selectedInsulin,
+                        routedRoleKey ?: chosenRoleKey
                     )
                 },
                 enabled = pumpCompatible && insulinChoiceSatisfied,
@@ -261,6 +264,12 @@ fun ProfileActivationScreen(
                     }
                 }
             }
+
+            ProfileRoleCard(
+                routedRoleKey = routedRoleKey,
+                chosenRoleKey = chosenRoleKey,
+                onChosen = { chosenRoleKey = it }
+            )
 
             // Single card with all inputs
             Card(
@@ -409,5 +418,61 @@ fun ProfileActivationScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun ProfileRoleCard(
+    routedRoleKey: String?,
+    chosenRoleKey: String?,
+    onChosen: (String?) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (routedRoleKey != null) {
+                Text(
+                    text = stringResource(UiStrings.coded_role_auto, codedRoleLabel(routedRoleKey)),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                RoleChoiceDropdown(chosenRoleKey = chosenRoleKey, onChosen = onChosen)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleChoiceDropdown(chosenRoleKey: String?, onChosen: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val noChange = stringResource(UiStrings.coded_role_no_change)
+    val shown = if (chosenRoleKey == null) noChange else codedRoleLabel(chosenRoleKey)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { open = true }
+            .padding(vertical = 8.dp)
+    ) {
+        Text(
+            text = stringResource(UiStrings.coded_role_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(text = shown, style = MaterialTheme.typography.bodyLarge)
+    }
+    if (open) {
+        val choices = listOf("") + codedProfileSlots().map { it.key }
+        ChoiceListDialog(
+            title = stringResource(UiStrings.coded_role_label),
+            choices = choices,
+            label = { key -> if (key.isEmpty()) noChange else codedRoleLabel(key) },
+            onPick = { key ->
+                onChosen(key.ifEmpty { null })
+                open = false
+            },
+            onDismiss = { open = false }
+        )
     }
 }

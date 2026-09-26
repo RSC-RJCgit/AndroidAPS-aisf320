@@ -97,6 +97,10 @@ fun QuickWizardEditor(
     buttonText: String,
     insulin: Double,
     carbs: Int,
+    protein: Int,
+    fat: Int,
+    warsawDurationHours: Double,
+    maxBolus: Double,
     carbTime: Int,
     validFrom: Int,
     validTo: Int,
@@ -124,6 +128,10 @@ fun QuickWizardEditor(
     onButtonTextChange: (String) -> Unit,
     onInsulinChange: (Double) -> Unit,
     onCarbsChange: (Int) -> Unit,
+    onProteinChange: (Int) -> Unit,
+    onFatChange: (Int) -> Unit,
+    onWarsawDurationChange: (Double) -> Unit,
+    onMaxBolusChange: (Double) -> Unit,
     onCarbTimeChange: (Int) -> Unit,
     onValidFromChange: (Int) -> Unit,
     onValidToChange: (Int) -> Unit,
@@ -214,6 +222,47 @@ fun QuickWizardEditor(
                 valueRange = 0.0..maxCarbs,
                 step = 1.0,
                 unitLabel = CoreUiStrings.units_grams,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (mode == QuickWizardMode.WIZARD) {
+            NumberInputRow(
+                labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                value = maxBolus,
+                onValueChange = onMaxBolusChange,
+                valueRange = 0.0..60.0,
+                step = 0.1,
+                decimalPlaces = 2,
+                unitLabel = CoreUiStrings.insulin_unit_shortname,
+                modifier = Modifier.fillMaxWidth()
+            )
+            NumberInputRow(
+                labelRef = InterfacesStrings.wizard_protein,
+                value = protein.toDouble(),
+                onValueChange = { onProteinChange(it.toInt()) },
+                valueRange = 0.0..250.0,
+                step = 1.0,
+                unitLabel = CoreUiStrings.units_grams,
+                modifier = Modifier.fillMaxWidth()
+            )
+            NumberInputRow(
+                labelRef = InterfacesStrings.wizard_fat,
+                value = fat.toDouble(),
+                onValueChange = { onFatChange(it.toInt()) },
+                valueRange = 0.0..250.0,
+                step = 1.0,
+                unitLabel = CoreUiStrings.units_grams,
+                modifier = Modifier.fillMaxWidth()
+            )
+            NumberInputRow(
+                labelRef = InterfacesStrings.wizard_fpu_duration,
+                value = warsawDurationHours,
+                onValueChange = onWarsawDurationChange,
+                valueRange = 0.0..24.0,
+                step = 0.5,
+                decimalPlaces = 1,
+                unitLabel = CoreUiStrings.units_hours,
                 modifier = Modifier.fillMaxWidth()
             )
         }

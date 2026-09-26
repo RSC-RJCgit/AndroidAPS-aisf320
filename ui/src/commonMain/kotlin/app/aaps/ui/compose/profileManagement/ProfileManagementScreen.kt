@@ -25,12 +25,14 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -52,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.graph.profile.ProfileCompareContent
 import app.aaps.core.graph.profile.ProfileSingleContent
 import app.aaps.core.interfaces.navigation.ElementType
@@ -60,7 +63,10 @@ import app.aaps.core.ui.compose.AapsFab
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.ui.compose.ScreenMode
+import app.aaps.core.keys.StringKey
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
+import app.aaps.core.ui.compose.dialogs.OkDialog
+import app.aaps.core.ui.compose.dialogs.QueryAnyPasswordDialog
 import app.aaps.core.ui.compose.navigation.label
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
@@ -69,6 +75,7 @@ import app.aaps.ui.compose.components.CarouselReorderConfig
 import app.aaps.ui.compose.components.ContentContainer
 import app.aaps.ui.compose.components.ManagementCarousel
 import app.aaps.ui.compose.profileManagement.viewmodels.ProfileManagementViewModel
+import app.aaps.ui.compose.profileManagement.viewmodels.SettingsExportState
 import kotlinx.coroutines.launch
 
 /**
@@ -108,6 +115,7 @@ fun ProfileManagementScreen(
     val canReorder = !isPlayMode && uiState.profileNames.size > 1
     val scope = rememberCoroutineScope()
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var showCodedProfiles by remember { mutableStateOf(false) }
 
     // Back leaves sort mode rather than the screen, so a reshuffle isn't silently discarded.
     NavigationBackHandler(
@@ -178,6 +186,74 @@ fun ProfileManagementScreen(
             snackbarHostState.showSnackbar(message)
         }
     }
+    val tierReplace by viewModel.tierReplace.collectAsStateWithLifecycle()
+    val tierFillNonce by viewModel.tierFillNonce.collectAsStateWithLifecycle()
+    val settingsExport by viewModel.settingsExport.collectAsStateWithLifecycle()
+    if (showCodedProfiles) {
+        CodedProfilesDialog(
+            profileNames = uiState.profileNames,
+            initial = codedProfileSlots().map { viewModel.codedRoleValue(it.key) },
+            fillNonce = tierFillNonce,
+            onFillTiers = { viewModel.requestTierFill() },
+            onSave = { selected ->
+                viewModel.saveCodedProfiles(selected)
+                showCodedProfiles = false
+            },
+            onDismiss = { showCodedProfiles = false }
+        )
+    }
+    val pendingReplace = tierReplace
+    if (pendingReplace != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.confirmTierReplace(false) },
+            title = { Text(stringResource(UiStrings.fill_tiers_replace_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(UiStrings.fill_tiers_replace_message))
+                    pendingReplace.forEach { write ->
+                        Text(stringResource(InterfacesStrings.confirmation_line, codedRoleLabel(write.key), write.name))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmTierReplace(true) }) {
+                    Text(stringResource(CoreUiStrings.yes))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.confirmTierReplace(false) }) {
+                    Text(stringResource(CoreUiStrings.no))
+                }
+            }
+        )
+    }
+    when (settingsExport) {
+        is SettingsExportState.MasterPasswordMissing -> OkDialog(
+            title = stringResource(CoreUiStrings.nav_export),
+            message = stringResource(CoreUiStrings.master_password_missing),
+            onDismiss = { viewModel.cancelSettingsExport() }
+        )
+        is SettingsExportState.ConfirmExport -> {
+            val confirm = settingsExport as SettingsExportState.ConfirmExport
+            OkCancelDialog(
+                title = stringResource(CoreUiStrings.export_to),
+                message = confirm.fileName + "?\n\n" + stringResource(CoreUiStrings.password_preferences_encrypt_prompt),
+                onConfirm = { viewModel.onExportConfirmed() },
+                onDismiss = { viewModel.cancelSettingsExport() }
+            )
+        }
+        is SettingsExportState.AskPassword -> {
+            val ask = settingsExport as SettingsExportState.AskPassword
+            QueryAnyPasswordDialog(
+                title = stringResource(StringKey.ProtectionMasterPassword.title),
+                passwordExplanation = stringResource(CoreUiStrings.password_preferences_encrypt_prompt),
+                errorMessage = if (ask.wrongPassword) stringResource(CoreUiStrings.wrongpassword) else null,
+                onConfirm = { password -> viewModel.onExportPasswordEntered(password) },
+                onCancel = { viewModel.cancelSettingsExport() }
+            )
+        }
+        is SettingsExportState.Idle -> Unit
+    }
 
     AapsTheme {
         Scaffold(
@@ -227,6 +303,7 @@ fun ProfileManagementScreen(
                                             contentDescription = stringResource(CoreUiStrings.switch_to_edit)
                                         )
                                     }
+                                    CodedProfilesMenu(onOpen = { showCodedProfiles = true })
                                 }
                             } else {
                                 // Menu entry as well as the long-press: the long-press is undiscoverable
@@ -248,6 +325,13 @@ fun ProfileManagementScreen(
                                             onClick = {
                                                 showOverflowMenu = false
                                                 viewModel.enterReorderMode()
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(UiStrings.coded_profiles)) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                showCodedProfiles = true
                                             }
                                         )
                                     }
@@ -509,6 +593,28 @@ fun ProfileManagementScreen(
                 }
 
             }
+        }
+    }
+}
+
+@Composable
+private fun CodedProfilesMenu(onOpen: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = stringResource(CoreUiStrings.more_options)
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(UiStrings.coded_profiles)) },
+                onClick = {
+                    expanded = false
+                    onOpen()
+                }
+            )
         }
     }
 }

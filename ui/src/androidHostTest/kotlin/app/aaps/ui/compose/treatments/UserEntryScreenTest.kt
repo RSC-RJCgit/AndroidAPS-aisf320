@@ -136,7 +136,7 @@ class UserEntryScreenTest {
         runBlocking {
             whenever(persistenceLayer.getUserEntryFilteredDataFromTime(any())).thenReturn(entries)
         }
-        return UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus)
+        return UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus, mock(), mock())
     }
 
     private fun setScreen(viewModel: UserEntryViewModel, onToolbar: (ToolbarConfig) -> Unit = {}) {
@@ -169,7 +169,7 @@ class UserEntryScreenTest {
         // StandardTestDispatcher leaves the init{} load unrun, so the state stays on isLoading and
         // the spinner branch is what renders.
         Dispatchers.setMain(StandardTestDispatcher())
-        setScreen(UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus))
+        setScreen(UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus, mock(), mock()))
 
         compose.onNodeWithText(noRecords).assertDoesNotExist()
     }

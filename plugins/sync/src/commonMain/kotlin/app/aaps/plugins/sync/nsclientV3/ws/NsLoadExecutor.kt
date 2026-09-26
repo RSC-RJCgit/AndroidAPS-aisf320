@@ -60,4 +60,12 @@ interface NsLoadExecutor {
 
     /** Cancels the round, if one is going. */
     fun cancel()
+
+    /**
+     * Downloads boluses and carbs from the secondary Nightscout site.
+     *
+     * Kept if one download is already going. It is not part of the main round, so a failure on
+     * this phone's own Nightscout cannot skip it, and it cannot cancel that round.
+     */
+    fun enqueueSecondaryTreatments()
 }

@@ -35,7 +35,7 @@ internal class PermissionsViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no items and sheet hidden`() {
+    fun defaultUiStateHasNoItemsAndSheetHidden() {
         val state = sut.uiState.value
         assertThat(state.items).isEmpty()
         assertThat(state.hasAnyMissing).isFalse()
@@ -43,20 +43,20 @@ internal class PermissionsViewModelTest {
     }
 
     @Test
-    fun `showSheet sets showSheet true`() {
+    fun showSheetSetsShowSheetTrue() {
         sut.showSheet()
         assertThat(sut.uiState.value.showSheet).isTrue()
     }
 
     @Test
-    fun `dismissSheet sets showSheet false`() {
+    fun dismissSheetSetsShowSheetFalse() {
         sut.showSheet()
         sut.dismissSheet()
         assertThat(sut.uiState.value.showSheet).isFalse()
     }
 
     @Test
-    fun `refresh with no permissions produces empty granted state`() {
+    fun refreshWithNoPermissionsProducesEmptyGrantedState() {
         whenever(pluginPermissions.collectAllPermissions()).thenReturn(emptyList())
         whenever(pluginPermissions.collectMissingPermissions()).thenReturn(emptyList())
 

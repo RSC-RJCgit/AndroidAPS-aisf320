@@ -17,6 +17,7 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.InitProgress
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.dst.DstHelper
+import app.aaps.core.interfaces.maintenance.AutomaticExport
 import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.core.interfaces.pump.PumpRate
@@ -53,6 +54,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
 
     @Mock private lateinit var loop: Loop
     @Mock private lateinit var maintenance: Maintenance
+    @Mock private lateinit var automaticExport: AutomaticExport
     @Mock private lateinit var dstHelper: DstHelper
     @Mock private lateinit var workerParameters: WorkerParameters
     @Mock private lateinit var persistenceLayer: PersistenceLayer
@@ -100,6 +102,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
             // The real shared component, not a mock: the assertions below were written against the
             // work this worker used to do inline, and they all still have to pass now it is shared.
             periodicMaintenance = PeriodicMaintenance(aapsLogger, localAlertUtils, persistenceLayer, maintenance, preferences, dateUtil),
+            automaticExport = automaticExport,
             rh = rh,
             preferences = preferences,
             dstHelper = dstHelper,

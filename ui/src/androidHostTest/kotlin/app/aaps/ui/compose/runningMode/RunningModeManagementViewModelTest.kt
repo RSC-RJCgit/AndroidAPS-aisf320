@@ -66,7 +66,7 @@ internal class RunningModeManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is loading with no allowed transitions`() {
+    fun defaultUiStateIsLoadingWithNoAllowedTransitions() {
         val state = sut.uiState.value
         assertThat(state.currentMode).isEqualTo(RM.Mode.DISABLED_LOOP)
         assertThat(state.allowedNextModes).isEmpty()

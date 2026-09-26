@@ -92,19 +92,19 @@ internal class InsulinDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `updateInsulin clamps to the max bolus`() {
+    fun updateInsulinClampsToTheMaxBolus() {
         sut.updateInsulin(20.0)
         assertThat(sut.uiState.value.insulin).isEqualTo(10.0)
     }
 
     @Test
-    fun `updateInsulin clamps negatives to zero`() {
+    fun updateInsulinClampsNegativesToZero() {
         sut.updateInsulin(-5.0)
         assertThat(sut.uiState.value.insulin).isEqualTo(0.0)
     }
 
     @Test
-    fun `updateTimeOffset clamps to plus or minus 12 hours`() {
+    fun updateTimeOffsetClampsToPlusOrMinus12Hours() {
         sut.updateTimeOffset(1000)
         assertThat(sut.uiState.value.timeOffsetMinutes).isEqualTo(720)
 
@@ -113,7 +113,7 @@ internal class InsulinDialogViewModelTest {
     }
 
     @Test
-    fun `updateEatingSoonTt and updateNotes update the state`() {
+    fun updateEatingSoonTtAndUpdateNotesUpdateTheState() {
         sut.updateEatingSoonTt(true)
         sut.updateNotes("correction")
 

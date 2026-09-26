@@ -126,7 +126,8 @@ import kotlin.math.floor
 @PumpDriver
 @MetroIntKey(1090)
 @SingleIn(AppScope::class)
-class MedtronicPumpPlugin @Inject constructor(
+@Inject
+class MedtronicPumpPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -139,7 +140,7 @@ class MedtronicPumpPlugin @Inject constructor(
     private val rileyLinkServiceData: RileyLinkServiceData,
     private val serviceTaskExecutor: ServiceTaskExecutor,
     private val uiInteraction: UiInteraction,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     dateUtil: DateUtil,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
@@ -180,7 +181,8 @@ class MedtronicPumpPlugin @Inject constructor(
     //instantiator = instantiator,
     pumpEnactResultProvider = pumpEnactResultProvider,
     bolusProgressData = bolusProgressData,
-    pumpDriverConfigurationInternal = MedtronicPumpDriverConfiguration()
+    pumpDriverConfigurationInternal = MedtronicPumpDriverConfiguration(),
+    notificationManager = notificationManager
 ), Pump, RileyLinkPumpDevice, PumpSyncEntriesCreator {
 
     private var rileyLinkMedtronicService: RileyLinkMedtronicService? = null

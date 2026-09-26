@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3
 
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.SyncStrings
 import androidx.annotation.VisibleForTesting
@@ -36,6 +37,7 @@ import app.aaps.core.interfaces.sync.Sync
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.KeysStrings
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
@@ -96,8 +98,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -113,9 +114,11 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.encodeToJsonElement
@@ -126,7 +129,8 @@ import kotlinx.serialization.json.encodeToJsonElement
 @ContributesBinding(AppScope::class, binding = binding<NsClient>())
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @MetroIntKey(310)
-class NSClientV3Plugin @Inject constructor(
+@Inject
+class NSClientV3Plugin(
     aapsLogger: AAPSLogger,
     override val rh: TextResolver,
     preferences: Preferences,
@@ -151,6 +155,7 @@ class NSClientV3Plugin @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val nsConnection: NsConnection,
     private val nsLoadExecutor: NsLoadExecutor,
+    notificationManager: NotificationManager,
 ) : NsClient, Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -170,7 +175,7 @@ class NSClientV3Plugin @Inject constructor(
             )
         },
     ownPreferences = NsclientBooleanKey.entries + NsclientStringKey.entries + NsclientLongKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ) {
 
     @Suppress("PrivatePropertyName")
@@ -183,6 +188,11 @@ class NSClientV3Plugin @Inject constructor(
         // Rate-limit for requestMasterProbe so screen recompositions / banner flaps / reconnect bursts
         // don't spam pings + settings re-fetches at the master.
         private val PROBE_MIN_INTERVAL_MS = T.secs(5).msecs()
+
+        // How long onStop waits for background work to really finish. Long enough for a network call
+        // to notice it was cancelled, short enough that a child which never cooperates cannot hold
+        // the stop open.
+        private val STOP_JOIN_TIMEOUT_MS = T.secs(5).msecs()
     }
 
     private var scope = CoroutineScope(aapsIoDispatcher + SupervisorJob())
@@ -196,7 +206,7 @@ class NSClientV3Plugin @Inject constructor(
     private val pendingUpload = AtomicBoolean(false)
     override val dataSyncSelector: DataSyncSelector get() = dataSyncSelectorV3
     override val status
-        get() =
+        get() = withVirtualUploadWarning(
             when {
                 preferences.get(NsclientBooleanKey.NsPaused)                                          -> rh.gs(CoreUiStrings.paused)
                 isAllowed.not()                                                                       -> blockingReason
@@ -209,6 +219,14 @@ class NSClientV3Plugin @Inject constructor(
                 nsAndroidClient?.lastStatus?.apiPermissions?.isRead() == true                         -> rh.gs(SyncStrings.read_only)
                 else                                                                                  -> rh.gs(CoreUiStrings.unknown)
             }
+        )
+
+    // The upload switch works on a virtual pump. The status says to check the site first.
+    private fun withVirtualUploadWarning(base: String): String {
+        if (!dataSyncSelectorV3.virtualPumpSelected()) return base
+        if (!preferences.get(BooleanKey.NsClientUploadData)) return base
+        return rh.gs(SyncStrings.ns_status_virtual_upload_warning, base)
+    }
     var lastOperationError: String? = null
 
     internal var nsAndroidClient: NSAndroidClient? = null
@@ -363,6 +381,9 @@ class NSClientV3Plugin @Inject constructor(
                     }
                 // Polls when websockets are switched off, and also when the platform has none at all -
                 // otherwise a desktop client would wait for pushes that can never arrive.
+                // The secondary site has its own address. A dead token on this phone's Nightscout,
+                // or a websocket that never calls the load round, must not stop carbs and boluses.
+                enqueueSecondaryTreatments()
                 if (!preferences.get(BooleanKey.NsClient3UseWs) || !nsConnection.supportsWebsocket)
                     executeLoop("MAIN_LOOP")
                 else
@@ -435,8 +456,11 @@ class NSClientV3Plugin @Inject constructor(
                 toTime = dateUtil.now() + T.mins(1).plus(T.secs(0)).msecs()
                 origin = "1_MIN_OLD_DATA"
             }
-            // A delayed one-shot. Successive calls stack up, exactly as the Handler posts did;
-            // executeLoop is guarded, and the scope cancels them all on stop.
+            // A delayed one-shot. Successive calls stack up, exactly as the Handler posts did, and
+            // the scope cancels them all on stop. Note that executeLoop's isRunning check is NOT
+            // atomic with the enqueue after it, so two calls arriving together can both start a
+            // round. That costs a redundant REPLACE and a repeated fetch, nothing worse: rows
+            // already read stay staged in StoreDataForDb until they reach the database.
             scope.launch {
                 delay(toTime - dateUtil.now())
                 executeLoop(origin)
@@ -448,10 +472,35 @@ class NSClientV3Plugin @Inject constructor(
     override suspend fun onStop() {
         runningConfigurationPublisher.stop()
         preferencesClientPublisher.stop()
-        scope.cancel()
+        // Cancel and then WAIT. cancel() only asks: a coroutine keeps running until it reaches its
+        // next suspension point, so without the join the stop returns while background work is still
+        // alive and touching things the caller is about to tear down. NonCancellable so a cancelled
+        // caller still completes the stop, and a timeout so a child that ignores cancellation cannot
+        // hold the stop open for ever.
+        withContext(NonCancellable) {
+            val scopeJob = scope.coroutineContext.job
+            if (withTimeoutOrNull(STOP_JOIN_TIMEOUT_MS) { scopeJob.cancelAndJoin() } == null)
+                aapsLogger.warn(LTag.NSCLIENT, "Background work did not stop within $STOP_JOIN_TIMEOUT_MS ms")
+        }
         nsConnection.stop()
         nsLoadExecutor.cancel()
         super.onStop()
+    }
+
+    /**
+     * Cancels everything this plugin started, including the app-lifetime [reachableScope] that
+     * [onStop] deliberately leaves running so `masterReachable` survives a service restart.
+     *
+     * For tests only. A test builds a plugin per test method, and a scope that outlives the method
+     * goes on calling mocks that Mockito has already disabled. The throw then lands on whatever
+     * test starts next, far away from the test that actually caused it.
+     */
+    @VisibleForTesting
+    suspend fun shutdownForTest() {
+        onStop()
+        withContext(NonCancellable) {
+            withTimeoutOrNull(STOP_JOIN_TIMEOUT_MS) { reachableScope.coroutineContext.job.cancelAndJoin() }
+        }
     }
 
     override val hasWritePermission: Boolean get() = nsAndroidClient?.lastStatus?.apiPermissions?.isFull() == true
@@ -1091,7 +1140,15 @@ class NSClientV3Plugin @Inject constructor(
         preferences.put(NsclientStringKey.V3LastModified, Json.encodeToString(LastModified.serializer(), lastLoadedSrvModified))
     }
 
+    private fun enqueueSecondaryTreatments() {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
+        nsLoadExecutor.enqueueSecondaryTreatments()
+    }
+
     internal fun executeLoop(origin: String) {
+        // Before the pause and token checks. Virtual 5 Sep: a 401 on the primary site blocked
+        // this download all morning, so the virtual pump never saw carbs or boluses.
+        enqueueSecondaryTreatments()
         if (preferences.get(BooleanKey.NsClient3UseWs) && initialLoadFinished) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             nsClientRepository.addLog("● RUN", "paused  $origin")
@@ -1179,6 +1236,16 @@ class NSClientV3Plugin @Inject constructor(
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,
                     BooleanKey.NsClientAcceptTbrEb
+                )
+            ),
+            PreferenceSubScreenDef(
+                key = "ns_secondary_settings",
+                title = KeysStrings.ns_secondary_settings,
+                items = listOf(
+                    BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientSecondaryAcceptTherapyEvent,
+                    StringKey.NsClientSecondaryUrl,
+                    StringKey.NsClientSecondaryAccessToken
                 )
             ),
             PreferenceSubScreenDef(

@@ -3,6 +3,7 @@ package app.aaps.plugins.sync.nsclientV3
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.nsclient.NSClientRepository
+import app.aaps.core.keys.BooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
@@ -11,7 +12,9 @@ import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
@@ -53,11 +56,20 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
             aapsLogger, rh, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
             mock(), mock(), decimalFormatter, l, nsClientRepository, mock(),
-            mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor
+            mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor, mock()
         )
     }
 
     /** The round is one chain under one name, and it ends with the upload step. */
+    // The plugin starts a coroutine scope on the IO dispatcher the moment it is constructed, so a
+    // plugin built per test keeps background work alive after the test method ends. Mockito then
+    // disables the mocks, the leftover coroutine touches one, and the throw lands on whatever test
+    // runs next as UncaughtExceptionsBeforeTest. onStop cancels that scope and waits for it.
+    @AfterEach
+    fun stopPlugin() {
+        runBlocking { sut.shutdownForTest() }
+    }
+
     @Test
     fun `a load round runs the whole chain, ending with the upload`() = runTest {
         whenever(nsLoadExecutor.isRunning).thenReturn(false)
@@ -123,5 +135,17 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
 
         verify(nsLoadExecutor, never()).runChain(any())
         verify(nsLoadExecutor, never()).runReplacing(any())
+    }
+
+    /** A dead or paused primary site must not stop the secondary carbs and bolus download. */
+    @Test
+    fun `secondary treatments are still requested while the client is paused`() = runTest {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+
+        sut.executeLoop("TEST")
+
+        verify(nsLoadExecutor).enqueueSecondaryTreatments()
+        verify(nsLoadExecutor, never()).runChain(any())
     }
 }

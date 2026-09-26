@@ -24,7 +24,7 @@
     <string name="profile_set_ok">泵基础率配置文件更新了</string>
     <string name="invalid_input">无效的输入数据</string>
     <string name="invalid_number">无效数字</string>
-    <string name="constraint_applied">应用约束!</string>
+    <string name="constraint_applied">应用约束！</string>
     <string name="tt_label">临时目标</string>
     <string name="pump_unreachable">泵无法连接</string>
     <string name="insulin_unit_shortname">U</string>
@@ -68,7 +68,6 @@
     <string name="confirm_pin_hint">确认 PIN</string>
     <string name="preference_range_summary" comment="%1$s=current value, %2$s=unit label, %3$s=minimum, %4$s=maximum. Example: 5.0 U (0.0 – 10.0)">%1$s%2$s (%3$s – %4$s)</string>
     <string name="statuslights">状态指示灯</string>
-    <string name="copy_existing_values">复制 NS 设置(如果存在的话)？</string>
     <string name="configbuilder_insulin">胰岛素</string>
     <string name="configbuilder_bgsource">血糖来源</string>
     <string name="configbuilder_smoothing">平滑</string>
@@ -102,6 +101,7 @@
     <string name="tdd_total">胰岛素输注日总量</string>
     <string name="tdd_old_data">旧的数据</string>
     <string name="goingtodeliver">将要输注 %1$.2f U</string>
+    <string name="carbs_not_saved_after_bolus">大剂量已输注，但碳水化合物未能保存。请重新输入碳水化合物。</string>
     <string name="androidaps_start">AAPS 已启动</string>
     <string name="format_carbs_split" comment="Compact carbs summary when a food type splits the entry into immediate + extended carbs. %1$d=immediate carbs (g), %2$d=extended (eCarbs) carbs (g). Example: 9+2 g">%1$d+%2$d g</string>
     <string name="format_hours">%1$.2f 小时</string>
@@ -157,7 +157,7 @@
     <string name="cob">COB活性碳水</string>
     <string name="name_short">名称:</string>
     <string name="time">时间</string>
-    <string name="ns_wifi_ssids">WiFi SSID</string>
+    <string name="ns_wifi_ssids">Wi-Fi SSID</string>
     <string name="loading">加载中…</string>
     <string name="waiting_for_pump">正在等待泵…</string>
     <string name="initialization_failed">初始化失败</string>
@@ -245,6 +245,8 @@
     <string name="location_permission_not_granted">未授予位置权限。请在 Android 设置中允许。</string>
     <string name="configbuilder_nightscoutversion_label">Nightscout 版本：</string>
     <string name="not_available_full">不可用</string>
+    <string name="not_implemented_yet">此功能在当前平台上尚未就绪</string>
+    <string name="not_available_on_platform">此功能在当前平台上不可用</string>
     <string name="engineering_mode_enabled">已启用工程模式</string>
     <string name="back">返回</string>
     <string name="next">下一步</string>
@@ -772,6 +774,7 @@
     <string name="initializing">初始化…</string>
     <string name="secs" comment="second short">%1$d s</string>
     <string name="warning" comment="Generic warning dialog title">警告</string>
+    <string name="alert" comment="Generic alert dialog title">警告</string>
     <string name="retry" comment="Button label to retry a failed operation">重试</string>
     <string name="finish" comment="Button label to complete a wizard/setup flow">完成</string>
     <string name="firmware" comment="Pump firmware version label">固件</string>
@@ -781,7 +784,7 @@
     <!--    Constraints-->
     <string name="limitingbasalratio">最大基础率被限定为 %1$.2f U/h 由于 %2$s</string>
     <string name="pumplimit">泵限制</string>
-    <string name="limitingpercentrate">由于 %2$s, 将最大百分比限制为 %1$d%%</string>
+    <string name="limitingpercentrate">由于 %2$s, 将最大百分比限制为 %1$d%</string>
     <string name="itmustbepositivevalue">它必须是正数</string>
     <string name="limitingbolus">由于 %2$s, 将大剂量限制为 %1$.1f U</string>
     <!--    Dialogs-->
@@ -795,7 +798,7 @@
     <string name="close">关闭</string>
     <!-- TwoMessagesDialog -->
     <!-- <unattended_export> -->
-    <string name="export_ok">OK</string>
+    <string name="export_ok">确定</string>
     <string name="export_warning">警告</string>
     <string name="export_expired">已过期</string>
     <string name="export_disabled">停用</string>
@@ -906,7 +909,7 @@
     <string name="carousel_position" comment="Compact position readout shown between the reorder buttons. %1$d=position of the centred card starting at 1, %2$d=total cards. Example: 3 / 7">%1$d / %2$d</string>
     <string name="carousel_position_description" comment="Spoken form of carousel_position, read out by screen readers after each move. %1$d=position of the centred card starting at 1, %2$d=total cards. Example: Position 3 of 7">位置 %1$d / %2$d</string>
     <string name="status">状态</string>
-    <string name="pump_actions">泵动作</string>
+    <string name="pump_actions">泵操作</string>
     <string name="tempbasal_button">临时基础率</string>
     <string name="extended_bolus_button">扩展大剂量(方波)</string>
     <string name="device_maintenance">设备维护</string>
@@ -1018,8 +1021,14 @@
     <string name="import_wrong_password">密码错误</string>
     <string name="import_btn">导入</string>
     <string name="import_anyway_btn">仍然导入</string>
-    <string name="import_restart_title">配置导入了</string>
-    <string name="import_restart_message">设置已导入。应用程序需要重启。</string>
+    <string name="import_apply_title">配置导入了</string>
+    <string name="import_apply_message">导入的设置现在将被应用。发生变更的插件将会重启</string>
+    <string name="import_apply_waiting">正在等待泵…</string>
+    <string name="import_apply_pump_busy">泵仍在忙碌中，因此设置未应用。</string>
+    <string name="import_apply_retry_question">现在重试吗？</string>
+    <string name="import_applied_title">设置已应用</string>
+    <string name="import_applied_message">导入的设置现已生效。</string>
+    <string name="import_apply_pump_changed">已取消：泵因设置导入而被更改</string>
     <string name="import_source_local">本地</string>
     <string name="import_source_cloud">云</string>
     <string name="import_load_more">加载更多</string>
@@ -1064,8 +1073,8 @@
     <string name="units_format_grams">%1$d g</string>
     <string name="units_format_grams_range">%1$d g (%2$d - %3$d)</string>
     <string name="units_format_hours">%1$d 小时</string>
-    <string name="units_format_hours_double">%1$.0f 小时</string>
-    <string name="units_format_hours_double_range">%1$.0f 小时(%2$.0f - %3$.0f)</string>
+    <string name="units_format_hours_double">%1$.1f 小时</string>
+    <string name="units_format_hours_double_range">%1$.1f 小时(%2$.1f - %3$.1f)</string>
     <string name="units_format_hours_range">%1$d 小时(%2$d - %3$d)</string>
     <string name="units_format_insulin">%1$.1f U</string>
     <string name="units_format_insulin_int">%1$d U</string>

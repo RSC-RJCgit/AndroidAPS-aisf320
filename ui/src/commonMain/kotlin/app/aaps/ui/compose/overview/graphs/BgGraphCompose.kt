@@ -1,22 +1,39 @@
 package app.aaps.ui.compose.overview.graphs
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
+import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
@@ -24,10 +41,14 @@ import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import app.aaps.core.interfaces.overview.graph.BolusType
+import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.icons.IcProfile
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
@@ -41,6 +62,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.common.Position
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
@@ -56,11 +78,15 @@ private const val showBasalOnBgGraph = false
 
 private const val SERIES_REGULAR = "regular"
 private const val SERIES_BUCKETED = "bucketed"
+private const val SERIES_RAW = "raw"
+private const val SERIES_UKF = "ukf"
 private const val SERIES_PRED_IOB = "pred_iob"
 private const val SERIES_PRED_COB = "pred_cob"
 private const val SERIES_PRED_ACOB = "pred_acob"
 private const val SERIES_PRED_UAM = "pred_uam"
 private const val SERIES_PRED_ZT = "pred_zt"
+private const val SERIES_BOLUS = "bolus"
+private const val SERIES_CARBS = "carbs"
 
 /** All prediction series identifiers */
 private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_PRED_ACOB, SERIES_PRED_UAM, SERIES_PRED_ZT)
@@ -123,8 +149,11 @@ fun BgGraphCompose(
     val dateUtil = LocalDateUtil.current
     // Collect flows independently - each triggers recomposition only when it changes
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
+    val graphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
+    val showRaw = SeriesType.RAW_BG in bgOverlays
+    val showUkf = SeriesType.UKF_BG in bgOverlays
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
     val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
@@ -138,6 +167,9 @@ fun BgGraphCompose(
     val showActivity = SeriesType.ACTIVITY in bgOverlays
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
+    val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
+    val autoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
+    val hypoPrediction = autoIsfGraph.hypoPrediction
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -157,6 +189,10 @@ fun BgGraphCompose(
     val lowColor = AapsTheme.generalColors.bgLow
     val inRangeColor = AapsTheme.generalColors.bgInRange
     val highColor = AapsTheme.generalColors.bgHigh
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
     val basalColor = AapsTheme.elementColors.tempBasal
     val targetLineColor = AapsTheme.elementColors.tempTarget
     val activityColor = AapsTheme.elementColors.activity
@@ -196,7 +232,9 @@ fun BgGraphCompose(
         currentActivityData: ActivityGraphData,
         currentMinBgY: Double,
         currentMaxBgY: Double,
-        currentVisibleTimeRange: Pair<Long, Long>?
+        currentVisibleTimeRange: Pair<Long, Long>?,
+        bolusPoints: List<Pair<Long, Double>>,
+        carbPoints: List<Pair<Long, Double>>,
     ) {
         val regularPoints = seriesRegistry[SERIES_REGULAR] ?: emptyList()
         val bucketedPoints = seriesRegistry[SERIES_BUCKETED] ?: emptyList()
@@ -226,6 +264,17 @@ fun BgGraphCompose(
                     activeSeries.add(SERIES_BUCKETED)
                 }
 
+                for (extra in listOf(SERIES_RAW, SERIES_UKF)) {
+                    val extraPoints = seriesRegistry[extra]
+                    if (!extraPoints.isNullOrEmpty()) {
+                        val dataPoints = extraPoints
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                        activeSeries.add(extra)
+                    }
+                }
+
                 // Prediction series - each type as a separate line
                 for (predSeries in PREDICTION_SERIES) {
                     val predPoints = seriesRegistry[predSeries]
@@ -238,6 +287,17 @@ fun BgGraphCompose(
                     }
                 }
 
+                fun addMarks(points: List<Pair<Long, Double>>, key: String) {
+                    if (points.isEmpty()) return
+                    val dataPoints = points
+                        .map { timestampToX(it.first, minTimestamp) to it.second }
+                        .sortedBy { it.first }
+                    series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                    activeSeries.add(key)
+                }
+                addMarks(bolusPoints, SERIES_BOLUS)
+                addMarks(carbPoints, SERIES_CARBS)
+
                 // Normalizer series
                 series(x = normalizerX(maxX), y = NORMALIZER_Y)
 
@@ -246,25 +306,24 @@ fun BgGraphCompose(
 
             // Block 2 → Basal layer (layer 1, end axis)
             lineModel {
-                if (currentBasalData.profileBasal.size >= 2) {
-                    val pts = currentBasalData.profileBasal
-                        .map { timestampToX(it.timestamp, minTimestamp) to it.value }
-                        .sortedBy { it.first }
-                    series(x = pts.map { it.first }, y = pts.map { it.second })
-                } else {
-                    // Dummy series - invisible at y=0
-                    series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                fun addBasalSeries(points: List<GraphDataPoint>) {
+                    if (points.size >= 2) {
+                        val pts = points
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = pts.map { it.first }, y = pts.map { it.second })
+                    } else {
+                        // Dummy series - invisible at y=0
+                        series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    }
                 }
-
-                if (currentBasalData.actualBasal.size >= 2) {
-                    val pts = currentBasalData.actualBasal
-                        .map { timestampToX(it.timestamp, minTimestamp) to it.value }
-                        .sortedBy { it.first }
-                    series(x = pts.map { it.first }, y = pts.map { it.second })
-                } else {
-                    // Dummy series - invisible at y=0
-                    series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
-                }
+                addBasalSeries(currentBasalData.profileBasal)
+                addBasalSeries(currentBasalData.actualBasal)
+                val colouredBasal = !graphDisplay.uniformGreenBg
+                addBasalSeries(if (colouredBasal) currentBasalData.acceTemp else emptyList())
+                addBasalSeries(if (colouredBasal) currentBasalData.bgTemp else emptyList())
+                addBasalSeries(if (colouredBasal) currentBasalData.ppTemp else emptyList())
+                addBasalSeries(if (colouredBasal) currentBasalData.duraTemp else emptyList())
             }
 
             // Block 3 → Target line layer (layer 2, start axis)
@@ -297,31 +356,41 @@ fun BgGraphCompose(
                 }
             }
 
-            // Block 5 → Activity layer (layer 4, start axis — Y-values normalized to BG coordinate space)
-            // Scale so maxActivity maps to 80% of the BG axis height (same as legacy: maxY * 0.8 /
-            // maxIAValue), anchored at currentMinBgY for the same reason as the EPS layer above.
+            // Block 5 → Activity layer. UK graph 0 starts at 0 and puts the activity peak at
+            // 80% of that top (maxY * 0.8 / max activity). The same scale is used for the carb model.
             lineModel {
                 val maxAct = currentActivityData.maxActivity
+                val activityTop = currentMaxBgY * 0.8
                 if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
-                    // Activity disabled or no data — emit dummy series (history + prediction)
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
-                    return@lineModel
-                }
-                val scaleFactor = (currentMaxBgY - currentMinBgY) * 0.8 / maxAct
-
-                val pts = currentActivityData.activity
-                    .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
-                    .sortedBy { it.first }
-                series(x = pts.map { it.first }, y = pts.map { it.second })
-
-                if (currentActivityData.activityPrediction.size >= 2) {
-                    val predPts = currentActivityData.activityPrediction
-                        .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
-                        .sortedBy { it.first }
-                    series(x = predPts.map { it.first }, y = predPts.map { it.second })
                 } else {
+                    val scaleFactor = activityTop / maxAct
+
+                    val pts = currentActivityData.activity
+                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
+                        .sortedBy { it.first }
+                    series(x = pts.map { it.first }, y = pts.map { it.second })
+
+                    if (currentActivityData.activityPrediction.size >= 2) {
+                        val predPts = currentActivityData.activityPrediction
+                            .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
+                            .sortedBy { it.first }
+                        series(x = predPts.map { it.first }, y = predPts.map { it.second })
+                    } else {
+                        series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    }
+                }
+                val maxCarb = currentActivityData.maxCarbModel
+                val carbs = currentActivityData.carbModel
+                if (maxCarb <= 0.0 || carbs.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                } else {
+                    val carbScale = activityTop / maxCarb
+                    val carbPts = carbs
+                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * carbScale) }
+                        .sortedBy { it.first }
+                    series(x = carbPts.map { it.first }, y = carbPts.map { it.second })
                 }
             }
 
@@ -345,9 +414,18 @@ fun BgGraphCompose(
     }
 
     // Single LaunchedEffect for all data - ensures atomic updates
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange) {
+    val rawPoints = if (showRaw) bgReadings.mapNotNull { point ->
+        point.rawValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
+    } else emptyList()
+    val ukfPoints = if (showUkf) bgReadings.mapNotNull { point ->
+        point.ukfValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
+    } else emptyList()
+
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
+        seriesRegistry[SERIES_RAW] = rawPoints
+        seriesRegistry[SERIES_UKF] = ukfPoints
         for ((key, points) in predictionsByType) {
             seriesRegistry[key] = points
         }
@@ -372,18 +450,29 @@ fun BgGraphCompose(
         // prediction data (no real BG readings) makes the windowed set empty, falling back to the
         // full unwindowed history's max instead of the actually-visible prediction values.
         fun inWindow(timestamp: Long) = visibleTimeRange == null || timestamp in visibleTimeRange.first..visibleTimeRange.second
-        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions).map { it.value }
-        val windowedValues = (bgReadings + bucketedData + predictions).filter { inWindow(it.timestamp) }.map { it.value }
+        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).map { it.value }
+        val windowedValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).filter { inWindow(it.timestamp) }.map { it.value }
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
-        val niceBgScale = niceScale(dataMin, dataMax)
+        // Activity is drawn from 0, so the axis has to start at 0 or the bottom of the curve is cut off.
+        val niceBgScale = if (showActivity) niceScale(0.0, dataMax) else niceScale(dataMin, dataMax)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
         startAxisRangeProvider.yStep = niceBgScale.step
 
-        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, maxBgY, visibleTimeRange)
+        fun nearest(timestamp: Long): Double? =
+            bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
+        val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
+        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
+            nearest(bolus.timestamp)?.let { bolus.timestamp to it }
+        }
+        val carbPoints = treatments.carbs.mapNotNull { carb ->
+            nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
+        }
+        val activityAxisMax = if (showActivity) niceBgScale.max else maxBgY
+        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints)
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
@@ -391,8 +480,17 @@ fun BgGraphCompose(
         bucketedData.associateBy { timestampToX(it.timestamp, minTimestamp) }
     }
 
-    val bucketedPointProvider = remember(bucketedLookup, lowColor, inRangeColor, highColor) {
-        BucketedPointProvider(bucketedLookup, lowColor, inRangeColor, highColor)
+    val readingLookup = remember(bgReadings, minTimestamp) {
+        bgReadings.associateBy { timestampToX(it.timestamp, minTimestamp) }
+    }
+
+    val uniformGreen = if (graphDisplay.uniformGreenBg) Color(0x8C00C800) else null
+    val bucketedPointProvider = remember(bucketedLookup, lowColor, inRangeColor, highColor, acceColor, bgIsfColor, ppColor, duraColor, uniformGreen) {
+        BucketedPointProvider(bucketedLookup, lowColor, inRangeColor, highColor, acceColor, bgIsfColor, ppColor, duraColor, uniformGreen)
+    }
+
+    val readingPointProvider = remember(readingLookup, regularColor, acceColor, bgIsfColor, ppColor, duraColor, uniformGreen) {
+        ReadingPointProvider(readingLookup, regularColor, acceColor, bgIsfColor, ppColor, duraColor, uniformGreen)
     }
 
     // Time formatter and axis configuration
@@ -403,21 +501,11 @@ fun BgGraphCompose(
     // BG layer lines (layer 0)
     // =========================================================================
 
-    val regularLine = remember(regularColor) {
+    val regularLine = remember(readingPointProvider) {
         LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
             areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(
-                    component = ShapeComponent(
-                        fill = Fill(Color.Transparent),
-                        shape = CircleShape,
-                        strokeFill = Fill(regularColor.copy(alpha = 0.3f)),
-                        strokeThickness = 1.dp
-                    ),
-                    size = 6.dp
-                )
-            )
+            pointProvider = readingPointProvider
         )
     }
 
@@ -439,15 +527,54 @@ fun BgGraphCompose(
     val ztPredLine = remember(ztPredColor) { createPredictionLine(ztPredColor) }
 
     val activeSeries by activeSeriesState
-    val bgLines = remember(activeSeries, regularLine, bucketedLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, normalizerLine) {
+    val rawLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFFFF0000))),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+            areaFill = null
+        )
+    }
+    val ukfLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFF4FC3F7))),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+            areaFill = null
+        )
+    }
+
+    val smbMarkColor = AapsTheme.elementColors.insulin
+    val bolusMarkLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF00FF)), shape = BolusUnderLineShape), size = 48.dp)
+            )
+        )
+    }
+    val carbMarkLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF9800)), shape = TriangleShape), size = 28.dp)
+            )
+        )
+    }
+
+    val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, bolusMarkLine, carbMarkLine, normalizerLine) {
         buildList {
             if (SERIES_REGULAR in activeSeries) add(regularLine)
             if (SERIES_BUCKETED in activeSeries) add(bucketedLine)
+            if (SERIES_RAW in activeSeries) add(rawLine)
+            if (SERIES_UKF in activeSeries) add(ukfLine)
             if (SERIES_PRED_IOB in activeSeries) add(iobPredLine)
             if (SERIES_PRED_COB in activeSeries) add(cobPredLine)
             if (SERIES_PRED_ACOB in activeSeries) add(aCobPredLine)
             if (SERIES_PRED_UAM in activeSeries) add(uamPredLine)
             if (SERIES_PRED_ZT in activeSeries) add(ztPredLine)
+            if (SERIES_BOLUS in activeSeries) add(bolusMarkLine)
+            if (SERIES_CARBS in activeSeries) add(carbMarkLine)
             add(normalizerLine)
         }
     }
@@ -481,8 +608,20 @@ fun BgGraphCompose(
         )
     }
 
-    val basalLines = remember(profileBasalLine, actualBasalLine) {
-        listOf(profileBasalLine, actualBasalLine)
+    fun factorBasalLine(color: Color) = LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
+        areaFill = LineCartesianLayer.AreaFill.single(Fill(color.copy(alpha = 0.7f))),
+        interpolator = Square
+    )
+
+    val acceBasalLine = remember(acceColor) { factorBasalLine(acceColor) }
+    val bgBasalLine = remember(bgIsfColor) { factorBasalLine(bgIsfColor) }
+    val ppBasalLine = remember(ppColor) { factorBasalLine(ppColor) }
+    val duraBasalLine = remember(duraColor) { factorBasalLine(duraColor) }
+
+    val basalLines = remember(profileBasalLine, actualBasalLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine) {
+        listOf(profileBasalLine, actualBasalLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine)
     }
 
     // =========================================================================
@@ -547,8 +686,22 @@ fun BgGraphCompose(
         )
     }
 
-    val activityLines = remember(activityHistLine, activityPredLine) {
-        listOf(activityHistLine, activityPredLine)
+    val carbModelColor = AapsTheme.elementColors.carbs
+    val carbModelLine = remember(carbModelColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(carbModelColor)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(
+                thickness = 1.5.dp,
+                cap = StrokeCap.Round,
+                dashLength = 4.dp,
+                gapLength = 4.dp
+            ),
+            areaFill = null
+        )
+    }
+
+    val activityLines = remember(activityHistLine, activityPredLine, carbModelLine) {
+        listOf(activityHistLine, activityPredLine, carbModelLine)
     }
 
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
@@ -574,7 +727,101 @@ fun BgGraphCompose(
         )
     }
 
-    val decorations = remember(inRangeBox, nowLine) { listOf(inRangeBox, nowLine) }
+    fun isfColor(kind: DominantIsf?): Color = when (kind) {
+        DominantIsf.ACCE -> acceColor
+        DominantIsf.BG   -> bgIsfColor
+        DominantIsf.PP   -> ppColor
+        DominantIsf.DURA -> duraColor
+        else             -> smbMarkColor
+    }
+    val smbText = rememberTextMeasurer()
+    val smbStack = remember(treatments, bgReadings, minTimestamp, graphDisplay.showSmbLabels) {
+        if (!graphDisplay.showSmbLabels) return@remember emptyList()
+        val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB && it.label.isNotEmpty() }
+        val times = smbs.map { it.timestamp }
+        val stack = smbStackIndex(times)
+        val columns = smbColumnTimes(times)
+        smbs.mapIndexed { index, smb ->
+            val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label,
+                stackIndex = stack[index],
+                anchorY = dot?.value,
+                color = isfColor(dot?.dominantIsf),
+                columnX = timestampToX(columns[index], minTimestamp),
+            )
+        }
+    }
+    val smbArrows = remember(treatments, bgReadings, minTimestamp, graphDisplay.showSmbArrows) {
+        if (!graphDisplay.showSmbArrows) return@remember emptyList()
+        treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { smb ->
+            val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label,
+                stackIndex = 0,
+                anchorY = dot?.value,
+                color = isfColor(dot?.dominantIsf),
+            )
+        }
+    }
+    val smbNumbers = remember(smbStack, smbText) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = false)
+    }
+    val smbBaseArrows = remember(treatments, bgReadings, minTimestamp, lowMark) {
+        treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { smb ->
+            val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label,
+                stackIndex = 0,
+                anchorY = lowMark,
+                color = isfColor(dot?.dominantIsf),
+                stemUnits = 1 + (((smb.amount - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
+            )
+        }
+    }
+    val carbDrop = if (lowMark > 30.0) 15.0 else 0.8
+    val carbLabels = remember(treatments, bgReadings, minTimestamp, carbDrop) {
+        treatments.carbs.mapNotNull { carb ->
+            val y = bgReadings.minByOrNull { abs(it.timestamp - carb.timestamp) }?.value ?: return@mapNotNull null
+            SmbStackItem(
+                x = timestampToX(carb.timestamp, minTimestamp),
+                label = carb.label,
+                stackIndex = 0,
+                anchorY = y - carbDrop,
+                color = Color(0xFFFF9800),
+                belowAnchor = true,
+            )
+        }
+    }
+    val carbText = rememberTextMeasurer()
+    val carbNumbers = remember(carbLabels, carbText) {
+        SmbStackLabels(carbLabels, carbText, pinToBottom = false)
+    }
+    val bolusText = rememberTextMeasurer()
+    val bolusStack = remember(treatments, minTimestamp, lowMark) {
+        val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
+        val stack = smbStackIndex(boluses.map { it.timestamp })
+        boluses.mapIndexed { index, bolus ->
+            SmbStackItem(
+                x = timestampToX(bolus.timestamp, minTimestamp),
+                label = bolus.label,
+                stackIndex = stack[index],
+                anchorY = lowMark,
+                color = Color(0xFFE53935),
+            )
+        }
+    }
+    val bolusNumbers = remember(bolusStack, bolusText) {
+        SmbStackLabels(bolusStack, bolusText, pinToBottom = false)
+    }
+    val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
+    val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers)
+    }
 
     // =========================================================================
     // Range providers — hoisted out of rememberCartesianChart so keys are re-evaluated on recomposition
@@ -590,6 +837,12 @@ fun BgGraphCompose(
     // Chart — multi layer
     // =========================================================================
 
+    val axisLock = remember { GraphAxisLock() }
+    Box(
+        modifier = modifier.fillMaxWidth().then(
+            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
+        )
+    ) {
     CartesianChartHost(
         chart = rememberCartesianChart(
             // Layer 0: BG (start axis, visible)
@@ -642,8 +895,70 @@ fun BgGraphCompose(
             getXStep = { _, _, _ -> 1.0 }
         ),
         modelProducer = modelProducer,
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxSize(),
         scrollState = scrollState,
         zoomState = zoomState
     )
+    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null) {
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 44.dp)) {
+            autoIsfGraph.statusTarget?.let { line ->
+                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            autoIsfGraph.statusIsf?.let { line ->
+                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            if (hypoPrediction != null) {
+                Text(
+                    text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+    }
+}
+
+private fun oneDecimal(value: Double): String {
+    val tenths = round(value * 10.0).toInt()
+    val sign = if (tenths < 0) "-" else ""
+    val absTenths = abs(tenths)
+    return "$sign${absTenths / 10}.${absTenths % 10}"
+}
+
+/**
+ * In landscape a drag on the graph must scroll one way only.
+ * Sideways moves the graph. Up or down moves the page.
+ * The choice waits until the finger has moved far enough, so a small sideways
+ * start does not block an up or down swipe. The other direction is not applied,
+ * so the screen is not pulled on a diagonal.
+ */
+private class GraphAxisLock : NestedScrollConnection {
+    private var orientation: Orientation? = null
+    private var accX = 0f
+    private var accY = 0f
+    private var lastMs = 0L
+
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        val now = System.currentTimeMillis()
+        if (now - lastMs > 120L) {
+            orientation = null
+            accX = 0f
+            accY = 0f
+        }
+        lastMs = now
+        accX += available.x
+        accY += available.y
+        if (orientation == null && (abs(accX) > 48f || abs(accY) > 48f)) {
+            orientation = if (abs(accX) >= abs(accY)) Orientation.Horizontal else Orientation.Vertical
+        }
+        val axis = orientation ?: if (abs(accX) >= abs(accY)) Orientation.Horizontal else Orientation.Vertical
+        return when (axis) {
+            Orientation.Horizontal -> Offset(x = 0f, y = available.y)
+            Orientation.Vertical -> Offset(x = available.x, y = 0f)
+            else -> Offset.Zero
+        }
+    }
 }

@@ -7,6 +7,10 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import app.aaps.database.AppDatabase
 import app.aaps.database.AppRepository
+import app.aaps.database.migration35to36
+import app.aaps.database.migration36to37
+import app.aaps.database.migration37to38
+import app.aaps.database.migration38to39
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 
@@ -63,6 +67,7 @@ class JvmAppDatabaseBuilder {
                 }
             })
             .fallbackToDestructiveMigration(false)
+            .addMigrations(migration35to36, migration36to37, migration37to38, migration38to39)
             .build()
 
     /**

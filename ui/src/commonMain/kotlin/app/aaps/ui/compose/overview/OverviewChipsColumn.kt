@@ -51,9 +51,14 @@ fun OverviewChipsColumn(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
+    onLoadAutoIsfHistory: suspend () -> List<AutoIsfHistoryRow> = { emptyList() },
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
+    onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     onIobChipClick: () -> Unit,
+    onIobChipLongClick: () -> Unit = {},
+    onIobChipDoubleClick: () -> Unit = {},
     // The command chips (running mode / profile / temp target) open mutating screens — their click is disabled on an
     // unpaired client (same MASTER_OR_PAIRED_CLIENT gate as nav/Manage), while the chip stays visible as status.
     commandsAllowed: Boolean = true,
@@ -94,6 +99,8 @@ fun OverviewChipsColumn(
                             tbrState = tbrState,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
+                            onTbrChipLongClick = onTbrChipLongClick,
+                            onTbrChipDoubleClick = onTbrChipDoubleClick,
                             commandsAllowed = commandsAllowed
                         )
                     }
@@ -123,16 +130,21 @@ fun OverviewChipsColumn(
                 tbrState = tbrState,
                 onNavigate = onNavigate,
                 onTbrChipClick = onTbrChipClick,
+                onTbrChipLongClick = onTbrChipLongClick,
+                onTbrChipDoubleClick = onTbrChipDoubleClick,
                 commandsAllowed = commandsAllowed
             )
         }
         IobCobChipsRow(
             iobUiState = iobUiState,
             cobUiState = cobUiState,
-            onIobChipClick = onIobChipClick
+            onIobChipClick = onIobChipClick,
+            onIobChipLongClick = onIobChipLongClick,
+            onIobChipDoubleClick = onIobChipDoubleClick
         )
         SensitivityChipBlock(
             state = sensitivityUiState,
+            onLoadAutoIsfHistory = onLoadAutoIsfHistory,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -158,6 +170,8 @@ private fun NarrowChips(
     tbrState: TbrState,
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
+    onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     commandsAllowed: Boolean
 ) {
     Row(
@@ -205,7 +219,9 @@ private fun NarrowChips(
         }
         TbrChip(
             state = tbrState,
-            onClick = onTbrChipClick
+            onClick = onTbrChipClick,
+            onLongClick = onTbrChipLongClick,
+            onDoubleClick = onTbrChipDoubleClick
         )
     }
 }

@@ -129,7 +129,7 @@ internal class MainViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes initial values`() {
+    fun defaultUiStateExposesInitialValues() {
         // uiState is WhileSubscribed with no collector → stays at the MainUiState() initialValue.
         val state = sut.uiState.value
         assertThat(state.isSimpleMode).isTrue()
@@ -140,20 +140,20 @@ internal class MainViewModelTest {
     }
 
     @Test
-    fun `actionConfirmation starts null and dismiss keeps it null`() {
+    fun actionConfirmationStartsNullAndDismissKeepsItNull() {
         assertThat(sut.actionConfirmation.value).isNull()
         sut.dismissActionConfirmation()
         assertThat(sut.actionConfirmation.value).isNull()
     }
 
     @Test
-    fun `reachability flows are exposed from nsClient`() {
+    fun reachabilityFlowsAreExposedFromNsClient() {
         assertThat(sut.masterReachable.value).isTrue()
         assertThat(sut.masterOrPairedClient.value).isTrue()
     }
 
     @Test
-    fun `formatDuration delegates to dateUtil`() {
+    fun formatDurationDelegatesToDateUtil() {
         whenever(dateUtil.timeRemainingString(any(), any())).thenReturn("1h 30m")
         assertThat(sut.formatDuration(5_400_000L)).isEqualTo("1h 30m")
     }
@@ -172,7 +172,7 @@ internal class MainViewModelTest {
      * ran `exitApp`, wrote an `EXIT_AAPS` user entry, and then nothing happened.
      */
     @Test
-    fun `the exit row is offered everywhere except iOS`() {
+    fun theExitRowIsOfferedEverywhereExceptIOS() {
         whenever(config.platform).thenReturn(AppPlatform.Android)
         assertThat(sut.showExit).isTrue()
 
@@ -184,7 +184,7 @@ internal class MainViewModelTest {
     }
 
     @Test
-    fun `the battery help button is offered only on Android`() {
+    fun theBatteryHelpButtonIsOfferedOnlyOnAndroid() {
         whenever(config.platform).thenReturn(AppPlatform.Android)
         assertThat(sut.showBatteryHelp).isTrue()
 

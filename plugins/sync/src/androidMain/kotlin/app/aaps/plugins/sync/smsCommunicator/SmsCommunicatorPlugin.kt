@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.smsCommunicator
 
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.SyncStrings
 import android.Manifest
@@ -29,7 +30,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PermissionGroup
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
@@ -119,7 +119,8 @@ import org.joda.time.DateTime
 
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class, binding = binding<SmsCommunicator>())
-class SmsCommunicatorPlugin @Inject constructor(
+@Inject
+class SmsCommunicatorPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     private val smsManager: SmsManager?,
@@ -142,7 +143,7 @@ class SmsCommunicatorPlugin @Inject constructor(
     private val decimalFormatter: DecimalFormatter,
     private val configBuilder: ConfigBuilder,
     private val pumpStatusProvider: PumpStatusProvider,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val runningModeGuard: RunningModeGuard,
     private val bolusProgressData: BolusProgressData,
     @ApplicationScope private val appScope: CoroutineScope,
@@ -156,11 +157,12 @@ class SmsCommunicatorPlugin @Inject constructor(
         .shortName(SyncStrings.smscommunicator_shortname)
         .description(SyncStrings.description_sms_communicator),
     ownPreferences = SmsIntentKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ), SmsCommunicator {
 
     private var scope: CoroutineScope? = null
     var allowedNumbers: MutableList<String> = ArrayList()
+    var broadcastExcludeNumbers: MutableList<String> = ArrayList()
     @Volatile var messageToConfirm: AuthRequest? = null
     @Volatile var lastRemoteBolusTime: Long = 0
     override var messages = ArrayList<Sms>()
@@ -208,6 +210,10 @@ class SmsCommunicatorPlugin @Inject constructor(
             .drop(1)
             .onEach { processSettings() }
             .launchIn(newScope)
+        preferences.observe(StringKey.SmsBroadcastExcludeNumbers)
+            .drop(1)
+            .onEach { processSettings() }
+            .launchIn(newScope)
     }
 
     override suspend fun onStop() {
@@ -217,7 +223,8 @@ class SmsCommunicatorPlugin @Inject constructor(
     }
 
     // cannot be inner class because of needed injection
-    class SmsCommunicatorWorker @AssistedInject constructor(
+    @AssistedInject
+    class SmsCommunicatorWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,
@@ -274,6 +281,11 @@ class SmsCommunicatorPlugin @Inject constructor(
             val cleaned = number.replace("\\s+".toRegex(), "")
             allowedNumbers.add(cleaned)
             aapsLogger.debug(LTag.SMS, "Found allowed number: $cleaned")
+        }
+        broadcastExcludeNumbers.clear()
+        for (number in preferences.get(StringKey.SmsBroadcastExcludeNumbers).split(";")) {
+            val cleaned = number.replace("\\s+".toRegex(), "")
+            if (cleaned.isNotEmpty()) broadcastExcludeNumbers.add(cleaned)
         }
     }
 
@@ -1050,6 +1062,7 @@ class SmsCommunicatorPlugin @Inject constructor(
     override fun sendNotificationToAllNumbers(text: String): Boolean {
         var result = true
         for (i in allowedNumbers.indices) {
+            if (allowedNumbers[i] in broadcastExcludeNumbers) continue
             val sms = Sms(allowedNumbers[i], text)
             result = result && sendSMS(sms)
         }
@@ -1124,6 +1137,10 @@ class SmsCommunicatorPlugin @Inject constructor(
         title = SyncStrings.smscommunicator,
         items = listOf(
             StringKey.SmsAllowedNumbers,
+            StringKey.SmsBroadcastExcludeNumbers,
+            StringKey.SmsBattAlertNumbers,
+            StringKey.SmsPod2Numbers,
+            StringKey.SmsConnectPodNumbers,
             BooleanKey.SmsAllowRemoteCommands,
             IntKey.SmsRemoteBolusDistance,
             StringKey.SmsOtpPassword,

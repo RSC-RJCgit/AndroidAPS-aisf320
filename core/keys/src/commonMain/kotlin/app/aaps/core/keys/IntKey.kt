@@ -357,6 +357,28 @@ enum class IntKey(
         unitType = UnitType.MGDL,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsActivityIdleStart(
+        key = "inactivity_idle_start",
+        defaultValue = 22,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_aps_activity_idle_start,
+        summary = KeysStrings.pref_summary_aps_activity_idle_start,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsIgnoreInactivityOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsActivityIdleEnd(
+        key = "inactivity_idle_end",
+        defaultValue = 6,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_aps_activity_idle_end,
+        summary = KeysStrings.pref_summary_aps_activity_idle_end,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsIgnoreInactivityOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfIobThPercent(
         key = "iob_threshold_percent",
         defaultValue = 100,
@@ -365,6 +387,40 @@ enum class IntKey(
         title = KeysStrings.pref_title_iob_threshold_percent,
         summary = KeysStrings.openapsama_iob_threshold_percent_summary,
         defaultedBySM = true,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfIobThPercentNormal(
+        key = "autoisf_iob_threshold_percent_normal",
+        defaultValue = 70,
+        min = 10,
+        max = 100,
+        title = KeysStrings.pref_title_aps_iob_th_percent_normal,
+        summary = KeysStrings.pref_summary_aps_iob_th_percent_normal,
+        defaultedBySM = true,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfProfilePercentNormal(
+        key = "autoisf_profile_percent_normal",
+        defaultValue = 100,
+        min = 10,
+        max = 200,
+        title = KeysStrings.pref_title_aps_profile_percent_normal,
+        summary = KeysStrings.pref_summary_aps_profile_percent_normal,
+        defaultedBySM = true,
+        unitType = UnitType.PERCENT,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostMaxIobPercent(
+        key = "boost_max_iob_percent",
+        defaultValue = 10,
+        min = 1,
+        max = 100,
+        title = KeysStrings.pref_title_aps_uam_boost_max_iob_percent,
+        summary = KeysStrings.pref_summary_aps_uam_boost_max_iob_percent,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
         unitType = UnitType.PERCENT,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),

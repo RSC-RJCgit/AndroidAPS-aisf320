@@ -7,6 +7,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.TimeZone
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
@@ -24,7 +25,10 @@ import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.AbsIobGraphData
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
+import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.DominantIsf
+import app.aaps.core.interfaces.overview.graph.dominantIsfAt
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.BgiGraphData
@@ -47,14 +51,18 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.workflow.CalculationSignalsEmitter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.combine
+import app.aaps.core.utils.carbModelRatePer5Min
 import app.aaps.workflow.iob.fromCarbs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -64,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 import kotlin.math.roundToLong
 
 /**
@@ -74,7 +83,8 @@ import kotlin.math.roundToLong
  * [emitFinalProgress] is set when this worker is the last in the chain (HISTORY);
  * otherwise [PostCalculationWorker] emits the final signal.
  */
-class PrepareGraphDataRunner @Inject constructor(
+@Inject
+class PrepareGraphDataRunner(
     private val aapsLogger: AAPSLogger,
     private val workflowChainData: WorkflowChainData,
     private val dateUtil: DateUtil,
@@ -89,7 +99,8 @@ class PrepareGraphDataRunner @Inject constructor(
     private val decimalFormatter: DecimalFormatter,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
     private val scope: CoroutineScope,
-    private val autosensDataProvider: () -> AutosensData
+    private val autosensDataProvider: () -> AutosensData,
+    private val displayRawSmoothing: DisplayRawSmoothing,
 ) {
 
     /**
@@ -122,7 +133,10 @@ class PrepareGraphDataRunner @Inject constructor(
         if (isStopped()) return WorkOutcome.Stopped
 
         // ===== Phases 4 & 5: IOB/COB autosens + graph data prep (was IobCobOref* + PrepareIobAutosens) =====
-        if (activePlugin.activeSensitivity.isOref1) runIobCobOref1(data, isStopped) else runIobCobOref(data, isStopped)
+        // True once this run no longer owns the chain: it was stopped, or a newer generation took the
+        // slot. Asked again right before the result is published, see publishAds().
+        val superseded = { isStopped() || workflowChainData.prepareFor(job, generation) == null }
+        if (activePlugin.activeSensitivity.isOref1) runIobCobOref1(data, isStopped, superseded) else runIobCobOref(data, isStopped, superseded)
         if (isStopped()) return WorkOutcome.Stopped
         prepareIobAutosensGraphData(data, isStopped)
         if (isStopped()) return WorkOutcome.Stopped
@@ -147,6 +161,18 @@ class PrepareGraphDataRunner @Inject constructor(
             bgReadings = readings
             aapsLogger.debug(LTag.AUTOSENS) { "BG data loaded. Size: ${bgReadings.size} Start date: ${dateUtil.dateAndTimeString(start)} End date: ${dateUtil.dateAndTimeString(to)}" }
             createBucketedData(aapsLogger, dateUtil)
+            // Drop autosens entries that fell out of the window this run works on. Nothing can ask for
+            // them any more: every reader is bounded either by the bucketed data built above or by the
+            // detection start, and both live inside [start, to].
+            //
+            // The cut is `start`, so it follows this run's own `to` and never the wall clock. The
+            // history browser runs the same code on its own store with `to` in the past, and a cut
+            // taken from `now` would empty that store on every step.
+            //
+            // This runs on the LIVE store in phase 1, on purpose. Phase 4 works on a clone whose
+            // publish is skipped when the run is superseded, which is exactly the case where the table
+            // needs pruning most, and it mutates that clone's table outside this lock.
+            pruneOlderThan(start, aapsLogger, dateUtil)
         }
     }
 
@@ -163,7 +189,7 @@ class PrepareGraphDataRunner @Inject constructor(
 
     // ---------- Phase 2 (PrepareBucketedDataWorker logic) ----------
 
-    private fun prepareBucketedData(data: PrepareGraphData) {
+    private suspend fun prepareBucketedData(data: PrepareGraphData) {
         val bucketedData = data.iobCobCalculator.ads.getBucketedDataTableCopy() ?: return
         if (bucketedData.isEmpty()) {
             aapsLogger.debug("No bucketed data.")
@@ -176,6 +202,7 @@ class PrepareGraphDataRunner @Inject constructor(
 
         val highMark = preferences.get(UnitDoubleKey.OverviewHighMark)
         val lowMark = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(newFromTime, newToTime)
 
         val bucketedDataPoints = bucketedData
             .filter { it.timestamp in newFromTime..newToTime }
@@ -191,7 +218,8 @@ class PrepareGraphDataRunner @Inject constructor(
                     value = valueInUnits,
                     range = range,
                     type = BgType.BUCKETED,
-                    filledGap = value.filledGap
+                    filledGap = value.filledGap,
+                    dominantIsf = dominantFor(value.timestamp, autoIsfRows)
                 )
             }
         data.cache.updateBucketedData(bucketedDataPoints)
@@ -206,6 +234,15 @@ class PrepareGraphDataRunner @Inject constructor(
 
         val highMarkInUnits = preferences.get(UnitDoubleKey.OverviewHighMark)
         val lowMarkInUnits = preferences.get(UnitDoubleKey.OverviewLowMark)
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, toTime)
+
+        val newestFirstRaw = bgReadingsArray
+            .filter { it.timestamp in fromTime..toTime && (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        val smoothedRaw = displayRawSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
+        val ukfByTime = newestFirstRaw.mapIndexedNotNull { index, bg ->
+            smoothedRaw.getOrNull(index)?.let { bg.timestamp to it }
+        }.toMap()
 
         val bgDataPoints = bgReadingsArray
             .filter { it.timestamp in fromTime..toTime }
@@ -219,7 +256,10 @@ class PrepareGraphDataRunner @Inject constructor(
                         valueInUnits < lowMarkInUnits  -> BgRange.LOW
                         else                           -> BgRange.IN_RANGE
                     },
-                    type = BgType.REGULAR
+                    type = BgType.REGULAR,
+                    dominantIsf = dominantFor(bg.timestamp, autoIsfRows),
+                    rawValue = bg.noise?.takeIf { it > 10.0 }?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
+                    ukfValue = ukfByTime[bg.timestamp]?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
                 )
             }
 
@@ -229,7 +269,7 @@ class PrepareGraphDataRunner @Inject constructor(
 
     // ---------- Phase 4: IOB/COB oref1 (was IobCobOref1Worker) ----------
 
-    private suspend fun runIobCobOref1(data: PrepareGraphData, isStopped: () -> Boolean) {
+    private suspend fun runIobCobOref1(data: PrepareGraphData, isStopped: () -> Boolean, superseded: () -> Boolean) {
         val start = dateUtil.now()
         try {
             aapsLogger.debug(LTag.AUTOSENS, "AUTOSENSDATA thread started: ${data.reason}")
@@ -439,13 +479,7 @@ class PrepareGraphDataRunner @Inject constructor(
                 autosensData.autosensResult = sensitivity
                 aapsLogger.debug(LTag.AUTOSENS) { autosensData.toString() }
             }
-            data.iobCobCalculator.ads = ads
-            // On the app scope, not a bare Thread: same fire-and-forget timing as before, but plain
-            // Kotlin. NOTE this still outlives a superseded chain, exactly as the thread did.
-            scope.launch {
-                delay(1000)
-                rxBus.send(EventAutosensCalculationFinished(data.triggeredByNewBG))
-            }
+            publishAds(data, ads, superseded)
         } finally {
             data.signals.emitProgress(CalculationWorkflow.ProgressData.IOB_COB_OREF, 100)
             aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA thread ended: ${data.reason}" }
@@ -455,7 +489,7 @@ class PrepareGraphDataRunner @Inject constructor(
 
     // ---------- Phase 4: IOB/COB oref (was IobCobOrefWorker) ----------
 
-    private suspend fun runIobCobOref(data: PrepareGraphData, isStopped: () -> Boolean) {
+    private suspend fun runIobCobOref(data: PrepareGraphData, isStopped: () -> Boolean, superseded: () -> Boolean) {
         val start = dateUtil.now()
         try {
             aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA thread started: ${data.reason}" }
@@ -625,17 +659,39 @@ class PrepareGraphDataRunner @Inject constructor(
                 autosensData.autosensResult = sensitivity
                 aapsLogger.debug(LTag.AUTOSENS, autosensData.toString())
             }
-            data.iobCobCalculator.ads = ads
-            // On the app scope, not a bare Thread: same fire-and-forget timing as before, but plain
-            // Kotlin. NOTE this still outlives a superseded chain, exactly as the thread did.
-            scope.launch {
-                delay(1000)
-                rxBus.send(EventAutosensCalculationFinished(data.triggeredByNewBG))
-            }
+            publishAds(data, ads, superseded)
         } finally {
             data.signals.emitProgress(CalculationWorkflow.ProgressData.IOB_COB_OREF, 100)
             aapsLogger.debug(LTag.AUTOSENS) { "AUTOSENSDATA thread ended: ${data.reason}" }
             profiler.log(LTag.AUTOSENS, "IobCobThread", start)
+        }
+    }
+
+    /**
+     * Puts the locally computed store back into the live calculator, but only while this run still
+     * owns the chain.
+     *
+     * The run works on a clone taken at the start of the phase. `stopCalculation()` returns as soon as
+     * WorkManager marks the work as no longer RUNNING, which happens before the running coroutine sees
+     * its own stop flag - the next check sits at the top of the bucket loop, up to one bucket away.
+     * The caller then invalidates the live store and starts a new chain while this run is still alive.
+     * Without the check below this run would write its clone, taken before that invalidation, over the
+     * state the new chain has already prepared: a lost update (issue #5066).
+     *
+     * The check makes the window small but cannot close it completely, because the caller invalidates
+     * the store before it registers the new generation.
+     *
+     * [EventAutosensCalculationFinished] is sent either way. It only asks its listeners to refresh, and
+     * the graph data in `data.cache` was written by this run whether or not the store was published.
+     */
+    private fun publishAds(data: PrepareGraphData, ads: AutosensDataStore, superseded: () -> Boolean) {
+        if (superseded()) aapsLogger.debug(LTag.AUTOSENS) { "Skipping ads publish (superseded): ${data.reason}" }
+        else data.iobCobCalculator.ads = ads
+        // On the app scope, not a bare Thread: same fire-and-forget timing as before, but plain
+        // Kotlin. NOTE this still outlives a superseded chain, exactly as the thread did.
+        scope.launch {
+            delay(1000)
+            rxBus.send(EventAutosensCalculationFinished(data.triggeredByNewBG))
         }
     }
 
@@ -651,6 +707,12 @@ class PrepareGraphDataRunner @Inject constructor(
         val now = dateUtil.now().toDouble()
         var time = fromTime
         var maxActivity = 0.0
+        val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+        val recentCarbs = if (showCarbModel) {
+            persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - T.hours(6).msecs(), endTime, true)
+        } else emptyList()
+        val carbModelList: MutableList<GraphDataPoint> = ArrayList()
+        var maxCarbModel = 0.0
 
         val iobListCompose: MutableList<GraphDataPoint> = ArrayList()
         val absIobListCompose: MutableList<GraphDataPoint> = ArrayList()
@@ -714,6 +776,15 @@ class PrepareGraphDataRunner @Inject constructor(
             else activityPredictionListCompose.add(GraphDataPoint(time, iob.activity))
             if (iob.activity > maxActivity) maxActivity = iob.activity
             else if (-iob.activity > maxActivity) maxActivity = -iob.activity
+            if (showCarbModel) {
+                var sum = 0.0
+                for (carb in recentCarbs) {
+                    val minutes = (time - carb.timestamp) / 60_000.0
+                    sum += carbModelRatePer5Min(carb.amount, minutes)
+                }
+                carbModelList.add(GraphDataPoint(time, sum))
+                if (sum > maxCarbModel) maxCarbModel = sum
+            }
 
             time += 5 * 60 * 1000L
         }
@@ -744,7 +815,9 @@ class PrepareGraphDataRunner @Inject constructor(
             ActivityGraphData(
                 activity = activityListCompose,
                 activityPrediction = activityPredictionListCompose,
-                maxActivity = maxActivity
+                maxActivity = maxActivity,
+                carbModel = carbModelList,
+                maxCarbModel = maxCarbModel,
             )
         )
         data.cache.updateBgiGraph(BgiGraphData(bgi = bgiListCompose, bgiPrediction = bgiPredictionListCompose))
@@ -752,8 +825,83 @@ class PrepareGraphDataRunner @Inject constructor(
         data.cache.updateRatioGraph(RatioGraphData(ratio = ratioListCompose))
         data.cache.updateDevSlopeGraph(DevSlopeGraphData(dsMax = dsMaxListCompose, dsMin = dsMinListCompose))
         data.cache.updateVarSensGraph(VarSensGraphData(varSens = varSensListCompose))
+        val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        val latestAutoIsf = autoIsfRows.maxByOrNull { it.timestamp }
+        val hypoPrediction = latestAutoIsf?.let { row -> hypoPredictionMmol(row, autoIsfRows, data) }
+        data.cache.updateAutoIsfGraph(
+            AutoIsfGraphData(
+                acce = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsf) },
+                bg = autoIsfRows.map { GraphDataPoint(it.timestamp, it.bgIsf) },
+                pp = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsf) },
+                dura = autoIsfRows.map { GraphDataPoint(it.timestamp, it.duraIsf) },
+                finalIsf = autoIsfRows.map { GraphDataPoint(it.timestamp, it.finalIsf) },
+                iobTh = autoIsfRows.filter { it.iobThEffective != 0.0 }.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
+                hypoPrediction = hypoPrediction,
+                statusTarget = latestAutoIsf?.let { statusTargetLine(it) },
+                statusIsf = latestAutoIsf?.let { statusIsfLine(it) },
+            )
+        )
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100)
     }
+
+    // Same formula as hypoPrediction2Mmol: (glucose - IOB) + 0.25*short delta + 0.25*UKF 5 minute change + COB/12, all in mmol.
+    // The 5 minute change is the stored UKF glucose minus the stored value about 5 minutes earlier.
+    private suspend fun hypoPredictionMmol(latest: AIV, rows: List<AIV>, data: PrepareGraphData): Double? {
+        if (latest.ukfRawBgl == 0.0) return null
+        val older = rows
+            .filter { it.ukfRawBgl != 0.0 && it.timestamp in (latest.timestamp - 8 * 60_000)..(latest.timestamp - 3 * 60_000) }
+            .maxByOrNull { it.timestamp }
+            ?: return null
+        val mmol = 18.0182
+        val ukfDelta5 = latest.ukfRawBgl - older.ukfRawBgl
+        val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+        return (latest.glucose / mmol - latest.iob) +
+            0.25 * (latest.shortAvgDelta / mmol) +
+            0.25 * (ukfDelta5 / mmol) +
+            cob / 12.0
+    }
+
+    // The stored target is the loop target in mg/dL. Shown in the user's units, with boost and the IOB threshold.
+    private fun statusTargetLine(row: AIV): String {
+        val target = if (row.targetMgdl == 0.0) "--" else oneDecimal(profileUtil.fromMgdlToUnits(row.targetMgdl))
+        val boost = if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
+        val th = preferences.get(IntKey.ApsAutoIsfIobThPercent)
+        return "targetOffset= $target  Boost= $boost  TH=$th%"
+    }
+
+    // A factor of 1.0, and an SMB ratio of 0, show as -- so an unchanged line stays short.
+    private fun statusIsfLine(row: AIV): String {
+        val smb = if (row.smbDeliveryRatio == 0.0) "--" else twoDecimals(row.smbDeliveryRatio)
+        return "f=${factorOrDash(row.finalIsf)} ac=${factorOrDash(row.acceIsf)} bg=${factorOrDash(row.bgIsf)} pp=${factorOrDash(row.ppIsf)} du=${factorOrDash(row.duraIsf)} smb=$smb"
+    }
+
+    private fun factorOrDash(value: Double): String = if (value == 1.0 || value == 0.0) "--" else twoDecimals(value)
+
+    private fun oneDecimal(value: Double): String {
+        val tenths = round(value * 10.0).toInt()
+        val sign = if (tenths < 0) "-" else ""
+        val absTenths = abs(tenths)
+        return "$sign${absTenths / 10}.${absTenths % 10}"
+    }
+
+    private fun twoDecimals(value: Double): String {
+        val hundredths = round(value * 100.0).toInt()
+        val sign = if (hundredths < 0) "-" else ""
+        val absHundredths = abs(hundredths)
+        val frac = (absHundredths % 100).toString().padStart(2, '0')
+        return "$sign${absHundredths / 100}.$frac"
+    }
+
+    private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =
+        dominantIsfAt(
+            timestamp = timestamp,
+            rows = rows,
+            timeOf = { it.timestamp },
+            acceOf = { it.acceIsf },
+            bgOf = { it.bgIsf },
+            ppOf = { it.ppIsf },
+            duraOf = { it.duraIsf }
+        )
 
 }

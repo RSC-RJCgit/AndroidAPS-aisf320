@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
 class QuickLaunchSerializerTest {
 
     @Test
-    fun `a dynamic action keeps its id through a round trip`() {
+    fun aDynamicActionKeepsItsIdThroughARoundTrip() {
         val actions = listOf(QuickLaunchAction.QuickWizardAction("guid-1"))
 
         val json = QuickLaunchSerializer.toJson(actions)
@@ -27,7 +27,7 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `a profile action at its defaults writes neither percentage nor duration`() {
+    fun aProfileActionAtItsDefaultsWritesNeitherPercentageNorDuration() {
         // Absent, not written as 100 and 0 - the reader defaults them, and the stored text stays short.
         val json = QuickLaunchSerializer.toJson(listOf(QuickLaunchAction.ProfileAction("Weekday", 100, 0)))
 
@@ -40,7 +40,7 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `a profile action with a percentage and duration keeps both`() {
+    fun aProfileActionWithAPercentageAndDurationKeepsBoth() {
         val original = QuickLaunchAction.ProfileAction("Weekend", 120, 90)
 
         val restored = QuickLaunchSerializer.fromJson(QuickLaunchSerializer.toJson(listOf(original))).first()
@@ -49,7 +49,7 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `the config entry is always present and always last`() {
+    fun theConfigEntryIsAlwaysPresentAndAlwaysLast() {
         val json = QuickLaunchSerializer.toJson(
             listOf(QuickLaunchAction.QuickLaunchConfig, QuickLaunchAction.QuickWizardAction("g"))
         )
@@ -61,13 +61,13 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `blank text gives the default toolbar`() {
+    fun blankTextGivesTheDefaultToolbar() {
         assertThat(QuickLaunchSerializer.fromJson("")).isEqualTo(QuickLaunchAction.default)
         assertThat(QuickLaunchSerializer.fromJson("   ")).isEqualTo(QuickLaunchAction.default)
     }
 
     @Test
-    fun `damaged text gives the default toolbar rather than throwing`() {
+    fun damagedTextGivesTheDefaultToolbarRatherThanThrowing() {
         // What a half written preference looks like. Losing the toolbar is recoverable; crashing on
         // every start is not.
         assertThat(QuickLaunchSerializer.fromJson("[{\"type\":")).isEqualTo(QuickLaunchAction.default)
@@ -75,7 +75,7 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `an entry with a type but no id is dropped`() {
+    fun anEntryWithATypeButNoIdIsDropped() {
         // A dynamic action without its id cannot be resolved, so it is skipped rather than restored
         // as something half formed.
         val restored = QuickLaunchSerializer.fromJson("""[{"type":"quick_wizard"}]""")
@@ -84,7 +84,7 @@ class QuickLaunchSerializerTest {
     }
 
     @Test
-    fun `an empty array still yields the config entry`() {
+    fun anEmptyArrayStillYieldsTheConfigEntry() {
         assertThat(QuickLaunchSerializer.fromJson("[]")).isEqualTo(listOf(QuickLaunchAction.QuickLaunchConfig))
     }
 }

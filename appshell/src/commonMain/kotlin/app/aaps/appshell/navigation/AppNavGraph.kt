@@ -447,7 +447,7 @@ fun NavGraphBuilder.appNavGraph(
             checkPumpCompatible = { percentage -> profileManagementViewModel.isPumpCompatible(profileIndex, percentage) },
             insulinChoices = insulinChoice.choices,
             preselectedInsulin = insulinChoice.preselected,
-            onActivate = { duration, percentage, timeshift, withTT, notes, timestamp, timeChanged, iCfg ->
+            onActivate = { duration, percentage, timeshift, withTT, notes, timestamp, timeChanged, iCfg, chosenRoleKey ->
                 coroutineScope.launch {
                     profileManagementViewModel.activateProfile(
                         profileIndex = profileIndex,
@@ -466,6 +466,7 @@ fun NavGraphBuilder.appNavGraph(
                         // used to leave this screen sitting open after a successful first-ever switch. Fall back to
                         // popping this destination by its own route (not lifecycle-dependent, unlike safePopBackStack).
                         onSuccess = {
+                            profileManagementViewModel.declareRoleForSwitch(profileName, chosenRoleKey)
                             if (!navController.popBackStack(AppRoute.Profile.route, inclusive = true))
                                 navController.popBackStack(AppRoute.ProfileActivation.route, inclusive = true)
                         }

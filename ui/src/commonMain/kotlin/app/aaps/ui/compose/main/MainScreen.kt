@@ -46,6 +46,7 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
@@ -186,14 +187,15 @@ fun MainScreen(
                 showExit = mainViewModel.showExit
             )
         },
-        gesturesEnabled = true,
+        gesturesEnabled = !isLandscape(),
         modifier = modifier
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            val previewMode = maxHeight < PREVIEW_MODE_MIN_HEIGHT
+            val landscape = isLandscape()
+            val previewMode = landscape || maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
-            val showChrome = !previewMode || chromeVisible
+            val showChrome = !landscape && (!previewMode || chromeVisible)
             val interactionSource = remember { MutableInteractionSource() }
 
             // Measure actual bar heights for content padding in non-preview mode
@@ -451,7 +453,7 @@ fun MainScreen(
                     }
 
                     // Tap overlay to restore chrome in preview mode (only when hidden)
-                    if (previewMode && !chromeVisible) {
+                    if (previewMode && !landscape && !chromeVisible) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()

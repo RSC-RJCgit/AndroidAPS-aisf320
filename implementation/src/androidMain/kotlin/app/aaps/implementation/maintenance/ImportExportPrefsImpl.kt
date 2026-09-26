@@ -25,6 +25,8 @@ import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsFile
@@ -61,6 +63,9 @@ import app.aaps.implementation.maintenance.data.PrefIOError
 import app.aaps.implementation.maintenance.data.PrefsFormat
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 import app.aaps.implementation.maintenance.formats.EncryptedPrefsFormat
+import app.aaps.implementation.maintenance.formats.applyImportedStore
+import app.aaps.implementation.maintenance.formats.importKeepOfferFor
+import app.aaps.implementation.maintenance.formats.preserveKeys
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.shared.impl.weardata.ZipWatchfaceFormat
 import dev.zacsweers.metro.Assisted
@@ -91,7 +96,8 @@ private fun filenameTimestamp(): String =
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
-class ImportExportPrefsImpl @Inject constructor(
+@Inject
+class ImportExportPrefsImpl(
     private var aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -617,16 +623,12 @@ class ImportExportPrefsImpl @Inject constructor(
         }
     }
 
-    override fun executeImport(prefs: Prefs) {
+    override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
+        importKeepOfferFor(activePlugin, sp.getAll(), prefs.values)
+
+    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean, keep: ImportKeepChoices) {
         activePlugin.beforeImport()
-        sp.clear()
-        for ((key, value) in prefs.values) {
-            if (value == "true" || value == "false") {
-                sp.putBoolean(key, value.toBoolean())
-            } else {
-                sp.putString(key, value)
-            }
-        }
+        applyImportedStore(sp, prefs, enableAutomationStates, preserveKeys(activePlugin, keep))
         activePlugin.afterImport()
     }
 
@@ -709,7 +711,8 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
 
-    class CsvExportWorker @AssistedInject constructor(
+    @AssistedInject
+    class CsvExportWorker(
         @Assisted private val context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,
@@ -856,7 +859,8 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
 
-    class ApsResultExportWorker @AssistedInject constructor(
+    @AssistedInject
+    class ApsResultExportWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,

@@ -47,7 +47,13 @@ data class QuickWizardEntryData(
     val duration: Int = 0,
     val carbTime: Int = 0,
     val useAlarm: Int = NEVER,
-    val lastUsed: Long = 0
+    val lastUsed: Long = 0,
+    val protein: Int = 0,
+    val fat: Int = 0,
+    /** Hours of protein and fat doses. 0 to 24. Hours past 8 are not delivered. */
+    val warsawDurationHours: Double = 5.0,
+    /** Max bolus for this button only. 0 keeps the saved safety max. */
+    val maxBolus: Double = 0.0,
 ) {
 
     companion object {
@@ -95,7 +101,11 @@ data class QuickWizardEntryData(
                 duration = json.lenientInt("duration"),
                 carbTime = json.lenientInt("carbTime"),
                 useAlarm = json.lenientInt("useAlarm", NEVER),
-                lastUsed = json.lenientLong("lastUsed")
+                lastUsed = json.lenientLong("lastUsed"),
+                protein = json.lenientInt("protein"),
+                fat = json.lenientInt("fat"),
+                warsawDurationHours = json.lenientDouble("warsawDurationHours", 5.0),
+                maxBolus = json.lenientDouble("maxBolus", 0.0),
             )
     }
 
@@ -131,5 +141,9 @@ data class QuickWizardEntryData(
             put("carbTime", carbTime)
             put("useAlarm", useAlarm)
             put("lastUsed", lastUsed)
+            put("protein", protein)
+            put("fat", fat)
+            put("warsawDurationHours", warsawDurationHours)
+            put("maxBolus", maxBolus)
         }
 }

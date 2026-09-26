@@ -78,10 +78,85 @@
     <string name="pref_summary_aps_use_autoisf_weights">Enable AutoISF weight-based ISF adjustments.</string>
     <string name="pref_title_aps_smb_on_even_target">Enable SMB on even target</string>
     <string name="pref_summary_aps_smb_on_even_target">Alternative activation of SMB always based on target glucose value.</string>
+    <string name="pref_title_aps_fast_rise_enabled">FastRise size tiers</string>
+    <string name="pref_summary_aps_fast_rise_enabled">Cut SMB size during a fast Libre rise. Off leaves the SMB unchanged.</string>
+    <string name="pref_title_aps_show_carb_model_curve">Carb model curve</string>
+    <string name="pref_summary_aps_show_carb_model_curve">Dashed curve of expected carb absorption on the main graph. Peak is 90 minutes. Off hides the curve.</string>
+    <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
+    <string name="pref_summary_aps_low_rebound_guard_enabled" comment="0.10 U and 0.25 U are insulin amounts. Three quarters and half are the SMB size cuts.">On turns the LoReb guard on. After a recent low, a carb or artifact rebound trims SMB above 0.10 U: three quarters up to 0.25 U, and half above that. FastRise size tiers also stay off during that window. Off means the guard never runs.</string>
+    <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
+    <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
+    <string name="pref_title_aps_use_live_steps">Use the live phone\'s steps</string>
+    <string name="pref_summary_aps_use_live_steps">Virtual pump only. On uses the step counts the live phone sent to Nightscout, for dosing and for the history table. Off uses this phone\'s own steps.</string>
+    <string name="pref_title_aps_boost_automations">Boost automations</string>
+    <string name="pref_summary_aps_boost_automations">Allow the night FastRise skip. Off leaves that mark unset.</string>
+    <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>
+    <string name="pref_summary_aps_custom_automations">On blocks a native automation when its name matches a coded AutoISF automation, unless you allowed that name on the review list. Off leaves every native automation running. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="pref_title_aps_automation_states">Automation states</string>
+    <string name="pref_summary_aps_automation_states">Remember named states such as MJ and LowBG. Off makes every state check false.</string>
+    <string name="pref_title_aps_activity_detection">Step activity</string>
+    <string name="pref_summary_aps_activity_detection">Use recent steps to change the sensitivity ratio. Off leaves it unchanged. Walking needs the phone to have moved.</string>
+    <string name="pref_title_aps_activity_scale">Walking strength</string>
+    <string name="pref_summary_aps_activity_scale">How strongly walking lowers insulin. 1.0 is the normal strength.</string>
+    <string name="pref_title_aps_inactivity_scale">Sitting strength</string>
+    <string name="pref_summary_aps_inactivity_scale">How strongly sitting still raises insulin. 1.0 is the normal strength.</string>
+    <string name="pref_title_aps_ignore_inactivity_overnight">Ignore sitting overnight</string>
+    <string name="pref_summary_aps_ignore_inactivity_overnight">Do not raise insulin for sitting still during the idle hours.</string>
+    <string name="pref_title_aps_activity_idle_start">Idle start hour</string>
+    <string name="pref_summary_aps_activity_idle_start" comment="Hour of the day, 0 to 23. Example: 22 means 22:00.">First hour of the overnight idle window.</string>
+    <string name="pref_title_aps_activity_idle_end">Idle end hour</string>
+    <string name="pref_summary_aps_activity_idle_end" comment="Hour of the day, 0 to 23. Example: 6 means 06:00.">Hour when the overnight idle window ends.</string>
+    <string name="pref_title_aps_tdd_factor">TDD factor</string>
+    <string name="pref_summary_aps_tdd_factor">Scale the insulin request and max IOB by the TDD ratio, limited to 0.8 to 1.2.</string>
+    <string name="pref_title_aps_tdd_factor_fallback">TDD factor fallback</string>
+    <string name="pref_summary_aps_tdd_factor_fallback">Used when the TDD factor switch is off. 1.0 leaves the dose unchanged.</string>
+    <string name="pref_title_aps_bg_accel_weight_normal">Acceleration weight baseline</string>
+    <string name="pref_summary_aps_bg_accel_weight_normal" comment="A weight from 0.00 to 1.00. Default 0.70. The live acceleration weight returns to this after a boost.">Resting acceleration weight. A raised live weight returns to this. Default 0.70.</string>
+    <string name="pref_title_aps_bg_accel_weight_high">Acceleration weight boost</string>
+    <string name="pref_summary_aps_bg_accel_weight_high" comment="A weight from 0.00 to 1.00. Default 0.95. RecentPod raises the live acceleration weight to this.">Boosted acceleration weight. RecentPod raises the live weight to this. Default 0.95.</string>
+    <string name="pref_title_aps_iob_th_percent_normal">IOB threshold baseline</string>
+    <string name="pref_summary_aps_iob_th_percent_normal" comment="A percent from 10 to 100. Default 70. Example: a live value of 71 returns to 70.">Resting IOB threshold. A raised live value returns to this. Default 70.</string>
+    <string name="pref_title_aps_profile_percent_normal">Profile percent baseline</string>
+    <string name="pref_summary_aps_profile_percent_normal" comment="A percent from 10 to 200. Default 100. Example: a live profile of 110% returns to 100%.">Resting profile percent. A raised live percent returns to this. Default 100.</string>
+    <string name="pref_title_aps_pp_weight_high">Post-meal weight boost</string>
+    <string name="pref_summary_aps_pp_weight_high" comment="A weight from 0.000 to 0.150. Default 0.150. A strong or mild boost writes this into the live post-meal weight.">Post-meal weight used by a strong or mild boost. Default 0.150.</string>
+    <string name="pref_title_aps_pp_weight_normal">Post-meal weight baseline</string>
+    <string name="pref_summary_aps_pp_weight_normal" comment="A weight from 0.000 to 0.150. Default 0.080. The live post-meal weight returns to this after a boost.">Resting post-meal weight. The live weight returns to this after a boost. Default 0.080.</string>
+    <string name="pref_title_aps_smb_delivery_baseline">SMB delivery baseline</string>
+    <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
+    <string name="pref_title_aps_mild_boost_ratio">Mild SMB boost base</string>
+    <string name="pref_summary_aps_mild_boost_ratio" comment="A ratio with no unit. Default 0.20. A mild rise adds 0.15. A strong rise adds 0.03.">Starting SMB delivery ratio for a rise boost. A mild rise adds 0.15. A strong rise adds 0.03. Default 0.20.</string>
+    <string name="pref_title_aps_uam_boost">Tier 3 UAM boost</string>
+    <string name="pref_summary_aps_uam_boost">On lets a mild or strong rise raise the SMB above the ordinary amount, between 09:00 and 21:00. Default off.</string>
+    <string name="pref_title_aps_uam_boost_unrestricted">Tier 3 unrestricted</string>
+    <string name="pref_summary_aps_uam_boost_unrestricted">On skips the Tier 3 size cap, the 20 minute gap, and the IOB percent gate. Default off.</string>
+    <string name="pref_title_aps_uam_boost_max_bolus">Tier 3 max SMB</string>
+    <string name="pref_summary_aps_uam_boost_max_bolus" comment="Insulin units. Default 2.5. The delivered SMB is also capped by max IOB divided by 9.5.">Largest SMB Tier 3 may propose. Default 2.5 U. A second cap is max IOB divided by 9.5.</string>
+    <string name="pref_title_aps_uam_boost_max_iob_percent">Tier 3 max IOB percent</string>
+    <string name="pref_summary_aps_uam_boost_max_iob_percent" comment="Percent of max IOB. Default 10. Example: 10 percent of 9.5 U is 0.95 U.">Tier 3 stops raising the SMB once IOB reaches this percent of max IOB. Default 10.</string>
+    <string name="pref_title_aps_uam_boost_scale">Tier 3 scale</string>
+    <string name="pref_summary_aps_uam_boost_scale" comment="A multiplier from 0.1 to 3.0. Default 1.0. The live profile percent scales it again.">Multiplier for the Tier 3 SMB. The current profile percent scales it again. Default 1.0.</string>
+    <string name="pref_title_aps_low_profile_name">Low profile name</string>
+    <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
+    <string name="pref_title_aps_standard_profile_name">Standard profile name</string>
+    <string name="pref_title_aps_standard100_profile_name">Standard tier A profile name</string>
+    <string name="pref_title_aps_standard105_profile_name">Standard tier B profile name</string>
+    <string name="pref_title_aps_standard110_profile_name">Standard tier C profile name</string>
+    <string name="pref_title_aps_low70_profile_name">Low tier A profile name</string>
+    <string name="pref_title_aps_low80_profile_name">Low tier B profile name</string>
+    <string name="pref_title_aps_low90_profile_name">Low tier C profile name</string>
+    <string name="pref_title_aps_steroid_100_profile_name">Steroid tier A profile name</string>
+    <string name="pref_title_aps_steroid_110_profile_name">Steroid tier B profile name</string>
+    <string name="pref_title_aps_steroid_130_profile_name">Steroid tier C profile name</string>
+    <string name="pref_title_aps_steroid_150_profile_name">Steroid tier D profile name</string>
+    <string name="pref_title_aps_steroid_190_profile_name">Steroid tier E profile name</string>
+    <string name="pref_title_aps_steroid_250_profile_name">Steroid tier F profile name</string>
 
     <!-- Maintenance preferences -->
     <string name="pref_title_maintenance_enable_fabric">Enable Fabric crash reporting</string>
     <string name="pref_title_maintenance_enable_export_automation">Enable automated settings export</string>
+    <string name="pref_title_auto_export_logs">Export logs to cloud every 6 hours</string>
+    <string name="pref_summary_auto_export_logs">Sends the log zip to cloud storage every 6 hours. It does not open email.</string>
 
     <!-- Autotune preferences -->
     <string name="pref_title_autotune_auto_switch_profile">Auto switch profile</string>
@@ -103,11 +178,11 @@
 
     <!-- NS Client preferences -->
     <string name="pref_title_ns_upload_data">Upload data to NS</string>
-    <string name="pref_summary_ns_upload_data">Upload treatments, temp basals, and other data to Nightscout.</string>
+    <string name="pref_summary_ns_upload_data">Upload treatments, temp basals, and other data to Nightscout. On a virtual pump, check this is not the live upload site.</string>
     <string name="pref_title_ns_receive_cgm">Receive CGM data from NS</string>
     <string name="pref_summary_ns_receive_cgm">Accept CGM readings from Nightscout.</string>
     <string name="pref_title_ns_receive_profile_store">Receive profile store from NS</string>
-    <string name="pref_summary_ns_receive_profile_store">Accept profile store updates from Nightscout.</string>
+    <string name="pref_summary_ns_receive_profile_store">Accept profile store updates from this Nightscout. Not used while a secondary Nightscout is on. The profile store then comes from that site.</string>
     <string name="pref_title_ns_receive_temp_target">Receive temp targets from NS</string>
     <string name="pref_summary_ns_receive_temp_target">Accept temporary target changes from Nightscout.</string>
     <string name="pref_title_ns_receive_profile_switch">Receive profile switches from NS</string>
@@ -158,6 +233,10 @@
     <string name="pref_title_wear_wizard_cob">Include COB in wizard</string>
     <string name="pref_title_wear_wizard_iob">Include IOB in wizard</string>
     <string name="pref_title_wear_custom_watchface_authorization">Authorize custom watchfaces</string>
+    <string name="pref_title_wear_pushed_watchface">Watchface installed on watch</string>
+    <string name="pref_summary_wear_pushed_watchface">Wear OS 6 and newer only. AAPS can install one watchface on the watch: the complications watchface or the custom watchface. Older watches ignore this setting.</string>
+    <string name="wear_pushed_watchface_wfs" comment="Entry of a list setting: the built-in watchface made of AAPS complications">Complications watchface</string>
+    <string name="wear_pushed_watchface_cwf" comment="Entry of a list setting: the watchface loaded from a custom watchface zip file">Custom watchface</string>
     <string name="pref_title_wear_notify_on_smb">Notify on SMB</string>
     <string name="pref_summary_wear_notify_on_smb">Send notifications to watch when SMB is delivered.</string>
     <string name="pref_title_wear_broadcast_data">Broadcast data to watch</string>
@@ -332,6 +411,14 @@
     <!-- StringKey: SMS preferences -->
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
+    <string name="smscommunicator_broadcastexcludenumbers">Exclude from general SMS</string>
+    <string name="smscommunicator_broadcastexcludenumbers_summary" comment="Numbers from the allowed list, separated by a semicolon. Example: +XXXXXXXXXX;+YYYYYYYYYY. They can still send commands.">Numbers listed here do not get general automation texts. They can still send commands. Use +XXXXXXXXXX;+YYYYYYYYYY.</string>
+    <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
+    <string name="smscommunicator_battalertnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the LowBattery text, as well as the allowed numbers.</string>
+    <string name="smscommunicator_pod2numbers">Pod2-alert numbers</string>
+    <string name="smscommunicator_pod2numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the 78-hour pod text, as well as the allowed numbers.</string>
+    <string name="smscommunicator_connectpodnumbers">ConnectPod-alert numbers</string>
+    <string name="smscommunicator_connectpodnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the ConnectPod text, as well as the allowed numbers.</string>
     <string name="smscommunicator_otp_pin">Additional mandatory PIN at token end</string>
     <string name="smscommunicator_otp_pin_summary">Additional digits that should be memorised and glued at end of each generated One Time Password</string>
 
@@ -345,6 +432,15 @@
     <string name="ns_client_secret_summary">Enter your Nightscout API secret (min. 12 characters)</string>
     <string name="nsclient_token_title">Nightscout access token</string>
     <string name="nsclient_token_summary">Enter your Nightscout access token (min. 17 characters)</string>
+    <string name="ns_secondary_settings">Secondary NS (bolus, carbs, and profile)</string>
+    <string name="ns_secondary_enabled">Download bolus, carbs, and profile from secondary NS</string>
+    <string name="ns_secondary_enabled_summary">Pull manual boluses, carbs, and the profile store from a separate Nightscout site, for example the main phone. SMBs are not copied. This phone does not take the profile store from its own Nightscout while this is on.</string>
+    <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
+    <string name="ns_secondary_receive_therapy_events_summary">Also pull sensor, site, insulin, and pump-battery changes from the secondary Nightscout, so cannula and sensor age on this phone stay correct. Turn off if this phone should not receive those events.</string>
+    <string name="ns_secondary_url">Secondary NS URL</string>
+    <string name="ns_secondary_url_summary" comment="Example of a Nightscout address.">Nightscout URL to download bolus and carbs from (for example https://mymainns.herokuapp.com)</string>
+    <string name="ns_secondary_token">Secondary NS access token</string>
+    <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site. Leave blank if that site does not use one.</string>
     <string name="ns_wifi_ssids">WiFi SSID</string>
     <string name="ns_wifi_ssids_summary">Allowed SSIDs (semicolon separated)</string>
 
@@ -389,6 +485,17 @@
     <string name="pref_title_autoisf_min">AutoISF min</string>
     <string name="openapsama_autoISF_min_summary">Similar to autosens_min this defines how weak ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.</string>
     <string name="pref_title_autoisf_max">AutoISF max</string>
+    <string name="pref_title_autoisf_max_low">AutoISF max at low glucose</string>
+    <string name="openapsama_autoISF_max_low_summary">Upper limit for AutoISF when glucose is low. Nothing in the dose calculation reads this yet. A temp target of 5.080 or 5.082 mmol changes it.</string>
+    <string name="pref_title_aps_tod_offset_0002">SMB offset 00:00 to 02:00</string>
+    <string name="pref_title_aps_tod_offset_0204">SMB offset 02:00 to 04:00</string>
+    <string name="pref_title_aps_tod_offset_0406">SMB offset 04:00 to 06:00</string>
+    <string name="pref_title_aps_tod_offset_0609">SMB offset 06:00 to 09:00</string>
+    <string name="pref_title_aps_tod_offset_0912">SMB offset 09:00 to 12:00</string>
+    <string name="pref_title_aps_tod_offset_1218">SMB offset 12:00 to 18:00</string>
+    <string name="pref_title_aps_tod_offset_1822">SMB offset 18:00 to 22:00</string>
+    <string name="pref_title_aps_tod_offset_2200">SMB offset 22:00 to 24:00</string>
+    <string name="pref_summary_aps_tod_offset" comment="The number is mmol added to the SMB hold-back. Example: 0.5 means hold SMB until glucose is 0.5 mmol higher.">mmol added to the SMB offset for this clock window. 0 leaves the offset unchanged. Range is -2.0 to 2.0.</string>
     <string name="openapsama_autoISF_max_summary">Similar to autosens_max this defines how strong ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.\n\nWARNING: Be extremely careful when using values above 2.5</string>
     <string name="pref_title_bg_accel_weight">BG acceleration ISF weight</string>
     <string name="openapsama_bgAccel_ISF_weight_summary">This is the weight applied while glucose accelerates and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>

@@ -117,7 +117,7 @@ fun UserEntryScreen(
             message = viewModel.rh.gs(CoreUiStrings.ue_export_to_csv) + "?",
             onConfirm = {
                 uel.log(Action.EXPORT_CSV, Sources.Treatments)
-                importExportPrefs.exportUserEntriesCsv()
+                viewModel.exportUserEntries()
                 showExportDialog = false
             },
             onDismiss = { showExportDialog = false }

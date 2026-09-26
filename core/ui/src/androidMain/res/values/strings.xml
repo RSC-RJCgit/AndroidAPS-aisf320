@@ -246,6 +246,8 @@
     <string name="location_permission_not_granted">Location permission not granted. Allow in android settings.</string>
     <string name="configbuilder_nightscoutversion_label">Nightscout version:</string>
     <string name="not_available_full">Not available</string>
+    <string name="not_implemented_yet">This function is not ready on this platform yet</string>
+    <string name="not_available_on_platform">This function is not available on this platform</string>
     <string name="engineering_mode_enabled">Engineering mode enabled</string>
     <string name="back">Back</string>
     <string name="next">Next</string>
@@ -416,6 +418,9 @@
     <string name="clientcontrol_fail_scene_disabled">The scene is disabled.</string>
     <string name="clientcontrol_fail_partial">Some actions couldn\'t be applied.</string>
     <string name="clientcontrol_fail_execution">The master couldn\'t apply it.</string>
+    <string name="clientcontrol_fail_cancelled">The command was cancelled before it ran. Nothing was sent to the pump.</string>
+    <string name="bolus_cancelled_no_insulin" comment="%1$s=why the command was dropped, e.g. the settings import message. Shown when a bolus was removed from the queue before it reached the pump.">Bolus cancelled. No insulin was given.\n%1$s</string>
+    <string name="command_cancelled_title" comment="Dialog title when a command was dropped before it reached the pump. Used instead of an error title, because nothing failed.">Cancelled</string>
     <string name="clientcontrol_fail_control_disabled">Remote control is turned off on the master.</string>
     <string name="clientcontrol_fail_no_pending_bolus">The prepared bolus expired or was superseded. Tap the button again.</string>
     <string name="clientcontrol_fail_bolus_compute">The master couldn\'t calculate the bolus (missing glucose / profile, or pump not ready).</string>
@@ -1100,6 +1105,13 @@
     <string name="import_source_cloud">Cloud</string>
     <string name="import_load_more">Load more</string>
     <string name="import_no_files">No settings files found</string>
+    <string name="import_keep_pump">Keep the current pump. The file will not replace the pump driver, its settings, or the active pod.</string>
+    <string name="import_keep_patient_name">Keep the current patient name</string>
+    <string name="import_keep_bg_source">Keep the current BG source and its settings</string>
+    <string name="import_keep_sync">Keep the current sync settings, including Nightscout</string>
+    <string name="import_enable_automation_states">Turn automation states on</string>
+    <string name="import_automation_states_present">This file has automation states. They stay off until you check the box below.</string>
+    <string name="import_automation_states_absent">This file has no automation states. The box below only turns the switch on.</string>
     <string name="import_decrypt_ok">Decryption successful. Ready to import.</string>
     <string name="import_decrypt_warn">Decryption successful, but there are warnings.</string>
     <string name="import_decrypt_error">Decryption successful, but import is not possible.</string>
@@ -1119,10 +1131,18 @@
     <string name="graph_bg">BG graph</string>
     <string name="graph_height">Graph height [dp]</string>
     <string name="predictions_shortname" comment="Short label for Predictions graph series">PRED</string>
+    <string name="acce_isf_shortname" comment="Short label for the acceleration ISF graph line">ACCE</string>
+    <string name="bg_isf_shortname" comment="Short label for the glucose ISF graph line">BG</string>
+    <string name="pp_isf_shortname" comment="Short label for the postprandial ISF graph line">PP</string>
+    <string name="dura_isf_shortname" comment="Short label for the duration ISF graph line">DURA</string>
+    <string name="final_isf_shortname" comment="Short label for the final ISF graph line">FINAL</string>
+    <string name="iob_threshold_shortname" comment="Short label for the IOB threshold graph line">iobTH</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>
     <string name="activity_shortname" comment="Short label for Activity graph series">ACT</string>
+    <string name="raw_bg_shortname" comment="Short label for the raw glucose line on the main graph">RAW</string>
+    <string name="ukf_bg_shortname" comment="Short label for the UKF glucose line on the main graph">UKF</string>
     <string name="bgi_shortname" comment="Short label for Blood Glucose Impact graph series">-BGI</string>
     <string name="abs_insulin_shortname" comment="Short label for Absolute Insulin graph series">ABS</string>
     <string name="devslope_shortname" comment="Short label for Deviation Slope graph series">DEVSLOPE</string>
@@ -1144,8 +1164,8 @@
     <string name="units_format_grams">%1$d g</string>
     <string name="units_format_grams_range">%1$d g (%2$d - %3$d)</string>
     <string name="units_format_hours">%1$d h</string>
-    <string name="units_format_hours_double">%1$.0f h</string>
-    <string name="units_format_hours_double_range">%1$.0f h (%2$.0f - %3$.0f)</string>
+    <string name="units_format_hours_double">%1$.1f h</string>
+    <string name="units_format_hours_double_range">%1$.1f h (%2$.1f - %3$.1f)</string>
     <string name="units_format_hours_range">%1$d h (%2$d - %3$d)</string>
     <string name="units_format_insulin">%1$.1f U</string>
     <string name="units_format_insulin_int">%1$d U</string>

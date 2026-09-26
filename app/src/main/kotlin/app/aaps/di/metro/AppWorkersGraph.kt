@@ -4,6 +4,7 @@ import androidx.work.ListenableWorker
 import app.aaps.core.objects.workflow.MetroWorkerCreator
 import app.aaps.plugins.sync.smsCommunicator.SmsCommunicatorPlugin
 import app.aaps.plugins.sync.xdrip.workers.XdripDataSyncWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSettingsWorker
@@ -113,6 +114,11 @@ interface AppWorkersGraph {
     @IntoMap
     @WorkerKey(LoadTreatmentsWorker::class)
     fun bindLoadTreatmentsWorker(f: LoadTreatmentsWorker.Factory): MetroWorkerCreator = f
+
+    @Provides
+    @IntoMap
+    @WorkerKey(LoadSecondaryTreatmentsWorker::class)
+    fun bindLoadSecondaryTreatmentsWorker(f: LoadSecondaryTreatmentsWorker.Factory): MetroWorkerCreator = f
 
     @Provides
     @IntoMap

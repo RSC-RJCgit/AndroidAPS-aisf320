@@ -12,6 +12,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSettingsRunner
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsRunner
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
@@ -55,7 +56,8 @@ import kotlinx.coroutines.launch
  */
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class)
-class DesktopNsLoadExecutor @Inject constructor(
+@Inject
+class DesktopNsLoadExecutor(
     private val aapsLogger: AAPSLogger,
     @ApplicationScope private val scope: CoroutineScope,
     private val loadStatus: () -> LoadStatusRunner,
@@ -66,10 +68,14 @@ class DesktopNsLoadExecutor @Inject constructor(
     private val loadProfileStore: () -> LoadProfileStoreRunner,
     private val loadSettings: () -> LoadSettingsRunner,
     private val loadDeviceStatus: () -> LoadDeviceStatusRunner,
-    private val dataSync: () -> DataSyncRunner
+    private val dataSync: () -> DataSyncRunner,
+    private val loadSecondary: () -> LoadSecondaryTreatmentsRunner
 ) : NsLoadExecutor {
 
     private var round: Job? = null
+
+    /** The secondary download. A new main round must not cancel it. */
+    private var secondary: Job? = null
 
     private val _idle = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -100,6 +106,11 @@ class DesktopNsLoadExecutor @Inject constructor(
     override fun cancel() {
         round?.cancel()
         round = null
+    }
+
+    override fun enqueueSecondaryTreatments() {
+        if (secondary?.isActive == true) return
+        secondary = scope.launch(Dispatchers.IO) { loadSecondary().run() }
     }
 
     private fun start(steps: List<NsLoadStep>) {

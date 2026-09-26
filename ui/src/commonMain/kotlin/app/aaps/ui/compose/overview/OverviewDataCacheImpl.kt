@@ -31,7 +31,10 @@ import app.aaps.core.interfaces.overview.graph.AapsClientStatusData
 import app.aaps.core.interfaces.overview.graph.AapsClientStatusItem
 import app.aaps.core.interfaces.overview.graph.AbsIobGraphData
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
+import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
+import app.aaps.core.interfaces.overview.graph.DominantIsf
+import app.aaps.core.interfaces.overview.graph.dominantIsf
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -44,6 +47,7 @@ import app.aaps.core.interfaces.overview.graph.DevSlopeGraphData
 import app.aaps.core.interfaces.overview.graph.DeviationsGraphData
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.ExtendedBolusGraphPoint
+import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.HeartRateGraphData
 import app.aaps.core.interfaces.overview.graph.IobGraphData
@@ -53,6 +57,7 @@ import app.aaps.core.interfaces.overview.graph.RatioGraphData
 import app.aaps.core.interfaces.overview.graph.RunningModeDisplayData
 import app.aaps.core.interfaces.overview.graph.RunningModeGraphData
 import app.aaps.core.interfaces.overview.graph.RunningModeSegment
+import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.StepsGraphData
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.interfaces.overview.graph.TbrDisplayData
@@ -93,7 +98,6 @@ import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedInject
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -105,6 +109,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -140,12 +145,14 @@ private const val WARN_BATTERY_VOLTAGE = 1.35
 private const val URGENT_BATTERY_VOLTAGE = 1.3
 
 @OptIn(FlowPreview::class)
-class OverviewDataCacheImpl @AssistedInject constructor(
+@AssistedInject
+class OverviewDataCacheImpl(
     private val aapsLogger: AAPSLogger,
     private val persistenceLayer: PersistenceLayer,
     private val profileUtil: ProfileUtil,
     private val profileFunction: ProfileFunction,
     private val preferences: Preferences,
+    private val graphConfigRepository: GraphConfigRepository,
     private val dateUtil: DateUtil,
     private val trendCalculator: TrendCalculator,
     @Assisted val iobCobCalculatorProvider: () -> IobCobCalculator,
@@ -239,6 +246,8 @@ class OverviewDataCacheImpl @AssistedInject constructor(
     override val devSlopeGraphFlow: StateFlow<DevSlopeGraphData> = _devSlopeGraphFlow.asStateFlow()
     private val _varSensGraphFlow = MutableStateFlow(VarSensGraphData(emptyList()))
     override val varSensGraphFlow: StateFlow<VarSensGraphData> = _varSensGraphFlow.asStateFlow()
+    private val _autoIsfGraphFlow = MutableStateFlow(AutoIsfGraphData())
+    override val autoIsfGraphFlow: StateFlow<AutoIsfGraphData> = _autoIsfGraphFlow.asStateFlow()
     private val _heartRateGraphFlow = MutableStateFlow(HeartRateGraphData(emptyList()))
     override val heartRateGraphFlow: StateFlow<HeartRateGraphData> = _heartRateGraphFlow.asStateFlow()
     private val _stepsGraphFlow = MutableStateFlow(StepsGraphData(emptyList()))
@@ -257,6 +266,17 @@ class OverviewDataCacheImpl @AssistedInject constructor(
     // NSClient status
     private val _nsClientStatusFlow = MutableStateFlow(AapsClientStatusData())
     override val nsClientStatusFlow: StateFlow<AapsClientStatusData> = _nsClientStatusFlow.asStateFlow()
+
+    // Declared HERE, above init, on purpose. Kotlin runs property initialisers and init blocks in
+    // declaration order, and the init below starts flow collectors that call the rebuild functions
+    // these locks guard. Declared further down the file - which is where they used to be, next to
+    // the functions that use them - they were still null when a debounced emission arrived before
+    // construction finished, and the collector died with
+    // "NullPointerException: ... Mutex.lock(...) on a null object reference".
+    // What the locks are for is explained on rebuildBasalGraph.
+    private val runningModeRebuildMutex = Mutex()
+    private val targetLineRebuildMutex = Mutex()
+    private val basalRebuildMutex = Mutex()
 
     init {
         // Scope-agnostic: always bridge calculation progress into the flow.
@@ -279,6 +299,38 @@ class OverviewDataCacheImpl @AssistedInject constructor(
                     rebuildBasalGraph()
                     rebuildHeartRateGraph()
                     rebuildStepsGraph()
+                }
+        }
+
+        // Scope-agnostic: new predictions move the right edge of the axis, and the series that are
+        // drawn to that edge have to follow. `timeRangeFlow` alone is not enough - it only carries
+        // the horizon as `TimeRange.endTime`, which is clamped to two hours, and a `StateFlow` drops
+        // a value equal to the last one. So a prediction run that leaves `endTime` where it was
+        // emits nothing here, and the basal would keep the previous horizon while the axis has
+        // already taken the new one.
+        scope.launch {
+            predictionsFlow
+                .debounce(300)
+                .collect {
+                    rebuildRunningModeGraph()
+                    rebuildTargetLine()
+                    rebuildBasalGraph()
+                }
+        }
+
+        // Scope-agnostic: switching the predictions overlay moves the right edge of the axis by
+        // hours in one step (see `graphEndTime`), and nothing else emits when it is toggled. Only
+        // changes matter, so the value the repository already holds is dropped - the first rebuild
+        // has taken it into account anyway.
+        scope.launch {
+            graphConfigRepository.graphConfigFlow
+                .map { SeriesType.PREDICTIONS in it.bgOverlays }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    rebuildRunningModeGraph()
+                    rebuildTargetLine()
+                    rebuildBasalGraph()
                 }
         }
 
@@ -742,6 +794,10 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         _varSensGraphFlow.value = data
     }
 
+    override fun updateAutoIsfGraph(data: AutoIsfGraphData) {
+        _autoIsfGraphFlow.value = data
+    }
+
     override fun updateHeartRateGraph(data: HeartRateGraphData) {
         _heartRateGraphFlow.value = data
     }
@@ -763,6 +819,33 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         // the start forward by the prediction horizon).
         val fromTime = range.toTime - T.hours(Constants.GRAPH_TIME_RANGE_HOURS.toLong()).msecs()
         return fromTime to toTime
+    }
+
+    /** Whether the reader has the predictions overlay switched on. */
+    private val showPredictions: Boolean
+        get() = SeriesType.PREDICTIONS in graphConfigRepository.graphConfigFlow.value.bgOverlays
+
+    /**
+     * The right edge of the axis, which is where the series that reach it have to stop.
+     *
+     * It mirrors `GraphViewModel.derivedTimeRange`, and the predictions overlay is what decides:
+     *
+     * - **Overlay on**, the axis stretches to the newest prediction point, so [graphEndTime] with
+     *   the prediction time from the last loop run gives the same edge.
+     * - **Overlay off**, the axis stops at `TimeRange.toTime`. That is *earlier* than the [toTime]
+     *   handed in, which is `TimeRange.endTime` - the query window, up to two hours wider. Walking
+     *   to the wider one was about four hours of minute steps per rebuild, every one of them
+     *   clipped away again before anything was drawn.
+     *
+     * A history window has no horizon: it draws a fixed past range, and `loop.lastRun` holds a
+     * prediction time from *now*. Handing that in would stretch a history graph from its own range
+     * all the way to the live horizon - days of minute steps, each one a database read, for a right
+     * edge the reader never asked for. `observeDatabase` is what tells the two windows apart.
+     */
+    private fun graphEndTime(toTime: Long): Long = when {
+        !observeDatabase -> toTime
+        showPredictions  -> graphEndTime(loop.lastRun?.constraintsProcessed?.latestPredictionsTime, toTime)
+        else             -> timeRangeFlow.value?.toTime ?: toTime
     }
 
     private suspend fun rebuildTreatmentGraph() {
@@ -857,42 +940,41 @@ class OverviewDataCacheImpl @AssistedInject constructor(
             }
     }
 
-    private suspend fun rebuildRunningModeGraph() {
+    private suspend fun rebuildRunningModeGraph() = runningModeRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
-        var endTime = toTime
-        loop.lastRun?.constraintsProcessed?.let { endTime = max(it.latestPredictionsTime, endTime) }
+        val endTime = graphEndTime(toTime)
 
-        // Batch query all RM records in range (instead of per-slot getRunningModeActiveAt)
         val rmRecords = persistenceLayer.getRunningModesFromTimeToTime(fromTime, endTime, true)
 
-        // Get mode active at fromTime for the initial segment
-        val initialMode = persistenceLayer.getRunningModeActiveAt(fromTime)
-
-        // Build segments from sorted records
-        val segments = mutableListOf<RunningModeSegment>()
-        var currentMode = initialMode.mode
-        var currentRecordEnd = initialMode.timestamp + initialMode.duration
-        var segmentStart = fromTime
-
-        for (rm in rmRecords) {
-            if (rm.timestamp > segmentStart && rm.mode != currentMode) {
-                segments.add(RunningModeSegment(currentMode, segmentStart, rm.timestamp))
-                currentMode = rm.mode
-                currentRecordEnd = rm.timestamp + rm.duration
-                segmentStart = rm.timestamp
+        // Every moment the effective mode can change: the start of the window, each record, and the
+        // planned end of each temporary record. Nothing is written when a temporary mode runs out - that
+        // moment exists only as timestamp + duration - so without those boundaries a finished suspend
+        // stayed on the belt until the next record arrived.
+        val boundaries = buildList {
+            add(fromTime)
+            for (rm in rmRecords) {
+                if (rm.timestamp in fromTime..endTime) add(rm.timestamp)
+                if (rm.isTemporary()) {
+                    val expiry = rm.timestamp + rm.duration
+                    if (expiry in fromTime..endTime) add(expiry)
+                }
             }
-        }
-        // Final segment capped by record's planned end time
-        segments.add(RunningModeSegment(currentMode, segmentStart, min(currentRecordEnd, endTime)))
+        }.distinct().sorted()
 
-        _runningModeGraphFlow.value = RunningModeGraphData(segments = segments)
+        // Ask the resolver the rest of the app uses instead of flattening the records here. A running
+        // mode is two layers - a permanent mode with an optional temporary one over it, newest wins -
+        // and that rule lives in getRunningModeActiveAt. Sampling it keeps the belt from disagreeing
+        // with what the loop thinks it is doing, and brings back the permanent mode by itself once a
+        // temporary one has run out.
+        val samples = boundaries.map { it to persistenceLayer.getRunningModeActiveAt(it).mode }
+
+        _runningModeGraphFlow.value = RunningModeGraphData(segments = mergeRunningModeSegments(samples, endTime))
     }
 
-    private suspend fun rebuildTargetLine() {
+    private suspend fun rebuildTargetLine() = targetLineRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val profile = profileFunction.getProfile() ?: return
-        var endTime = toTime
-        loop.lastRun?.constraintsProcessed?.let { endTime = max(it.latestPredictionsTime, endTime) }
+        val endTime = graphEndTime(toTime)
 
         val targets = mutableListOf<GraphDataPoint>()
         var lastTarget = -1.0
@@ -919,21 +1001,23 @@ class OverviewDataCacheImpl @AssistedInject constructor(
     /**
      * Serialises basal rebuilds, and is the reason [graphTimeRange] is read *inside* it.
      *
-     * Four separate collectors call [rebuildBasalGraph] - the time-range shift, profile changes,
-     * `TB` changes and `EB` changes - each on its own coroutine. Without this they could run at the
-     * same time, and since the function captures its `toTime` at the top and writes the flow at the
-     * bottom, **the last writer won rather than the newest**: a rebuild that started earlier, with an
-     * older `toTime`, could finish after a fresher one and overwrite it. The graph then ended before
-     * "now" until something triggered another rebuild, which is exactly the reported symptom.
+     * Five separate collectors call [rebuildBasalGraph] - the time-range shift, new predictions,
+     * profile changes, `TB` changes and `EB` changes - each on its own coroutine. Without this they
+     * could run at the same time, and since the function captures its `toTime` at the top and writes
+     * the flow at the bottom, **the last writer won rather than the newest**: a rebuild that started
+     * earlier, with an older `toTime`, could finish after a fresher one and overwrite it. The graph
+     * then ended before "now" until something triggered another rebuild.
+     *
+     * That race is not the only way the line can stop short - see [graphEndTime] for the other one,
+     * which needs no timing at all.
      *
      * Holding the lock across the read makes "finished last" and "started last" the same rebuild, so
      * the freshest range always wins. Reading the range before taking the lock would leave the bug
      * in place.
      */
-    private val basalRebuildMutex = Mutex()
-
     private suspend fun rebuildBasalGraph() = basalRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
+        val endTime = graphEndTime(toTime)
         val profileBasal = mutableListOf<GraphDataPoint>()
         val actualBasal = mutableListOf<GraphDataPoint>()
         var lastProfileBasal = -1.0
@@ -947,14 +1031,14 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         // profile switch starts, so it is fetched there and reused in between; the per-minute
         // resolution of the basal values themselves is unchanged.
         val boundaries = profileBoundariesIn(
-            persistenceLayer.getEffectiveProfileSwitchesFromTimeToTime(fromTime, toTime, true),
+            persistenceLayer.getEffectiveProfileSwitchesFromTimeToTime(fromTime, endTime, true),
             fromTime
         )
         var nextBoundary = 0
         var profile = profileFunction.getProfile(fromTime)
 
         var time = fromTime
-        while (time < toTime) {
+        while (time < endTime) {
             while (nextBoundary < boundaries.size && boundaries[nextBoundary] <= time) {
                 profile = profileFunction.getProfile(time)
                 nextBoundary++
@@ -981,11 +1065,76 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         }
 
         // Final points
-        if (lastProfileBasal >= 0.0) profileBasal.add(GraphDataPoint(toTime, lastProfileBasal))
-        if (lastActualBasal >= 0.0) actualBasal.add(GraphDataPoint(toTime, lastActualBasal))
+        if (lastProfileBasal >= 0.0) profileBasal.add(GraphDataPoint(endTime, lastProfileBasal))
+        if (lastActualBasal >= 0.0) actualBasal.add(GraphDataPoint(endTime, lastActualBasal))
 
-        _basalGraphFlow.value = BasalGraphData(profileBasal, actualBasal, maxBasal)
+        val factorTemps = factorTempColumns(fromTime, endTime)
+        _basalGraphFlow.value = BasalGraphData(
+            profileBasal = profileBasal,
+            actualBasal = actualBasal,
+            maxBasal = maxBasal,
+            acceTemp = factorTemps.acce,
+            bgTemp = factorTemps.bg,
+            ppTemp = factorTemps.pp,
+            duraTemp = factorTemps.dura
+        )
+
+        // Everything needed to see a short line for what it is, without a second run. The last
+        // point of each series is the end the user actually sees, so comparing it against `now`
+        // says how far short the line stopped, and comparing `rangeEnd` against `predictions`
+        // says which of the two put it there. `GraphViewModel` logs the axis end under the same
+        // tag, and the two lines together are the whole story.
+        aapsLogger.debug(LTag.UI) {
+            "Basal graph rebuilt: from=${dateUtil.dateAndTimeAndSecondsString(fromTime)} " +
+                "rangeEnd=${dateUtil.dateAndTimeAndSecondsString(toTime)} " +
+                "predictions=${loop.lastRun?.constraintsProcessed?.latestPredictionsTime?.let { dateUtil.dateAndTimeAndSecondsString(it) } ?: "none"} " +
+                "drawnTo=${dateUtil.dateAndTimeAndSecondsString(endTime)} " +
+                "now=${dateUtil.dateAndTimeAndSecondsString(dateUtil.now())} " +
+                "profile=${profileBasal.size} points ending ${profileBasal.lastOrNull()?.let { dateUtil.dateAndTimeAndSecondsString(it.timestamp) } ?: "nowhere"}, " +
+                "actual=${actualBasal.size} points ending ${actualBasal.lastOrNull()?.let { dateUtil.dateAndTimeAndSecondsString(it.timestamp) } ?: "nowhere"}"
+        }
     }
+
+    /**
+     * One 5-minute column per AutoISF row, drawn on top of the normal temp basal.
+     * A row with no temp, or with no factor more than 0.01 from 1.0, keeps the normal colour.
+     */
+    private suspend fun factorTempColumns(fromTime: Long, endTime: Long): FactorTemps {
+        val acce = mutableListOf<GraphDataPoint>()
+        val bg = mutableListOf<GraphDataPoint>()
+        val pp = mutableListOf<GraphDataPoint>()
+        val dura = mutableListOf<GraphDataPoint>()
+        val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime).sortedBy { it.timestamp }
+        val columnMs = 5L * 60L * 1000L
+        for (row in rows) {
+            val profile = profileFunction.getProfile(row.timestamp) ?: continue
+            val basalData = iobCobCalculator.getBasalData(profile, row.timestamp)
+            if (!basalData.isTempBasalRunning) continue
+            val rate = basalData.tempBasalAbsolute
+            if (rate <= 0.0) continue
+            val target = when (dominantIsf(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)) {
+                DominantIsf.ACCE -> acce
+                DominantIsf.BG   -> bg
+                DominantIsf.PP   -> pp
+                DominantIsf.DURA -> dura
+                DominantIsf.NONE -> continue
+            }
+            val end = row.timestamp + columnMs
+            val last = target.lastOrNull()
+            if (last == null || last.timestamp < row.timestamp) target.add(GraphDataPoint(row.timestamp, 0.0))
+            target.add(GraphDataPoint(row.timestamp + 1L, rate))
+            target.add(GraphDataPoint(end - 1L, rate))
+            target.add(GraphDataPoint(end, 0.0))
+        }
+        return FactorTemps(acce, bg, pp, dura)
+    }
+
+    private data class FactorTemps(
+        val acce: List<GraphDataPoint>,
+        val bg: List<GraphDataPoint>,
+        val pp: List<GraphDataPoint>,
+        val dura: List<GraphDataPoint>
+    )
 
     // =========================================================================
     // NSClient status rebuild
@@ -1128,6 +1277,7 @@ class OverviewDataCacheImpl @AssistedInject constructor(
         _ratioGraphFlow.value = RatioGraphData(emptyList())
         _devSlopeGraphFlow.value = DevSlopeGraphData(emptyList(), emptyList())
         _varSensGraphFlow.value = VarSensGraphData(emptyList())
+        _autoIsfGraphFlow.value = AutoIsfGraphData()
         _heartRateGraphFlow.value = HeartRateGraphData(emptyList())
         _stepsGraphFlow.value = StepsGraphData(emptyList())
         _treatmentGraphFlow.value = TreatmentGraphData(emptyList(), emptyList(), emptyList(), emptyList())
@@ -1155,3 +1305,53 @@ class OverviewDataCacheImpl @AssistedInject constructor(
  */
 internal fun profileBoundariesIn(switches: List<EPS>, fromTime: Long): List<Long> =
     switches.map { it.timestamp }.filter { it > fromTime }.sorted()
+
+/**
+ * How far right to draw a series that is meant to reach the edge of the axis, **while the
+ * predictions overlay is on**. With it off the axis stops at `TimeRange.toTime` and the caller uses
+ * that instead - see the member `graphEndTime`, which picks between the two.
+ *
+ * `graphTimeRange` ends at `TimeRange.endTime`, and that is not always the right edge of the chart.
+ * The axis is `max(newest BG / bucketed / prediction point, endTime)` (see
+ * `GraphViewModel.derivedTimeRange`), and `endTime` is the shorter of the two in two ways:
+ *
+ * - `PostCalculationRunner` clamps the horizon to two hours while the predictions themselves are
+ *   not clamped, so the last prediction can sit past `endTime`.
+ * - `PrepareGraphDataRunner` collapses `endTime` back to `toTime` on every pass and
+ *   `PostCalculationRunner` restores it afterwards, so it stays short for as long as that second
+ *   pass does not run - after a failed or skipped loop run, indefinitely.
+ *
+ * A series that stops at `endTime` then ends before the axis does. On the basal graph that reads as
+ * the line simply stopping short of "now", because basal is the one series a reader expects to be
+ * continuous all the way to the right. The running mode band and the target line were each already
+ * extending to the latest prediction with their own copy of this line; this is the same rule in one
+ * place, so the three cannot drift apart again.
+ *
+ * [latestPredictionsTime] is null when no loop run is on record, which is not the same as zero: it
+ * means "no horizon known", and then the range's own end is all there is.
+ */
+internal fun graphEndTime(latestPredictionsTime: Long?, toTime: Long): Long =
+    max(latestPredictionsTime ?: 0L, toTime)
+
+/**
+ * Turns running mode samples into bands for the treatment belt.
+ *
+ * Each sample holds from its own time until the next one, and the last runs to [endTime]; neighbours
+ * with the same mode become one band. Kept separate from the database work above so the rule can be
+ * tested on its own.
+ *
+ * @param samples mode at each boundary, in ascending time order
+ * @param endTime right edge of the graph - where the last band stops
+ */
+internal fun mergeRunningModeSegments(samples: List<Pair<Long, RM.Mode>>, endTime: Long): List<RunningModeSegment> {
+    val segments = mutableListOf<RunningModeSegment>()
+    for ((index, sample) in samples.withIndex()) {
+        val (start, mode) = sample
+        val end = samples.getOrNull(index + 1)?.first ?: endTime
+        if (end <= start) continue
+        val last = segments.lastOrNull()
+        if (last != null && last.mode == mode) segments[segments.lastIndex] = last.copy(endTime = end)
+        else segments.add(RunningModeSegment(mode, start, end))
+    }
+    return segments
+}

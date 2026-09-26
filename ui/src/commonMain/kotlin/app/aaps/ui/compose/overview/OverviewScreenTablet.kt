@@ -162,9 +162,14 @@ fun OverviewScreenTablet(
                             iobUiState = iobUiState,
                             cobUiState = cobUiState,
                             sensitivityUiState = sensitivityUiState,
+                            onLoadAutoIsfHistory = chipsViewModel::loadAutoIsfHistory,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
+                            onTbrChipLongClick = graphViewModel::onBasalIconLongPress,
+                            onTbrChipDoubleClick = chipsViewModel::openList2,
                             onIobChipClick = onIobChipClick,
+                            onIobChipLongClick = graphViewModel::onIobIconLongPress,
+                            onIobChipDoubleClick = chipsViewModel::openList1,
                             commandsAllowed = commandsAllowed
                         )
                     }

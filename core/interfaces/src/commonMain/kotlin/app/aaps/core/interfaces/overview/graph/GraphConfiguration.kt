@@ -25,7 +25,15 @@ enum class SeriesType {
     HEART_RATE,
     STEPS,
     ACTIVITY,
-    PREDICTIONS
+    PREDICTIONS,
+    ACCE_ISF,
+    BG_ISF,
+    PP_ISF,
+    DURA_ISF,
+    FINAL_ISF,
+    IOB_TH,
+    RAW_BG,
+    UKF_BG
 }
 
 /**
@@ -73,6 +81,9 @@ data class GraphConfig(
 
         /** Maximum graph height in dp (2.5x default) */
         const val MAX_GRAPH_HEIGHT_DP = 250
+
+        /** Main glucose graph only. The other graphs stay at [MAX_GRAPH_HEIGHT_DP]. */
+        const val MAX_BG_GRAPH_HEIGHT_DP = 400
     }
 }
 
