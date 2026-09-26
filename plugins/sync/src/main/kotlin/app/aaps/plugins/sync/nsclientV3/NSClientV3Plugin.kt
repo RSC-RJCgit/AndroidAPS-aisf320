@@ -479,7 +479,7 @@ class NSClientV3Plugin @Inject constructor(
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
         if (!isEnabled()) return
-        if (!preferences.get(BooleanKey.NsClientUploadData) || dataSyncSelectorV3.uploadBlockedOnVirtualPump) {
+        if (!preferences.get(BooleanKey.NsClientUploadData)) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
             return
         }
@@ -948,10 +948,7 @@ class NSClientV3Plugin @Inject constructor(
                 key = "ns_client_synchronization"
                 title = rh.gs(R.string.ns_sync_options)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientUploadData, summary = R.string.ns_upload_summary, title = R.string.ns_upload).also {
-                    if (dataSyncSelectorV3.uploadBlockedOnVirtualPump) {
-                        it.disableKeepingParent()
-                        it.setSummary(R.string.ns_upload_blocked_virtual_summary)
-                    }
+                    if (dataSyncSelectorV3.fullAapsOnVirtualPump) it.setSummary(R.string.ns_upload_virtual_warning_summary)
                 })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.BgSourceUploadToNs, title = app.aaps.core.ui.R.string.do_ns_upload_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCgmData, summary = R.string.ns_receive_cgm_summary, title = R.string.ns_receive_cgm))
@@ -963,7 +960,12 @@ class NSClientV3Plugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCarbs, summary = R.string.ns_receive_carbs_summary, title = R.string.ns_receive_carbs))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTherapyEvent, summary = R.string.ns_receive_therapy_events_summary, title = R.string.ns_receive_therapy_events))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptRunningMode, summary = R.string.ns_receive_running_mode_summary, title = R.string.ns_receive_running_mode))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTbrEb, summary = R.string.ns_receive_tbr_eb_summary, title = R.string.ns_receive_tbr_eb))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTbrEb, summary = R.string.ns_receive_tbr_eb_summary, title = R.string.ns_receive_tbr_eb).also {
+                    if (dataSyncSelectorV3.fullAapsOnVirtualPump) {
+                        it.disableKeepingParent()
+                        it.setSummary(R.string.ns_receive_tbr_eb_blocked_virtual_summary)
+                    }
+                })
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_secondary_settings"

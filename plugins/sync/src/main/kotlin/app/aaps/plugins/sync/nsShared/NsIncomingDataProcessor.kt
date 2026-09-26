@@ -262,7 +262,7 @@ class NsIncomingDataProcessor @Inject constructor(
                         }
 
                     is NSTemporaryBasal         ->
-                        if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT || doFullSync)
+                        if (activePlugin.acceptsNsTbrEb(config, preferences.get(BooleanKey.NsClientAcceptTbrEb), doFullSync))
                             storeDataForDb.addToTemporaryBasals(treatment.toTemporaryBasal())
 
                     is NSEffectiveProfileSwitch ->
@@ -311,7 +311,7 @@ class NsIncomingDataProcessor @Inject constructor(
                             }
 
                     is NSExtendedBolus          ->
-                        if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT || doFullSync)
+                        if (activePlugin.acceptsNsTbrEb(config, preferences.get(BooleanKey.NsClientAcceptTbrEb), doFullSync))
                             treatment.toExtendedBolus().let { extendedBolus ->
                                 storeDataForDb.addToExtendedBoluses(extendedBolus)
                             }
@@ -367,7 +367,19 @@ class NsIncomingDataProcessor @Inject constructor(
         }
     }
 
-    fun processProfile(profileJson: JSONObject, doFullSync: Boolean) {
+    // 2026-09-27, per explicit request: on a full AAPS on VirtualPump with a secondary NS site set, the profile store comes from the
+    // secondary site (LoadSecondaryBolusCarbsWorker), not the primary. Every primary path (socket, WebSocket, LoadProfileStoreWorker) ends
+    // here, so ignoring them here covers all three. The existing "Receive profile store" switch still applies to the secondary's store.
+    private fun secondaryProvidesProfileStore(): Boolean =
+        activePlugin.fullAapsOnVirtualPump(config) &&
+            preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
+            preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl).isNotBlank()
+
+    fun processProfile(profileJson: JSONObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
+        if (!fromSecondary && secondaryProvidesProfileStore()) {
+            aapsLogger.debug(LTag.PROFILE, "Ignoring primary NS profile store: the secondary NS site provides it on this Virtual phone")
+            return
+        }
         if (preferences.get(BooleanKey.NsClientAcceptProfileStore) || config.AAPSCLIENT || doFullSync) {
             val store = profileStoreProvider.get().with(profileJson)
             val createdAt = store.getStartDate()

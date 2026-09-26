@@ -481,7 +481,7 @@ class StoreDataForDbImpl @Inject constructor(
                             sendLog("TemporaryTarget", TT::class.java.simpleName)
                         }
                     }
-                if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT)
+                if ((preferences.get(BooleanKey.NsClientAcceptTbrEb) && !(virtualPump.isEnabled() && !config.AAPSCLIENT)) || config.AAPSCLIENT)
                     persistenceLayer.getTemporaryBasalByNSId(id)?.let { tb ->
                         persistenceLayer.invalidateTemporaryBasal(tb.id, Action.TEMP_BASAL_REMOVED, Sources.NSClient, null, listValues = listOf(ValueWithUnit.Timestamp(tb.timestamp))).blockingGet().also { result ->
                             invalidated.add(TB::class.java.simpleName, result.invalidated.size)
@@ -522,7 +522,7 @@ class StoreDataForDbImpl @Inject constructor(
                             sendLog("RunningMode", RM::class.java.simpleName)
                         }
                     }
-                if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT)
+                if ((preferences.get(BooleanKey.NsClientAcceptTbrEb) && !(virtualPump.isEnabled() && !config.AAPSCLIENT)) || config.AAPSCLIENT)
                     persistenceLayer.getExtendedBolusByNSId(id)?.let { eb ->
                         persistenceLayer.invalidateExtendedBolus(eb.id, Action.EXTENDED_BOLUS_REMOVED, Sources.NSClient, null, listValues = listOf(ValueWithUnit.Timestamp(eb.timestamp))).blockingGet().also { result ->
                             invalidated.add(EB::class.java.simpleName, result.invalidated.size)

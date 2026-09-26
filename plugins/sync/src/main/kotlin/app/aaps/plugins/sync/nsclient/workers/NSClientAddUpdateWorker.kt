@@ -17,6 +17,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.plugins.sync.nsShared.acceptsNsTbrEb
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -133,14 +134,14 @@ class NSClientAddUpdateWorker(
                     }
 
                 eventType == TE.Type.COMBO_BOLUS.text                             ->
-                    if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT) {
+                    if (activePlugin.acceptsNsTbrEb(config, preferences.get(BooleanKey.NsClientAcceptTbrEb))) {
                         EB.extendedBolusFromJson(json)?.let { extendedBolus ->
                             storeDataForDb.addToExtendedBoluses(extendedBolus)
                         } ?: aapsLogger.error("Error parsing ExtendedBolus json $json")
                     }
 
                 eventType == TE.Type.TEMPORARY_BASAL.text                         ->
-                    if (preferences.get(BooleanKey.NsClientAcceptTbrEb) || config.AAPSCLIENT) {
+                    if (activePlugin.acceptsNsTbrEb(config, preferences.get(BooleanKey.NsClientAcceptTbrEb))) {
                         TB.temporaryBasalFromJson(json)?.let { temporaryBasal ->
                             storeDataForDb.addToTemporaryBasals(temporaryBasal)
                         } ?: aapsLogger.error("Error parsing TemporaryBasal json $json")

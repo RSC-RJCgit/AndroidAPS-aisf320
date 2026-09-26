@@ -19,7 +19,8 @@ import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiQueue
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsShared.extensions.onlyNsIdAdded
-import app.aaps.plugins.sync.nsShared.uploadBlockedOnVirtualPump
+import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
+import app.aaps.plugins.sync.nsShared.warnIfVirtualUploads
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import javax.inject.Inject
@@ -75,9 +76,8 @@ class DataSyncSelectorV3 @Inject constructor(
     private val queueCounter = QueueCounter()
     private val isPaused get() = preferences.get(NsclientBooleanKey.NsPaused)
 
-    /** True for a full AAPS on VirtualPump: upload is braked whatever the switch says (see UploadBrake.kt). */
-    val uploadBlockedOnVirtualPump get() = activePlugin.uploadBlockedOnVirtualPump(config)
-    private var uploadBrakeLogged = false
+    /** True for a full AAPS on VirtualPump (see UploadBrake.kt). */
+    val fullAapsOnVirtualPump get() = activePlugin.fullAapsOnVirtualPump(config)
 
     override fun queueSize(): Long = queueCounter.size()
 
@@ -86,13 +86,8 @@ class DataSyncSelectorV3 @Inject constructor(
 
     override suspend fun doUpload() {
         rxBus.send(EventNSClientUpdateGuiStatus())
-        if (uploadBlockedOnVirtualPump) {
-            if (!uploadBrakeLogged) {
-                uploadBrakeLogged = true
-                aapsLogger.debug(LTag.NSCLIENT, "Upload blocked: full AAPS on VirtualPump")
-            }
-        } else uploadBrakeLogged = false
-        if ((config.AAPSCLIENT || (preferences.get(BooleanKey.NsClientUploadData) && !uploadBlockedOnVirtualPump)) && !isPaused) {
+        warnIfVirtualUploads(activePlugin, config, preferences, rxBus, dateUtil)
+        if ((config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)
             queueCounter.bcrRemaining = (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L) - preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)

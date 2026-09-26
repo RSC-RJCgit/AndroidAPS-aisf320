@@ -6,7 +6,9 @@ import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.utils.DateUtil
@@ -15,10 +17,14 @@ import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
+import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.LoggingWorker
+import app.aaps.core.utils.JsonHelper
+import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
+import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
@@ -46,6 +52,9 @@ class LoadSecondaryBolusCarbsWorker(
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var storeDataForDb: StoreDataForDb
+    @Inject lateinit var activePlugin: ActivePlugin
+    @Inject lateinit var config: Config
+    @Inject lateinit var nsIncomingDataProcessor: NsIncomingDataProcessor
 
     companion object {
 
@@ -69,6 +78,31 @@ class LoadSecondaryBolusCarbsWorker(
             TE.Type.PUMP_BATTERY_CHANGE,
             TE.Type.NOTE
         )
+    }
+
+    // 2026-09-27, per explicit request: a full AAPS on VirtualPump takes its profile store from the secondary NS site (the primary's
+    // store is ignored, see NsIncomingDataProcessor.processProfile). Same first-load / modified-since logic as LoadProfileStoreWorker,
+    // with its own cursor. Never fails the treatment import: errors are logged and the last stored profile stays.
+    private suspend fun loadSecondaryProfileStore(client: NSAndroidClient) {
+        if (!activePlugin.fullAapsOnVirtualPump(config)) return
+        try {
+            val cursor = preferences.get(LongKey.NsClientSecondaryProfileLastModified)
+            val response = if (cursor == 0L) client.getLastProfileStore() else client.getProfileModifiedSince(cursor)
+            val profile = response.values.lastOrNull()
+            if (profile == null) {
+                response.lastServerModified?.takeIf { it > cursor }?.let { preferences.put(LongKey.NsClientSecondaryProfileLastModified, it) }
+                return
+            }
+            val newCursor = response.lastServerModified
+                ?: JsonHelper.safeGetLongAllowNull(profile, "srvModified")
+                ?: dateUtil.now()
+            preferences.put(LongKey.NsClientSecondaryProfileLastModified, newCursor)
+            rxBus.send(EventNSClientNewLog("◄ SEC-NS", "1 PROFILE store from secondary NS"))
+            nsIncomingDataProcessor.processProfile(profile, doFullSync = false, fromSecondary = true)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS profile store failed", e)
+            rxBus.send(EventNSClientNewLog("◄ SEC-NS ERR", "profile store: ${e.message ?: "Unknown error"}"))
+        }
     }
 
     override suspend fun doWorkAndLog(): Result {
@@ -216,6 +250,7 @@ class LoadSecondaryBolusCarbsWorker(
             if (page >= MAX_PAGES && continueLoading) {
                 rxBus.send(EventNSClientNewLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync"))
             }
+            loadSecondaryProfileStore(client)
             Result.success()
         } catch (e: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS fetch failed", e)
