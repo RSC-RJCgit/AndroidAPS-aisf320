@@ -3,9 +3,12 @@ package app.aaps.ui.compose.overview.graphs
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,14 +28,17 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
+import kotlin.time.Clock
 import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
@@ -900,23 +906,85 @@ fun BgGraphCompose(
         zoomState = zoomState
     )
     if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null) {
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 44.dp)) {
-            autoIsfGraph.statusTarget?.let { line ->
-                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            autoIsfGraph.statusIsf?.let { line ->
-                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
+        val lineSp = 11.sp
+        val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
+        val tight = TextStyle(
+            fontSize = lineSp,
+            lineHeight = lineSp,
+            fontWeight = FontWeight.Bold,
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.Both
+            )
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = (44.dp - threeLinesDown).coerceAtLeast(0.dp))
+        ) {
             if (hypoPrediction != null) {
                 Text(
                     text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    color = Color.White,
+                    style = tight
                 )
+            }
+            autoIsfGraph.statusTarget?.let { line ->
+                Text(text = line, color = Color.White, style = tight)
+            }
+            autoIsfGraph.statusIsf?.let { line ->
+                IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
             }
         }
     }
+    }
+}
+
+/** One colour per field, the same colours as the UK ISF row. */
+@Composable
+private fun IsfStatusLine(
+    line: String,
+    style: TextStyle,
+    acceColor: Color,
+    bgColor: Color,
+    ppColor: Color,
+    duraColor: Color
+) {
+    val parts = line.split(" ").filter { it.isNotEmpty() }
+    fun valueOf(key: String): Double? = parts.firstOrNull { it.startsWith("$key=") }
+        ?.substringAfter("=")
+        ?.toDoubleOrNull()
+    val acceDev = abs((valueOf("ac") ?: 1.0) - 1.0)
+    val bgDev = abs((valueOf("bg") ?: 1.0) - 1.0)
+    val ppDev = abs((valueOf("pp") ?: 1.0) - 1.0)
+    val duraDev = abs((valueOf("du") ?: 1.0) - 1.0)
+    val maxDev = maxOf(acceDev, bgDev, ppDev, duraDev)
+    val dominant = when {
+        maxDev <= 0.01 -> null
+        acceDev >= maxDev -> acceColor
+        bgDev >= maxDev -> bgColor
+        ppDev >= maxDev -> ppColor
+        else -> duraColor
+    }
+    val fallbackFinal = Color(0xFFFF6060)
+    val fallbackSmb = Color(0xFF4A9EFF)
+    Row {
+        parts.forEachIndexed { index, token ->
+            val color = when (token.substringBefore("=")) {
+                "f" -> dominant ?: fallbackFinal
+                "ac" -> acceColor
+                "bg" -> bgColor
+                "pp" -> ppColor
+                "du" -> duraColor
+                "smb" -> {
+                    val smb = valueOf("smb")
+                    if (smb == null || smb == 0.0) fallbackSmb else dominant ?: fallbackSmb
+                }
+                else -> Color.White
+            }
+            if (index > 0) Spacer(Modifier.width(4.dp))
+            Text(text = token, color = color, style = style)
+        }
     }
 }
 
@@ -942,7 +1010,7 @@ private class GraphAxisLock : NestedScrollConnection {
 
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (source != NestedScrollSource.UserInput) return Offset.Zero
-        val now = System.currentTimeMillis()
+        val now = Clock.System.now().toEpochMilliseconds()
         if (now - lastMs > 120L) {
             orientation = null
             accX = 0f

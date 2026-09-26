@@ -1,6 +1,7 @@
 package app.aaps.core.ui.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import app.aaps.core.interfaces.utils.usesTwelveHourClock
@@ -47,3 +48,6 @@ actual fun is24HourClock(): Boolean {
  */
 @Composable
 actual fun LockPortraitOrientation() = Unit
+
+/** See the expect declaration: a desktop window has no system edge gesture to block. */
+actual fun Modifier.blockSystemEdgeGesture(): Modifier = this
