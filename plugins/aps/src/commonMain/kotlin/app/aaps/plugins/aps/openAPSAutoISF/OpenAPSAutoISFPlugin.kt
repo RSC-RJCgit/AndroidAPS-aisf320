@@ -3127,6 +3127,12 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.DURA_WEIGHT_UP -> RunMark.DURA_WEIGHT_UP
             RemoteToggleCode.LIBRE_SLOPE_DOWN -> RunMark.LIBRE_SLOPE_DOWN
             RemoteToggleCode.LIBRE_SLOPE_UP -> RunMark.LIBRE_SLOPE_UP
+            RemoteToggleCode.LIBRE_OFFSET_DOWN -> RunMark.LIBRE_OFFSET_DOWN
+            RemoteToggleCode.LIBRE_OFFSET_UP -> RunMark.LIBRE_OFFSET_UP
+            RemoteToggleCode.WIZARD_PCT_DOWN -> RunMark.WIZARD_PCT_DOWN
+            RemoteToggleCode.WIZARD_PCT_UP -> RunMark.WIZARD_PCT_UP
+            RemoteToggleCode.MILD_BOOST_DOWN -> RunMark.MILD_BOOST_DOWN
+            RemoteToggleCode.MILD_BOOST_UP -> RunMark.MILD_BOOST_UP
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3370,6 +3376,12 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.DURA_WEIGHT_UP -> nudgeDouble(DoubleKey.ApsAutoIsfDuraWeight, 0.1, 0.0, 3.0, "DuraWeightUp", "D", 2)
             RemoteToggleCode.LIBRE_SLOPE_DOWN -> nudgeLibreSlope(-0.01, "LibreSlopeDown")
             RemoteToggleCode.LIBRE_SLOPE_UP -> nudgeLibreSlope(0.01, "LibreSlopeUp")
+            RemoteToggleCode.LIBRE_OFFSET_DOWN -> nudgeLibreOffset(-0.05, "LibreOffsetDown")
+            RemoteToggleCode.LIBRE_OFFSET_UP -> nudgeLibreOffset(0.05, "LibreOffsetUp")
+            RemoteToggleCode.WIZARD_PCT_DOWN -> nudgeWizardPct(-5, "WizardPctDown")
+            RemoteToggleCode.WIZARD_PCT_UP -> nudgeWizardPct(5, "WizardPctUp")
+            RemoteToggleCode.MILD_BOOST_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfMildBoostRatio, -0.25, 0.1, 1.0, "MildBoostDown", "MB", 2, omitLeadingZero = true)
+            RemoteToggleCode.MILD_BOOST_UP -> nudgeDouble(DoubleKey.ApsAutoIsfMildBoostRatio, 0.25, 0.1, 1.0, "MildBoostUp", "MB", 2, omitLeadingZero = true)
         }
     }
 
@@ -3391,12 +3403,33 @@ open class OpenAPSAutoISFPlugin(
         carePortalNote(compactSettingNote("LS", next, 2, omitLeadingZero = true))
     }
 
+    // Move the saved Libre offset, and the live offset when it still matches that saved value.
+    // The remote step stays inside 1.20 to 1.60 even though the stored key allows a wider range.
+    private suspend fun nudgeLibreOffset(delta: Double, smsName: String) {
+        val orig = preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)
+        val live = preferences.get(DoubleNonKey.FslCalOffset)
+        val next = (orig + delta).coerceIn(1.20, 1.60)
+        preferences.put(DoubleNonKey.ApsAutoIsfLibreOffsetOrig, next)
+        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleNonKey.FslCalOffset, (live + delta).coerceIn(1.20, 1.60))
+        sendAutoSms("$smsName: ${fixedDecimals(next, 2)}")
+        carePortalNote(compactSettingNote("L", next, 2))
+    }
+
+    // Wizard bolus percent. Down stops at 50. Up stops at 100.
+    private suspend fun nudgeWizardPct(delta: Int, smsName: String) {
+        val current = preferences.get(IntKey.OverviewBolusPercentage)
+        val next = if (delta < 0) (current + delta).coerceAtLeast(50) else (current + delta).coerceAtMost(100)
+        preferences.put(IntKey.OverviewBolusPercentage, next)
+        sendAutoSms("$smsName: $next%")
+        carePortalNote(wizardBolusNote(next))
+    }
+
     // Step a stored number and write the same short note the other app uses.
-    private suspend fun nudgeDouble(key: DoubleKey, delta: Double, floor: Double, cap: Double, smsName: String, notePrefix: String, places: Int) {
+    private suspend fun nudgeDouble(key: DoubleKey, delta: Double, floor: Double, cap: Double, smsName: String, notePrefix: String, places: Int, omitLeadingZero: Boolean = false) {
         val next = (preferences.get(key) + delta).coerceIn(floor, cap)
         preferences.put(key, next)
         sendAutoSms("$smsName: ${fixedDecimals(next, places)}")
-        carePortalNote(compactSettingNote(notePrefix, next, places))
+        carePortalNote(compactSettingNote(notePrefix, next, places, omitLeadingZero))
     }
 
     private suspend fun toggleBool(key: BooleanKey, sms: String, note: String) {

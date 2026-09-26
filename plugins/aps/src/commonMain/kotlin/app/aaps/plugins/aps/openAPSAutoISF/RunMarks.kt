@@ -159,6 +159,12 @@ internal object RunMark {
     const val DURA_WEIGHT_UP = "DuraWeightUpTT"
     const val LIBRE_SLOPE_DOWN = "LibreSlopeDownTT"
     const val LIBRE_SLOPE_UP = "LibreSlopeUpTT"
+    const val LIBRE_OFFSET_DOWN = "LibreOffsetDownTT"
+    const val LIBRE_OFFSET_UP = "LibreOffsetUpTT"
+    const val WIZARD_PCT_DOWN = "WizardPctDownTT"
+    const val WIZARD_PCT_UP = "WizardPctUpTT"
+    const val MILD_BOOST_DOWN = "MildBoostDownTT"
+    const val MILD_BOOST_UP = "MildBoostUpTT"
     const val ACTIVITY_PROF_50 = "ActivityProf50"
     const val ACTIVITY_OFF = "ActivityOff"
 }

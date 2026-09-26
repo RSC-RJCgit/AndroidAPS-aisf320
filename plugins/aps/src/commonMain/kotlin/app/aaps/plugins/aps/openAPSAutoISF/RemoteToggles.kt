@@ -78,6 +78,12 @@ internal enum class RemoteToggleCode {
     DURA_WEIGHT_UP,
     LIBRE_SLOPE_DOWN,
     LIBRE_SLOPE_UP,
+    LIBRE_OFFSET_DOWN,
+    LIBRE_OFFSET_UP,
+    WIZARD_PCT_DOWN,
+    WIZARD_PCT_UP,
+    MILD_BOOST_DOWN,
+    MILD_BOOST_UP,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -153,6 +159,12 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.024, 0.0001) -> RemoteToggleCode.DURA_WEIGHT_UP
     ttNear(ttMgdl, 5.026, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_DOWN
     ttNear(ttMgdl, 5.028, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_UP
+    ttNear(ttMgdl, 5.032, 0.0001) -> RemoteToggleCode.LIBRE_OFFSET_DOWN
+    ttNear(ttMgdl, 5.034, 0.0001) -> RemoteToggleCode.LIBRE_OFFSET_UP
+    ttNear(ttMgdl, 5.046, 0.0001) -> RemoteToggleCode.WIZARD_PCT_DOWN
+    ttNear(ttMgdl, 5.048, 0.0001) -> RemoteToggleCode.WIZARD_PCT_UP
+    ttNear(ttMgdl, 5.052, 0.0001) -> RemoteToggleCode.MILD_BOOST_DOWN
+    ttNear(ttMgdl, 5.054, 0.0001) -> RemoteToggleCode.MILD_BOOST_UP
     else -> null
 }
 
@@ -171,6 +183,9 @@ internal fun compactSettingNote(prefix: String, value: Double, places: Int, omit
     while (note.length > 5 && note.endsWith("0") && note.contains('.')) note = note.dropLast(1)
     return note
 }
+
+// Wizard bolus percent, three digits, so 80 is "W080%" and 100 is "W100%".
+internal fun wizardBolusNote(percent: Int): String = "W" + percent.toString().padStart(3, '0') + "%"
 
 internal fun todOffsetNote(value: Double): String {
     val text = fixedDecimals(value, 1)
