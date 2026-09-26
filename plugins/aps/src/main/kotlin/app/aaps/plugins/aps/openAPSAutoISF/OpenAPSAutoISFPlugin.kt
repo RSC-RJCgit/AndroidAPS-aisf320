@@ -3490,7 +3490,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val recentAlarmHypo = (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.mins(60).msecs()
             val mealLeftoverRiseFloor = if (recentAlarmHypo) 126.1 /* 7.0 mmol */ else 108.1 /* 6.0 mmol */
             val mealLeftoverRise = g >= mealLeftoverRiseFloor
-                && (mealData.mealCOB >= 4.0 || lastBolusMinMild < 180)
+                // 2026-09-26, per explicit request: last-normal-bolus window 180 -> 240 min. A scan of 17 Client-mirrored meals since
+                // 14 Sep found 9 late rises (>= 1.0 mmol after the post-meal dip) starting 100-210 min after the entry, mostly with COB
+                // already 0; 15 Sep (209 min), 18 Sep (200), 25 Sep (176) and 26 Sep 15:57 (206) fell just past the old 3 h window.
+                && (mealData.mealCOB >= 4.0 || lastBolusMinMild < 240)
                 && glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
             val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
             // Delivery-suppressed OR (smbCount5Min() <= 1 + raw rise, no iobChange5) removed 2026-09-02
@@ -6920,7 +6923,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (recentSteps60Minutes < 300 || recentSteps30Minutes <= 100)   // mirrors bg3BasicCriteriaMet (2026-09-26)
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            val mealLeftoverRise = g >= 108.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)
+            val mealLeftoverRise = g >= 108.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 240)   // mirrors bmildBasicCriteriaMet (2026-09-26)
                 && glucoseStatus.shortAvgDelta >= 2.7
             val mildWould = outerGuardOk && readyToRun("BolusGivenMild", 5) && (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
                 && (iobChange5 > 0.40 * stackK * thresholdScale || mealLeftoverRise) && d >= 5.4 * stackK
