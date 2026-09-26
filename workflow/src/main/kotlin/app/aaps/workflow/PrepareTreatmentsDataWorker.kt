@@ -388,8 +388,19 @@ class PrepareTreatmentsDataWorker(
         // Same notes as noteEventSeries above, rendered as plain unscaled arrowheads (Shape.SMB's own
         // BGL-point arrowhead, no dose-size scaling) fixed at graph3's old ISF-row spot — an additional,
         // simpler view alongside the full note display on graph2.
+        // 2026-09-26, per explicit request: the arrowhead and its time label take the colour of the BGL dot at the note's time --
+        // same rule as GlucoseValueDataPoint.color(): low outranks everything, then the dominant ISF-weight tint, then high, else
+        // the plain BG colour (plain low/high/in-range when the second long-press graph mode is on). No BG reading within 10 min
+        // of the note (or none loaded yet) keeps the old yellow. The renderer draws the time label in the arrow's paint colour.
+        val arrowLowLine = preferences.get(app.aaps.core.keys.UnitDoubleKey.OverviewLowMark)
+        val arrowHighLine = preferences.get(app.aaps.core.keys.UnitDoubleKey.OverviewHighMark)
         val noteArrowheads = filteredNotes
             .map { note ->
+                val noteTs = note.x.toLong()
+                val bgAtNote: Double? = data.overviewData.bgReadingsArray
+                    .firstOrNull { it.timestamp <= noteTs && noteTs - it.timestamp <= T.mins(10).msecs() }
+                    ?.let { profileUtil.fromMgdlToUnits(it.value) }
+                val isfTint = if (bgAtNote != null) dominantIsfColorAt(aivList, noteTs) else 0
                 object : DataPointWithLabelInterface {
                     override fun getX(): Double = note.x
                     override fun getY(): Double = 0.0
@@ -399,7 +410,23 @@ class PrepareTreatmentsDataWorker(
                     override val shape = app.aaps.core.graph.data.Shape.NOTE_ARROWHEAD_GRAPH3
                     override val size: Float = 1.0f
                     override val paintStyle = android.graphics.Paint.Style.FILL
-                    override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
+                    override val hasColorOverride: Boolean = bgAtNote != null
+                    override fun color(context: android.content.Context?): Int {
+                        val v = bgAtNote ?: return android.graphics.Color.YELLOW
+                        if (PointsWithLabelGraphSeries.uniformGreenBg) {
+                            return when {
+                                v < arrowLowLine -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
+                                v > arrowHighLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
+                                else -> rh.gac(context, app.aaps.core.ui.R.attr.bgInRange)
+                            }
+                        }
+                        return when {
+                            v < arrowLowLine -> rh.gac(context, app.aaps.core.ui.R.attr.bgLow)
+                            isfTint != 0 -> isfTint
+                            v > arrowHighLine -> rh.gac(context, app.aaps.core.ui.R.attr.highColor)
+                            else -> rh.gac(context, app.aaps.core.ui.R.attr.originalBgValueColor)
+                        }
+                    }
                 }
             }
         data.overviewData.noteArrowheadSeries = PointsWithLabelGraphSeries(noteArrowheads.toTypedArray())
