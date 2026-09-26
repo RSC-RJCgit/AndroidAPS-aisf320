@@ -587,6 +587,7 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.PP_ISF          -> CoreUiStrings.pp_isf_shortname
     SeriesType.DURA_ISF        -> CoreUiStrings.dura_isf_shortname
     SeriesType.FINAL_ISF       -> CoreUiStrings.final_isf_shortname
+    SeriesType.IOB_TH          -> CoreUiStrings.iob_threshold_shortname
     SeriesType.RAW_BG          -> CoreUiStrings.raw_bg_shortname
     SeriesType.UKF_BG          -> CoreUiStrings.ukf_bg_shortname
 }

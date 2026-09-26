@@ -20,12 +20,41 @@ import app.aaps.ui.compose.overview.chips.List1Row
 
 @Composable
 fun List1Dialog(viewModel: ChipsViewModel) {
-    if (!viewModel.list1Open) return
-    val rows = remember(viewModel.list1Generation) { viewModel.list1Rows() }
+    val rows = remember(viewModel.list1Generation, viewModel.list1Open) { viewModel.list1Rows() }
+    DirectListDialog(
+        open = viewModel.list1Open,
+        title = "Direct AutoISF settings",
+        rows = rows,
+        onDismiss = viewModel::closeList1,
+        onApply = viewModel::applyList1,
+    )
+}
+
+@Composable
+fun List2Dialog(viewModel: ChipsViewModel) {
+    val rows = remember(viewModel.list2Generation, viewModel.list2Open) { viewModel.list2Rows() }
+    DirectListDialog(
+        open = viewModel.list2Open,
+        title = "Direct actions",
+        rows = rows,
+        onDismiss = viewModel::closeList2,
+        onApply = viewModel::applyList1,
+    )
+}
+
+@Composable
+private fun DirectListDialog(
+    open: Boolean,
+    title: String,
+    rows: List<List1Row>,
+    onDismiss: () -> Unit,
+    onApply: (Double) -> Unit,
+) {
+    if (!open) return
     var picked by remember { mutableStateOf<List1Row?>(null) }
     AlertDialog(
-        onDismissRequest = viewModel::closeList1,
-        title = { Text("Direct AutoISF settings") },
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                 items(rows, key = { it.label }) { row ->
@@ -40,7 +69,7 @@ fun List1Dialog(viewModel: ChipsViewModel) {
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = viewModel::closeList1) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
     val row = picked
@@ -53,17 +82,17 @@ fun List1Dialog(viewModel: ChipsViewModel) {
             confirmButton = {
                 if (up == null) {
                     TextButton(onClick = {
-                        viewModel.applyList1(row.downMmol)
+                        onApply(row.downMmol)
                         picked = null
                     }) { Text("OK") }
                 } else {
                     Row {
                         TextButton(onClick = {
-                            viewModel.applyList1(row.downMmol)
+                            onApply(row.downMmol)
                             picked = null
                         }) { Text("Down") }
                         TextButton(onClick = {
-                            viewModel.applyList1(up)
+                            onApply(up)
                             picked = null
                         }) { Text("Up") }
                     }

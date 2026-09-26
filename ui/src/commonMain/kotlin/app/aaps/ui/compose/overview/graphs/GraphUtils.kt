@@ -672,6 +672,26 @@ fun niceScaleAroundPivot(min: Double, max: Double, pivot: Double, maxTickCount: 
  */
 val ZERO_FLOOR_SERIES_TYPES = setOf(SeriesType.BGI, SeriesType.DEVIATIONS, SeriesType.ACTIVITY, SeriesType.STEPS, SeriesType.ABS_IOB)
 
+/**
+ * AutoISF axis used by the UK graphs. The highest factor touches the top.
+ * The bottom is the mirror of that peak around 1.0, so 1.0 stays in the middle.
+ * A flat line at 1.0 gets a tiny gap so the axis does not collapse.
+ */
+fun isfAxis(peak: Double): NiceScale {
+    val maxY = if (peak <= 1.0) 1.0 + 1.0e-6 else peak
+    val minY = 2.0 - maxY
+    return NiceScale(minY, maxY, (maxY - minY) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
+}
+
+/**
+ * IOB threshold axis. The largest absolute value touches the top and the bottom,
+ * so zero stays in the middle, the same way the UK IOB threshold line is scaled.
+ */
+fun iobThAxis(min: Double, max: Double): NiceScale {
+    val peak = maxOf(abs(min), abs(max)).coerceAtLeast(0.1)
+    return NiceScale(-peak, peak, (2.0 * peak) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
+}
+
 /** AutoISF factor lines. They sit around 1.0, so the axis is centered there. */
 val AUTO_ISF_SERIES_TYPES = setOf(
     SeriesType.ACCE_ISF,

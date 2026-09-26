@@ -55,6 +55,7 @@ fun OverviewChipsColumn(
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     onIobChipClick: () -> Unit,
     onIobChipLongClick: () -> Unit = {},
     onIobChipDoubleClick: () -> Unit = {},
@@ -99,6 +100,7 @@ fun OverviewChipsColumn(
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
                             onTbrChipLongClick = onTbrChipLongClick,
+                            onTbrChipDoubleClick = onTbrChipDoubleClick,
                             commandsAllowed = commandsAllowed
                         )
                     }
@@ -129,6 +131,7 @@ fun OverviewChipsColumn(
                 onNavigate = onNavigate,
                 onTbrChipClick = onTbrChipClick,
                 onTbrChipLongClick = onTbrChipLongClick,
+                onTbrChipDoubleClick = onTbrChipDoubleClick,
                 commandsAllowed = commandsAllowed
             )
         }
@@ -168,6 +171,7 @@ private fun NarrowChips(
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     commandsAllowed: Boolean
 ) {
     Row(
@@ -216,7 +220,8 @@ private fun NarrowChips(
         TbrChip(
             state = tbrState,
             onClick = onTbrChipClick,
-            onLongClick = onTbrChipLongClick
+            onLongClick = onTbrChipLongClick,
+            onDoubleClick = onTbrChipDoubleClick
         )
     }
 }

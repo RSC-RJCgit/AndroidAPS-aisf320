@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -36,7 +37,7 @@ internal class UserEntryViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(UE::class)).thenReturn(emptyFlow())
-        sut = UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus)
+        sut = UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus, mock(), mock())
     }
 
     @AfterEach

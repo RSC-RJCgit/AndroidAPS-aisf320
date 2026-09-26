@@ -56,10 +56,12 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.workflow.CalculationSignalsEmitter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.combine
+import app.aaps.core.utils.carbModelRatePer5Min
 import app.aaps.workflow.iob.fromCarbs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -703,6 +705,12 @@ class PrepareGraphDataRunner(
         val now = dateUtil.now().toDouble()
         var time = fromTime
         var maxActivity = 0.0
+        val showCarbModel = preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+        val recentCarbs = if (showCarbModel) {
+            persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime - T.hours(6).msecs(), endTime, true)
+        } else emptyList()
+        val carbModelList: MutableList<GraphDataPoint> = ArrayList()
+        var maxCarbModel = 0.0
 
         val iobListCompose: MutableList<GraphDataPoint> = ArrayList()
         val absIobListCompose: MutableList<GraphDataPoint> = ArrayList()
@@ -766,6 +774,15 @@ class PrepareGraphDataRunner(
             else activityPredictionListCompose.add(GraphDataPoint(time, iob.activity))
             if (iob.activity > maxActivity) maxActivity = iob.activity
             else if (-iob.activity > maxActivity) maxActivity = -iob.activity
+            if (showCarbModel) {
+                var sum = 0.0
+                for (carb in recentCarbs) {
+                    val minutes = (time - carb.timestamp) / 60_000.0
+                    sum += carbModelRatePer5Min(carb.amount, minutes)
+                }
+                carbModelList.add(GraphDataPoint(time, sum))
+                if (sum > maxCarbModel) maxCarbModel = sum
+            }
 
             time += 5 * 60 * 1000L
         }
@@ -796,7 +813,9 @@ class PrepareGraphDataRunner(
             ActivityGraphData(
                 activity = activityListCompose,
                 activityPrediction = activityPredictionListCompose,
-                maxActivity = maxActivity
+                maxActivity = maxActivity,
+                carbModel = carbModelList,
+                maxCarbModel = maxCarbModel,
             )
         )
         data.cache.updateBgiGraph(BgiGraphData(bgi = bgiListCompose, bgiPrediction = bgiPredictionListCompose))
@@ -805,17 +824,38 @@ class PrepareGraphDataRunner(
         data.cache.updateDevSlopeGraph(DevSlopeGraphData(dsMax = dsMaxListCompose, dsMin = dsMinListCompose))
         data.cache.updateVarSensGraph(VarSensGraphData(varSens = varSensListCompose))
         val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        val latestAutoIsf = autoIsfRows.maxByOrNull { it.timestamp }
+        val hypoPrediction = latestAutoIsf?.let { row -> hypoPredictionMmol(row, autoIsfRows, data) }
         data.cache.updateAutoIsfGraph(
             AutoIsfGraphData(
                 acce = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsf) },
                 bg = autoIsfRows.map { GraphDataPoint(it.timestamp, it.bgIsf) },
                 pp = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsf) },
                 dura = autoIsfRows.map { GraphDataPoint(it.timestamp, it.duraIsf) },
-                finalIsf = autoIsfRows.map { GraphDataPoint(it.timestamp, it.finalIsf) }
+                finalIsf = autoIsfRows.map { GraphDataPoint(it.timestamp, it.finalIsf) },
+                iobTh = autoIsfRows.filter { it.iobThEffective != 0.0 }.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
+                hypoPrediction = hypoPrediction
             )
         )
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.PREPARE_IOB_AUTOSENS_DATA, 100)
+    }
+
+    // Same formula as hypoPrediction2Mmol: (glucose - IOB) + 0.25*short delta + 0.25*UKF 5 minute change + COB/12, all in mmol.
+    // The 5 minute change is the stored UKF glucose minus the stored value about 5 minutes earlier.
+    private suspend fun hypoPredictionMmol(latest: AIV, rows: List<AIV>, data: PrepareGraphData): Double? {
+        if (latest.ukfRawBgl == 0.0) return null
+        val older = rows
+            .filter { it.ukfRawBgl != 0.0 && it.timestamp in (latest.timestamp - 8 * 60_000)..(latest.timestamp - 3 * 60_000) }
+            .maxByOrNull { it.timestamp }
+            ?: return null
+        val mmol = 18.0182
+        val ukfDelta5 = latest.ukfRawBgl - older.ukfRawBgl
+        val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+        return (latest.glucose / mmol - latest.iob) +
+            0.25 * (latest.shortAvgDelta / mmol) +
+            0.25 * (ukfDelta5 / mmol) +
+            cob / 12.0
     }
 
     private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =

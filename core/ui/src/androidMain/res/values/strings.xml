@@ -1136,6 +1136,7 @@
     <string name="pp_isf_shortname" comment="Short label for the postprandial ISF graph line">PP</string>
     <string name="dura_isf_shortname" comment="Short label for the duration ISF graph line">DURA</string>
     <string name="final_isf_shortname" comment="Short label for the final ISF graph line">FINAL</string>
+    <string name="iob_threshold_shortname" comment="Short label for the IOB threshold graph line">iobTH</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>

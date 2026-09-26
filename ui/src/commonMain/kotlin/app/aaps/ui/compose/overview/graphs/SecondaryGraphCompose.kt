@@ -192,7 +192,8 @@ fun SecondaryGraphCompose(
 
     // Specific case: BGI and DEVIATIONS share the same mg/dL unit and should share the vertical scale
     val shareAxis = (primaryType == SeriesType.BGI && secondaryType == SeriesType.DEVIATIONS) ||
-        (primaryType == SeriesType.DEVIATIONS && secondaryType == SeriesType.BGI)
+        (primaryType == SeriesType.DEVIATIONS && secondaryType == SeriesType.BGI) ||
+        (primaryType in AUTO_ISF_SERIES_TYPES && secondaryType in AUTO_ISF_SERIES_TYPES)
 
     val isDualAxis = secondaryType != null && !shareAxis
     val primaryTypes = if (shareAxis) orderedTypes else listOf(primaryType)
@@ -210,7 +211,8 @@ fun SecondaryGraphCompose(
     val deviationsData = if (SeriesType.DEVIATIONS in primaryTypes) viewModel.deviationsGraphFlow.collectAsStateWithLifecycle().value else null
     val ratioData = if (primaryType == SeriesType.SENSITIVITY) viewModel.ratioGraphFlow.collectAsStateWithLifecycle().value else null
     val varSensData = if (primaryType == SeriesType.VAR_SENSITIVITY) viewModel.varSensGraphFlow.collectAsStateWithLifecycle().value else null
-    val needsAutoIsf = primaryType in AUTO_ISF_SERIES_TYPES || secondaryType in AUTO_ISF_SERIES_TYPES
+    val needsAutoIsf = primaryType in AUTO_ISF_SERIES_TYPES || secondaryType in AUTO_ISF_SERIES_TYPES ||
+        primaryType == SeriesType.IOB_TH || secondaryType == SeriesType.IOB_TH
     val autoIsfData = if (needsAutoIsf) viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value else null
     val devSlopeData = if (primaryType == SeriesType.DEV_SLOPE) viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value else null
     val hrData = if (primaryType == SeriesType.HEART_RATE) viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value else null
@@ -244,7 +246,8 @@ fun SecondaryGraphCompose(
         SeriesType.BG_ISF,
         SeriesType.PP_ISF,
         SeriesType.DURA_ISF,
-        SeriesType.FINAL_ISF       -> autoIsfData?.pointsFor(secondaryType) ?: emptyList()
+        SeriesType.FINAL_ISF,
+        SeriesType.IOB_TH          -> autoIsfData?.pointsFor(secondaryType) ?: emptyList()
         SeriesType.DEV_SLOPE       -> viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value.dsMax
         SeriesType.HEART_RATE      -> viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value.heartRates
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
@@ -301,9 +304,11 @@ fun SecondaryGraphCompose(
                     if (it.activityPrediction.isNotEmpty()) add(SeriesType.ACTIVITY to processPoints(it.activityPrediction, minTimestamp, minX, maxX))
                 }
             }
-            if (primaryType in AUTO_ISF_SERIES_TYPES) {
-                autoIsfData?.pointsFor(primaryType)?.takeIf { it.isNotEmpty() }?.let {
-                    add(primaryType to processPoints(it, minTimestamp, minX, maxX))
+            for (type in primaryTypes) {
+                if (type in AUTO_ISF_SERIES_TYPES || type == SeriesType.IOB_TH) {
+                    autoIsfData?.pointsFor(type)?.takeIf { it.isNotEmpty() }?.let {
+                        add(type to processPoints(it, minTimestamp, minX, maxX))
+                    }
                 }
             }
         }
@@ -774,6 +779,31 @@ fun SecondaryGraphCompose(
         val secondaryY = windowedY(processedSecondary, visibleMinX, visibleMaxX)
         if (primaryYValues.isEmpty() || secondaryY.isEmpty()) return@remember null
 
+        // An ISF line keeps the UK scale (1.0 in the middle, the peak at the top). An IOB
+        // threshold line keeps zero in the middle. The other series keeps its own numbers.
+        val primaryIsIsf = primaryType in AUTO_ISF_SERIES_TYPES
+        val secondaryIsIsf = secondaryType in AUTO_ISF_SERIES_TYPES
+        val primaryIsTh = primaryType == SeriesType.IOB_TH
+        val secondaryIsTh = secondaryType == SeriesType.IOB_TH
+        if (primaryIsIsf || secondaryIsIsf || primaryIsTh || secondaryIsTh) {
+            val left = when {
+                primaryIsIsf -> isfAxis(primaryYValues.max())
+                primaryIsTh  -> iobThAxis(primaryYValues.min(), primaryYValues.max())
+                else         -> null
+            }
+            val right = when {
+                secondaryIsIsf -> isfAxis(secondaryY.max())
+                secondaryIsTh  -> iobThAxis(secondaryY.min(), secondaryY.max())
+                else           -> null
+            }
+            return@remember AlignedRanges(
+                left?.min ?: primaryYValues.min(),
+                left?.max ?: primaryYValues.max(),
+                right?.min ?: secondaryY.min(),
+                right?.max ?: secondaryY.max()
+            )
+        }
+
         val primaryIsPivot = primaryType == SeriesType.SENSITIVITY || primaryType == SeriesType.DEV_SLOPE
         val secondaryIsPivot = secondaryType == SeriesType.SENSITIVITY || secondaryType == SeriesType.DEV_SLOPE
         if (primaryIsPivot != secondaryIsPivot) {
@@ -870,7 +900,8 @@ fun SecondaryGraphCompose(
             SeriesType.COB                                    -> niceScale(0.0, primaryYValues.max().coerceAtLeast(0.0), SECONDARY_GRAPH_TICK_COUNT)
             in ZERO_FLOOR_SERIES_TYPES                         -> zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
             SeriesType.VAR_SENSITIVITY, SeriesType.HEART_RATE  -> niceScale(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
-            in AUTO_ISF_SERIES_TYPES                           -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 1.0, SECONDARY_GRAPH_TICK_COUNT, 0.25)
+            in AUTO_ISF_SERIES_TYPES                           -> isfAxis(primaryYValues.max())
+            SeriesType.IOB_TH                                  -> iobThAxis(primaryYValues.min(), primaryYValues.max())
             SeriesType.SENSITIVITY                             -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 100.0, SENS_PIVOT_TICK_COUNT, SENS_MIN_DEVIATION)
             SeriesType.DEV_SLOPE                               -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 0.0, SECONDARY_GRAPH_TICK_COUNT)
             else                                               -> null
@@ -1253,7 +1284,8 @@ data class SeriesColors(
     val bgIsf: Color,
     val ppIsf: Color,
     val duraIsf: Color,
-    val finalIsf: Color
+    val finalIsf: Color,
+    val iobTh: Color
 ) {
 
     fun colorFor(type: SeriesType): Color = when (type) {
@@ -1276,6 +1308,7 @@ data class SeriesColors(
         SeriesType.PP_ISF          -> ppIsf
         SeriesType.DURA_ISF        -> duraIsf
         SeriesType.FINAL_ISF       -> finalIsf
+        SeriesType.IOB_TH          -> iobTh
     }
 }
 
@@ -1302,7 +1335,8 @@ fun rememberSeriesColors(): SeriesColors {
             bgIsf = general.bgIsf,
             ppIsf = general.ppIsf,
             duraIsf = general.duraIsf,
-            finalIsf = general.finalIsf
+            finalIsf = general.finalIsf,
+            iobTh = Color(0xFF00FFFF)
         )
     }
 }
@@ -1329,13 +1363,25 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
         )
         SeriesType.FINAL_ISF -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
-            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 3.dp),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 4.dp),
             areaFill = null
         )
-        // Line only, no fill. The four factors are thinner than the final line.
+        // Dashed, same weight as the UK IOB threshold line.
+        SeriesType.IOB_TH -> LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(
+                thickness = 1.5.dp,
+                cap = StrokeCap.Round,
+                dashLength = 2.dp,
+                gapLength = 2.dp
+            ),
+            areaFill = null
+        )
+        // Line only, no fill. The four factors are thinner than the final line (UK uses 3 px and 8 px).
         SeriesType.DEV_SLOPE, SeriesType.SENSITIVITY, SeriesType.VAR_SENSITIVITY,
         SeriesType.ACCE_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DURA_ISF -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null
         )
         // Points/dots only — no connecting line

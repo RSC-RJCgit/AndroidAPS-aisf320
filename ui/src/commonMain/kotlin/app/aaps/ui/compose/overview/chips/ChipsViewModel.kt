@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -76,7 +77,8 @@ class ChipsViewModel(
     private val dateUtil: DateUtil,
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
-    private val rxBus: RxBus
+    private val rxBus: RxBus,
+    private val maintenance: Maintenance,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -216,6 +218,7 @@ class ChipsViewModel(
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
     suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
+        maintenance.exportCoordinated("ISF_LONG_PRESS")
         val now = dateUtil.now()
         val units = profileFunction.getUnits()
         val fromLivePhone = config.APS && !config.AAPSCLIENT &&
@@ -248,11 +251,25 @@ class ChipsViewModel(
         list1Open = false
     }
 
+    var list2Open by mutableStateOf(false)
+        private set
+    var list2Generation by mutableIntStateOf(0)
+        private set
+
+    fun openList2() {
+        list2Open = true
+    }
+
+    fun closeList2() {
+        list2Open = false
+    }
+
     fun applyList1(mmol: Double) {
         rxBus.send(EventAutoIsfDirectTtCode(mmol))
         viewModelScope.launch {
             delay(200)
             list1Generation++
+            list2Generation++
         }
     }
 
@@ -274,6 +291,27 @@ class ChipsViewModel(
             List1Row("T1 tod offset 00-02h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0002)), 5.092, 5.094),
             List1Row("T2 tod offset 02-04h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0204)), 5.098, 5.100),
             List1Row("T3 tod offset 04-06h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0406)), 5.104, 5.106),
+            List1Row("T4 tod offset 06-09h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0609)), 5.110, 5.112),
+            List1Row("T5 tod offset 09-12h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0912)), 5.116, 5.118),
+            List1Row("T6 tod offset 12-18h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset1218)), 5.122, 5.124),
+            List1Row("T7 tod offset 18-22h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset1822)), 5.128, 5.130),
+            List1Row("T8 tod offset 22-00h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset2200)), 5.134, 5.136),
+        ) + startedRows()
+    }
+
+    fun list2Rows(): List<List1Row> = startedRows()
+
+    // The functions started with the carb-model curve. List 1 matches the other app.
+    // List 2 is the basal-chip double tap, and it opens on these same functions.
+    private fun startedRows(): List<List1Row> {
+        val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
+        return listOf(
+            List1Row("Tog Graph2 (carb model curve) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)), 5.138, null),
+            List1Row("Cloud logs upload", "send now", 5.140, null),
+            List1Row("MJ state: MJ active", "set this state", 5.222, null),
+            List1Row("MJ state: MJ2", "set this state", 5.224, null),
+            List1Row("MJ state: MJ3", "set this state", 5.146, null),
+            List1Row("MJ state: NOMJremains", "set this state", 5.144, null),
         )
     }
 

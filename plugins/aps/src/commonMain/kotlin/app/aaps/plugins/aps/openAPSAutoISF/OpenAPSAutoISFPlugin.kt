@@ -59,6 +59,7 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
@@ -139,6 +140,7 @@ open class OpenAPSAutoISFPlugin(
     private val displayRawSmoothing: DisplayRawSmoothing,
     private val receiverStatusStore: ReceiverStatusStore,
     private val smsCommunicator: SmsCommunicator,
+    private val maintenance: Maintenance,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -809,6 +811,11 @@ open class OpenAPSAutoISFPlugin(
                 offset0002 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0002),
                 offset0204 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0204),
                 offset0406 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0406),
+                offset0609 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0609),
+                offset0912 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0912),
+                offset1218 = preferences.get(DoubleKey.ApsAutoIsfTodOffset1218),
+                offset1822 = preferences.get(DoubleKey.ApsAutoIsfTodOffset1822),
+                offset2200 = preferences.get(DoubleKey.ApsAutoIsfTodOffset2200),
             ) * 18.0,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
             lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
@@ -900,6 +907,7 @@ open class OpenAPSAutoISFPlugin(
                         iob = iobData.iob,
                         smbDelivered = determineBasalResult.smb,
                         ukfRawBgl = ukf.glucose ?: 0.0,
+                        iobThEffective = if (use_iobTH) iobTHvirtual / iobTHtolerance * 100.0 else oapsProfile.max_iob,
                     )
                 )
             }
@@ -1438,6 +1446,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsUseSmb,
             BooleanKey.ApsAutoIsfFastRiseEnabled,
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
+            BooleanKey.ApsAutoIsfShowCarbModelCurve,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -1469,6 +1478,11 @@ open class OpenAPSAutoISFPlugin(
                     DoubleKey.ApsAutoIsfTodOffset0002,
                     DoubleKey.ApsAutoIsfTodOffset0204,
                     DoubleKey.ApsAutoIsfTodOffset0406,
+                    DoubleKey.ApsAutoIsfTodOffset0609,
+                    DoubleKey.ApsAutoIsfTodOffset0912,
+                    DoubleKey.ApsAutoIsfTodOffset1218,
+                    DoubleKey.ApsAutoIsfTodOffset1822,
+                    DoubleKey.ApsAutoIsfTodOffset2200,
                     DoubleKey.ApsAutoIsfBgAccelWeight,
                     DoubleKey.ApsAutoIsfBgAccelWeightNormal,
                     DoubleKey.ApsAutoIsfBgBrakeWeight,
@@ -2531,6 +2545,24 @@ open class OpenAPSAutoISFPlugin(
         }
         if (runMarks.ready(RunMark.PROFILE_ROLE_SANITY, 360, now)) {
             val profiles = profileRepository.profile.value
+            val names = profiles?.getProfileList()?.map { it.toString() }.orEmpty()
+            val fills = blankRoleFills(
+                roleValues = mapOf(
+                    StringKey.ApsAutoIsfStandardProfileName.key to preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+                    StringKey.ApsAutoIsfLowProfileName.key to preferences.get(StringKey.ApsAutoIsfLowProfileName),
+                    StringKey.ApsAutoIsfStandard100ProfileName.key to preferences.get(StringKey.ApsAutoIsfStandard100ProfileName),
+                    StringKey.ApsAutoIsfStandard105ProfileName.key to preferences.get(StringKey.ApsAutoIsfStandard105ProfileName),
+                    StringKey.ApsAutoIsfStandard110ProfileName.key to preferences.get(StringKey.ApsAutoIsfStandard110ProfileName),
+                    StringKey.ApsAutoIsfLow70ProfileName.key to preferences.get(StringKey.ApsAutoIsfLow70ProfileName),
+                    StringKey.ApsAutoIsfLow80ProfileName.key to preferences.get(StringKey.ApsAutoIsfLow80ProfileName),
+                    StringKey.ApsAutoIsfLow90ProfileName.key to preferences.get(StringKey.ApsAutoIsfLow90ProfileName),
+                ),
+                profileNames = names,
+            )
+            fills.forEach { (key, value) ->
+                roleKeyForBlankFill(key)?.let { preferences.put(it, value) }
+            }
+            if (fills.isNotEmpty()) phoneNote("ProfileRole: filled blank role settings from profile names")
             val missing = missingProfileRoles(
                 standardFound = profiles?.getSpecificProfile(preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()) != null,
                 lowFound = profiles?.getSpecificProfile(preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()) != null,
@@ -3036,6 +3068,22 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.TOD_0204_UP -> RunMark.TOD_0204_UP
             RemoteToggleCode.TOD_0406_DOWN -> RunMark.TOD_0406_DOWN
             RemoteToggleCode.TOD_0406_UP -> RunMark.TOD_0406_UP
+            RemoteToggleCode.TOD_0609_DOWN -> RunMark.TOD_0609_DOWN
+            RemoteToggleCode.TOD_0609_UP -> RunMark.TOD_0609_UP
+            RemoteToggleCode.TOD_0912_DOWN -> RunMark.TOD_0912_DOWN
+            RemoteToggleCode.TOD_0912_UP -> RunMark.TOD_0912_UP
+            RemoteToggleCode.TOD_1218_DOWN -> RunMark.TOD_1218_DOWN
+            RemoteToggleCode.TOD_1218_UP -> RunMark.TOD_1218_UP
+            RemoteToggleCode.TOD_1822_DOWN -> RunMark.TOD_1822_DOWN
+            RemoteToggleCode.TOD_1822_UP -> RunMark.TOD_1822_UP
+            RemoteToggleCode.TOD_2200_DOWN -> RunMark.TOD_2200_DOWN
+            RemoteToggleCode.TOD_2200_UP -> RunMark.TOD_2200_UP
+            RemoteToggleCode.GRAPH2 -> RunMark.GRAPH2
+            RemoteToggleCode.CLOUD_LOGS -> RunMark.CLOUD_LOGS
+            RemoteToggleCode.MJ_NO -> RunMark.MJ_NO
+            RemoteToggleCode.MJ3 -> RunMark.MJ3
+            RemoteToggleCode.MJ_ACTIVE -> RunMark.MJ_ACTIVE
+            RemoteToggleCode.MJ2 -> RunMark.MJ2
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3191,7 +3239,54 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.TOD_0204_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0204, down = false, "TodOffset0204Up", "tod_offset_0204")
             RemoteToggleCode.TOD_0406_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0406, down = true, "TodOffset0406Down", "tod_offset_0406")
             RemoteToggleCode.TOD_0406_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0406, down = false, "TodOffset0406Up", "tod_offset_0406")
+            RemoteToggleCode.TOD_0609_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0609, down = true, "TodOffset0609Down", "tod_offset_0609")
+            RemoteToggleCode.TOD_0609_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0609, down = false, "TodOffset0609Up", "tod_offset_0609")
+            RemoteToggleCode.TOD_0912_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0912, down = true, "TodOffset0912Down", "tod_offset_0912")
+            RemoteToggleCode.TOD_0912_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0912, down = false, "TodOffset0912Up", "tod_offset_0912")
+            RemoteToggleCode.TOD_1218_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset1218, down = true, "TodOffset1218Down", "tod_offset_1218")
+            RemoteToggleCode.TOD_1218_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset1218, down = false, "TodOffset1218Up", "tod_offset_1218")
+            RemoteToggleCode.TOD_1822_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset1822, down = true, "TodOffset1822Down", "tod_offset_1822")
+            RemoteToggleCode.TOD_1822_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset1822, down = false, "TodOffset1822Up", "tod_offset_1822")
+            RemoteToggleCode.TOD_2200_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset2200, down = true, "TodOffset2200Down", "tod_offset_2200")
+            RemoteToggleCode.TOD_2200_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset2200, down = false, "TodOffset2200Up", "tod_offset_2200")
+            RemoteToggleCode.GRAPH2 -> {
+                val next = !preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+                preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, next)
+                sendAutoSms("Graph2Toggle: ${if (next) "ON" else "OFF"}")
+                carePortalNote(if (next) "G2On" else "G2Off")
+            }
+            RemoteToggleCode.CLOUD_LOGS -> {
+                maintenance.exportCoordinated("REMOTE_TT")
+                sendAutoSms("CloudLogsUpload: triggered")
+                carePortalNote("CLup")
+            }
+            RemoteToggleCode.MJ_NO -> setMjState("NOMJremains", "MJstate: NOMJremains", "MJsNO")
+            RemoteToggleCode.MJ3 -> setMjState("MJ3", "MJstate: MJ3", "MJs3")
+            RemoteToggleCode.MJ_ACTIVE -> setMjState("MJ active", "MJstate: MJ active", "MJsAc")
+            RemoteToggleCode.MJ2 -> setMjState("MJ2", "MJstate: MJ2", "MJs2")
         }
+    }
+
+    // Manual MJ state. Written only when that value is one of the stored choices, so a short list cannot crash the loop.
+    private suspend fun setMjState(value: String, sms: String, note: String) {
+        val store = states()
+        if (preferences.get(BooleanKey.AutomationStatesEnabled) && store.hasStateValues("MJ") && value in store.getStateValues("MJ")) {
+            store.setState("MJ", value)
+        }
+        sendAutoSms(sms)
+        carePortalNote(note)
+    }
+
+    private fun roleKeyForBlankFill(key: String): StringKey? = when (key) {
+        StringKey.ApsAutoIsfStandardProfileName.key -> StringKey.ApsAutoIsfStandardProfileName
+        StringKey.ApsAutoIsfLowProfileName.key -> StringKey.ApsAutoIsfLowProfileName
+        StringKey.ApsAutoIsfStandard100ProfileName.key -> StringKey.ApsAutoIsfStandard100ProfileName
+        StringKey.ApsAutoIsfStandard105ProfileName.key -> StringKey.ApsAutoIsfStandard105ProfileName
+        StringKey.ApsAutoIsfStandard110ProfileName.key -> StringKey.ApsAutoIsfStandard110ProfileName
+        StringKey.ApsAutoIsfLow70ProfileName.key -> StringKey.ApsAutoIsfLow70ProfileName
+        StringKey.ApsAutoIsfLow80ProfileName.key -> StringKey.ApsAutoIsfLow80ProfileName
+        StringKey.ApsAutoIsfLow90ProfileName.key -> StringKey.ApsAutoIsfLow90ProfileName
+        else -> null
     }
 
     private suspend fun nudgeTodOffset(key: DoubleKey, down: Boolean, smsName: String, smsField: String) {

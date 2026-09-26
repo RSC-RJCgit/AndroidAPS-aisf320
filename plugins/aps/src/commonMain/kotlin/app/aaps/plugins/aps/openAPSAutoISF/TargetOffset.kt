@@ -23,12 +23,26 @@ internal fun targetBgOrigMgdl(tempTargetSet: Boolean, minBg: Double, hour: Int):
     else -> 5.4 * 18.0
 }
 
-// Signed mmol added to the SMB offset. Only 00:00-06:00 are stored so far. Later hours stay 0.
-internal fun todOffsetMmol(hour: Int, offset0002: Double, offset0204: Double, offset0406: Double): Double = when (hour) {
+// Signed mmol added to the SMB offset. Each clock window has its own stored value.
+internal fun todOffsetMmol(
+    hour: Int,
+    offset0002: Double,
+    offset0204: Double,
+    offset0406: Double,
+    offset0609: Double,
+    offset0912: Double,
+    offset1218: Double,
+    offset1822: Double,
+    offset2200: Double,
+): Double = when (hour) {
     in 0 until 2 -> offset0002
     in 2 until 4 -> offset0204
     in 4 until 6 -> offset0406
-    else -> 0.0
+    in 6 until 9 -> offset0609
+    in 9 until 12 -> offset0912
+    in 12 until 18 -> offset1218
+    in 18 until 22 -> offset1822
+    else -> offset2200
 }
 
 // Base is smb_delivery_ratio_max * 18 mg/dL. A time-of-day nudge is added in mg/dL. MildOffsetZero replaces the sum with 0. Cap is 36.

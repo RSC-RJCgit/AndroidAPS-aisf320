@@ -192,9 +192,10 @@ fun MainScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            val previewMode = maxHeight < PREVIEW_MODE_MIN_HEIGHT
+            val landscape = isLandscape()
+            val previewMode = landscape || maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
-            val showChrome = !previewMode || chromeVisible
+            val showChrome = !landscape && (!previewMode || chromeVisible)
             val interactionSource = remember { MutableInteractionSource() }
 
             // Measure actual bar heights for content padding in non-preview mode
@@ -452,7 +453,7 @@ fun MainScreen(
                     }
 
                     // Tap overlay to restore chrome in preview mode (only when hidden)
-                    if (previewMode && !chromeVisible) {
+                    if (previewMode && !landscape && !chromeVisible) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()

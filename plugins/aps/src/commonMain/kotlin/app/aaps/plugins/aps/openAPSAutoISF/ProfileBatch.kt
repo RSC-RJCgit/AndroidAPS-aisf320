@@ -128,3 +128,65 @@ internal fun missingProfileRoles(standardFound: Boolean, lowFound: Boolean, safe
         if (lowFound) null else "Low",
         if (safetyFound) null else "Safety",
     )
+
+// Same number match the other app uses to mark the running profile: 105 and 110 before 100,
+// then 70, 80, 90. A steroid name, or a name with %, is never written into a Standard or Low slot.
+internal fun digitRoleKey(profileName: String): String? {
+    if (profileName.contains("steroid", ignoreCase = true) || profileName.contains("%")) return null
+    fun has(number: Int) = Regex("(?<!\\d)$number(?!\\d)").containsMatchIn(profileName)
+    return when {
+        has(105) -> "autoisf_standard105_profile_name"
+        has(110) -> "autoisf_standard110_profile_name"
+        has(70) -> "autoisf_low70_profile_name"
+        has(80) -> "autoisf_low80_profile_name"
+        has(90) -> "autoisf_low90_profile_name"
+        has(100) -> "autoisf_standard100_profile_name"
+        else -> null
+    }
+}
+
+// Fills a blank role when exactly one profile name matches that number.
+// Low current and Standard current are filled only when exactly one tier on that ladder is known.
+internal fun blankRoleFills(roleValues: Map<String, String>, profileNames: List<String>): Map<String, String> {
+    val writes = linkedMapOf<String, String>()
+    val grouped = linkedMapOf<String, MutableList<String>>()
+    for (name in profileNames.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
+        val key = digitRoleKey(name) ?: continue
+        grouped.getOrPut(key) { mutableListOf() }.add(name)
+    }
+    for ((key, names) in grouped) {
+        if (names.size != 1) continue
+        if (roleValues[key].orEmpty().trim().isNotEmpty()) continue
+        writes[key] = names.single()
+    }
+    fillCurrentFromSingleTier(
+        writes = writes,
+        roleValues = roleValues,
+        currentKey = "autoisf_low_profile_name",
+        tierKeys = listOf("autoisf_low70_profile_name", "autoisf_low80_profile_name", "autoisf_low90_profile_name"),
+    )
+    fillCurrentFromSingleTier(
+        writes = writes,
+        roleValues = roleValues,
+        currentKey = "autoisf_standard_profile_name",
+        tierKeys = listOf(
+            "autoisf_standard100_profile_name",
+            "autoisf_standard105_profile_name",
+            "autoisf_standard110_profile_name",
+        ),
+    )
+    return writes
+}
+
+private fun fillCurrentFromSingleTier(
+    writes: MutableMap<String, String>,
+    roleValues: Map<String, String>,
+    currentKey: String,
+    tierKeys: List<String>,
+) {
+    if (roleValues[currentKey].orEmpty().trim().isNotEmpty()) return
+    val known = tierKeys.mapNotNull { key ->
+        writes[key] ?: roleValues[key].orEmpty().trim().takeIf { it.isNotEmpty() }
+    }.distinct()
+    if (known.size == 1) writes[currentKey] = known.single()
+}

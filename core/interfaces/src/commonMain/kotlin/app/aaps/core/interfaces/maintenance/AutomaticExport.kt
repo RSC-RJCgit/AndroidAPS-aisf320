@@ -2,7 +2,9 @@ package app.aaps.core.interfaces.maintenance
 
 /**
  * The six-hour export KeepAlive runs.
- * It writes the AutoISF history files, and uploads logs when that switch is on.
+ * History files are written every six hours.
+ * When the log switch is also due, that run writes the history files, the user-entries file,
+ * the log zip, and the current log together.
  */
 interface AutomaticExport {
 

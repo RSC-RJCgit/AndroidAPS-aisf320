@@ -80,6 +80,8 @@
     <string name="pref_summary_aps_smb_on_even_target">Alternative activation of SMB always based on target glucose value.</string>
     <string name="pref_title_aps_fast_rise_enabled">FastRise size tiers</string>
     <string name="pref_summary_aps_fast_rise_enabled">Cut SMB size during a fast Libre rise. Off leaves the SMB unchanged.</string>
+    <string name="pref_title_aps_show_carb_model_curve">Carb model curve</string>
+    <string name="pref_summary_aps_show_carb_model_curve">Dashed curve of expected carb absorption on the main graph. Peak is 90 minutes. Off hides the curve.</string>
     <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
     <string name="pref_summary_aps_low_rebound_guard_enabled" comment="0.10 U and 0.25 U are insulin amounts. Three quarters and half are the SMB size cuts.">On turns the LoReb guard on. After a recent low, a carb or artifact rebound trims SMB above 0.10 U: three quarters up to 0.25 U, and half above that. FastRise size tiers also stay off during that window. Off means the guard never runs.</string>
     <string name="pref_title_aps_tdd_sensitivity">TDD sensitivity</string>
@@ -486,6 +488,11 @@
     <string name="pref_title_aps_tod_offset_0002">SMB offset 00:00 to 02:00</string>
     <string name="pref_title_aps_tod_offset_0204">SMB offset 02:00 to 04:00</string>
     <string name="pref_title_aps_tod_offset_0406">SMB offset 04:00 to 06:00</string>
+    <string name="pref_title_aps_tod_offset_0609">SMB offset 06:00 to 09:00</string>
+    <string name="pref_title_aps_tod_offset_0912">SMB offset 09:00 to 12:00</string>
+    <string name="pref_title_aps_tod_offset_1218">SMB offset 12:00 to 18:00</string>
+    <string name="pref_title_aps_tod_offset_1822">SMB offset 18:00 to 22:00</string>
+    <string name="pref_title_aps_tod_offset_2200">SMB offset 22:00 to 24:00</string>
     <string name="pref_summary_aps_tod_offset" comment="The number is mmol added to the SMB hold-back. Example: 0.5 means hold SMB until glucose is 0.5 mmol higher.">mmol added to the SMB offset for this clock window. 0 leaves the offset unchanged. Range is -2.0 to 2.0.</string>
     <string name="openapsama_autoISF_max_summary">Similar to autosens_max this defines how strong ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.\n\nWARNING: Be extremely careful when using values above 2.5</string>
     <string name="pref_title_bg_accel_weight">BG acceleration ISF weight</string>

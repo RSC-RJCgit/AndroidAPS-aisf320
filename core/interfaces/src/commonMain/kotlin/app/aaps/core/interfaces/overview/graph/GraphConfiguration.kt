@@ -31,6 +31,7 @@ enum class SeriesType {
     PP_ISF,
     DURA_ISF,
     FINAL_ISF,
+    IOB_TH,
     RAW_BG,
     UKF_BG
 }

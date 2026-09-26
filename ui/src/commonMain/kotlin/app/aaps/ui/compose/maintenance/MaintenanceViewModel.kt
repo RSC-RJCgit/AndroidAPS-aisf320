@@ -194,6 +194,7 @@ class MaintenanceViewModel(
     fun sendLogs() {
         maintenanceAction("sending logs") {
             val result = withContext(aapsIoDispatcher) {
+                maintenance.exportCoordinated("MANUAL")
                 maintenance.executeSendLogs()
             }
             val message = buildResultMessage(
@@ -271,6 +272,7 @@ class MaintenanceViewModel(
         uel.log(Action.EXPORT_CSV, Sources.Maintenance)
         maintenanceAction("exporting csv") {
             val result = withContext(aapsIoDispatcher) {
+                maintenance.exportCoordinated("USER_ENTRIES")
                 importExportPrefs.executeCsvExport()
             }
             val message = buildResultMessage(

@@ -14,5 +14,12 @@ interface Maintenance {
      */
     suspend fun uploadLogsToCloud(): Boolean
 
+    /**
+     * Writes and uploads the AutoISF csv, text and settings, the user-entries csv,
+     * the log zip, and the current log. The cloud-log button, the user-entries button,
+     * a long press on the AutoISF table, and the six-hour log export all call this.
+     */
+    suspend fun exportCoordinated(trigger: String)
+
     fun deleteLogs(keep: Int)
 }

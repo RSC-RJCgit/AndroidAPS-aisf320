@@ -105,6 +105,10 @@ class DesktopMaintenance(
 
     override suspend fun uploadLogsToCloud(): Boolean = false
 
+    override suspend fun exportCoordinated(trigger: String) {
+        aapsLogger.debug(LTag.CORE, "Coordinated export ($trigger) is not available on desktop yet")
+    }
+
     override suspend fun executeSendLogs(): ExportResult =
         aapsLogger.failNotOnDesktopYet("Maintenance.executeSendLogs")
 

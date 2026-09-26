@@ -27,4 +27,6 @@ data class AutoIsfValues(
     var smbDelivered: Double,
     /** UKF-smoothed raw glucose, mg/dL. Older rows are 0. */
     var ukfRawBgl: Double = 0.0,
+    /** Effective IOB threshold in units. Older rows are 0. */
+    var iobThEffective: Double = 0.0,
 )

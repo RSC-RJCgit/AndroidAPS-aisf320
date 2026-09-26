@@ -1,14 +1,19 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -20,12 +25,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
+import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
@@ -160,6 +167,7 @@ fun BgGraphCompose(
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
+    val hypoPrediction = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value.hypoPrediction
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -352,25 +360,35 @@ fun BgGraphCompose(
             lineModel {
                 val maxAct = currentActivityData.maxActivity
                 if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
-                    // Activity disabled or no data — emit dummy series (history + prediction)
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
-                    return@lineModel
-                }
-                val scaleFactor = (currentMaxBgY - currentMinBgY) * 0.8 / maxAct
+                } else {
+                    val scaleFactor = (currentMaxBgY - currentMinBgY) * 0.8 / maxAct
 
-                val pts = currentActivityData.activity
-                    .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
-                    .sortedBy { it.first }
-                series(x = pts.map { it.first }, y = pts.map { it.second })
-
-                if (currentActivityData.activityPrediction.size >= 2) {
-                    val predPts = currentActivityData.activityPrediction
+                    val pts = currentActivityData.activity
                         .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
                         .sortedBy { it.first }
-                    series(x = predPts.map { it.first }, y = predPts.map { it.second })
-                } else {
+                    series(x = pts.map { it.first }, y = pts.map { it.second })
+
+                    if (currentActivityData.activityPrediction.size >= 2) {
+                        val predPts = currentActivityData.activityPrediction
+                            .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * scaleFactor) }
+                            .sortedBy { it.first }
+                        series(x = predPts.map { it.first }, y = predPts.map { it.second })
+                    } else {
+                        series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    }
+                }
+                val maxCarb = currentActivityData.maxCarbModel
+                val carbs = currentActivityData.carbModel
+                if (maxCarb <= 0.0 || carbs.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                } else {
+                    val carbScale = (currentMaxBgY - currentMinBgY) * 0.8 / maxCarb
+                    val carbPts = carbs
+                        .map { timestampToX(it.timestamp, minTimestamp) to (currentMinBgY + it.value * carbScale) }
+                        .sortedBy { it.first }
+                    series(x = carbPts.map { it.first }, y = carbPts.map { it.second })
                 }
             }
 
@@ -664,8 +682,22 @@ fun BgGraphCompose(
         )
     }
 
-    val activityLines = remember(activityHistLine, activityPredLine) {
-        listOf(activityHistLine, activityPredLine)
+    val carbModelColor = AapsTheme.elementColors.carbs
+    val carbModelLine = remember(carbModelColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(carbModelColor)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(
+                thickness = 1.5.dp,
+                cap = StrokeCap.Round,
+                dashLength = 4.dp,
+                gapLength = 4.dp
+            ),
+            areaFill = null
+        )
+    }
+
+    val activityLines = remember(activityHistLine, activityPredLine, carbModelLine) {
+        listOf(activityHistLine, activityPredLine, carbModelLine)
     }
 
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
@@ -802,6 +834,11 @@ fun BgGraphCompose(
     // =========================================================================
 
     val axisLock = remember { GraphAxisLock() }
+    Box(
+        modifier = modifier.fillMaxWidth().then(
+            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
+        )
+    ) {
     CartesianChartHost(
         chart = rememberCartesianChart(
             // Layer 0: BG (start axis, visible)
@@ -854,12 +891,27 @@ fun BgGraphCompose(
             getXStep = { _, _, _ -> 1.0 }
         ),
         modelProducer = modelProducer,
-        modifier = modifier.fillMaxWidth().then(
-            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
-        ),
+        modifier = Modifier.fillMaxSize(),
         scrollState = scrollState,
         zoomState = zoomState
     )
+    if (hypoPrediction != null) {
+        Text(
+            text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 36.dp),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+    }
+}
+
+private fun oneDecimal(value: Double): String {
+    val tenths = round(value * 10.0).toInt()
+    val sign = if (tenths < 0) "-" else ""
+    val absTenths = abs(tenths)
+    return "$sign${absTenths / 10}.${absTenths % 10}"
 }
 
 /**

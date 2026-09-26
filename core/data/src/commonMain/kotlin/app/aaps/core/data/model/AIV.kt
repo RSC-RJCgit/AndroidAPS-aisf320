@@ -20,4 +20,9 @@ data class AIV(
     val smbDelivered: Double,
     /** UKF-smoothed raw glucose, mg/dL. 0 means this row has none. */
     val ukfRawBgl: Double = 0.0,
+    /**
+     * Effective IOB threshold in units. When the percent is 100 this is max IOB.
+     * 0 means this row was stored before the line existed.
+     */
+    val iobThEffective: Double = 0.0,
 )

@@ -34,6 +34,7 @@ fun TbrChip(
     state: TbrState,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    onDoubleClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val iconColor = AapsTheme.elementColors.tempBasal
@@ -52,6 +53,7 @@ fun TbrChip(
                 .combinedClickable(
                     onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+                    onDoubleClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onDoubleClick() },
                 )
         ) {
             Box(

@@ -251,6 +251,61 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfTodOffset0609(
+        key = "autoisf_tod_offset_0609",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0609,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0912(
+        key = "autoisf_tod_offset_0912",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0912,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset1218(
+        key = "autoisf_tod_offset_1218",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_1218,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset1822(
+        key = "autoisf_tod_offset_1822",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_1822,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset2200(
+        key = "autoisf_tod_offset_2200",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_2200,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTodOffset0406(
         key = "autoisf_tod_offset_0406",
         defaultValue = 0.0,

@@ -30,6 +30,22 @@ internal enum class RemoteToggleCode {
     TOD_0204_UP,
     TOD_0406_DOWN,
     TOD_0406_UP,
+    TOD_0609_DOWN,
+    TOD_0609_UP,
+    TOD_0912_DOWN,
+    TOD_0912_UP,
+    TOD_1218_DOWN,
+    TOD_1218_UP,
+    TOD_1822_DOWN,
+    TOD_1822_UP,
+    TOD_2200_DOWN,
+    TOD_2200_UP,
+    GRAPH2,
+    CLOUD_LOGS,
+    MJ_NO,
+    MJ3,
+    MJ_ACTIVE,
+    MJ2,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -57,6 +73,22 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.100, 0.0001) -> RemoteToggleCode.TOD_0204_UP
     ttNear(ttMgdl, 5.104, 0.0001) -> RemoteToggleCode.TOD_0406_DOWN
     ttNear(ttMgdl, 5.106, 0.0001) -> RemoteToggleCode.TOD_0406_UP
+    ttNear(ttMgdl, 5.110, 0.0001) -> RemoteToggleCode.TOD_0609_DOWN
+    ttNear(ttMgdl, 5.112, 0.0001) -> RemoteToggleCode.TOD_0609_UP
+    ttNear(ttMgdl, 5.116, 0.0001) -> RemoteToggleCode.TOD_0912_DOWN
+    ttNear(ttMgdl, 5.118, 0.0001) -> RemoteToggleCode.TOD_0912_UP
+    ttNear(ttMgdl, 5.122, 0.0001) -> RemoteToggleCode.TOD_1218_DOWN
+    ttNear(ttMgdl, 5.124, 0.0001) -> RemoteToggleCode.TOD_1218_UP
+    ttNear(ttMgdl, 5.128, 0.0001) -> RemoteToggleCode.TOD_1822_DOWN
+    ttNear(ttMgdl, 5.130, 0.0001) -> RemoteToggleCode.TOD_1822_UP
+    ttNear(ttMgdl, 5.134, 0.0001) -> RemoteToggleCode.TOD_2200_DOWN
+    ttNear(ttMgdl, 5.136, 0.0001) -> RemoteToggleCode.TOD_2200_UP
+    ttNear(ttMgdl, 5.138, 0.0001) -> RemoteToggleCode.GRAPH2
+    ttNear(ttMgdl, 5.140, 0.0001) -> RemoteToggleCode.CLOUD_LOGS
+    ttNear(ttMgdl, 5.144, 0.0001) -> RemoteToggleCode.MJ_NO
+    ttNear(ttMgdl, 5.146, 0.0001) -> RemoteToggleCode.MJ3
+    ttNear(ttMgdl, 5.222, 0.0001) -> RemoteToggleCode.MJ_ACTIVE
+    ttNear(ttMgdl, 5.224, 0.0001) -> RemoteToggleCode.MJ2
     else -> null
 }
 

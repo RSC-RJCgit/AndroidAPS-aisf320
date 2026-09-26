@@ -147,6 +147,7 @@ fun OverviewScreenSplit(
                         onNavigate = onNavigate,
                         onTbrChipClick = onTbrChipClick,
                         onTbrChipLongClick = graphViewModel::onBasalIconLongPress,
+                        onTbrChipDoubleClick = chipsViewModel::openList2,
                         onIobChipClick = onIobChipClick,
                         onIobChipLongClick = graphViewModel::onIobIconLongPress,
                         onIobChipDoubleClick = chipsViewModel::openList1,

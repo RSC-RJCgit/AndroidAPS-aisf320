@@ -213,6 +213,13 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfShowCarbModelCurve(
+        "show_carb_model_curve",
+        true,
+        KeysStrings.pref_title_aps_show_carb_model_curve,
+        KeysStrings.pref_summary_aps_show_carb_model_curve,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTddSensitivity(
         "autoisf_tdd_sensitivity",
         true,

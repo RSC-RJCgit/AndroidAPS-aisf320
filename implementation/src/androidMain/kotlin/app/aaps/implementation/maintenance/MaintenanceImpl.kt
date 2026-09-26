@@ -6,7 +6,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.LoggerUtils
+import app.aaps.core.interfaces.maintenance.CloudStorageProvider
 import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.Maintenance
@@ -44,7 +46,8 @@ class MaintenanceImpl(
     private val config: Config,
     private val fileListProvider: FileListProvider,
     private val loggerUtils: LoggerUtils,
-    private val cloudStorageManager: CloudStorageManager
+    private val cloudStorageManager: CloudStorageManager,
+    private val historyFilesWriter: HistoryFilesWriter,
 ) : Maintenance {
 
     override suspend fun executeSendLogs(): ExportResult {
@@ -91,6 +94,12 @@ class MaintenanceImpl(
         return performCloudLogUpload(zipFile)
     }
 
+    override suspend fun exportCoordinated(trigger: String) {
+        historyFilesWriter.writeAndUpload(trigger)
+        val uploaded = uploadLogsToCloud()
+        aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
+    }
+
     override fun deleteLogs(keep: Int) {
         val logDir = File(loggerUtils.logDirectory)
         val files = logDir.listFiles { _: File?, name: String ->
@@ -134,11 +143,21 @@ class MaintenanceImpl(
             if (uploadedFileId == null) {
                 uploadedFileId = provider.uploadFile(zipFile.name ?: "logs.zip", bytes, "application/zip")
             }
+            uploadCurrentLog(provider)
             uploadedFileId != null
         } catch (e: Exception) {
             aapsLogger.error("Cloud log upload failed", e)
             false
         }
+    }
+
+    private suspend fun uploadCurrentLog(provider: CloudStorageProvider) {
+        val current = File(loggerUtils.logDirectory).listFiles { file ->
+            file.name.startsWith("AndroidAPS") && file.name.endsWith(".log") && !file.name.endsWith(".zip")
+        }?.maxByOrNull { it.lastModified() } ?: return
+        val id = provider.uploadFileToPath(current.name, current.readBytes(), "text/plain", CloudConstants.CLOUD_PATH_LOGS)
+            ?: provider.uploadFile(current.name, current.readBytes(), "text/plain")
+        if (id == null) aapsLogger.error(LTag.CORE, "Current log upload failed for ${current.name}")
     }
 
     /**

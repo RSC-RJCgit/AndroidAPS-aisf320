@@ -73,11 +73,14 @@ class TargetOffsetTest {
 
     @Test
     fun timeOfDayOffsetAddsOnlyInTheStoredWindows() {
-        assertEquals(0.4, todOffsetMmol(1, 0.4, 0.2, -0.3))
-        assertEquals(0.2, todOffsetMmol(3, 0.4, 0.2, -0.3))
-        assertEquals(-0.3, todOffsetMmol(5, 0.4, 0.2, -0.3))
-        assertEquals(0.0, todOffsetMmol(7, 0.4, 0.2, -0.3))
-        assertEquals(0.0, todOffsetMmol(23, 0.4, 0.2, -0.3))
+        assertEquals(0.4, todOffsetMmol(1, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(0.2, todOffsetMmol(3, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(-0.3, todOffsetMmol(5, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(0.6, todOffsetMmol(7, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(-0.2, todOffsetMmol(10, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(0.1, todOffsetMmol(15, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(0.3, todOffsetMmol(19, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
+        assertEquals(-0.4, todOffsetMmol(23, 0.4, 0.2, -0.3, 0.6, -0.2, 0.1, 0.3, -0.4))
         val offset = targetOffset(
             smbDeliveryRatioMax = 0.5,
             todOffsetMgdl = 0.4 * 18.0,

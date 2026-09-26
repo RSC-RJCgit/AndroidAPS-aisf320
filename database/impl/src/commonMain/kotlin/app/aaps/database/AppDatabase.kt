@@ -49,7 +49,7 @@ import app.aaps.database.entities.TotalDailyDose
 import app.aaps.database.entities.UserEntry
 import app.aaps.database.entities.VersionChange
 
-const val DATABASE_VERSION = 37
+const val DATABASE_VERSION = 38
 
 @Database(
     version = DATABASE_VERSION,

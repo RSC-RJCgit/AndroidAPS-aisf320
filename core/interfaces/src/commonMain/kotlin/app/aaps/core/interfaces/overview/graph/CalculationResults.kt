@@ -154,7 +154,9 @@ data class CobGraphData(
 data class ActivityGraphData(
     val activity: List<GraphDataPoint>,
     val activityPrediction: List<GraphDataPoint>,
-    val maxActivity: Double = 0.0
+    val maxActivity: Double = 0.0,
+    val carbModel: List<GraphDataPoint> = emptyList(),
+    val maxCarbModel: Double = 0.0,
 )
 
 /**
@@ -202,7 +204,11 @@ data class AutoIsfGraphData(
     val bg: List<GraphDataPoint> = emptyList(),
     val pp: List<GraphDataPoint> = emptyList(),
     val dura: List<GraphDataPoint> = emptyList(),
-    val finalIsf: List<GraphDataPoint> = emptyList()
+    val finalIsf: List<GraphDataPoint> = emptyList(),
+    /** Effective IOB threshold in units. Points of 0 are left out. */
+    val iobTh: List<GraphDataPoint> = emptyList(),
+    /** Latest hypo prediction in mmol, or null when the UKF 5 minute change is missing. */
+    val hypoPrediction: Double? = null
 ) {
 
     fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {
@@ -211,6 +217,7 @@ data class AutoIsfGraphData(
         SeriesType.PP_ISF    -> pp
         SeriesType.DURA_ISF  -> dura
         SeriesType.FINAL_ISF -> finalIsf
+        SeriesType.IOB_TH    -> iobTh
         else                 -> emptyList()
     }
 }
