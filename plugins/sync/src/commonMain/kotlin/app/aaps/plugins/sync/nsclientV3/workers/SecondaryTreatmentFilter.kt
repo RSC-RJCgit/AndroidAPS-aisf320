@@ -6,11 +6,11 @@ import app.aaps.core.data.model.TE
 /**
  * What the secondary Nightscout download keeps.
  *
- * Manual boluses and carbs always come in. SMBs never do: those were delivered on the other
- * phone and must not be copied onto this one. Device events come in only when that option is on,
+ * Manual boluses and carbs always come in. SMBs and priming never do: those were delivered on
+ * the other phone and must not be copied onto this one. Device events come in only when that option is on,
  * and a Note only when it is one of the messages the other phone sends on purpose.
  */
-internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type != BS.Type.SMB
+internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type == BS.Type.NORMAL
 
 internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?): Boolean {
     if (type !in secondaryDeviceEventTypes) return false

@@ -32,6 +32,8 @@ import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
@@ -325,6 +327,21 @@ class ChipsViewModel(
             List1Row("Steroids 190", preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName), 5.172, null),
             List1Row("Steroids 250", preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName), 5.174, null),
             List1Row("Steroids off", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
+            List1Row("Tier 3 UAM boost", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
+            List1Row("Profile batch auto", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
+            List1Row("Profile batch hold A", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
+            List1Row("Profile batch hold C", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),
+            List1Row("Tier set A", "Standard and Low", 5.216, null),
+            List1Row("Tier set B", "Standard and Low", 5.218, null),
+            List1Row("Tier set C", "Standard and Low", 5.220, null),
+            List1Row("Fast rise", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
+            List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
+            List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
+            List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
+            List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
+            List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
+            List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
+            List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.FslCalSlope)), 5.026, 5.028),
         )
     }
 

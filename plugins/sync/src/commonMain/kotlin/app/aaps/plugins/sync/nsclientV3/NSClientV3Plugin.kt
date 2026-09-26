@@ -206,7 +206,7 @@ class NSClientV3Plugin(
     private val pendingUpload = AtomicBoolean(false)
     override val dataSyncSelector: DataSyncSelector get() = dataSyncSelectorV3
     override val status
-        get() =
+        get() = withVirtualUploadWarning(
             when {
                 preferences.get(NsclientBooleanKey.NsPaused)                                          -> rh.gs(CoreUiStrings.paused)
                 isAllowed.not()                                                                       -> blockingReason
@@ -219,6 +219,14 @@ class NSClientV3Plugin(
                 nsAndroidClient?.lastStatus?.apiPermissions?.isRead() == true                         -> rh.gs(SyncStrings.read_only)
                 else                                                                                  -> rh.gs(CoreUiStrings.unknown)
             }
+        )
+
+    // The upload switch works on a virtual pump. The status says to check the site first.
+    private fun withVirtualUploadWarning(base: String): String {
+        if (!dataSyncSelectorV3.virtualPumpSelected()) return base
+        if (!preferences.get(BooleanKey.NsClientUploadData)) return base
+        return rh.gs(SyncStrings.ns_status_virtual_upload_warning, base)
+    }
     var lastOperationError: String? = null
 
     internal var nsAndroidClient: NSAndroidClient? = null
@@ -695,7 +703,7 @@ class NSClientV3Plugin(
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
         if (!isEnabled()) return
-        if (!preferences.get(BooleanKey.NsClientUploadData) || dataSyncSelectorV3.virtualPumpBlocksNightscoutUpload()) {
+        if (!preferences.get(BooleanKey.NsClientUploadData)) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
             return
         }

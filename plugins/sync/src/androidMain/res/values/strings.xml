@@ -8,6 +8,7 @@
     <string name="blocked_by_charging">Blocked by charging options</string>
     <string name="blocked_by_connectivity">Blocked by connectivity options</string>
     <string name="no_connectivity">No connectivity</string>
+    <string name="ns_status_virtual_upload_warning" comment="%1$s is the connection status, for example Authorized.">%1$s. Virtual pump: check this Nightscout is not the live upload site.</string>
     <string name="unsupported_ns_version">Unsupported version of Nightscout</string>
 
     <!-- AAPSClient -->

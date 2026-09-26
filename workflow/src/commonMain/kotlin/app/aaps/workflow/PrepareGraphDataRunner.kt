@@ -58,6 +58,7 @@ import app.aaps.core.interfaces.workflow.CalculationSignalsEmitter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.combine
@@ -71,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 import kotlin.math.roundToLong
 
 /**
@@ -834,7 +836,9 @@ class PrepareGraphDataRunner(
                 dura = autoIsfRows.map { GraphDataPoint(it.timestamp, it.duraIsf) },
                 finalIsf = autoIsfRows.map { GraphDataPoint(it.timestamp, it.finalIsf) },
                 iobTh = autoIsfRows.filter { it.iobThEffective != 0.0 }.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
-                hypoPrediction = hypoPrediction
+                hypoPrediction = hypoPrediction,
+                statusTarget = latestAutoIsf?.let { statusTargetLine(it) },
+                statusIsf = latestAutoIsf?.let { statusIsfLine(it) },
             )
         )
 
@@ -856,6 +860,37 @@ class PrepareGraphDataRunner(
             0.25 * (latest.shortAvgDelta / mmol) +
             0.25 * (ukfDelta5 / mmol) +
             cob / 12.0
+    }
+
+    // The stored target is the loop target in mg/dL. Shown in the user's units, with boost and the IOB threshold.
+    private fun statusTargetLine(row: AIV): String {
+        val target = if (row.targetMgdl == 0.0) "--" else oneDecimal(profileUtil.fromMgdlToUnits(row.targetMgdl))
+        val boost = if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)) "On" else "Off"
+        val th = preferences.get(IntKey.ApsAutoIsfIobThPercent)
+        return "targetOffset= $target  Boost= $boost  TH=$th%"
+    }
+
+    // A factor of 1.0, and an SMB ratio of 0, show as -- so an unchanged line stays short.
+    private fun statusIsfLine(row: AIV): String {
+        val smb = if (row.smbDeliveryRatio == 0.0) "--" else twoDecimals(row.smbDeliveryRatio)
+        return "f=${factorOrDash(row.finalIsf)} ac=${factorOrDash(row.acceIsf)} bg=${factorOrDash(row.bgIsf)} pp=${factorOrDash(row.ppIsf)} du=${factorOrDash(row.duraIsf)} smb=$smb"
+    }
+
+    private fun factorOrDash(value: Double): String = if (value == 1.0 || value == 0.0) "--" else twoDecimals(value)
+
+    private fun oneDecimal(value: Double): String {
+        val tenths = round(value * 10.0).toInt()
+        val sign = if (tenths < 0) "-" else ""
+        val absTenths = abs(tenths)
+        return "$sign${absTenths / 10}.${absTenths % 10}"
+    }
+
+    private fun twoDecimals(value: Double): String {
+        val hundredths = round(value * 100.0).toInt()
+        val sign = if (hundredths < 0) "-" else ""
+        val absHundredths = abs(hundredths)
+        val frac = (absHundredths % 100).toString().padStart(2, '0')
+        return "$sign${absHundredths / 100}.$frac"
     }
 
     private fun dominantFor(timestamp: Long, rows: List<AIV>): DominantIsf =

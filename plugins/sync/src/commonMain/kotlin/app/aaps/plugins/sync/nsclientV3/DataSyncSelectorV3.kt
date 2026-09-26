@@ -84,20 +84,20 @@ class DataSyncSelectorV3(
     val bgUploadEnabled @OpenForTesting get() = preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
 
     /**
-     * A full phone on the virtual pump must not write to Nightscout.
-     * The upload switch defaults to on, so the pump check is the brake.
-     * A client phone is not blocked here.
+     * True on a full phone whose pump is the virtual pump.
+     * Upload is allowed. The Nightscout screen warns to check the site.
      */
-    internal fun virtualPumpBlocksNightscoutUpload(): Boolean =
+    internal fun virtualPumpSelected(): Boolean =
         !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
 
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
-        if (virtualPumpBlocksNightscoutUpload()) {
-            aapsLogger.debug(LTag.NSCLIENT, "Virtual pump: Nightscout upload skipped")
-            return
+        val uploadOn = (config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused
+        if (uploadOn && virtualPumpSelected()) {
+            aapsLogger.warn(LTag.NSCLIENT, "Virtual pump: check this Nightscout is not the live upload site")
+            nsClientRepository.addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")
         }
-        if ((config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused) {
+        if (uploadOn) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)
             queueCounter.bcrRemaining = (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L) - preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)

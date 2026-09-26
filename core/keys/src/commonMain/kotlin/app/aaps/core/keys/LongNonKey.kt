@@ -65,7 +65,13 @@ enum class LongNonKey(
     // still has to walk back 16 days. Local only: restoring it would skip treatments.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),
 
+    // Server time of the profile store last taken from the secondary Nightscout.
+    NsClientSecondaryProfileModified("nsclient_secondary_profile_modified", 0L, exportable = false),
+
     // Profile-switch time already used as a Set-role duration. Local only.
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
+
+    // Time of the last LibreSpecial step. -1 means none yet.
+    FslSmoothLastTimeRaw("fsl_last_time_raw", -1L),
 }
 

@@ -17,13 +17,14 @@ import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.WorkOutcome
+import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import dev.zacsweers.metro.Inject
 
 /**
- * Downloads manual boluses and carbs from a second Nightscout site.
+ * Downloads manual boluses, carbs, and the profile store from a second Nightscout site.
  *
  * Runs on its own, not after the primary status check. A rejected token on this phone's own
  * Nightscout must not stop the virtual pump from receiving carbs and boluses entered elsewhere.
@@ -36,7 +37,8 @@ class LoadSecondaryTreatmentsRunner(
     private val dateUtil: DateUtil,
     private val storeDataForDb: StoreDataForDb,
     private val profileFunction: ProfileFunction,
-    private val nsClientRepository: NSClientRepository
+    private val nsClientRepository: NSClientRepository,
+    private val nsIncomingDataProcessor: NsIncomingDataProcessor,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -155,7 +157,28 @@ class LoadSecondaryTreatmentsRunner(
         )
         if (page >= MAX_PAGES && continueLoading)
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
+        downloadProfile(client)
         return WorkOutcome.Success
+    }
+
+    // The profile store for this phone comes from the secondary site, not from its own Nightscout.
+    private suspend fun downloadProfile(client: NSAndroidClientImpl) {
+        try {
+            val cursor = preferences.get(LongNonKey.NsClientSecondaryProfileModified)
+            val response = if (cursor == 0L) client.getLastProfileStore() else client.getProfileModifiedSince(cursor)
+            val profile = response.values.lastOrNull()
+            if (profile == null) {
+                nsClientRepository.addLog("◄ SEC-NS", "No profile store from secondary NS")
+                return
+            }
+            nsIncomingDataProcessor.processProfile(profile, doFullSync = false, fromSecondary = true)
+            val modified = response.lastServerModified ?: dateUtil.now()
+            if (modified > cursor) preferences.put(LongNonKey.NsClientSecondaryProfileModified, modified)
+            nsClientRepository.addLog("◄ SEC-NS", "Profile store from secondary NS")
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS profile fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Profile error")
+        }
     }
 
     private fun fallbackInsulin(): ICfg =

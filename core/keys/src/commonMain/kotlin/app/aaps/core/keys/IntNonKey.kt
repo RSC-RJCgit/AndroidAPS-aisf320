@@ -13,4 +13,7 @@ enum class IntNonKey(
 
     // How many morning role changes have happened. Cleared after a profile-batch step down. Local only.
     ApsAutoIsfMorningRoleSwapChangeStreak("autoisf_morning_roleswap_change_streak", 0),
+
+    // Minutes before LibreSpecial trusts the new point fully.
+    FslMaxSmoothGap("Exp1SmoothGap", 20),
 }

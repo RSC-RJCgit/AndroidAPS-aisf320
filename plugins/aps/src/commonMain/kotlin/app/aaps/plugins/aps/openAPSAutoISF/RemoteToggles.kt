@@ -58,6 +58,26 @@ internal enum class RemoteToggleCode {
     STEROID_190,
     STEROID_250,
     STEROID_OFF,
+    TIER3_BOOST,
+    PROFILE_BATCH_AUTO,
+    PROFILE_BATCH_REVERT,
+    PROFILE_BATCH_REVERT_C,
+    TIER_SET_A,
+    TIER_SET_B,
+    TIER_SET_C,
+    FAST_RISE,
+    LOW_REBOUND,
+    T3_UNRESTRICTED,
+    BOOST_SCALE_DOWN,
+    BOOST_SCALE_UP,
+    BOOST_MAX_DOWN,
+    BOOST_MAX_UP,
+    BOOST_IOB_DOWN,
+    BOOST_IOB_UP,
+    DURA_WEIGHT_DOWN,
+    DURA_WEIGHT_UP,
+    LIBRE_SLOPE_DOWN,
+    LIBRE_SLOPE_UP,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -113,6 +133,26 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.172, 0.0001) -> RemoteToggleCode.STEROID_190
     ttNear(ttMgdl, 5.174, 0.0001) -> RemoteToggleCode.STEROID_250
     ttNear(ttMgdl, 5.176, 0.0001) -> RemoteToggleCode.STEROID_OFF
+    ttNear(ttMgdl, 5.194, 0.0001) -> RemoteToggleCode.TIER3_BOOST
+    ttNear(ttMgdl, 5.210, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_AUTO
+    ttNear(ttMgdl, 5.212, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_REVERT
+    ttNear(ttMgdl, 5.214, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_REVERT_C
+    ttNear(ttMgdl, 5.216, 0.0001) -> RemoteToggleCode.TIER_SET_A
+    ttNear(ttMgdl, 5.218, 0.0001) -> RemoteToggleCode.TIER_SET_B
+    ttNear(ttMgdl, 5.220, 0.0001) -> RemoteToggleCode.TIER_SET_C
+    ttNear(ttMgdl, 5.226, 0.0001) -> RemoteToggleCode.FAST_RISE
+    ttNear(ttMgdl, 5.228, 0.0001) -> RemoteToggleCode.LOW_REBOUND
+    ttNear(ttMgdl, 5.230, 0.0001) -> RemoteToggleCode.T3_UNRESTRICTED
+    ttNear(ttMgdl, 5.182, 0.0001) -> RemoteToggleCode.BOOST_SCALE_DOWN
+    ttNear(ttMgdl, 5.184, 0.0001) -> RemoteToggleCode.BOOST_SCALE_UP
+    ttNear(ttMgdl, 5.186, 0.0001) -> RemoteToggleCode.BOOST_MAX_DOWN
+    ttNear(ttMgdl, 5.188, 0.0001) -> RemoteToggleCode.BOOST_MAX_UP
+    ttNear(ttMgdl, 5.190, 0.0001) -> RemoteToggleCode.BOOST_IOB_DOWN
+    ttNear(ttMgdl, 5.192, 0.0001) -> RemoteToggleCode.BOOST_IOB_UP
+    ttNear(ttMgdl, 5.022, 0.0001) -> RemoteToggleCode.DURA_WEIGHT_DOWN
+    ttNear(ttMgdl, 5.024, 0.0001) -> RemoteToggleCode.DURA_WEIGHT_UP
+    ttNear(ttMgdl, 5.026, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_DOWN
+    ttNear(ttMgdl, 5.028, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_UP
     else -> null
 }
 

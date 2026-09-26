@@ -16,6 +16,7 @@ class SecondaryTreatmentFilterTest {
     fun `a normal bolus is kept and an SMB is not`() {
         assertTrue(secondaryBolusAccepted(BS.Type.NORMAL))
         assertFalse(secondaryBolusAccepted(BS.Type.SMB))
+        assertFalse(secondaryBolusAccepted(BS.Type.PRIMING))
     }
 
     @Test

@@ -3107,6 +3107,26 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_190 -> RunMark.STEROID_190
             RemoteToggleCode.STEROID_250 -> RunMark.STEROID_250
             RemoteToggleCode.STEROID_OFF -> RunMark.STEROID_OFF
+            RemoteToggleCode.TIER3_BOOST -> RunMark.TIER3_BOOST
+            RemoteToggleCode.PROFILE_BATCH_AUTO -> RunMark.PROFILE_BATCH_AUTO_TT
+            RemoteToggleCode.PROFILE_BATCH_REVERT -> RunMark.PROFILE_BATCH_REVERT_TT
+            RemoteToggleCode.PROFILE_BATCH_REVERT_C -> RunMark.PROFILE_BATCH_REVERT_C_TT
+            RemoteToggleCode.TIER_SET_A -> RunMark.TIER_SET_A
+            RemoteToggleCode.TIER_SET_B -> RunMark.TIER_SET_B
+            RemoteToggleCode.TIER_SET_C -> RunMark.TIER_SET_C
+            RemoteToggleCode.FAST_RISE -> RunMark.FAST_RISE
+            RemoteToggleCode.LOW_REBOUND -> RunMark.LOW_REBOUND
+            RemoteToggleCode.T3_UNRESTRICTED -> RunMark.T3_UNRESTRICTED
+            RemoteToggleCode.BOOST_SCALE_DOWN -> RunMark.BOOST_SCALE_DOWN
+            RemoteToggleCode.BOOST_SCALE_UP -> RunMark.BOOST_SCALE_UP
+            RemoteToggleCode.BOOST_MAX_DOWN -> RunMark.BOOST_MAX_DOWN
+            RemoteToggleCode.BOOST_MAX_UP -> RunMark.BOOST_MAX_UP
+            RemoteToggleCode.BOOST_IOB_DOWN -> RunMark.BOOST_IOB_DOWN
+            RemoteToggleCode.BOOST_IOB_UP -> RunMark.BOOST_IOB_UP
+            RemoteToggleCode.DURA_WEIGHT_DOWN -> RunMark.DURA_WEIGHT_DOWN
+            RemoteToggleCode.DURA_WEIGHT_UP -> RunMark.DURA_WEIGHT_UP
+            RemoteToggleCode.LIBRE_SLOPE_DOWN -> RunMark.LIBRE_SLOPE_DOWN
+            RemoteToggleCode.LIBRE_SLOPE_UP -> RunMark.LIBRE_SLOPE_UP
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3314,7 +3334,92 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_190 -> relaySteroid(StringKey.ApsAutoIsfSteroid190ProfileName, 84, "Steroids 150% are ON.. press to increase? to 190", "Steroids190", turnOn = null)
             RemoteToggleCode.STEROID_250 -> relaySteroid(StringKey.ApsAutoIsfSteroid250ProfileName, 88, "Steroids 190% are ON.. press to increase? to 250", "Steroids250", turnOn = null)
             RemoteToggleCode.STEROID_OFF -> relaySteroid(StringKey.ApsAutoIsfSteroid100ProfileName, 71, "Steroids are ON.. press to turn OFF? 71_0.71", "SteroidsOff", turnOn = false, weight = 0.71)
+            RemoteToggleCode.TIER3_BOOST -> toggleBool(
+                BooleanKey.ApsAutoIsfUamBoostEnabled,
+                "Tier 3 UAM Boost",
+                "T3B",
+            )
+            RemoteToggleCode.PROFILE_BATCH_AUTO -> toggleNonBool(
+                BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled,
+                "Profile batch auto",
+                "Bt1",
+            )
+            RemoteToggleCode.PROFILE_BATCH_REVERT -> toggleNonBool(
+                BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled,
+                "Profile batch revert",
+                "Bt2",
+            )
+            RemoteToggleCode.PROFILE_BATCH_REVERT_C -> toggleNonBool(
+                BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled,
+                "Profile batch revert Tier C",
+                "Bt3",
+            )
+            RemoteToggleCode.TIER_SET_A -> setSharedTier(0, "A", "TierSetA")
+            RemoteToggleCode.TIER_SET_B -> setSharedTier(1, "B", "TierSetB")
+            RemoteToggleCode.TIER_SET_C -> setSharedTier(2, "C", "TierSetC")
+            RemoteToggleCode.FAST_RISE -> toggleBool(BooleanKey.ApsAutoIsfFastRiseEnabled, "Fast rise", "FR")
+            RemoteToggleCode.LOW_REBOUND -> toggleBool(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, "LoReb", "LR")
+            RemoteToggleCode.T3_UNRESTRICTED -> toggleBool(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, "T3 unrestricted", "T3U")
+            RemoteToggleCode.BOOST_SCALE_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostScale, -0.25, 0.1, 2.9, "BoostScaleDown", "BS", 2)
+            RemoteToggleCode.BOOST_SCALE_UP -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostScale, 0.25, 0.1, 2.9, "BoostScaleUp", "BS", 2)
+            RemoteToggleCode.BOOST_MAX_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostMaxBolus, -0.25, 0.1, 10.0, "BoostMaxDown", "BMx", 2)
+            RemoteToggleCode.BOOST_MAX_UP -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostMaxBolus, 0.25, 0.1, 10.0, "BoostMaxUp", "BMx", 2)
+            RemoteToggleCode.BOOST_IOB_DOWN -> nudgeBoostIob(-5, "BoostIobMaxDown")
+            RemoteToggleCode.BOOST_IOB_UP -> nudgeBoostIob(5, "BoostIobMaxUp")
+            RemoteToggleCode.DURA_WEIGHT_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfDuraWeight, -0.1, 0.0, 3.0, "DuraWeightDown", "D", 2)
+            RemoteToggleCode.DURA_WEIGHT_UP -> nudgeDouble(DoubleKey.ApsAutoIsfDuraWeight, 0.1, 0.0, 3.0, "DuraWeightUp", "D", 2)
+            RemoteToggleCode.LIBRE_SLOPE_DOWN -> nudgeLibreSlope(-0.01, "LibreSlopeDown")
+            RemoteToggleCode.LIBRE_SLOPE_UP -> nudgeLibreSlope(0.01, "LibreSlopeUp")
         }
+    }
+
+    private suspend fun nudgeBoostIob(delta: Int, smsName: String) {
+        val next = (preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent) + delta).coerceIn(1, 100)
+        preferences.put(IntKey.ApsAutoIsfUamBoostMaxIobPercent, next)
+        sendAutoSms("$smsName: $next%")
+        carePortalNote(compactSettingNote("BIm", next.toDouble(), 1))
+    }
+
+    // Move the saved Libre slope, and the live slope when it still matches that saved value.
+    private suspend fun nudgeLibreSlope(delta: Double, smsName: String) {
+        val orig = preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)
+        val live = preferences.get(DoubleNonKey.FslCalSlope)
+        val next = (orig + delta).coerceIn(0.60, 1.00)
+        preferences.put(DoubleNonKey.ApsAutoIsfLibreSlopeOrig, next)
+        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleNonKey.FslCalSlope, (live + delta).coerceIn(0.60, 1.00))
+        sendAutoSms("$smsName: ${fixedDecimals(next, 2)}")
+        carePortalNote(compactSettingNote("LS", next, 2, omitLeadingZero = true))
+    }
+
+    // Step a stored number and write the same short note the other app uses.
+    private suspend fun nudgeDouble(key: DoubleKey, delta: Double, floor: Double, cap: Double, smsName: String, notePrefix: String, places: Int) {
+        val next = (preferences.get(key) + delta).coerceIn(floor, cap)
+        preferences.put(key, next)
+        sendAutoSms("$smsName: ${fixedDecimals(next, places)}")
+        carePortalNote(compactSettingNote(notePrefix, next, places))
+    }
+
+    private suspend fun toggleBool(key: BooleanKey, sms: String, note: String) {
+        val next = !preferences.get(key)
+        preferences.put(key, next)
+        sendAutoSms("$sms: ${if (next) "ON" else "OFF"}")
+        carePortalNote("$note${if (next) "On" else "Off"}")
+    }
+
+    private suspend fun toggleNonBool(key: BooleanNonKey, sms: String, note: String) {
+        val next = !preferences.get(key)
+        preferences.put(key, next)
+        sendAutoSms("$sms: ${if (next) "ON" else "OFF"}")
+        carePortalNote("$note${if (next) "On" else "Off"}")
+    }
+
+    // Clears both holds, then moves Standard and Low onto that rung.
+    private suspend fun setSharedTier(index: Int, letter: String, note: String) {
+        preferences.put(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+        preferences.put(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+        val moved = resetToRung(dateUtil.now(), index, ready = true)
+        sendAutoSms("Tier set $letter")
+        if (moved) carePortalNote(note)
     }
 
     // Virtual pump only. A live pump forces the smoother off and says why.

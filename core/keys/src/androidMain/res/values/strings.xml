@@ -178,11 +178,11 @@
 
     <!-- NS Client preferences -->
     <string name="pref_title_ns_upload_data">Upload data to NS</string>
-    <string name="pref_summary_ns_upload_data">Upload treatments, temp basals, and other data to Nightscout.</string>
+    <string name="pref_summary_ns_upload_data">Upload treatments, temp basals, and other data to Nightscout. On a virtual pump, check this is not the live upload site.</string>
     <string name="pref_title_ns_receive_cgm">Receive CGM data from NS</string>
     <string name="pref_summary_ns_receive_cgm">Accept CGM readings from Nightscout.</string>
     <string name="pref_title_ns_receive_profile_store">Receive profile store from NS</string>
-    <string name="pref_summary_ns_receive_profile_store">Accept profile store updates from Nightscout.</string>
+    <string name="pref_summary_ns_receive_profile_store">Accept profile store updates from this Nightscout. Not used while a secondary Nightscout is on. The profile store then comes from that site.</string>
     <string name="pref_title_ns_receive_temp_target">Receive temp targets from NS</string>
     <string name="pref_summary_ns_receive_temp_target">Accept temporary target changes from Nightscout.</string>
     <string name="pref_title_ns_receive_profile_switch">Receive profile switches from NS</string>
@@ -411,6 +411,8 @@
     <!-- StringKey: SMS preferences -->
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
+    <string name="smscommunicator_broadcastexcludenumbers">Exclude from general SMS</string>
+    <string name="smscommunicator_broadcastexcludenumbers_summary" comment="Numbers from the allowed list, separated by a semicolon. Example: +XXXXXXXXXX;+YYYYYYYYYY. They can still send commands.">Numbers listed here do not get general automation texts. They can still send commands. Use +XXXXXXXXXX;+YYYYYYYYYY.</string>
     <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
     <string name="smscommunicator_battalertnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the LowBattery text, as well as the allowed numbers.</string>
     <string name="smscommunicator_pod2numbers">Pod2-alert numbers</string>
@@ -430,9 +432,9 @@
     <string name="ns_client_secret_summary">Enter your Nightscout API secret (min. 12 characters)</string>
     <string name="nsclient_token_title">Nightscout access token</string>
     <string name="nsclient_token_summary">Enter your Nightscout access token (min. 17 characters)</string>
-    <string name="ns_secondary_settings">Secondary NS (bolus and carbs source)</string>
-    <string name="ns_secondary_enabled">Download bolus and carbs from secondary NS</string>
-    <string name="ns_secondary_enabled_summary">Pull manual boluses and carbs from a separate Nightscout site, for example the main phone, while this phone keeps its own Nightscout for everything else.</string>
+    <string name="ns_secondary_settings">Secondary NS (bolus, carbs, and profile)</string>
+    <string name="ns_secondary_enabled">Download bolus, carbs, and profile from secondary NS</string>
+    <string name="ns_secondary_enabled_summary">Pull manual boluses, carbs, and the profile store from a separate Nightscout site, for example the main phone. SMBs are not copied. This phone does not take the profile store from its own Nightscout while this is on.</string>
     <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
     <string name="ns_secondary_receive_therapy_events_summary">Also pull sensor, site, insulin, and pump-battery changes from the secondary Nightscout, so cannula and sensor age on this phone stay correct. Turn off if this phone should not receive those events.</string>
     <string name="ns_secondary_url">Secondary NS URL</string>

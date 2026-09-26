@@ -74,4 +74,7 @@ enum class BooleanNonKey(
 
     // Libre raw display smoothing. On until a virtual-pump toggle turns it off. Local only.
     ApsAutoIsfFslUseUkfSmoothing("autoisf_fsl_use_ukf_smoothing", true, exportable = false),
+
+    // Turn raw Libre into LibreSpecial before it is stored. Same key the other app uses.
+    FslApplySmoothing("fsl_apply_smoothing", true),
 }

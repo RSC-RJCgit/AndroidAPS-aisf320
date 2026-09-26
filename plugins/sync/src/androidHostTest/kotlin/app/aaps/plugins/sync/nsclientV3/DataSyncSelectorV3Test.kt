@@ -257,7 +257,7 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
     }
 
     @Test
-    fun doUploadSkipsOnVirtualPumpEvenWhenSwitchIsOn() = runTest {
+    fun doUploadOnVirtualPumpRunsAndWarns() = runTest {
         whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
         whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(true)
         whenever(config.AAPSCLIENT).thenReturn(false)
@@ -266,9 +266,24 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
         whenever(pump.selectedActivePump()).thenReturn(virtualPump)
         whenever(activePlugin.activePump).thenReturn(pump)
 
+        whenever(persistenceLayer.getLastBolusId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastCarbsId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastBolusCalculatorResultId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastTemporaryTargetId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastGlucoseValueId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastCalibrationEntryId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastTherapyEventId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastDeviceStatusId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastTemporaryBasalId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastExtendedBolusId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastProfileSwitchId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastEffectiveProfileSwitchId()).thenReturn(0L)
+        whenever(persistenceLayer.getLastRunningModeId()).thenReturn(0L)
+
         sut.doUpload()
 
-        verify(persistenceLayer, Times(0)).getLastBolusId()
+        verify(persistenceLayer, Times(1)).getLastBolusId()
+        verify(nsClientRepository).addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")
     }
 
     @Test

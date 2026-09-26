@@ -4,6 +4,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.FD
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
@@ -23,8 +24,11 @@ import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
@@ -74,7 +78,8 @@ class NsIncomingDataProcessor(
     private val config: Config,
     private val profileStoreProvider: () -> ProfileStore,
     private val notificationManager: NotificationManager,
-    private val nsClientRepository: NSClientRepository
+    private val nsClientRepository: NSClientRepository,
+    private val displayRawSmoothing: DisplayRawSmoothing,
 ) {
 
     /**
@@ -119,6 +124,7 @@ class NsIncomingDataProcessor(
             }
         }
         if (glucoseValues.isNotEmpty()) {
+            if (preferences.get(BooleanNonKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
             nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -128,6 +134,34 @@ class NsIncomingDataProcessor(
             storeDataForDb.addToGlucoseValues(glucoseValues)
         }
         return glucoseValues.isNotEmpty()
+    }
+
+    // Raw Libre becomes slope * value + offset, then LibreSpecial. UKF set 1 replaces that when the batch has two points.
+    private fun applyLibre(values: MutableList<GV>) {
+        val slope = preferences.get(DoubleNonKey.FslCalSlope)
+        val offset = preferences.get(DoubleNonKey.FslCalOffset)
+        val alpha = preferences.get(DoubleNonKey.FslSmoothAlpha)
+        val maxGap = preferences.get(IntNonKey.FslMaxSmoothGap).toDouble()
+        val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        val useUkf = preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)
+        values.sortBy { it.timestamp }
+        val calibrated = values.map { calibratedLibre(it.value, slope, offset, unitFactor) }
+        val ukf = if (useUkf && values.size >= 2) {
+            displayRawSmoothing.smoothForDisplay(values.indices.reversed().map { values[it].timestamp to calibrated[it] }).asReversed()
+        } else null
+        var lastSmooth = preferences.get(DoubleNonKey.FslLastSmooth)
+        var lastTime = preferences.get(LongNonKey.FslSmoothLastTimeRaw)
+        values.forEachIndexed { index, gv ->
+            val elapsed = if (lastTime < 0L) 0.0 else (gv.timestamp - lastTime) / 60000.0
+            val special = libreSpecial(calibrated[index], lastSmooth, elapsed, alpha, maxGap)
+            gv.noise = gv.noise ?: gv.value
+            gv.raw = gv.raw ?: calibrated[index]
+            gv.value = ukf?.getOrNull(index) ?: special
+            lastSmooth = special
+            lastTime = gv.timestamp
+        }
+        preferences.put(DoubleNonKey.FslLastSmooth, lastSmooth)
+        preferences.put(LongNonKey.FslSmoothLastTimeRaw, lastTime)
     }
 
     /**
@@ -269,11 +303,15 @@ class NsIncomingDataProcessor(
      * through [LongNonKey.LocalProfileLastChange]. An **unpaired client** has no other source and needs
      * profiles to display and calculate with, so it keeps accepting them (read-only — it cannot edit).
      * A **master** is unchanged: the user's `ns_receive_profile_store` setting decides.
+     * While a secondary Nightscout is on, the profile store comes from that site only.
      */
-    suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean) {
-        val accept =
-            if (config.AAPSCLIENT) !nsClient.masterOrPairedClientFlow.value
-            else preferences.get(BooleanKey.NsClientAcceptProfileStore) || doFullSync
+    suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
+        val accept = when {
+            fromSecondary -> true
+            preferences.get(BooleanKey.NsClientSecondaryEnabled) -> false
+            config.AAPSCLIENT -> !nsClient.masterOrPairedClientFlow.value
+            else -> preferences.get(BooleanKey.NsClientAcceptProfileStore) || doFullSync
+        }
         if (accept) {
             val store = profileStoreProvider().with(profileJson)
             val createdAt = store.getStartDate()

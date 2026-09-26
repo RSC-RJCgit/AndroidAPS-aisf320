@@ -748,15 +748,17 @@ fun SecondaryGraphCompose(
     }
     val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
         if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
-        val notes = treatmentData?.therapyEvents.orEmpty().filter {
-            it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION
-        }.sortedBy { it.timestamp }
+        val notes = visibleCareNotes(
+            treatmentData?.therapyEvents.orEmpty().filter {
+                it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION
+            }.map { it.timestamp to it.label }
+        )
         var anchor = Long.MIN_VALUE
         val arrows = notes.map { note ->
-            val first = anchor == Long.MIN_VALUE || note.timestamp - anchor >= 25 * 60_000L
-            if (first) anchor = note.timestamp
-            val kind = bgDots.minByOrNull { abs(it.timestamp - note.timestamp) }
-                ?.takeIf { abs(it.timestamp - note.timestamp) <= 10 * 60_000L }
+            val first = anchor == Long.MIN_VALUE || note.first - anchor >= 25 * 60_000L
+            if (first) anchor = note.first
+            val kind = bgDots.minByOrNull { abs(it.timestamp - note.first) }
+                ?.takeIf { abs(it.timestamp - note.first) <= 10 * 60_000L }
                 ?.dominantIsf
             val color = when (kind) {
                 DominantIsf.ACCE -> acceColor
@@ -765,19 +767,20 @@ fun SecondaryGraphCompose(
                 DominantIsf.DURA -> duraColor
                 else -> Color(0xFFFFFF00)
             }
-            val clock = dateUtil.timeString(note.timestamp).replace(":", "")
+            val clock = dateUtil.timeString(note.first).replace(":", "")
             SmbStackItem(
-                x = timestampToX(note.timestamp, minTimestamp),
+                x = timestampToX(note.first, minTimestamp),
                 label = if (first) clock else "",
                 stackIndex = 0,
                 color = color,
             )
         }
+        val stack = smbStackIndex(notes.map { it.first }, windowMs = 25 * 60_000L)
         val texts = notes.mapIndexed { index, note ->
             SmbStackItem(
-                x = timestampToX(note.timestamp, minTimestamp),
-                label = abbreviateCareNote(note.label),
-                stackIndex = smbStackIndex(notes.map { it.timestamp }, windowMs = 25 * 60_000L)[index],
+                x = timestampToX(note.first, minTimestamp),
+                label = note.second,
+                stackIndex = stack[index],
                 color = arrows[index].color,
             )
         }

@@ -158,6 +158,13 @@ enum class StringKey(
         summary = KeysStrings.smscommunicator_allowednumbers_summary,
         validator = StringValidator.multiPhone()
     ),
+    SmsBroadcastExcludeNumbers(
+        key = "smscommunicator_broadcastexcludenumbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_broadcastexcludenumbers,
+        summary = KeysStrings.smscommunicator_broadcastexcludenumbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
     SmsBattAlertNumbers(
         key = "smscommunicator_battalertnumbers",
         defaultValue = "",

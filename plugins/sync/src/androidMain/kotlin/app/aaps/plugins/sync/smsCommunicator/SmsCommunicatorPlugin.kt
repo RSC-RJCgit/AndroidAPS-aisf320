@@ -162,6 +162,7 @@ class SmsCommunicatorPlugin(
 
     private var scope: CoroutineScope? = null
     var allowedNumbers: MutableList<String> = ArrayList()
+    var broadcastExcludeNumbers: MutableList<String> = ArrayList()
     @Volatile var messageToConfirm: AuthRequest? = null
     @Volatile var lastRemoteBolusTime: Long = 0
     override var messages = ArrayList<Sms>()
@@ -206,6 +207,10 @@ class SmsCommunicatorPlugin(
         val newScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         scope = newScope
         preferences.observe(StringKey.SmsAllowedNumbers)
+            .drop(1)
+            .onEach { processSettings() }
+            .launchIn(newScope)
+        preferences.observe(StringKey.SmsBroadcastExcludeNumbers)
             .drop(1)
             .onEach { processSettings() }
             .launchIn(newScope)
@@ -276,6 +281,11 @@ class SmsCommunicatorPlugin(
             val cleaned = number.replace("\\s+".toRegex(), "")
             allowedNumbers.add(cleaned)
             aapsLogger.debug(LTag.SMS, "Found allowed number: $cleaned")
+        }
+        broadcastExcludeNumbers.clear()
+        for (number in preferences.get(StringKey.SmsBroadcastExcludeNumbers).split(";")) {
+            val cleaned = number.replace("\\s+".toRegex(), "")
+            if (cleaned.isNotEmpty()) broadcastExcludeNumbers.add(cleaned)
         }
     }
 
@@ -1052,6 +1062,7 @@ class SmsCommunicatorPlugin(
     override fun sendNotificationToAllNumbers(text: String): Boolean {
         var result = true
         for (i in allowedNumbers.indices) {
+            if (allowedNumbers[i] in broadcastExcludeNumbers) continue
             val sms = Sms(allowedNumbers[i], text)
             result = result && sendSMS(sms)
         }
@@ -1126,6 +1137,7 @@ class SmsCommunicatorPlugin(
         title = SyncStrings.smscommunicator,
         items = listOf(
             StringKey.SmsAllowedNumbers,
+            StringKey.SmsBroadcastExcludeNumbers,
             StringKey.SmsBattAlertNumbers,
             StringKey.SmsPod2Numbers,
             StringKey.SmsConnectPodNumbers,

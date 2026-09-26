@@ -368,9 +368,83 @@ internal fun smbTimedTotals(events: List<Pair<Long, Double>>, windowMs: Long = 2
     return totals
 }
 
+// Success export notes stay off the graph. "Logs" is the one that still shows.
+private val hiddenGraphNotes = setOf("ACEs", "AVLs", "AVCs", "UKCs", "UKCn")
+
+// Exact short labels copied from the other app. Anything else is the first 5 characters.
+private val noteShortNames = mapOf(
+    "HiBrk" to "HiBrk",
+    "HiBrkCut" to "HBCut",
+    "HiBrkDay" to "HBDay",
+    "HiBrkDayMid" to "HBMid",
+    "HiBrkDayCut" to "HBDCt",
+    "HiBrkTwilight" to "HBTwi",
+    "HiBrkTwilightCut" to "HBTCt",
+    "ActTToff1" to "AcTf1",
+    "ActTToff2" to "AcTf2",
+    "BMildFS" to "BmFS",
+    "EvCapR" to "EvCaR",
+    "NtCapR" to "NtCaR",
+    "LocPhOn" to "LPhOn",
+    "LocPhOff" to "LPhOf",
+    "SaAutoOn" to "SaAOn",
+    "SaAutoOff" to "SaAOf",
+    "UKF1VOn" to "U1VOn",
+    "UKF1VOff" to "U1VOf",
+    "MJ active" to "MJact",
+    "SteroidsON" to "StON",
+    "SteroidsOff" to "StOf",
+    "Steroids130" to "St130",
+    "Steroids150" to "St150",
+    "Steroids190" to "St190",
+    "Steroids250" to "St250",
+    "OldSensorOff" to "OSOff",
+    "OldSensorNewDay1" to "OSNd1",
+    "OldSensorNewDay2" to "OSNd2",
+    "OldSensorNewDay3" to "OSNd3",
+    "OldSensor1" to "OS1",
+    "OldSensor2" to "OS2",
+    "OldSensor3" to "OS3",
+    "OldPodBst" to "OPBst",
+    "OldPodBstOff" to "OPBOf",
+    "AdbStOk" to "AdSOk",
+    "AdbStNg" to "AdSNg",
+    "TierSetA" to "TSetA",
+    "TierSetB" to "TSetB",
+    "TierSetC" to "TSetC",
+    "MoreMJ" to "MoreM",
+    "MoreMJ2" to "MorM2",
+)
+
+/** Short graph label. A known note uses its map entry. Anything else keeps 5 characters. */
 internal fun abbreviateCareNote(label: String): String {
-    val text = label.trim()
-    return if (text.length <= 8) text else text.take(8)
+    val trimmed = label.trim()
+    noteShortNames[trimmed]?.let { return it }
+    val first = trimmed.substringBefore('|').trim()
+    noteShortNames[first]?.let { return it }
+    return first.take(5)
+}
+
+/**
+ * Drop success log notes and a repeated exact label inside one 25 minute stack.
+ * The label on the way out is already shortened.
+ */
+internal fun visibleCareNotes(notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
+    val out = mutableListOf<Pair<Long, String>>()
+    var anchor = Long.MIN_VALUE
+    val seen = mutableSetOf<String>()
+    for ((time, label) in notes.sortedBy { it.first }) {
+        val full = label.trim()
+        if (full.isEmpty()) continue
+        if (full != "Logs" && full in hiddenGraphNotes) continue
+        if (anchor == Long.MIN_VALUE || time - anchor >= 25 * 60 * 1000L) {
+            anchor = time
+            seen.clear()
+        }
+        if (!seen.add(full)) continue
+        out.add(time to abbreviateCareNote(full))
+    }
+    return out
 }
 
 data class SmbStackItem(

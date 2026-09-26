@@ -2,6 +2,7 @@ package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -167,7 +168,8 @@ fun BgGraphCompose(
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
-    val hypoPrediction = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value.hypoPrediction
+    val autoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
+    val hypoPrediction = autoIsfGraph.hypoPrediction
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -897,14 +899,23 @@ fun BgGraphCompose(
         scrollState = scrollState,
         zoomState = zoomState
     )
-    if (hypoPrediction != null) {
-        Text(
-            text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 36.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
+    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null) {
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 44.dp)) {
+            autoIsfGraph.statusTarget?.let { line ->
+                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            autoIsfGraph.statusIsf?.let { line ->
+                Text(text = line, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            if (hypoPrediction != null) {
+                Text(
+                    text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
     }
 }

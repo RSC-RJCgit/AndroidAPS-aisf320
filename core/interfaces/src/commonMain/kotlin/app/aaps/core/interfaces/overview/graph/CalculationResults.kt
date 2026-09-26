@@ -208,7 +208,11 @@ data class AutoIsfGraphData(
     /** Effective IOB threshold in units. Points of 0 are left out. */
     val iobTh: List<GraphDataPoint> = emptyList(),
     /** Latest hypo prediction in mmol, or null when the UKF 5 minute change is missing. */
-    val hypoPrediction: Double? = null
+    val hypoPrediction: Double? = null,
+    /** Target, boost, and IOB threshold line for the main graph. Null before the first loop row. */
+    val statusTarget: String? = null,
+    /** ISF factor line for the main graph. Null before the first loop row. */
+    val statusIsf: String? = null,
 ) {
 
     fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {
