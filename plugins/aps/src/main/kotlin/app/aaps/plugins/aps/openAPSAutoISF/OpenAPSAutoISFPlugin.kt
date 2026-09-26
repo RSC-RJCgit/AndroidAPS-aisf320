@@ -2852,6 +2852,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun useLiveMjStateOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual) && activePlugin.activePump is VirtualPump
 
+    private fun useLiveBatteryOnVirtual() =
+        preferences.get(BooleanKey.ApsAutoIsfUseLiveBatteryOnVirtual) && activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+
     private fun useLiveSteroidEventsOnVirtual() =
         preferences.get(BooleanKey.ApsAutoIsfUseLiveSteroidEventsOnVirtual) && activePlugin.activePump is VirtualPump
 
@@ -3744,6 +3747,38 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("MJ event relay: $newState")
             }
             notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfMjButtonNoteHandledAt, it.timestamp) }
+        }
+
+        // --- Live battery relay (Note channel), added 2026-09-26 at explicit request: Live's Battery1% block (real loop phone only)
+        // writes the CarePortal note "Bt<1%" when its battery reaches 1% and "bat>1" on recovery. Virtual receives both through NS
+        // (they are on the keep-list, CodedAutomationNames.isLiveEchoKeptOnVirtual) and mirrors the response: safety profile on
+        // Bt<1% plus an urgent notification, back to the Standard role on bat>1 -- only if Virtual is currently on the safety
+        // profile, like Live's own BatteryOver1pc guard. Notes older than 30 min are ignored (a stale note must not switch the
+        // profile after an install or a first scan). Cursor-tracked like the MJ relay; gated by ApsAutoIsfUseLiveBatteryOnVirtual.
+        run {
+            if (!useLiveBatteryOnVirtual()) return@run
+            val handledAt = preferences.get(LongKey.ApsAutoIsfBatteryNoteHandledAt)
+            val searchFrom = if (handledAt > 0L) handledAt + 1L else dateUtil.now() - T.days(2).msecs()
+            val notes = persistenceLayer.getTherapyEventDataFromTime(searchFrom, TE.Type.NOTE, true)
+                .filter { it.isValid && it.timestamp > handledAt }
+            for (te in notes) {
+                val fresh = dateUtil.now() - te.timestamp <= T.mins(30).msecs()
+                when (te.note.orEmpty().trim()) {
+                    "Bt<1%" -> if (fresh) {
+                        val safety = preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+                        if (profileFunction.getOriginalProfileName() != safety) switchProfileIfNeeded(safety, 0)
+                        uiInteraction.addNotification(id = 9013, text = "Loop phone battery <=1%: Virtual on $safety", level = Notification.URGENT)
+                        aapsLogger.info(LTag.APS, "Live battery relay: Bt<1% -> $safety")
+                    }
+                    "bat>1" -> if (fresh &&
+                        profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+                    ) {
+                        switchToStandardAtSharedTier(0)
+                        aapsLogger.info(LTag.APS, "Live battery relay: bat>1 -> Standard")
+                    }
+                }
+            }
+            notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfBatteryNoteHandledAt, it.timestamp) }
         }
 
         // --- Steroid button-press event relay (Note channel): same shape as the MJ button-press relay
@@ -10591,6 +10626,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfFastRiseEnabled, summary = R.string.fast_rise_enabled_summary, title = R.string.fast_rise_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowReboundGuardEnabled, summary = R.string.low_rebound_guard_enabled_summary, title = R.string.low_rebound_guard_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, summary = R.string.autoisf_uam_boost_unrestricted_summary, title = R.string.autoisf_uam_boost_unrestricted_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveBatteryOnVirtual, summary = R.string.use_live_battery_on_virtual_summary, title = R.string.use_live_battery_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, summary = R.string.use_live_mj_state_on_virtual_summary, title = R.string.use_live_mj_state_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveSteroidEventsOnVirtual, summary = R.string.use_live_steroid_events_on_virtual_summary, title = R.string.use_live_steroid_events_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, summary = R.string.steroid_kotlin_button_enabled_summary, title = R.string.steroid_kotlin_button_enabled_title))

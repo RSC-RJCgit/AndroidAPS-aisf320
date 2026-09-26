@@ -39,6 +39,20 @@ object CodedAutomationNames {
         return t == ANYDESK_LAUNCH_OK_NOTE || t == ANYDESK_LAUNCH_MISS_NOTE
     }
 
+    // 2026-09-26, per explicit request: the only NS-echoed CarePortal notes a full AAPS on VirtualPump keeps (see
+    // StoreDataForDbImpl.dropLiveUamBoostEchoes and AutoIsfHistoryExporter.carePortalNotesFrom). Every other note Live writes
+    // (ADesk, AcTTR relay-TT receipt, export notes UKCs/ACEs/AVLs/AVCs/LOGF, automation notes ...) is dropped on Virtual, whose own
+    // automations write their own. Kept because Virtual acts on them: "MJ active" (seeds Virtual's MJ start), the Steroids ladder,
+    // SetRole, StLow/StorageLow, and Live's battery notes "Bt<1%" / "bat>1" (Live's Battery1pc / BatteryOver1pc).
+    fun isLiveEchoKeptOnVirtual(note: String?): Boolean {
+        val t = note?.trim() ?: return false
+        return t == "MJ active" ||
+            t.startsWith("Steroids") ||
+            t.startsWith("SetRole") ||
+            t.startsWith("StLow ") || t.startsWith("StorageLow ") ||
+            t == "Bt<1%" || t == "bat>1"
+    }
+
     val KEYS: List<String> = listOf(
         "50SetRecent", "50pcMakes5.7", "AcceUp0.5", "AcceWeightDownTT", "AcceWeightHighDownTT", "AcceWeightHighUpTT",
         "AcceWeightUpTT", "ActivityOff", "ActivityProf50", "ActivityTTReversal", "AlarmHypo1", "AlarmHypo2",

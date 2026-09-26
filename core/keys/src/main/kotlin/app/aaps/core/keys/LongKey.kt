@@ -127,5 +127,6 @@ enum class LongKey(
     ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0, defaultedBySM = true),
     ApsAutoIsfMjButtonNoteHandledAt("autoisf_mj_button_note_handled_at", 0, defaultedBySM = true),
     ApsAutoIsfSteroidButtonNoteHandledAt("autoisf_steroid_button_note_handled_at", 0, defaultedBySM = true),
+    ApsAutoIsfBatteryNoteHandledAt("autoisf_battery_note_handled_at", 0, defaultedBySM = true),
 
 }

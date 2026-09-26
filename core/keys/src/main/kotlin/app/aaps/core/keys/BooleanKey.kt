@@ -76,6 +76,8 @@ enum class BooleanKey(
     ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", false),
     ApsAutoIsfUseLiveMjStateOnVirtual("autoisf_use_live_mj_state_on_virtual", false),
     ApsAutoIsfUseLiveSteroidEventsOnVirtual("autoisf_use_live_steroid_events_on_virtual", false),
+    // 2026-09-26, per explicit request: Virtual mirrors Live's Battery1% response (safety profile on Bt<1%, back to Standard on bat>1). Default on.
+    ApsAutoIsfUseLiveBatteryOnVirtual("autoisf_use_live_battery_on_virtual", true),
     // Test toggles added 2026-09-20 at explicit request (Settings + List 2 rows 5.226 / 5.228).
     // FastRise: the Libre FAST RISE size tiers in DetermineBasalAutoISF (default ON = unchanged behaviour).
     ApsAutoIsfFastRiseEnabled("autoisf_fast_rise_enabled", true),

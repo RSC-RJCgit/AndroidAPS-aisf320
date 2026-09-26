@@ -159,13 +159,8 @@ class AutoIsfHistoryExporter @Inject constructor(
     private fun hideLiveEchoesOnVirtual(): Boolean =
         virtualPump.isEnabled() && !config.AAPSCLIENT
 
-    private fun keepLiveEchoOnVirtual(note: String?): Boolean {
-        val t = note?.trim() ?: return false
-        return t == "MJ active" ||
-            t.startsWith("Steroids") ||
-            t.startsWith("SetRole") ||
-            t.startsWith("StLow ") || t.startsWith("StorageLow ")
-    }
+    // Shared with the storage-level drop (StoreDataForDbImpl): one keep-list, now also Live's battery notes Bt<1% / bat>1.
+    private fun keepLiveEchoOnVirtual(note: String?): Boolean = CodedAutomationNames.isLiveEchoKeptOnVirtual(note)
 
     // Virtual shares Live's NS site, so Live's UamBst notes land here even when this phone's
     // Tier 3 toggle is off. Client must still see Live's own fires. Local Virtual fires only

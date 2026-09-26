@@ -587,7 +587,11 @@ class StoreDataForDbImpl @Inject constructor(
             val uamMarker = te.type == TE.Type.NOTE && CodedAutomationNames.isUamBoostNote(te.note) ||
                 te.type == TE.Type.ANNOUNCEMENT && CodedAutomationNames.isUamBoostGraphAnnouncement(te.note)
             val anyDeskMarker = te.type == TE.Type.NOTE && CodedAutomationNames.isAnyDeskLaunchNote(te.note)
-            if (!uamMarker && !anyDeskMarker) return@filterTo true
+            // 2026-09-26, per explicit request: every other NS NOTE too, except the ones Virtual acts on
+            // (CodedAutomationNames.isLiveEchoKeptOnVirtual). The three plugin readers of notes are StLow, SetRole and the
+            // MJ / Steroid seeds, all in that list.
+            val otherNote = te.type == TE.Type.NOTE && !CodedAutomationNames.isLiveEchoKeptOnVirtual(te.note)
+            if (!uamMarker && !anyDeskMarker && !otherNote) return@filterTo true
             val local = persistenceLayer.getTherapyEventDataFromTime(te.timestamp, te.type, true)
                 .any { existing -> existing.timestamp == te.timestamp }
             if (!local) aapsLogger.debug(
