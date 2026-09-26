@@ -445,6 +445,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("T3u${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local T3 unrestricted toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.232) <= 0.0000001) {
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
+                        preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
+                        sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
+                        addCarePortalNote("ITt${if (newState) "On" else "Off"}")
+                        aapsLogger.info(LTag.APS, "Applied local insulin totals row toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
                         // Client List2 relays 5.204 here. This runs on the loop phone and writes that
                         // phone's Build.MODEL. Location SMS still originate on this loop phone.
@@ -3105,6 +3112,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "FastRiseToggleTT" -> 5.226
         "LowReboundGuardToggleTT" -> 5.228
         "T3UnrestrictedToggleTT" -> 5.230
+        "InsulinTotalsToggleTT" -> 5.232
         else -> null
     }
 
@@ -5321,6 +5329,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("T3u${if (newState) "On" else "Off"}")
             rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
             markRun("T3UnrestrictedToggleTT")
+        }
+        if (readyToRun("InsulinTotalsToggleTT", 2) && activeTtNear(5.232, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
+            preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
+            cancelCurrentTempTarget()
+            sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("ITt${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
+            markRun("InsulinTotalsToggleTT")
         }
 
         // List 2 coded-location master switch. This changes only the enable preference; the five

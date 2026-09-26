@@ -70,7 +70,7 @@ object CodedAutomationNames {
         "StepsSteroidsOff", "SteroidIncrease130ActionTT", "SteroidIncrease150ActionTT", "SteroidIncrease190ActionTT",
         "SteroidIncrease250ActionTT", "SteroidKotlinButtonToggleTT", "SteroidStartActionTT",
         "SteroidTurnOffActionTT", "StuckHighRescue", "StuckRisingSlowly", "Sub75HeavyDelivery", "T80Off3ok", "TT57Reversal", "Test3",
-        "Tier3BoostToggleTT", "T3UnrestrictedToggleTT", "TodOffset0002DownTT", "TodOffset0002UpTT", "TodOffset0204DownTT", "TodOffset0204UpTT",
+        "Tier3BoostToggleTT", "T3UnrestrictedToggleTT", "InsulinTotalsToggleTT", "TodOffset0002DownTT", "TodOffset0002UpTT", "TodOffset0204DownTT", "TodOffset0204UpTT",
         "TodOffset0406DownTT", "TodOffset0406UpTT", "TodOffset0609DownTT", "TodOffset0609UpTT",
         "TodOffset0912DownTT", "TodOffset0912UpTT", "TodOffset1218DownTT", "TodOffset1218UpTT",
         "TodOffset1822DownTT", "TodOffset1822UpTT", "TodOffset2200DownTT", "TodOffset2200UpTT", "TodOffsetsZero",

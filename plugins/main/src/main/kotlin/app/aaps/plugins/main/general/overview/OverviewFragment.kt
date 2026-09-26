@@ -1427,6 +1427,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         FAST_RISE_TOGGLE("FastRise SMB tiers on/off (test)", 5.226),
         LOW_REBOUND_GUARD_TOGGLE("Post-low rebound guard LoReb on/off (test)", 5.228),
         T3_UNRESTRICTED_TOGGLE("T3 unrestricted compare on/off", 5.230),
+        // 2026-09-26: the row of 12 insulin totals on the IOB graph (Settings -> Overview switch, default off). Same dispatch.
+        INSULIN_TOTALS_ROW_TOGGLE("Insulin totals row on/off", 5.232),
         // 5.204: loop phone stores its Build.MODEL as the only location-SMS sender. Pump/Virtual
         // apply immediately; Client relays the TT to Live (Client does not send location SMS).
         LOCATION_SMS_THIS_PHONE("Location SMS from the loop phone (model)", 5.204),
@@ -1625,6 +1627,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.FAST_RISE_TOGGLE,
                 BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE,
                 BasalDirectAction.T3_UNRESTRICTED_TOGGLE,
+                BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE,
                 BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
 
@@ -1668,6 +1671,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         BasalDirectAction.FAST_RISE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfFastRiseEnabled)
         BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
         BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+        BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfShowInsulinTotals)
         BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
             if (config.AAPSCLIENT) {
                 val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]
