@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -46,6 +47,7 @@ class TreatmentsViewModel(
     val uiInteraction: UiInteraction,
     val userEntryPresentationHelper: UserEntryPresentationHelper,
     val importExportPrefs: ImportExportPrefs,
+    val maintenance: Maintenance,
     val uel: UserEntryLogger,
     val aapsLogger: AAPSLogger,
     val rxBus: RxBus
@@ -144,7 +146,9 @@ class TreatmentsViewModel(
             rh = rh,
             dateUtil = dateUtil,
             aapsLogger = aapsLogger,
-            rxBus = rxBus
+            rxBus = rxBus,
+            maintenance = maintenance,
+            importExportPrefs = importExportPrefs,
         )
     }
 }
