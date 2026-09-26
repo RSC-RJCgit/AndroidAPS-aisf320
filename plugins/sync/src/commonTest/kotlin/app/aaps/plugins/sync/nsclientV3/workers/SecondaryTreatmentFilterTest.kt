@@ -25,5 +25,14 @@ class SecondaryTreatmentFilterTest {
         assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "lunch"))
         assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "StLow 12"))
         assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "SetRole x=y"))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "MJ active"))
+        assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "MJ2"))
+        assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "NOMJremains"))
+    }
+
+    @Test
+    fun `steps stay on the primary site only while the secondary site is off`() {
+        assertTrue(stepsFromPrimarySite(secondaryEnabled = false))
+        assertFalse(stepsFromPrimarySite(secondaryEnabled = true))
     }
 }

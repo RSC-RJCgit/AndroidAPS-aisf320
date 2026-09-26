@@ -6,9 +6,9 @@ import app.aaps.core.data.model.TE
 /**
  * What the secondary Nightscout download keeps.
  *
- * Manual boluses and carbs always come in. SMBs and priming never do: those were delivered on
- * the other phone and must not be copied onto this one. Device events come in only when that option is on,
- * and a Note only when it is one of the messages the other phone sends on purpose.
+ * Manual boluses and carbs come in only when their receive switches are on. SMBs and priming never do:
+ * those were delivered on the other phone and must not be copied onto this one. Device events come in
+ * only when that option is on, and a Note only when it is one of the messages the other phone sends on purpose.
  */
 internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type == BS.Type.NORMAL
 
@@ -21,11 +21,15 @@ internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?): Boolea
         raw.startsWith("StorageLow ") ||
         trimmed == "ADesk" ||
         trimmed == "AckDesk" ||
+        trimmed == "MJ active" ||
         trimmed.startsWith("AcNS") ||
         trimmed.startsWith("AcTT") ||
         trimmed.startsWith("AcLT") ||
         trimmed.startsWith("SetRole ")
 }
+
+/** Once the secondary site is on, step counts come from it. The two addresses are not compared. */
+internal fun stepsFromPrimarySite(secondaryEnabled: Boolean): Boolean = !secondaryEnabled
 
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,

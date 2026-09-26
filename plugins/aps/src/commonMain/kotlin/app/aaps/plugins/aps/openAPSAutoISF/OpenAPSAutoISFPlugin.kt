@@ -579,6 +579,7 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
         )
         if (applyRemoteToggles(now)) isTempTarget = false
+        applyLiveMjNote(now)
         applySetRoleDuration(now)
         smbBoostedThisCycle = false
         markBolusBoosts(
@@ -3503,6 +3504,23 @@ open class OpenAPSAutoISFPlugin(
     private fun setNamedState(group: String, value: String) {
         val store = states()
         if (store.hasStateValues(group) && value in store.getStateValues(group)) store.setState(group, value)
+    }
+
+    // The live phone's injection note. Only the exact text "MJ active" is copied. MJ2 and the rest are not.
+    private suspend fun applyLiveMjNote(now: Long) {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
+        if (config.AAPSCLIENT || !preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        val seen = preferences.get(LongNonKey.ApsAutoIsfMjActiveNoteAt)
+        val from = if (seen == 0L) now - 16L * 24 * 60 * 60 * 1000 else seen
+        val hit = persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, true)
+            .filter { it.isValid && it.timestamp > seen && it.note?.trim() == "MJ active" }
+            .maxByOrNull { it.timestamp } ?: return
+        val store = states()
+        if (store.hasStateValues("MJ") && "MJ active" in store.getStateValues("MJ") && !store.inState("MJ", "MJ active")) {
+            store.setState("MJ", "MJ active")
+            sendAutoSms("MJ active from Nightscout")
+        }
+        preferences.put(LongNonKey.ApsAutoIsfMjActiveNoteAt, hit.timestamp.coerceAtMost(now))
     }
 
     // A 100% profile switch of 51 to 57 minutes names a Standard or Low role, then the switch is made indefinite.

@@ -71,6 +71,9 @@ enum class LongNonKey(
     // Profile-switch time already used as a Set-role duration. Local only.
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
 
+    // Newest "MJ active" note already copied onto this phone. Other MJ notes are ignored. Local only.
+    ApsAutoIsfMjActiveNoteAt("autoisf_mj_active_note_at", 0L, exportable = false),
+
     // Time of the last LibreSpecial step. -1 means none yet.
     FslSmoothLastTimeRaw("fsl_last_time_raw", -1L),
 }

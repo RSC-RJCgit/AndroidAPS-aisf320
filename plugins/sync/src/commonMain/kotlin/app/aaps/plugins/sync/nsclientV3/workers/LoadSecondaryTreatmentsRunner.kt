@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3.workers
 
 import app.aaps.core.data.model.ICfg
+import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -15,20 +16,25 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
+import app.aaps.core.nssdk.localmodel.treatment.NSExtendedBolus
+import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
+import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
+import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import dev.zacsweers.metro.Inject
 
 /**
- * Downloads manual boluses, carbs, and the profile store from a second Nightscout site.
+ * Downloads the live phone's treatments from the secondary Nightscout.
  *
- * Runs on its own, not after the primary status check. A rejected token on this phone's own
- * Nightscout must not stop the virtual pump from receiving carbs and boluses entered elsewhere.
- * SMBs are left out. Device events are included only when that option is on.
+ * Runs when that site is turned on. The two addresses are not compared. Manual boluses and carbs
+ * follow the receive switches. Temp basals and extended boluses are never taken. Notes stay on
+ * the short keep-list, including the one note "MJ active". The profile store and the live step
+ * counts come from this site as well.
  */
 @Inject
 class LoadSecondaryTreatmentsRunner(
@@ -39,6 +45,7 @@ class LoadSecondaryTreatmentsRunner(
     private val profileFunction: ProfileFunction,
     private val nsClientRepository: NSClientRepository,
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
+    private val nsDeviceStatusHandler: NSDeviceStatusHandler,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -108,6 +115,7 @@ class LoadSecondaryTreatmentsRunner(
                 if (treatment.date == null) continue
                 when (treatment) {
                     is NSBolus -> {
+                        if (!preferences.get(BooleanKey.NsClientAcceptInsulin)) continue
                         val bolus = treatment.toBolus(insulin)
                         if (secondaryBolusAccepted(bolus.type)) {
                             storeDataForDb.addToBoluses(bolus)
@@ -116,9 +124,14 @@ class LoadSecondaryTreatmentsRunner(
                     }
 
                     is NSCarbs -> {
+                        if (!preferences.get(BooleanKey.NsClientAcceptCarbs)) continue
                         storeDataForDb.addToCarbs(treatment.toCarbs())
                         pageCarbs++
                     }
+
+                    is NSProfileSwitch -> nsIncomingDataProcessor.storeSecondaryProfileSwitch(treatment)
+
+                    is NSTemporaryBasal, is NSExtendedBolus -> Unit
 
                     is NSTherapyEvent -> {
                         if (!acceptTherapyEvents) continue
@@ -158,7 +171,24 @@ class LoadSecondaryTreatmentsRunner(
         if (page >= MAX_PAGES && continueLoading)
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
         downloadProfile(client)
+        downloadLiveSteps(client)
         return WorkOutcome.Success
+    }
+
+    // Step buckets written into the live phone's loop reason. This phone's own Nightscout is not used.
+    private suspend fun downloadLiveSteps(client: NSAndroidClientImpl) {
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
+        try {
+            val from = dateUtil.now() - LiveSteps.MAX_AGE_MS
+            val statuses = client.getDeviceStatusModifiedSince(from)
+            nsDeviceStatusHandler.takeLiveSteps(statuses)
+            if (statuses.isNotEmpty()) {
+                nsClientRepository.addLog("◄ SEC-NS", "${statuses.size} device status rows for live steps")
+            }
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS step fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Steps error")
+        }
     }
 
     // The profile store for this phone comes from the secondary site, not from its own Nightscout.

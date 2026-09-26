@@ -23,6 +23,7 @@ import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.utils.safeGetString
 import app.aaps.core.utils.safeGetStringAllowNull
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
+import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -237,8 +238,34 @@ class NSDeviceStatusHandler(
             return
         }
         storeReceivedAutoIsf(rt, clock)
-        if (preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) && now - clock <= LiveSteps.MAX_AGE_MS) {
+        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled)) &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            now - clock <= LiveSteps.MAX_AGE_MS
+        ) {
             storeReceivedSteps(device, clock, rt.reason.toString())
+        }
+    }
+
+    /**
+     * Step counts from the secondary Nightscout. Used only while that site is on, so a virtual
+     * pump follows the live phone rather than this phone's own Nightscout.
+     */
+    fun takeLiveSteps(deviceStatuses: List<NSDeviceStatus>) {
+        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled))) return
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
+        if (config.AAPSCLIENT) return
+        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
+        val now = dateUtil.now()
+        for (deviceStatus in deviceStatuses) {
+            val device = deviceStatus.device ?: continue
+            val own = "openaps://${config.deviceModelForUpload}"
+            if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) continue
+            val suggested = deviceStatus.openaps?.suggested ?: continue
+            val timestamp = suggested.safeGetString("timestamp") ?: continue
+            val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: continue
+            if (clock <= 0L || clock > now || now - clock > LiveSteps.MAX_AGE_MS) continue
+            val reason = runCatching { RT.deserialize(suggested.toString()).reason.toString() }.getOrElse { continue }
+            storeReceivedSteps(device, clock, reason)
         }
     }
 

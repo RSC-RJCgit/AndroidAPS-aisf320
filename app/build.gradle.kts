@@ -137,7 +137,7 @@ android {
             applicationId = "info.nightscout.androidaps"
             // Side by side with an already installed AAPS. The same id is refused when the
             // signature differs, and uninstalling that copy is what would stop the old app.
-            // applicationIdSuffix = ".ukf"
+            applicationIdSuffix = ".ukf"
             dimension = "standard"
             resValue("string", "app_name", "AAPS UKF")
             versionName = Versions.appVersion
@@ -275,7 +275,11 @@ dependencies {
     // Initializes WorkManager for instrumented tests (BaseTestApp), since the production
     // Configuration.Provider/manifest initializer do not apply under the test application.
     androidTestImplementation(libs.androidx.work.testing)
-    androidTestImplementation(libs.org.skyscreamer.jsonassert)
+    // jsonassert brings android-json, a second copy of org.json. The test device already
+    // has org.json, and packaging both is rejected. JSONAssert still runs on the device copy.
+    androidTestImplementation(libs.org.skyscreamer.jsonassert) {
+        exclude(group = "com.vaadin.external.google", module = "android-json")
+    }
     androidTestImplementation(libs.kotlinx.coroutines.test)
     // Rhino is needed by the openAPS adapter test fixtures under app/src/androidTest
     // (these files reference org.mozilla.javascript.* classes directly).
