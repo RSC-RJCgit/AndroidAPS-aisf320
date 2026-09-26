@@ -153,6 +153,13 @@ class QuickWizardEntry @Inject constructor(
             trend = true
         }
         val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
+        // 2026-09-26, per explicit request: partway up a rise the carbs are dated back from the rise onset (CarbTimeFromRise), same as the
+        // Bolus Wizard dialog's pre-fill. Only for a button with carbs and no carb time of its own, and only while the Settings -> Overview
+        // switch is on (default). The offset shows in the confirmation dialog and is appended to the note.
+        val riseCarbTime =
+            if (carbTime() == 0 && carbs() > 0 && preferences.get(BooleanKey.OverviewQuickWizardCarbTimeFromRise))
+                CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now())?.offsetMinutes
+            else null
         val wizard = bolusWizardProvider.get().doCalc(
             profile,
             profileName,
@@ -170,8 +177,8 @@ class QuickWizardEntry @Inject constructor(
             useTempTarget() == YES,
             trend,
             useAlarm() == YES,
-            buttonText(),
-            carbTime(),
+            buttonText() + (riseCarbTime?.let { " [carb time from rise $it min]" } ?: ""),
+            riseCarbTime ?: carbTime(),
             quickWizard = true,
             positiveIOBOnly = uPositiveIOBOnly,
             // Fixed per-button protein/fat (added 2026-09-16). Unlike split-bolus below, these ARE real

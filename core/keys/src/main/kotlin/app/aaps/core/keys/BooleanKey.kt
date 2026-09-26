@@ -105,6 +105,8 @@ enum class BooleanKey(
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
     // 2026-09-26, per explicit request: the row of 12 insulin-delivered totals on the IOB graph (default off).
     ApsAutoIsfShowInsulinTotals("show_insulin_totals_row", false, defaultedBySM = true),
+    // 2026-09-26, per explicit request: a Quick Wizard press partway up a rise dates its carbs back from the rise onset (CarbTimeFromRise).
+    OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),
     // When graph5 is on: false (default, preserves prior behaviour) = show every series it always has
     // (BGL lines + insulin activity + all 3 carb-related lines + basal). true = BGL-only, skipping
     // addActivity/addCarbModelCurve/addUamCarbImpact/addCombinedCarbs -- see the gating in
