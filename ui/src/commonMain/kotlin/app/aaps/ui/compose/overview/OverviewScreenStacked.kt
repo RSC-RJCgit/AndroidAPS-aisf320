@@ -142,6 +142,7 @@ fun OverviewScreenStacked(
                 onTbrChipLongClick = graphViewModel::onBasalIconLongPress,
                 onIobChipClick = onIobChipClick,
                 onIobChipLongClick = graphViewModel::onIobIconLongPress,
+                onIobChipDoubleClick = chipsViewModel::openList1,
                 commandsAllowed = commandsAllowed,
                 modifier = Modifier
                     .weight(1f)

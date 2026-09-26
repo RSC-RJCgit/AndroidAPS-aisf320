@@ -57,6 +57,7 @@ fun OverviewChipsColumn(
     onTbrChipLongClick: () -> Unit = {},
     onIobChipClick: () -> Unit,
     onIobChipLongClick: () -> Unit = {},
+    onIobChipDoubleClick: () -> Unit = {},
     // The command chips (running mode / profile / temp target) open mutating screens — their click is disabled on an
     // unpaired client (same MASTER_OR_PAIRED_CLIENT gate as nav/Manage), while the chip stays visible as status.
     commandsAllowed: Boolean = true,
@@ -135,7 +136,8 @@ fun OverviewChipsColumn(
             iobUiState = iobUiState,
             cobUiState = cobUiState,
             onIobChipClick = onIobChipClick,
-            onIobChipLongClick = onIobChipLongClick
+            onIobChipLongClick = onIobChipLongClick,
+            onIobChipDoubleClick = onIobChipDoubleClick
         )
         SensitivityChipBlock(
             state = sensitivityUiState,

@@ -196,6 +196,8 @@ fun OverviewScreen(
             )
         }
 
+        List1Dialog(chipsViewModel)
+
         // Calculation progress (IOB / graph data). Overlaid on top of content so it never reflows
         // the layout — previously a flow child of the content Column which caused the screen to jump.
         AnimatedVisibility(

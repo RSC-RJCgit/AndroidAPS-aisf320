@@ -409,6 +409,12 @@
     <!-- StringKey: SMS preferences -->
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
+    <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
+    <string name="smscommunicator_battalertnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the LowBattery text, as well as the allowed numbers.</string>
+    <string name="smscommunicator_pod2numbers">Pod2-alert numbers</string>
+    <string name="smscommunicator_pod2numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the 78-hour pod text, as well as the allowed numbers.</string>
+    <string name="smscommunicator_connectpodnumbers">ConnectPod-alert numbers</string>
+    <string name="smscommunicator_connectpodnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the ConnectPod text, as well as the allowed numbers.</string>
     <string name="smscommunicator_otp_pin">Additional mandatory PIN at token end</string>
     <string name="smscommunicator_otp_pin_summary">Additional digits that should be memorised and glued at end of each generated One Time Password</string>
 
@@ -475,6 +481,12 @@
     <string name="pref_title_autoisf_min">AutoISF min</string>
     <string name="openapsama_autoISF_min_summary">Similar to autosens_min this defines how weak ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.</string>
     <string name="pref_title_autoisf_max">AutoISF max</string>
+    <string name="pref_title_autoisf_max_low">AutoISF max at low glucose</string>
+    <string name="openapsama_autoISF_max_low_summary">Upper limit for AutoISF when glucose is low. Nothing in the dose calculation reads this yet. A temp target of 5.080 or 5.082 mmol changes it.</string>
+    <string name="pref_title_aps_tod_offset_0002">SMB offset 00:00 to 02:00</string>
+    <string name="pref_title_aps_tod_offset_0204">SMB offset 02:00 to 04:00</string>
+    <string name="pref_title_aps_tod_offset_0406">SMB offset 04:00 to 06:00</string>
+    <string name="pref_summary_aps_tod_offset" comment="The number is mmol added to the SMB hold-back. Example: 0.5 means hold SMB until glucose is 0.5 mmol higher.">mmol added to the SMB offset for this clock window. 0 leaves the offset unchanged. Range is -2.0 to 2.0.</string>
     <string name="openapsama_autoISF_max_summary">Similar to autosens_max this defines how strong ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.\n\nWARNING: Be extremely careful when using values above 2.5</string>
     <string name="pref_title_bg_accel_weight">BG acceleration ISF weight</string>
     <string name="openapsama_bgAccel_ISF_weight_summary">This is the weight applied while glucose accelerates and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>

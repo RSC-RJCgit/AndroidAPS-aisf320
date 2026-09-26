@@ -59,12 +59,15 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.smsCommunicator.Sms
+import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
@@ -92,7 +95,10 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -100,6 +106,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.round
 import kotlin.math.roundToLong
 
 @SingleIn(AppScope::class)
@@ -131,6 +138,7 @@ open class OpenAPSAutoISFPlugin(
     private val tddCalculator: TddCalculator,
     private val displayRawSmoothing: DisplayRawSmoothing,
     private val receiverStatusStore: ReceiverStatusStore,
+    private val smsCommunicator: SmsCommunicator,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -203,6 +211,8 @@ open class OpenAPSAutoISFPlugin(
         store.setState("Steroids", "Steroids Off")
     }
 
+    private var list1Job: Job? = null
+
     override suspend fun onStart() {
         super.onStart()
         if (processStartedAtMs == 0L) processStartedAtMs = dateUtil.now()
@@ -220,6 +230,13 @@ open class OpenAPSAutoISFPlugin(
             count++
         }
         aapsLogger.debug(LTag.APS, "Loaded $count variable sensitivity values from database")
+        if (list1Job == null) {
+            list1Job = pluginScope.launch {
+                rxBus.toFlow(EventAutoIsfDirectTtCode::class).collect { event ->
+                    applyDirectListCode(event.mmol)
+                }
+            }
+        }
     }
 
     override fun usingDynamicIsf() = true //: Boolean = preferences.get(BooleanKey.ApsUseAutoIsf)
@@ -542,6 +559,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.NIGHT_FR_SKIP, now)
+            sendAutoSms("NightFrSkip: g=${decimals(glucoseStatus.glucose / 18.016, 1)} d=${decimals(glucoseStatus.delta / 18.016, 2)} iob=${decimals(iobData.iob, 2)}")
+            carePortalNote("NtFRSk")
             aapsLogger.debug(LTag.APS, "NightFrSkip marked")
         }
         applyDeliveryRestore(
@@ -549,6 +568,14 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
         )
+        applyOldPodBoost(
+            now = now,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            maxIob = oapsProfile.max_iob,
+            tempTargetSet = isTempTarget,
+        )
+        if (applyRemoteToggles(now)) isTempTarget = false
         smbBoostedThisCycle = false
         markBolusBoosts(
             now = now,
@@ -739,7 +766,12 @@ open class OpenAPSAutoISFPlugin(
             steps60 = stepSample?.steps60min ?: 0,
             steps180 = stepSample?.steps180min ?: 0,
         )
-        applySensorNotes(now)
+        applySensorNotes(
+            now = now,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+        )
         applyStepsSteroidsOff(
             now = now,
             bg = glucoseStatus.glucose,
@@ -772,6 +804,12 @@ open class OpenAPSAutoISFPlugin(
             rawDelta5Mgdl = ukf.delta5 ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+            todOffsetMgdl = todOffsetMmol(
+                hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+                offset0002 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0002),
+                offset0204 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0204),
+                offset0406 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0406),
+            ) * 18.0,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
             lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
             steps60 = steps60(now),
@@ -844,6 +882,7 @@ open class OpenAPSAutoISFPlugin(
             lastAPSRun = now
             lastCycleSmb = determineBasalResult.smb
             lastCycleSmbAt = now
+            lastCycleInsulinReq = it.insulinReq
             if (autoIsfFactors.recorded) {
                 persistenceLayer.insertAutoIsfValue(
                     AIV(
@@ -1426,6 +1465,10 @@ open class OpenAPSAutoISFPlugin(
                     BooleanKey.ApsUseAutoIsfWeights,
                     DoubleKey.ApsAutoIsfMin,
                     DoubleKey.ApsAutoIsfMax,
+                    DoubleKey.ApsAutoIsfMaxLow,
+                    DoubleKey.ApsAutoIsfTodOffset0002,
+                    DoubleKey.ApsAutoIsfTodOffset0204,
+                    DoubleKey.ApsAutoIsfTodOffset0406,
                     DoubleKey.ApsAutoIsfBgAccelWeight,
                     DoubleKey.ApsAutoIsfBgAccelWeightNormal,
                     DoubleKey.ApsAutoIsfBgBrakeWeight,
@@ -1538,6 +1581,20 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
         }
         runMarks.mark(RunMark.PP_WEIGHT_REVERT, now)
+        val ppBase = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+        val acceBase = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+        val why = when (decision.reason) {
+            "bg" -> "BG<8.5mmol"
+            "activity" -> "activity"
+            else -> "noRecentHigh48h"
+        }
+        val what = when {
+            decision.restorePp && decision.restoreAcce -> "ppISFwt=${decimals(ppBase, 2)} acceISFwt=${decimals(acceBase, 2)}"
+            decision.restorePp -> "ppISFwt=${decimals(ppBase, 2)}"
+            else -> "acceISFwt=${decimals(acceBase, 2)}"
+        }
+        sendAutoSms("PpWeightRevert: $what ($why)")
+        carePortalNote(if (decision.restorePp && decision.restoreAcce) "PArv" else if (decision.restorePp) "PPrv" else "ACrv")
         aapsLogger.debug(LTag.APS, "Weight revert reason=${decision.reason}")
     }
 
@@ -1613,6 +1670,7 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, resting)
+            carePortalNote("DelOff")
             aapsLogger.debug(LTag.APS, "SMB delivery ratio back to $resting")
         }
         val recentBoost = runMarks.recent(RunMark.BOLUS_GIVEN, 3, now) ||
@@ -1625,6 +1683,7 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, hardStackTarget)
+            carePortalNote("HardStackDelOff")
             aapsLogger.debug(LTag.APS, "SMB delivery ratio down to $hardStackTarget while SMBs are stacking")
         }
     }
@@ -1634,6 +1693,7 @@ open class OpenAPSAutoISFPlugin(
     private var smbBoostedThisCycle = false
     private var lastCycleSmb = 0.0
     private var lastCycleSmbAt = 0L
+    private var lastCycleInsulinReq: Double? = null
     private var lastBigDoseAt = 0L
     private var lastBigDoseBg = 0.0
     private var lastBigDoseShort = 0.0
@@ -1745,7 +1805,10 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
             bg3ThisCycle = true
+            val iobThBefore = preferences.get(IntKey.ApsAutoIsfIobThPercent)
             applyBoostRaise(boostRaises(strong = true, caution = caution), boostedDeliveryRatio(mildBase, strong = true, caution = caution))
+            sendAutoSms("BolusGiven71 [b3]: g=${decimals(bg / 18.016, 1)} iobTH=$iobThBefore")
+            carePortalNote("Giv-3")
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 marked")
         } else if (mild) {
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
@@ -1753,6 +1816,9 @@ open class OpenAPSAutoISFPlugin(
             if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution))
             startMildHoldTarget()
+            val mildStep = if (caution) 0.075 else 0.15
+            sendAutoSms("BolusGivenMild: g=${decimals(bg / 18.016, 1)} (+$mildStep)")
+            carePortalNote("BMild")
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
         } else if (mildFailsafeShouldFire(
                 readyFailsafe = runMarks.ready(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 5, now),
@@ -1778,8 +1844,11 @@ open class OpenAPSAutoISFPlugin(
             if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
             applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false))
             startMildHoldTarget()
+            sendAutoSms("BolusGivenMildFailsafe: g=${decimals(bg / 18.016, 1)} IOB=${decimals(iob, 2)} (no SMB in 20min despite confirmed rise)")
+            carePortalNote("BMildFS")
             aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
         } else if (blocked) {
+            carePortalNote("GivBlk")
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
         }
         if (not50RecentlyShouldFire(
@@ -1792,6 +1861,7 @@ open class OpenAPSAutoISFPlugin(
         ) {
             applyNot50Clear()
             runMarks.mark(RunMark.NOT50_RECENTLY, now)
+            carePortalNote("No50")
             aapsLogger.debug(LTag.APS, "Not50Recently cleared")
         }
         val iobThNow = preferences.get(IntKey.ApsAutoIsfIobThPercent)
@@ -1811,6 +1881,8 @@ open class OpenAPSAutoISFPlugin(
             if (70 <= iobBaseline) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 runMarks.mark(RunMark.IOB_TH_DAYTIME_FLOOR, now)
+                sendAutoSms("iobTHfloor: iobTH ${iobThNow}->70%")
+                carePortalNote("THfloor")
                 aapsLogger.debug(LTag.APS, "iobTH daytime floor $iobThNow -> 70")
             } else {
                 aapsLogger.debug(LTag.APS, "iobTH daytime floor left $iobThNow, 70 is above the baseline")
@@ -1832,6 +1904,8 @@ open class OpenAPSAutoISFPlugin(
             if (50 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
             applyExtra50State()
             runMarks.mark(RunMark.EXTRA50, now)
+            sendAutoSms("Extra50% [b$extraBlock]: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("X50-$extraBlock")
             aapsLogger.debug(LTag.APS, "Extra50 block $extraBlock")
         }
         applyShowerAndPodAge(
@@ -1860,8 +1934,11 @@ open class OpenAPSAutoISFPlugin(
             earlyAfterShower = shower12OpensUsual2(runMarks.minutesAgo(RunMark.SHOWER12, now)),
         )
         if (usualBlock != null) {
+            val usualTh = preferences.get(IntKey.ApsAutoIsfIobThPercent)
             runMarks.mark(RunMark.USUAL2, now)
             applyUsual2(now)
+            sendAutoSms("Usual2forTH [b$usualBlock]: g=${decimals(bg / 18.016, 1)} iobTH=$usualTh")
+            carePortalNote("UsuIP-$usualBlock")
             aapsLogger.debug(LTag.APS, "Usual2 block $usualBlock")
         }
         // The prediction branch stays closed: it needs the UKF raw 5 minute change.
@@ -1964,6 +2041,8 @@ open class OpenAPSAutoISFPlugin(
         }
         preferences.put(LongNonKey.ApsAutoIsfOvernightRescueUntil, now + 60 * 60_000L)
         runMarks.mark(RunMark.OVERNIGHT_DURA_RESCUE, now)
+        sendAutoSms("OvernightDuraRescue: g=${decimals(bg / 18.0182, 1)} duraISF=${decimals(factors.duraIsf, 2)} finalISF=${decimals(factors.finalIsf, 2)} -> Standard 60min")
+        carePortalNote("DuraRsc")
         aapsLogger.debug(LTag.APS, "Overnight dura rescue -> $standardName for 60 min")
     }
 
@@ -2000,6 +2079,8 @@ open class OpenAPSAutoISFPlugin(
         val store = states()
         if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "HnAM")
         runMarks.mark(RunMark.HIGH_NIGHT, now)
+        sendAutoSms("HighNight00AM: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)} sd=${decimals(shortDelta / 18.016, 2)} ld=${decimals(longDelta / 18.016, 2)}")
+        carePortalNote("HnAM")
         aapsLogger.debug(LTag.APS, "High night -> $standardName for 30 min")
     }
 
@@ -2038,6 +2119,8 @@ open class OpenAPSAutoISFPlugin(
         switchToStandardAtSharedTier(now)
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
         runMarks.mark(RunMark.BASAL_UP, now)
+        sendAutoSms("BasalUp Acce")
+        carePortalNote("BsUp")
         aapsLogger.debug(LTag.APS, "BasalUp -> standard at 100%, acceleration weight 0.50")
     }
 
@@ -2085,6 +2168,8 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
         preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, 0L)
         runMarks.mark(RunMark.PERSISTENT_RISE, now)
+        sendAutoSms("PersistentRiseRelease: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)} (${clock.persistentMinutes.toInt()}min sustained, no SMB)")
+        carePortalNote("PstRs")
         aapsLogger.debug(LTag.APS, "Persistent rise release, offset zero, ${clock.persistentMinutes.toInt()} min")
     }
 
@@ -2147,6 +2232,9 @@ open class OpenAPSAutoISFPlugin(
                 note = "AutoISF: high brake cut",
                 listValues = emptyList(),
             )
+            if (plan.cutNight) carePortalNote("HiBrkCut")
+            if (plan.cutDay) carePortalNote("HiBrkDayCut")
+            if (plan.cutTwilight) carePortalNote("HiBrkTwilightCut")
             aapsLogger.debug(LTag.APS, "High brake cut night=${plan.cutNight} day=${plan.cutDay} twilight=${plan.cutTwilight}")
         }
         if (plan.fireNight || plan.fireDayHigh || plan.fireDayMid) {
@@ -2154,12 +2242,18 @@ open class OpenAPSAutoISFPlugin(
             startBrakeTarget(now, 72.1, "AutoISF: high brake 4.0")
             if (plan.fireNight) runMarks.mark(RunMark.HIGH_EVE_NIGHT_BRAKE, now)
             if (plan.fireDayHigh || plan.fireDayMid) runMarks.mark(RunMark.HIGH_DAYTIME_BRAKE, now)
+            if (plan.fireNight || plan.fireDayHigh || plan.fireDayMid) {
+                sendAutoSms("HighEveNightBrake: TT 4.0mmol@2min + ppWeight high, g=${decimals(bg / 18.016, 1)}")
+                carePortalNote("HiBrk")
+            }
             aapsLogger.debug(LTag.APS, "High brake fire night=${plan.fireNight} dayHigh=${plan.fireDayHigh} dayMid=${plan.fireDayMid}")
         }
         if (plan.fireTwilight) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: twilight brake 4.2")
             preferences.put(LongNonKey.ApsAutoIsfHiBrkTwilightTtAt, now)
             runMarks.mark(RunMark.HI_BRK_TWILIGHT, now)
+            sendAutoSms("HiBrkTwilight: TT 4.2mmol@2min, g=${decimals(bg / 18.016, 1)}")
+            carePortalNote("HiBrkTwilight")
             aapsLogger.debug(LTag.APS, "Twilight brake, 4.2 mmol for 2 min")
         }
     }
@@ -2215,12 +2309,14 @@ open class OpenAPSAutoISFPlugin(
                 startBrakeTarget(now, targetBg, "AutoISF: stuck high ratio", 30)
                 escalateToStuckHighTierC(now)
                 runMarks.mark(RunMark.STUCK_HIGH, now)
+                sendAutoSms("StuckHighRescue [ratio]: g=${decimals(bg / 18.0182, 1)} HP2=${if (hp == null) "--" else decimals(hp, 2)} SMBdel -> ${decimals(boosted, 2)}")
                 aapsLogger.debug(LTag.APS, "Stuck high ratio -> $boosted")
             }
         } else if (branch == StuckHighBranch.TARGET) {
             startBrakeTarget(now, rescueTargetMgdl(targetBg), "AutoISF: stuck high target", 30)
             escalateToStuckHighTierC(now)
             runMarks.mark(RunMark.STUCK_HIGH, now)
+            sendAutoSms("StuckHighRescue [target]: g=${decimals(bg / 18.0182, 1)} HP2=${if (hp == null) "--" else decimals(hp, 2)}")
             aapsLogger.debug(LTag.APS, "Stuck high target")
         }
         val recentBoost = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 3, now) ||
@@ -2249,13 +2345,18 @@ open class OpenAPSAutoISFPlugin(
                     preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
                     startBrakeTarget(now, targetBg, "AutoISF: poor response 1", 20)
                     runMarks.mark(RunMark.POOR_RESPONSE_1, now)
+                    sendAutoSms("PoorResponseRescue [stage1]: SMBdel -> ${decimals(boosted, 2)}")
+                    carePortalNote("PRR1")
                     aapsLogger.debug(LTag.APS, "Poor response stage 1 ratio -> $boosted")
                 }
             } else if (stage == 2) {
-                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max))
+                val stage2Ratio = stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max)
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, stage2Ratio)
                 startBrakeTarget(now, rescueTargetMgdl(targetBg), "AutoISF: poor response 2", 30)
                 escalateToStuckHighTierC(now)
                 runMarks.mark(RunMark.POOR_RESPONSE_2, now)
+                sendAutoSms("PoorResponseRescue [stage2]: SMBdel -> ${decimals(stage2Ratio, 2)}")
+                carePortalNote("PRR2")
                 aapsLogger.debug(LTag.APS, "Poor response stage 2")
             }
         }
@@ -2274,6 +2375,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             escalateToStuckHighTierC(now)
             runMarks.mark(RunMark.UNEXPLAINED_HIGH, now)
+            sendAutoSms("UnexplainedHighTierC: g=${decimals(bg / 18.0182, 1)} high 2h+, no meal/UAM seen -> TierC")
+            carePortalNote("UnHTC")
             aapsLogger.debug(LTag.APS, "Unexplained high tier C")
         }
         revertStuckHighTierC(now, bg)
@@ -2299,6 +2402,8 @@ open class OpenAPSAutoISFPlugin(
                 store.setState("Profile", "C100")
             }
             runMarks.mark(RunMark.OFF_HIGH, now)
+            sendAutoSms("OffHighProf [b$offHigh]: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("OffP-$offHigh")
             aapsLogger.debug(LTag.APS, "OffHighProf block $offHigh")
         }
     }
@@ -2345,6 +2450,7 @@ open class OpenAPSAutoISFPlugin(
         if (switchedTo.isNotBlank()) switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")
         preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, true)
         keepSteroidsOff()
+        carePortalNote("STCOn")
         aapsLogger.debug(LTag.APS, "Stuck high tier C on")
     }
 
@@ -2379,6 +2485,8 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, false)
         preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, "")
         preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, "")
+        sendAutoSms("StuckHighTierC off: BGL ${decimals(bg / 18.0182, 1)}")
+        carePortalNote("STCOf")
         aapsLogger.debug(LTag.APS, "Stuck high tier C off")
     }
 
@@ -2402,7 +2510,10 @@ open class OpenAPSAutoISFPlugin(
         ) {
             switchToStandardFor(safety, 0, now, "AutoISF: battery 1%")
             runMarks.mark(RunMark.BATTERY_1, now)
-            aapsLogger.debug(LTag.APS, "Battery 1% -> $safety (phone alert not sent)")
+            phoneAlert("Batt1%")
+            sendAutoSms("LowBattery")
+            sendAutoSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)
+            carePortalNote("Bt<1%")
         }
         if (batteryOver1ShouldFire(
                 ready = runMarks.ready(RunMark.BATTERY_OVER_1, 5, now),
@@ -2415,7 +2526,8 @@ open class OpenAPSAutoISFPlugin(
             val store = states()
             if (preferences.get(BooleanKey.AutomationStatesEnabled) && store.hasStateValues("Profile")) store.setState("Profile", "AllOK")
             runMarks.mark(RunMark.BATTERY_OVER_1, now)
-            aapsLogger.debug(LTag.APS, "Battery over 1% -> standard (SMS not sent)")
+            sendAutoSms("AllOK Batt")
+            carePortalNote("bat>1")
         }
         if (runMarks.ready(RunMark.PROFILE_ROLE_SANITY, 360, now)) {
             val profiles = profileRepository.profile.value
@@ -2424,7 +2536,10 @@ open class OpenAPSAutoISFPlugin(
                 lowFound = profiles?.getSpecificProfile(preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()) != null,
                 safetyFound = profiles?.getSpecificProfile(safety) != null,
             )
-            if (missing.isNotEmpty()) aapsLogger.debug(LTag.APS, "Profile role missing: $missing (phone alert not sent)")
+            if (missing.isNotEmpty()) {
+                phoneNote("ProfileRole: ${missing.joinToString(", ")} profile(s) not found -- check Settings")
+                carePortalNote("ProfRoleMissing")
+            }
             runMarks.mark(RunMark.PROFILE_ROLE_SANITY, now)
         }
         val bglSince = heldSince(now, bg > 216.2, preferences.get(LongNonKey.ApsAutoIsfBatchBgl12Since))
@@ -2459,6 +2574,18 @@ open class OpenAPSAutoISFPlugin(
                 }
             }
             BatchChoice.NONE -> Unit
+        }
+        val hypoStore = states()
+        val hypoStatesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
+        if (alarmHypoRoleShouldRevert(
+                statesOn = hypoStatesOn,
+                alarmRecent = hypoStore.inState("AlarmHypo", "AlarmRecent"),
+                mjHasValues = hypoStore.hasStateValues("MJ"),
+                noMjRemains = hypoStore.inState("MJ", "NOMJremains"),
+            ) && resetToRung(now, 0, runMarks.ready(RunMark.ALARM_HYPO_ROLE_REVERT, 30, now))
+        ) {
+            runMarks.mark(RunMark.ALARM_HYPO_ROLE_REVERT, now)
+            aapsLogger.debug(LTag.APS, "Alarm hypo role revert to tier A")
         }
         if (!runMarks.ready(RunMark.LOW_BG_TIER_A_SCAN, 5, now)) return
         runMarks.mark(RunMark.LOW_BG_TIER_A_SCAN, now)
@@ -2518,6 +2645,7 @@ open class OpenAPSAutoISFPlugin(
         }
         if (!wrote) return false
         runMarks.mark(RunMark.PROFILE_BATCH_STEP, now)
+        carePortalNote(if (up) "BtchUp" else "BtchDn")
         aapsLogger.debug(LTag.APS, "Profile batch step ${if (up) "up" else "down"}")
         return true
     }
@@ -2582,7 +2710,8 @@ open class OpenAPSAutoISFPlugin(
             writeProfilePercent(100, 0, "AutoISF: TT 5.7 $full")
             noRecent50()
             runMarks.mark(RunMark.TT57_REVERSAL, now)
-            aapsLogger.debug(LTag.APS, "TT 5.7 ended $full (SMS not sent)")
+            sendAutoSms("TT 5.7 ended [$full]: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("TToff-$full")
         } else {
             val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val mild = tt57MildConfirmed(
@@ -2614,7 +2743,13 @@ open class OpenAPSAutoISFPlugin(
             if (light != null) {
                 cancel("AutoISF: TT 5.7 $light")
                 runMarks.mark(RunMark.TT57_REVERSAL, now)
-                aapsLogger.debug(LTag.APS, "TT 5.7 ended $light (SMS not sent)")
+                val lightName = when (light) {
+                    "N2" -> "TT5.8New2"
+                    "N3" -> "TT5.8New3"
+                    else -> "TT5.7MildOff"
+                }
+                sendAutoSms(lightName)
+                carePortalNote("TToff-$light")
             }
         }
         val activity = activityTtExit(
@@ -2628,7 +2763,8 @@ open class OpenAPSAutoISFPlugin(
         if (activity != null) {
             cancel("AutoISF: activity TT $activity")
             runMarks.mark(RunMark.ACTIVITY_TT_REVERSAL, now)
-            aapsLogger.debug(LTag.APS, "Activity TT ended $activity (SMS not sent)")
+            sendAutoSms(if (activity == "1") "TT6.0New" else "TT6.0New2")
+            carePortalNote(if (activity == "1") "ActTToff1" else "ActTToff2")
         }
         if (t80OffShouldFire(
                 ready = runMarks.ready(RunMark.T80_OFF, 5, now),
@@ -2643,7 +2779,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             cancel("AutoISF: TT 8.0 off")
             runMarks.mark(RunMark.T80_OFF, now)
-            aapsLogger.debug(LTag.APS, "TT 8.0 ended (SMS not sent)")
+            sendAutoSms("TT8.0lf")
+            carePortalNote("TT8.0off")
         }
         if (carbsStop1ShouldFire(
                 ready = runMarks.ready(RunMark.CARBS_STOP_TT1, 5, now),
@@ -2658,7 +2795,8 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
             writeProfilePercent(100, 0, "AutoISF: carbs stop TT 4.4")
             runMarks.mark(RunMark.CARBS_STOP_TT1, now)
-            aapsLogger.debug(LTag.APS, "Carbs stop TT 4.4 (SMS not sent)")
+            sendAutoSms("carbsStopTT1: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)} iob=${decimals(iob, 2)}")
+            carePortalNote("Coff4")
         }
         val active = persistenceLayer.getTemporaryTargetActiveAt(now)
         val ownMild = active != null && active.timestamp == preferences.get(LongNonKey.ApsAutoIsfLastBmildTtAt)
@@ -2678,7 +2816,8 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
             noRecent50()
             runMarks.mark(RunMark.CARBS_STOP_TT57, now)
-            aapsLogger.debug(LTag.APS, "Carbs stop TT 5.7 block $stop57 (SMS not sent)")
+            sendAutoSms("CarbsStopTT [b$stop57]: g=${decimals(bg / 18.016, 1)} tt=${decimals((active?.lowTarget ?: 0.0) / 18.016, 1)}")
+            carePortalNote("Coff2-$stop57")
         }
         val th = carbsThOffBlock(
             ready = runMarks.ready(RunMark.CARBS_TH_OFF, 5, now),
@@ -2700,12 +2839,29 @@ open class OpenAPSAutoISFPlugin(
             restoreSmbBaselineUnlessBoosted()
             noRecent50()
             runMarks.mark(RunMark.CARBS_TH_OFF, now)
+            sendAutoSms("CarbsTHoff [b$th]: g=${decimals(bg / 18.016, 1)} iobTH=${preferences.get(IntKey.ApsAutoIsfIobThPercent)}")
+            carePortalNote("COff1-$th")
             aapsLogger.debug(LTag.APS, "Carbs TH off $th")
         }
     }
 
-    // Reminders only. Phone alerts and SMS are not sent. A missing sensor age counts as 0 hours.
-    private suspend fun applySensorNotes(now: Long) {
+    // Reminders. A missing sensor age counts as 0 hours.
+    private suspend fun applySensorNotes(now: Long, bg: Double, delta: Double, shortDelta: Double) {
+        val liveUkf = ukfRawNow(now).glucose
+        val liveHigh = liveUkf != null && liveUkf > 216.2
+        if (liveHigh) {
+            preferences.put(LongNonKey.ApsAutoIsfLibreOver12Ts, now)
+        } else if (libreOver12ShouldScan(
+                liveHigh = false,
+                existingTs = preferences.get(LongNonKey.ApsAutoIsfLibreOver12Ts),
+                now = now,
+                ready = runMarks.ready(RunMark.LIBRE_OVER_12, 30, now),
+            )
+        ) {
+            val hit = libreOver12Hit(now)
+            if (hit != null) preferences.put(LongNonKey.ApsAutoIsfLibreOver12Ts, hit)
+            runMarks.mark(RunMark.LIBRE_OVER_12, now)
+        }
         val livePump = activePlugin.activePump !is VirtualPump
         val sensor = hoursSinceSensor(now) ?: 0.0
         val pod = hoursSincePod(now)
@@ -2717,7 +2873,8 @@ open class OpenAPSAutoISFPlugin(
         )
         if (soak != null) {
             runMarks.mark(RunMark.PRESOAK_SENSOR, now)
-            aapsLogger.debug(LTag.APS, "Pre-soak sensor $soak days (phone alert not sent)")
+            sendAutoSms("_____SOAK")
+            phoneAlert("PreSoak24hrs")
         }
         if (sensorHourHit(
                 ready = runMarks.ready(RunMark.SENSOR_S1, 15, now),
@@ -2729,7 +2886,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.SENSOR_S1, now)
-            aapsLogger.debug(LTag.APS, "Sensor at 14.9 days (phone alert not sent)")
+            phoneAlert("_____S1hr")
+            sendAutoSms("SENSOR at 14.9 days ? overlap")
         }
         if (sensorHourHit(
                 ready = runMarks.ready(RunMark.SENSOR_S2, 15, now),
@@ -2741,7 +2899,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.SENSOR_S2, now)
-            aapsLogger.debug(LTag.APS, "Sensor at 14 days 22 hours (phone alert not sent)")
+            phoneAlert("_____S2hr")
+            sendAutoSms("SENSOR at 14 days 22 hours due")
         }
         val sensorDays = hoursSinceSensor(now)?.div(24.0)
         if (sensorAgeShouldTurnOff(
@@ -2754,8 +2913,377 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched, true)
             if (runMarks.ready(RunMark.SENSOR_AGE_AUTO_OFF, 60, now)) {
                 runMarks.mark(RunMark.SENSOR_AGE_AUTO_OFF, now)
-                aapsLogger.debug(LTag.APS, "Sensor age code off (SMS not sent)")
+                sendAutoSms(
+                    "SensorAgeCode: OFF " +
+                        "(pod=${pod?.let { decimals(it, 1) } ?: "--"}h " +
+                        "sensorDays=${sensorDays?.let { decimals(it, 2) } ?: "--"})"
+                )
+                carePortalNote("SaAutoOff")
             }
+        } else if (sensorAgeShouldTurnOn(
+                codeEnabled = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled),
+                latched = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched),
+                podHours = pod,
+                sensorDays = sensorDays,
+            )
+        ) {
+            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, true)
+            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched, false)
+            if (runMarks.ready(RunMark.SENSOR_AGE_AUTO_ON, 60, now)) {
+                runMarks.mark(RunMark.SENSOR_AGE_AUTO_ON, now)
+                sendAutoSms(
+                    "SensorAgeCode: ON " +
+                        "(pod=${pod?.let { decimals(it, 1) } ?: "--"}h " +
+                        "sensorDays=${sensorDays?.let { decimals(it, 2) } ?: "--"})"
+                )
+                carePortalNote("SaAutoOn")
+            }
+        }
+        applyOldSensorSlope(now, bg, delta, shortDelta, sensorDays, pod)
+    }
+
+    // Newest smoothed raw over 12.0 mmol in the last 48 hours. Empty when the smoother drops a point.
+    private suspend fun libreOver12Hit(now: Long): Long? {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 48 * 3_600_000L, now, ascending = false)
+            .filter { (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return null
+        val smoothed = displayRawSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        if (smoothed.size != readings.size) return null
+        val index = smoothed.indexOfFirst { it > 216.2 }
+        return if (index < 0) null else readings[index].timestamp
+    }
+
+    // Writes the Libre slope and offset. This app does not read those values back into the glucose yet.
+    private fun applyOldSensorSlope(
+        now: Long,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        sensorDays: Double?,
+        podHours: Double?,
+    ) {
+        val slopeBase = preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)
+        val offsetBase = preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)
+        val currentSlope = preferences.get(DoubleNonKey.FslCalSlope)
+        val currentOffset = preferences.get(DoubleNonKey.FslCalOffset)
+        val active = preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjActive)
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)) {
+            if (active || slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
+                if (slopeRestoreDeferred(bg, delta, shortDelta)) {
+                    aapsLogger.debug(LTag.APS, "Sensor age slope restore deferred")
+                } else {
+                    preferences.put(DoubleNonKey.FslCalSlope, slopeBase)
+                    preferences.put(DoubleNonKey.FslCalOffset, offsetBase)
+                    preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, false)
+                    aapsLogger.debug(LTag.APS, "Sensor age slope restored")
+                }
+            }
+            return
+        }
+        val recentHigh = preferences.get(LongNonKey.ApsAutoIsfLibreOver12Ts).let { ts ->
+            ts != 0L && now - ts <= 24 * 3_600_000L
+        }
+        val tier = oldSensorTier(sensorDays, podHours, slopeBase, offsetBase)
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)) return
+        if (tier != null && recentHigh) {
+            if (!active) {
+                preferences.put(DoubleNonKey.ApsAutoIsfFslCalSlopeNormal, currentSlope)
+                preferences.put(DoubleNonKey.ApsAutoIsfFslCalOffsetNormal, currentOffset)
+                preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, true)
+            }
+            if (slopesDiffer(currentSlope, tier.slope) || slopesDiffer(currentOffset, tier.offset)) {
+                preferences.put(DoubleNonKey.FslCalSlope, tier.slope)
+                preferences.put(DoubleNonKey.FslCalOffset, tier.offset)
+                aapsLogger.debug(LTag.APS, "Old sensor tier ${tier.name}")
+            }
+        } else {
+            if (slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
+                preferences.put(DoubleNonKey.FslCalSlope, slopeBase)
+                preferences.put(DoubleNonKey.FslCalOffset, offsetBase)
+            }
+            preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, false)
+        }
+    }
+
+    // A temp target near 5.00 mmol is a remote switch, not a real target. Cancel it before the
+    // bolus boosts so it does not block them this cycle. Returns true when a target was cancelled.
+    private suspend fun applyRemoteToggles(now: Long): Boolean {
+        val tt = persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget ?: return false
+        val code = remoteToggleCode(tt) ?: return false
+        val mark = when (code) {
+            RemoteToggleCode.SENSOR_AGE -> RunMark.SENSOR_AGE_TOGGLE
+            RemoteToggleCode.BOOST -> RunMark.BOOST_TOGGLE
+            RemoteToggleCode.SMB_DOWN -> RunMark.SMB_DELIVERY_DOWN
+            RemoteToggleCode.SMB_UP -> RunMark.SMB_DELIVERY_UP
+            RemoteToggleCode.PP_DOWN -> RunMark.PP_WEIGHT_DOWN
+            RemoteToggleCode.PP_UP -> RunMark.PP_WEIGHT_UP
+            RemoteToggleCode.PP_HIGH_DOWN -> RunMark.PP_WEIGHT_HIGH_DOWN
+            RemoteToggleCode.PP_HIGH_UP -> RunMark.PP_WEIGHT_HIGH_UP
+            RemoteToggleCode.ACCE_DOWN -> RunMark.ACCE_WEIGHT_DOWN
+            RemoteToggleCode.ACCE_UP -> RunMark.ACCE_WEIGHT_UP
+            RemoteToggleCode.ACCE_HIGH_DOWN -> RunMark.ACCE_WEIGHT_HIGH_DOWN
+            RemoteToggleCode.ACCE_HIGH_UP -> RunMark.ACCE_WEIGHT_HIGH_UP
+            RemoteToggleCode.HIGH_ISF_DOWN -> RunMark.HIGH_ISF_DOWN
+            RemoteToggleCode.HIGH_ISF_UP -> RunMark.HIGH_ISF_UP
+            RemoteToggleCode.MAX_LOW_DOWN -> RunMark.MAX_LOW_DOWN
+            RemoteToggleCode.MAX_LOW_UP -> RunMark.MAX_LOW_UP
+            RemoteToggleCode.MAX_DOWN -> RunMark.MAX_DOWN
+            RemoteToggleCode.MAX_UP -> RunMark.MAX_UP
+            RemoteToggleCode.TOD_0002_DOWN -> RunMark.TOD_0002_DOWN
+            RemoteToggleCode.TOD_0002_UP -> RunMark.TOD_0002_UP
+            RemoteToggleCode.TOD_0204_DOWN -> RunMark.TOD_0204_DOWN
+            RemoteToggleCode.TOD_0204_UP -> RunMark.TOD_0204_UP
+            RemoteToggleCode.TOD_0406_DOWN -> RunMark.TOD_0406_DOWN
+            RemoteToggleCode.TOD_0406_UP -> RunMark.TOD_0406_UP
+        }
+        if (!runMarks.ready(mark, 2, now)) return false
+        applyToggleAction(code)
+        persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+            timestamp = now,
+            action = Action.CANCEL_TT,
+            source = Sources.Automation,
+            note = "AutoISF: $mark",
+            listValues = emptyList(),
+        )
+        runMarks.mark(mark, now)
+        return true
+    }
+
+    // A double tap on the IOB chip. Same change as the matching temp target, with no target and no wait.
+    private fun applyDirectListCode(mmol: Double) {
+        if (config.AAPSCLIENT) return
+        val code = remoteToggleCode(mmol * Constants.MMOLL_TO_MGDL) ?: return
+        applyToggleAction(code)
+    }
+
+    private fun applyToggleAction(code: RemoteToggleCode) {
+        when (code) {
+            RemoteToggleCode.SENSOR_AGE -> {
+                val newState = !preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)
+                preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled, newState)
+                sendAutoSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}")
+                carePortalNote("STg${if (newState) "On" else "Off"}")
+            }
+            RemoteToggleCode.BOOST -> {
+                val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
+                preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
+                sendAutoSms("BoostToggle: ${if (newState) "ON" else "OFF"}")
+                carePortalNote("BTg${if (newState) "On" else "Off"}")
+            }
+            RemoteToggleCode.SMB_DOWN -> {
+                val baseline = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline), 0.1)
+                val mild = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio), 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, baseline)
+                preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, mild)
+                sendAutoSms("SmbDeliveryDown: baseline=${decimals(baseline, 2)} mildBoost=${decimals(mild, 2)}")
+                carePortalNote(compactSettingNote("SB", baseline, 2, omitLeadingZero = true))
+                carePortalNote(compactSettingNote("SM", mild, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.SMB_UP -> {
+                val baseline = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline), 0.5)
+                val mild = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio), 1.0)
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, baseline)
+                preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, mild)
+                sendAutoSms("SmbDeliveryUp: baseline=${decimals(baseline, 2)} mildBoost=${decimals(mild, 2)}")
+                carePortalNote(compactSettingNote("SB", baseline, 2, omitLeadingZero = true))
+                carePortalNote(compactSettingNote("SM", mild, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.PP_DOWN -> {
+                val current = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+                val live = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+                val next = nudgeDown(current, 0.0)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, next)
+                if (liveMatchesBaseline(live, current)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, nudgeDown(live, 0.0))
+                sendAutoSms("PpWeightDown: ppISFwt_orig=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("PP", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.PP_UP -> {
+                val current = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+                val live = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+                val next = nudgeUp(current, 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, next)
+                if (liveMatchesBaseline(live, current)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, nudgeUp(live, 0.15))
+                sendAutoSms("PpWeightUp: ppISFwt_orig=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("PP", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.PP_HIGH_DOWN -> {
+                val next = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh), 0.0)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, next)
+                sendAutoSms("PpWeightHighDown: ppISFwt_high=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("PH", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.PP_HIGH_UP -> {
+                val next = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh), 0.15)
+                preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, next)
+                sendAutoSms("PpWeightHighUp: ppISFwt_high=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("PH", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.ACCE_DOWN -> {
+                val current = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+                val live = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+                val next = nudgeDown(current, 0.55, 0.05)
+                preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, next)
+                if (liveMatchesBaseline(live, current)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, nudgeDown(live, 0.55, 0.05))
+                sendAutoSms("AcceWeightDown: acceISFwt_orig=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("AC", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.ACCE_UP -> {
+                val current = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+                val live = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+                val next = nudgeUp(current, 1.0, 0.05)
+                preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, next)
+                if (liveMatchesBaseline(live, current)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, nudgeUp(live, 1.0, 0.05))
+                sendAutoSms("AcceWeightUp: acceISFwt_orig=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("AC", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.ACCE_HIGH_DOWN -> {
+                val next = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh), 0.0)
+                preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, next)
+                sendAutoSms("AcceWeightHighDown: acceISFwt_high=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("AH", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.ACCE_HIGH_UP -> {
+                val next = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh), 1.0)
+                preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, next)
+                sendAutoSms("AcceWeightHighUp: acceISFwt_high=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("AH", next, 2, omitLeadingZero = true))
+            }
+            RemoteToggleCode.HIGH_ISF_DOWN -> {
+                val next = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight), 0.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, next)
+                sendAutoSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("HI", next, 1))
+            }
+            RemoteToggleCode.HIGH_ISF_UP -> {
+                val next = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight), 2.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, next)
+                sendAutoSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("HI", next, 1))
+            }
+            RemoteToggleCode.MAX_LOW_DOWN -> {
+                val next = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfMaxLow), 1.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfMaxLow, next)
+                sendAutoSms("AutoIsfMaxLowDown: autoISF_max_low=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("ML", next, 1))
+            }
+            RemoteToggleCode.MAX_LOW_UP -> {
+                val next = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfMaxLow), 3.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfMaxLow, next)
+                sendAutoSms("AutoIsfMaxLowUp: autoISF_max_low=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("ML", next, 1))
+            }
+            RemoteToggleCode.MAX_DOWN -> {
+                val next = nudgeDown(preferences.get(DoubleKey.ApsAutoIsfMax), 1.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfMax, next)
+                sendAutoSms("AutoIsfMaxNormalDown: autoISF_max=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("MN", next, 1))
+            }
+            RemoteToggleCode.MAX_UP -> {
+                val next = nudgeUp(preferences.get(DoubleKey.ApsAutoIsfMax), 3.0, 0.1)
+                preferences.put(DoubleKey.ApsAutoIsfMax, next)
+                sendAutoSms("AutoIsfMaxNormalUp: autoISF_max=${decimals(next, 2)}")
+                carePortalNote(compactSettingNote("MN", next, 1))
+            }
+            RemoteToggleCode.TOD_0002_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0002, down = true, "TodOffset0002Down", "tod_offset_0002")
+            RemoteToggleCode.TOD_0002_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0002, down = false, "TodOffset0002Up", "tod_offset_0002")
+            RemoteToggleCode.TOD_0204_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0204, down = true, "TodOffset0204Down", "tod_offset_0204")
+            RemoteToggleCode.TOD_0204_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0204, down = false, "TodOffset0204Up", "tod_offset_0204")
+            RemoteToggleCode.TOD_0406_DOWN -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0406, down = true, "TodOffset0406Down", "tod_offset_0406")
+            RemoteToggleCode.TOD_0406_UP -> nudgeTodOffset(DoubleKey.ApsAutoIsfTodOffset0406, down = false, "TodOffset0406Up", "tod_offset_0406")
+        }
+    }
+
+    private fun nudgeTodOffset(key: DoubleKey, down: Boolean, smsName: String, smsField: String) {
+        val current = preferences.get(key)
+        val next = if (down) nudgeDown(current, -2.0, 0.1) else nudgeUp(current, 2.0, 0.1)
+        preferences.put(key, next)
+        sendAutoSms("$smsName: $smsField=${decimals(next, 2)}")
+        carePortalNote(todOffsetNote(next))
+    }
+
+    private var lastCareNoteAt = 0L
+
+    private fun sendAutoSms(text: String) {
+        smsCommunicator.sendNotificationToAllNumbers(text)
+        aapsLogger.debug(LTag.APS, text)
+    }
+
+    private fun sendAutoSmsToNumbers(text: String, key: StringKey) {
+        preferences.get(key).split(";")
+            .map { it.replace("\\s+".toRegex(), "") }
+            .filter { it.isNotEmpty() }
+            .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+    }
+
+    private suspend fun carePortalNote(text: String) {
+        var ts = dateUtil.now()
+        if (ts <= lastCareNoteAt) ts = lastCareNoteAt + 1
+        lastCareNoteAt = ts
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = ts,
+                type = TE.Type.NOTE,
+                note = text,
+                duration = 60_000L,
+                glucoseUnit = profileFunction.getUnits(),
+            ),
+            timestamp = ts,
+            action = Action.CAREPORTAL,
+            source = Sources.Automation,
+            note = text,
+            listValues = listOf(ValueWithUnit.SimpleString(text)),
+        )
+    }
+
+    private fun phoneAlert(text: String) {
+        notificationManager.post(id = NotificationId.AUTOISF_ALERT, text = text)
+        aapsLogger.debug(LTag.APS, text)
+    }
+
+    private fun phoneNote(text: String) {
+        notificationManager.post(id = NotificationId.AUTOISF_NOTE, text = text)
+        aapsLogger.debug(LTag.APS, text)
+    }
+
+    private fun decimals(value: Double, places: Int): String {
+        var scale = 1.0
+        repeat(places) { scale *= 10.0 }
+        val scaled = round(value * scale).toLong()
+        val sign = if (scaled < 0) "-" else ""
+        val absScaled = abs(scaled)
+        val factor = scale.toLong()
+        val whole = absScaled / factor
+        val frac = (absScaled % factor).toString().padStart(places, '0')
+        return "$sign$whole.$frac"
+    }
+
+    // Before the bolus boosts, so a temp target set later in this loop keeps its own ratio.
+    private suspend fun applyOldPodBoost(now: Long, bg: Double, delta: Double, maxIob: Double, tempTargetSet: Boolean) {
+        val ukfGlucose = ukfRawNow(now).glucose
+        val highNow = (ukfGlucose != null && ukfGlucose > 198.2) || bg > 180.2
+        val since = oldPodHighSince(now, highNow, preferences.get(LongNonKey.ApsAutoIsfOldPodHighSinceTs))
+        preferences.put(LongNonKey.ApsAutoIsfOldPodHighSinceTs, since)
+        val podHours = hoursSincePod(now)
+        val active = preferences.get(BooleanNonKey.ApsAutoIsfOldPodInsReqBoostActive)
+        if (oldPodBoostShouldStart(active, podHours, since, now, lastCycleInsulinReq, maxIob)) {
+            preferences.put(BooleanNonKey.ApsAutoIsfOldPodInsReqBoostActive, true)
+            sendAutoSms(
+                "OldPodInsReqBoost: cannula ${decimals(podHours ?: 0.0, 1)}h " +
+                    "insulinReq ${decimals(lastCycleInsulinReq ?: 0.0, 2)} -> SMB x1.3, TierC"
+            )
+            carePortalNote("OldPodBst")
+        } else if (oldPodBoostShouldStop(active, bg, delta, podHours)) {
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+            preferences.put(BooleanNonKey.ApsAutoIsfOldPodInsReqBoostActive, false)
+            sendAutoSms("OldPodInsReqBoost off: BGL ${decimals(bg / 18.016, 1)}")
+            carePortalNote("OldPodBstOff")
+        }
+        if (preferences.get(BooleanNonKey.ApsAutoIsfOldPodInsReqBoostActive) && !tempTargetSet) {
+            val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, baseline * 1.3)
+            val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim()
+            if (standard110.isNotBlank()) switchToStandardFor(standard110, 0, now, "AutoISF: old pod boost")
         }
     }
 
@@ -2784,6 +3312,7 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
         preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
         runMarks.mark(RunMark.STEPS_STEROIDS_OFF, now)
+        sendAutoSms("Steps Steroids OFF")
         aapsLogger.debug(LTag.APS, "Steps steroids off")
     }
 
@@ -2827,6 +3356,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
             runMarks.mark(RunMark.ACCE_UP, now)
+            sendAutoSms("AcceUp")
+            carePortalNote("Acce")
             aapsLogger.debug(LTag.APS, "AcceUp to high weight")
         }
         if (exerciseLimitShouldFire(
@@ -2837,7 +3368,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.EXERCISE_LIMIT, now)
-            aapsLogger.debug(LTag.APS, "Exercise limit Acce (phone alert not sent)")
+            sendAutoSms("Exercise limit Acce")
+            phoneAlert("_____ST601k")
         }
         val carbsHeld = cobHasStayedUp(now, cob)
         val cap = eveningIobCap(
@@ -2848,8 +3380,11 @@ open class OpenAPSAutoISFPlugin(
             cobSustained = carbsHeld,
         )
         if (cap != null) {
+            val prevEve = preferences.get(IntKey.ApsAutoIsfIobThPercent)
             preferences.put(IntKey.ApsAutoIsfIobThPercent, cap)
             runMarks.mark(RunMark.EVENING_IOB_CEILING, now)
+            sendAutoSms("EveningIobCeiling: iobTH $prevEve -> $cap${if (carbsHeld) " (COB-relaxed)" else ""}")
+            carePortalNote(if (carbsHeld) "EvCapR" else "EvCap")
             aapsLogger.debug(LTag.APS, "Evening IOB ceiling -> $cap")
         }
         val nightCap = nightIobCeiling(
@@ -2864,6 +3399,8 @@ open class OpenAPSAutoISFPlugin(
             if (nightCap.iob != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, nightCap.iob)
             if (nightCap.acce != null) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, nightCap.acce)
             runMarks.mark(RunMark.NIGHT_IOB_CEILING, now)
+            sendAutoSms("NightIobCeiling: iobTH -> ${nightCap.iob ?: "unchanged"} acce -> ${nightCap.acce ?: "unchanged"}${if (carbsHeld) " (COB-relaxed)" else ""}")
+            carePortalNote(if (carbsHeld) "NtCapR" else "NtCap")
             aapsLogger.debug(LTag.APS, "Night IOB ceiling iob=${nightCap.iob} acce=${nightCap.acce}")
         }
         if (stuckRisingShouldRequest(
@@ -2887,6 +3424,7 @@ open class OpenAPSAutoISFPlugin(
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
             runMarks.mark(RunMark.STUCK_RISING, now)
+            sendAutoSms("StuckRisingSlowly Acce")
             aapsLogger.debug(LTag.APS, "Stuck rising 4.2 mmol for 5 min (delayed-bolus stamp is not written yet)")
         }
         if (earlyDawnShouldFire(
@@ -2901,6 +3439,7 @@ open class OpenAPSAutoISFPlugin(
         ) {
             startBrakeTarget(now, 4.4 * 18.0, "AutoISF: early dawn 4.4", 5)
             runMarks.mark(RunMark.EARLY_DAWN, now)
+            sendAutoSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${decimals(bg / 18.016, 1)}")
             aapsLogger.debug(LTag.APS, "Early dawn 4.4 mmol for 5 min")
         }
         val running = profileFunction.getOriginalProfileName()
@@ -2928,6 +3467,7 @@ open class OpenAPSAutoISFPlugin(
                 switchToLowAtSharedTier(now, "AutoISF: evening low")
             }
             runMarks.mark(RunMark.EVENING_TH, now)
+            sendAutoSms("EveningTH CurrProf 50_0.45 Acce HP2=${if (hp == null) "--" else decimals(hp, 1)}")
             aapsLogger.debug(LTag.APS, "EveningTH block $evening")
         }
         if (twilightTh15ShouldFire(
@@ -2945,6 +3485,7 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
             switchToLowAtSharedTier(now, "AutoISF: twilight 15")
             runMarks.mark(RunMark.TWILIGHT_TH15, now)
+            sendAutoSms("TwilightTH15Acce0.50")
             aapsLogger.debug(LTag.APS, "TwilightTH15 acce 0.50 iobTH 15")
         }
         if (nightAcceShouldFire(
@@ -2967,6 +3508,7 @@ open class OpenAPSAutoISFPlugin(
             restoreSmbBaselineUnlessBoosted()
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
             runMarks.mark(RunMark.NIGHT_ACCE, now)
+            sendAutoSms("NightAcce_0.35TH22 HP2=${if (hp == null) "--" else decimals(hp, 1)}")
             aapsLogger.debug(LTag.APS, "NightAcce acce 0.35 iobTH 22 (settings export not written)")
         }
         val semi = semiTwilightBlock(
@@ -2988,6 +3530,8 @@ open class OpenAPSAutoISFPlugin(
         restoreSmbBaselineUnlessBoosted()
         preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
         runMarks.mark(RunMark.SEMI_TWILIGHT, now)
+        sendAutoSms("SemiTwilightAcce_0.50TH16")
+        carePortalNote("Semi")
         aapsLogger.debug(LTag.APS, "SemiTwilight block $semi")
     }
 
@@ -3187,7 +3731,7 @@ open class OpenAPSAutoISFPlugin(
     // PrepareSet50, GentleHypo, PP50Off, then Skittles. PP50Off runs before Skittles so a recovery
     // does not undo a Skittles target started in the same loop. Its mark closes 50SetRecent for 15 minutes.
     // 50SetRecent and 50pcMakes5.7 look at the profile percent from the start of the loop.
-    // ConnectPod only writes a log. The SMS is not sent.
+    // ConnectPod texts the allowed numbers and any extra ConnectPod numbers.
     private suspend fun applyHypo50(
         now: Long,
         minuteOfDay: Int,
@@ -3217,7 +3761,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.CONNECT_POD, now)
-            aapsLogger.debug(LTag.APS, "ConnectPod: no pump data for $minutesSinceConnection min")
+            sendAutoSms("ConnectPod")
+            sendAutoSmsToNumbers("ConnectPod", StringKey.SmsConnectPodNumbers)
         }
         val prepare = prepareSet50Block(
             ready = runMarks.ready(RunMark.PREPARE_SET50, 5, now),
@@ -3241,6 +3786,8 @@ open class OpenAPSAutoISFPlugin(
             }
             if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
             runMarks.mark(RunMark.PREPARE_SET50, now)
+            sendAutoSms("prepare Set50% [b$prepare]: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("Set50-$prepare")
             aapsLogger.debug(LTag.APS, "PrepareSet50 block $prepare")
         }
         val ukf = ukfRawNow(now)
@@ -3286,6 +3833,8 @@ open class OpenAPSAutoISFPlugin(
             }
             if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
             runMarks.mark(RunMark.PP50_OFF, now)
+            sendAutoSms("PP50.Off [b$pp50]: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("50ff-$pp50")
             aapsLogger.debug(LTag.APS, "PP50Off block $pp50")
         }
         val skittles = skittlesBlock(
@@ -3311,6 +3860,7 @@ open class OpenAPSAutoISFPlugin(
             }
             if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
             runMarks.mark(RunMark.SKITTLES_HYPO_RISK, now)
+            sendAutoSms("Skittles $skittles: hypo risk — TT 5.7 set")
             aapsLogger.debug(LTag.APS, "Skittles block $skittles")
         }
         if (fiftySetRecentShouldFire(
@@ -3322,6 +3872,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
             runMarks.mark(RunMark.SET50_RECENT, now)
+            sendAutoSms("50%Recently")
+            carePortalNote("50Rec")
             aapsLogger.debug(LTag.APS, "50SetRecent")
         }
         if (fiftyPcMakes57ShouldFire(
@@ -3334,13 +3886,15 @@ open class OpenAPSAutoISFPlugin(
         ) {
             startBrakeTarget(now, 102.7, "AutoISF: 50% makes 5.7", 150)
             runMarks.mark(RunMark.FIFTY_PC_MAKES_57, now)
+            sendAutoSms("50pc makes5.7: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}")
+            carePortalNote("50pcTT")
             aapsLogger.debug(LTag.APS, "50pc makes 5.7")
         }
     }
 
     // Shower12 drops the IOB threshold to 12% before Usual2, so Usual2 can still raise it in the same loop.
     // Pod2 and Pod1 run before a pod-change 130% switch, so they do not undo that switch.
-    // The phone alert and SMS are not sent. Pod2 still sets Profile to PP130 and switches to Standard.
+    // Pod2 sets Profile to PP130, switches to Standard, and sends the 78-hour text.
     // Bolus2 stays off. OldPod2 stays off.
     private suspend fun applyShowerAndPodAge(
         now: Long,
@@ -3374,6 +3928,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
             runMarks.mark(RunMark.SHOWER12, now)
+            sendAutoSms("Shower12: g=${decimals(bg / 18.016, 1)} iobTH=${preferences.get(IntKey.ApsAutoIsfIobThPercent)}")
+            carePortalNote("Shwr12")
             aapsLogger.debug(LTag.APS, "Shower12 iobTH -> 12")
         }
         if (pod2ShouldFire(
@@ -3386,7 +3942,9 @@ open class OpenAPSAutoISFPlugin(
             if (statesOn && store.hasStateValues("Profile")) store.setState("Profile", "PP130")
             switchToStandardAtSharedTier(now)
             runMarks.mark(RunMark.POD2, now)
-            aapsLogger.debug(LTag.APS, "Pod2 at 78 hours")
+            phoneAlert("_____POD2")
+            sendAutoSms("POD 78 hours")
+            sendAutoSmsToNumbers("POD 78 hours", StringKey.SmsPod2Numbers)
         }
         if (pod1ShouldFire(
                 ready = runMarks.ready(RunMark.POD1, 10, now),
@@ -3396,7 +3954,8 @@ open class OpenAPSAutoISFPlugin(
             )
         ) {
             runMarks.mark(RunMark.POD1, now)
-            aapsLogger.debug(LTag.APS, "Pod1 at 79 hours")
+            phoneAlert("POD 79 h")
+            sendAutoSms("_____POD1hr")
         }
     }
 
@@ -3435,6 +3994,8 @@ open class OpenAPSAutoISFPlugin(
             if (writeProfilePercent(130, 60, "AutoISF: pod change 130%")) {
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 runMarks.mark(RunMark.POD_CHANGE_HIGH_PP130, now)
+                sendAutoSms("PodChangeHighPP130 Acce")
+                carePortalNote("Pod130")
                 aapsLogger.debug(LTag.APS, "Pod change 130% for 60 min")
             }
         }
@@ -3450,6 +4011,8 @@ open class OpenAPSAutoISFPlugin(
             if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
             switchToStandardAtSharedTier(now)
             runMarks.mark(RunMark.HIGH_PP130_OFF, now)
+            sendAutoSms("HighPP130Off")
+            carePortalNote("130Off")
             aapsLogger.debug(LTag.APS, "PP130 off -> standard at 100%")
         }
         val acceNow = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
@@ -3465,6 +4028,7 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
             switchToStandardAtSharedTier(now)
             runMarks.mark(RunMark.RECENT_POD_OFF, now)
+            sendAutoSms("RecentPodOff Acce")
             aapsLogger.debug(LTag.APS, "RecentPodOff -> accel normal, standard at 100%")
         }
         if (!recentPodShouldFire(
@@ -3489,6 +4053,8 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
         preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
         runMarks.mark(RunMark.RECENT_POD, now)
+        sendAutoSms("RecentPod Acce")
+        carePortalNote("RecPod")
         aapsLogger.debug(LTag.APS, "RecentPod 130% and 4.2 mmol for 5 min")
     }
 
@@ -3563,6 +4129,8 @@ open class OpenAPSAutoISFPlugin(
         ) {
             switchToStandardAtSharedTier(now)
             runMarks.mark(RunMark.HIGH_6_PP_OFF, now)
+            sendAutoSms("High6PPoff Acce")
+            carePortalNote("off120")
             aapsLogger.debug(LTag.APS, "High6PPoff -> standard at 100%")
             return
         }
@@ -3591,6 +4159,8 @@ open class OpenAPSAutoISFPlugin(
             if (switched) {
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                 runMarks.mark(RunMark.HIGH_6_PP, now)
+                sendAutoSms("High6PP Acce")
+                carePortalNote("P120")
                 aapsLogger.debug(LTag.APS, "High6PP 120% for 5 min")
             }
             return
@@ -3793,6 +4363,8 @@ open class OpenAPSAutoISFPlugin(
             return
         }
         runMarks.mark(RunMark.ACTIVITY_PROF_50, now)
+        sendAutoSms("ActivityProf50% Acce")
+        carePortalNote("Ac50")
         aapsLogger.debug(LTag.APS, "Activity profile 50 for 180 min")
     }
 
@@ -3858,6 +4430,8 @@ open class OpenAPSAutoISFPlugin(
         if (70 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
         else aapsLogger.debug(LTag.APS, "Activity off left the IOB threshold alone, 70 is above the baseline")
         runMarks.mark(RunMark.ACTIVITY_OFF, now)
+        sendAutoSms("Activity 70_0.70 0.35 Acce")
+        carePortalNote("ActOff")
         aapsLogger.debug(LTag.APS, "Activity off -> $standardName at 100%")
     }
 

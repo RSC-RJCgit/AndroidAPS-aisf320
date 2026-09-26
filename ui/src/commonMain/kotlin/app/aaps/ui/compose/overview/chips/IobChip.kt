@@ -34,6 +34,7 @@ internal fun IobChip(
     state: IobUiState,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    onDoubleClick: () -> Unit = {},
     showIcon: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -50,6 +51,7 @@ internal fun IobChip(
                 .combinedClickable(
                     onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
                     onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+                    onDoubleClick = onDoubleClick,
                 )
         ) {
             Row(

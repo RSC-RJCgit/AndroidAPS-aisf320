@@ -209,7 +209,14 @@ enum class NotificationId(
     // Work the plugin launched itself ended with an error. Separate from PLUGIN_START_FAILED because the
     // plugin did start - it is a polling loop or a queued command that died, so the text has to say
     // something else. Same reasons for allowMultiple.
-    PLUGIN_WORK_FAILED(URGENT, SYSTEM, allowMultiple = true);
+    PLUGIN_WORK_FAILED(URGENT, SYSTEM, allowMultiple = true),
+
+    // AutoISF phone alerts. Appended at the end so stored ordinals stay put.
+    // allowMultiple so a sensor reminder does not replace a battery alert.
+    AUTOISF_ALERT(URGENT, AUTOMATION, allowMultiple = true),
+
+    // AutoISF notes that are not alarms, such as a missing profile name.
+    AUTOISF_NOTE(NORMAL, AUTOMATION, allowMultiple = true);
 
     companion object {
 

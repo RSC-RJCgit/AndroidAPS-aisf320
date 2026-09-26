@@ -176,7 +176,7 @@ fun filterToRange(
 
 /**
  * Target point size for layout normalization across all synchronized graphs.
- * Must be >= the largest actual point size used in any graph (currently 22dp from IOB SMB/bolus markers).
+ * Must be >= the largest actual point size used in any graph (the 48dp bolus triangle on graph 0).
  *
  * Every graph includes an invisible normalizer line with this point size (via [createNormalizerLine]).
  * This ensures all charts have the same maxPointSize, which makes Vico compute identical:
@@ -185,7 +185,7 @@ fun filterToRange(
  *
  * Without this, each chart's different point sizes cause different layout, breaking pixel-based sync.
  */
-val NORMALIZER_POINT_SIZE: Dp = 22.dp
+val NORMALIZER_POINT_SIZE: Dp = 48.dp
 
 /**
  * Creates an invisible line with [NORMALIZER_POINT_SIZE] transparent points.
@@ -240,7 +240,8 @@ val BolusUnderLineShape: Shape = GenericShape { size, _ ->
     val cx = size.width / 2f
     val apexY = size.height / 2f + size.height * 0.06f
     val baseY = size.height * 0.98f
-    val baseHalf = size.width * 0.46f
+    // UK graph half-width is bolusSize and the height is 1.67 times that, so the base is about half this box.
+    val baseHalf = size.width * 0.25f
     moveTo(cx, apexY)
     lineTo(cx + baseHalf, baseY)
     lineTo(cx - baseHalf, baseY)

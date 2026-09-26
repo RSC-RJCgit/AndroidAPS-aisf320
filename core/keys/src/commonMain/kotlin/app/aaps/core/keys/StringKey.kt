@@ -158,6 +158,27 @@ enum class StringKey(
         summary = KeysStrings.smscommunicator_allowednumbers_summary,
         validator = StringValidator.multiPhone()
     ),
+    SmsBattAlertNumbers(
+        key = "smscommunicator_battalertnumbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_battalertnumbers,
+        summary = KeysStrings.smscommunicator_battalertnumbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
+    SmsPod2Numbers(
+        key = "smscommunicator_pod2numbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_pod2numbers,
+        summary = KeysStrings.smscommunicator_pod2numbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
+    SmsConnectPodNumbers(
+        key = "smscommunicator_connectpodnumbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_connectpodnumbers,
+        summary = KeysStrings.smscommunicator_connectpodnumbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
     SmsOtpPassword(
         key = "smscommunicator_otp_password",
         defaultValue = "",

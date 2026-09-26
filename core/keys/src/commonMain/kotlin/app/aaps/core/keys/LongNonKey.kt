@@ -56,6 +56,11 @@ enum class LongNonKey(
     // Epoch millis of the 5.0 mmol hold the mild boost just started. 0 means none. Local only.
     ApsAutoIsfLastBmildTtAt("autoisf_last_bmild_tt_at", 0L, exportable = false),
 
+    // Newest UKF raw over 12.0 mmol. 0 means none seen. Local only.
+    ApsAutoIsfLibreOver12Ts("autoisf_libre_over_12_ts", 0L, exportable = false),
+    // When an old pod's high glucose started. 0 means not high. Local only.
+    ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0L, exportable = false),
+
     // Server-modified time of the last secondary Nightscout page. 0 means the first download
     // still has to walk back 16 days. Local only: restoring it would skip treatments.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),

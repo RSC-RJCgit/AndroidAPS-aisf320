@@ -1036,6 +1036,7 @@ class DetermineBasalAutoISF(
         uamBoostScale: Double = 1.0,
         daytimeGateBypass: Boolean = false,
         recentLowBg: Double = 999.0,
+        todOffsetMgdl: Double = 0.0,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -2211,7 +2212,7 @@ class DetermineBasalAutoISF(
                 val carbAgeMin = if (meal_data.carbs > 0.0) round((systemTime - meal_data.lastCarbTime) / 60000.0, 2) else 363.0
                 val offset = targetOffset(
                     smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
-                    todOffsetMgdl = 0.0,
+                    todOffsetMgdl = todOffsetMgdl,
                     mildOffsetZero = mildOffsetZero,
                     tempTargetSet = profile.temptargetSet,
                     minBg = profile.min_bg,

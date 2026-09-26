@@ -1126,6 +1126,9 @@ class SmsCommunicatorPlugin(
         title = SyncStrings.smscommunicator,
         items = listOf(
             StringKey.SmsAllowedNumbers,
+            StringKey.SmsBattAlertNumbers,
+            StringKey.SmsPod2Numbers,
+            StringKey.SmsConnectPodNumbers,
             BooleanKey.SmsAllowRemoteCommands,
             IntKey.SmsRemoteBolusDistance,
             StringKey.SmsOtpPassword,
