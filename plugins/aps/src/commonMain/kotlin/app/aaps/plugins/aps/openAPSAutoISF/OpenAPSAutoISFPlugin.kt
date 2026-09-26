@@ -3051,13 +3051,13 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // A double tap on the IOB chip. Same change as the matching temp target, with no target and no wait.
-    private fun applyDirectListCode(mmol: Double) {
+    private suspend fun applyDirectListCode(mmol: Double) {
         if (config.AAPSCLIENT) return
         val code = remoteToggleCode(mmol * Constants.MMOLL_TO_MGDL) ?: return
         applyToggleAction(code)
     }
 
-    private fun applyToggleAction(code: RemoteToggleCode) {
+    private suspend fun applyToggleAction(code: RemoteToggleCode) {
         when (code) {
             RemoteToggleCode.SENSOR_AGE -> {
                 val newState = !preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)
@@ -3194,7 +3194,7 @@ open class OpenAPSAutoISFPlugin(
         }
     }
 
-    private fun nudgeTodOffset(key: DoubleKey, down: Boolean, smsName: String, smsField: String) {
+    private suspend fun nudgeTodOffset(key: DoubleKey, down: Boolean, smsName: String, smsField: String) {
         val current = preferences.get(key)
         val next = if (down) nudgeDown(current, -2.0, 0.1) else nudgeUp(current, 2.0, 0.1)
         preferences.put(key, next)
