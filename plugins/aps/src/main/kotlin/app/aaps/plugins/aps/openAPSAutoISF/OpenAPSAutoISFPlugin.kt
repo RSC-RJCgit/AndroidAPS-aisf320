@@ -3611,7 +3611,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // ~minutes ago could sit inside bg3's next 5-min iobChange5 window.
                 && readyToRun("BolusGivenMild", 5)
                 && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
-                && recentSteps60Minutes < 300
+                // 2026-09-26, per explicit request: the 60-min steps bar is dropped when the last 30 min were quiet
+                // (steps30 <= 100). 26 Sep Live 13:08-13:28: steps60 sat at 311 (a few minutes of walking, all of
+                // it before 13:08) with steps30 0-73, and this bar alone kept bg3 off for the whole 5.3->9 rise.
+                && (recentSteps60Minutes < 300 || recentSteps30Minutes <= 100)
                 // longAvgDelta > 0.4 mmol is the smoothed-trend confirmation for the normal
                 // iobChange5/d path. The delivery-suppressed/raw path must NOT wait on it: 1 Sep 2026
                 // 15:31 meal had rawD5 1.22-2.28 and rawD1 2.5+ from 15:32 with zero SMBs, but LDelta
@@ -5966,7 +5969,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         //     all -- exactly the same mechanism every other TT-setting automation in this file already
         //     uses (HighDaytimeBrake, BMild, etc.).
         //
-        // Shared IOB ceiling (0.30 * max_iob) on both branches: this automation only ever pushes toward
+        // Shared IOB ceiling (0.30 * max_iob until 2026-09-26, now 0.40 * max_iob -- see iobRoomLeft below) on both branches: this automation only ever pushes toward
         // MORE delivery (higher ratio, or a lower target widening insulinReq's gap), so it must not
         // fire once IOB is already substantial -- same caution as iobHighNoCob/the dura_ISF IOB taper
         // elsewhere in this file. By the time IOB reached ~4U in the 13 Sep episode, the original
@@ -5992,7 +5995,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // the old 9.0 bar -- so this automation stayed silent through exactly the window it exists
             // for, only engaging once BG happened to cross 9.0 a bit later in each episode.
             val highEnough = g >= 153.1 /* 8.5 mmol */
-            val iobRoomLeft = iob < 0.30 * maxIob
+            // 2026-09-26, per explicit request: ceiling 0.30 -> 0.40 * max_iob (StuckHighRescue only; PoorResponseRescue below
+            // keeps 0.30). 26 Sep Live: BG >= 8.5 from 13:34 and plateaued 10.0-10.1 from 13:55, but total IOB sat at 3.3-3.9
+            // (about 1.8 of it basal IOB from 5 U/h temp basals) against the old 2.85 ceiling, so this only fired at 14:19 when
+            // IOB fell to 2.81. At 9.5 max_iob the new ceiling is 3.8.
+            val iobRoomLeft = iob < 0.40 * maxIob
             val eligible = highEnough && iobRoomLeft && hp != null
 
             if (eligible && hp != null) {
@@ -6893,7 +6900,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // g <= 171.2 ceiling removed 2026-08-30, mirroring the real bg3 gate above.
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
                 && readyToRun("BolusGivenMild", 5) && movementOk
-                && recentSteps60Minutes < 300
+                && (recentSteps60Minutes < 300 || recentSteps30Minutes <= 100)   // mirrors bg3BasicCriteriaMet (2026-09-26)
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
             val rawDelta1FloorOkMild = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val mealLeftoverRise = g >= 108.1 && (mealData.mealCOB >= 4.0 || lastBolusMin < 180)

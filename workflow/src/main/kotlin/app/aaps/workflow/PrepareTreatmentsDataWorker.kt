@@ -325,7 +325,8 @@ class PrepareTreatmentsDataWorker(
         val windowStart = fromTime
         val windowEnd = data.overviewData.toTime
         val span = windowEnd - windowStart
-        if (span > 0L) {
+        // Settings switch (Overview), default off: when off no labels are built, so the row is not drawn.
+        if (span > 0L && preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) {
             val insulinTotals = DoubleArray(12)
             var t = windowStart
             while (t < windowEnd) {

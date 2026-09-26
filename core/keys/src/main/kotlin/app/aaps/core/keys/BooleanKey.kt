@@ -103,6 +103,8 @@ enum class BooleanKey(
     // Graph5ToggleTT remote TT-signal (OpenAPSAutoISFPlugin.kt, TT=5.142, same pattern as
     // ApsAutoIsfShowCarbModelCurve/Graph2ToggleTT above). See OverviewFragment.updateGraph().
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
+    // 2026-09-26, per explicit request: the row of 12 insulin-delivered totals on the IOB graph (default off).
+    ApsAutoIsfShowInsulinTotals("show_insulin_totals_row", false, defaultedBySM = true),
     // When graph5 is on: false (default, preserves prior behaviour) = show every series it always has
     // (BGL lines + insulin activity + all 3 carb-related lines + basal). true = BGL-only, skipping
     // addActivity/addCarbModelCurve/addUamCarbImpact/addCombinedCarbs -- see the gating in

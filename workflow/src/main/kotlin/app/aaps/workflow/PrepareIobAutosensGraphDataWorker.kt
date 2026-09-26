@@ -690,7 +690,10 @@ class PrepareIobAutosensGraphDataWorker(
             lastLabeledTimestamp = thisTimestamp
             true
         }
-        data.overviewData.activityPeakSeries = if (peakIndices.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
+        // 2026-09-26, per explicit request: the insulin-activity peak label is turned off (the activity line itself is unchanged).
+        // Flip to true to bring the labels back; the peak selection above is left intact.
+        val showActivityPeakLabels = false
+        data.overviewData.activityPeakSeries = if (showActivityPeakLabels && peakIndices.isNotEmpty() && data.overviewData.maxIAValue > 0.0) {
             PointsWithLabelGraphSeries(
                 peakIndices.map { i ->
                     val point = allActPoints[i]
