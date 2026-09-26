@@ -75,4 +75,11 @@ enum class StringNonKey(
     NsClientControlClientId(key = "nsclient_control_client_id", defaultValue = "", exportable = false),
     NsClientControlMasterSecretEnc(key = "nsclient_control_master_secret_enc", defaultValue = "", exportable = false),
 
+    // Role names saved before a stuck-high tier C escalation. Local only.
+    ApsAutoIsfStuckHighPrevLow(key = "autoisf_stuck_high_prev_low", defaultValue = "", exportable = false),
+    ApsAutoIsfStuckHighPrevStandard(key = "autoisf_stuck_high_prev_standard", defaultValue = "", exportable = false),
+
+    // Profile used when the phone battery is at 1% or below. Local only.
+    ApsAutoIsfSafetyProfileName(key = "autoisf_safety_profile_name", defaultValue = "Current Profile50", exportable = false),
+
 }

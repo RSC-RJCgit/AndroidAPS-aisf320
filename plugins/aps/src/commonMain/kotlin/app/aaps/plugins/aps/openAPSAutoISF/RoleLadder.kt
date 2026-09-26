@@ -75,6 +75,14 @@ internal fun sharedRungNames(
     return low to standard
 }
 
+// Off the ladder, a step up starts at letter A. A step down stays off the ladder.
+// On the ladder, the move stops at the first letter and the last letter.
+internal fun ladderStepIndex(currentIndex: Int, ladderSize: Int, stepUp: Boolean): Int {
+    if (currentIndex == -1) return if (stepUp) 0 else -1
+    if (ladderSize <= 0) return -1
+    return (currentIndex + if (stepUp) 1 else -1).coerceIn(0, ladderSize - 1)
+}
+
 // Moves the SMB baseline by 0.01 and the mild ratio by 0.25 when the band changes.
 // A to B/C goes up. B/C to A goes down. The same band, including B to C, returns null.
 internal fun roleTierDeliveryNudge(previousBand: Int, newBand: Int, smbBaseline: Double, mildRatio: Double): RoleNudge? {

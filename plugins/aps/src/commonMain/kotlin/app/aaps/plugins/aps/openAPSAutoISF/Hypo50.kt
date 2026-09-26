@@ -108,6 +108,45 @@ internal fun fiftyPcMakes57ShouldFire(
     delta: Double,
 ): Boolean = ready && profilePercent == 50 && !ttActive && bg < 90.1 && delta <= -0.9
 
+// Leaves the 50% prepare state. LowBG must be 50recent. Returns the block name, or null.
+// A missing cannula age counts as 0 hours, so the blocks that need 3 hours stay closed.
+internal fun pp50OffBlock(
+    ready: Boolean,
+    lowBgRecent: Boolean,
+    minuteOfDay: Int,
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    longDelta: Double,
+    iob: Double,
+    cob: Double,
+    cannulaHours: Double?,
+    minutesSinceBolus: Int,
+    acceWeight: Double,
+): String? {
+    if (!ready || !lowBgRecent) return null
+    val cannulaH = cannulaHours ?: 0.0
+    val daytime = minuteInWindow(minuteOfDay, 1 * 60 + 1, 22 * 60)
+    val overnight = minuteInWindow(minuteOfDay, 22 * 60, 1 * 60)
+    val block1 = daytime && bg >= 108.1 && delta > -1.8 && shortDelta > -3.6 && longDelta > -7.21
+    val block2 = daytime && bg >= 108.1 && delta > 5.4 && shortDelta > 5.4 && cannulaH >= 3.0
+    val block3 = daytime && bg >= 108.1 && cob > 0.0 && minutesSinceBolus <= 30 &&
+        delta > 0.9 && shortDelta > 0.9 && longDelta > 0.9 && cannulaH >= 3.0
+    val block4 = daytime && bg >= 108.1 && iob <= 0.5 &&
+        delta > 0.9 && shortDelta > 0.9 && longDelta > 0.9 && cannulaH >= 3.0
+    val block5 = overnight && bg >= 117.1 && delta > 0.9 && shortDelta > 0.9 && longDelta > 0.9
+    val block6 = acceWeight <= 0.1 && bg >= 99.1 && delta > 1.8 && shortDelta > 1.8
+    return when {
+        block1 -> "1"
+        block2 -> "2"
+        block3 -> "3"
+        block4 -> "4"
+        block5 -> "5"
+        block6 -> "6"
+        else -> null
+    }
+}
+
 // Prepares a 50% profile for 6 hours. Profile must already be 100%. Returns the block name, or null.
 internal fun prepareSet50Block(
     ready: Boolean,

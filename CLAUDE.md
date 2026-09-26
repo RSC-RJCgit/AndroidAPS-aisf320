@@ -124,7 +124,9 @@ reported `NO-SOURCE`. That was wrong by the time anyone read it, and it caused w
 - **NEVER commit until the user explicitly asks** — Editing files is fine (subject to the rule above),
   but do NOT run `git commit` (or `git push`) until the user directly asks for it. "Fix it" / "do it"
   authorizes the code change, NOT a commit. Leave the work in the working tree and let the user review
-  it first; only commit when they say "commit", "push", or similar.
+  it first; only commit when they say "commit", "push", or similar. An install is the exception:
+  commit the code being installed before the build, so the corner hash matches the phone. Do not
+  install uncommitted work.
 - **Use simple "school english" everywhere** — In code (identifiers, comments, KDoc), commit messages,
   PR text, UI strings and chat, write plain, simple English. Many readers and contributors are
   non-native speakers. Prefer short common words and short sentences; avoid idioms, slang, rare
@@ -376,6 +378,9 @@ Rules that follow from that:
 Default stays **"Never install app automatically"** — only build / install / drive devices when the
 user explicitly asks. That request overrides the no-install rule; `connectedAndroidTest` still needs
 its own permission (it wipes the app). When asked:
+
+- Commit the code being installed before the build. The corner is that commit id, baked at build time.
+  An install of uncommitted work keeps the previous label.
 
 - Master runs the `full` flavor, a client runs an `aapsclient` flavor — build the needed APK(s) and
   `adb install -r` (keep data; **never uninstall/wipe** the setup). Find devices via `adb devices -l`.

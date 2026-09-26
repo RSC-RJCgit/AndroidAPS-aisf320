@@ -233,6 +233,21 @@ val TriangleShape: Shape = GenericShape { size, _ ->
 }
 
 /**
+ * Upright bolus triangle. The mark is centered on the glucose point, so the tip starts
+ * just under that center and the body hangs below the line.
+ */
+val BolusUnderLineShape: Shape = GenericShape { size, _ ->
+    val cx = size.width / 2f
+    val apexY = size.height / 2f + size.height * 0.06f
+    val baseY = size.height * 0.98f
+    val baseHalf = size.width * 0.46f
+    moveTo(cx, apexY)
+    lineTo(cx + baseHalf, baseY)
+    lineTo(cx - baseHalf, baseY)
+    close()
+}
+
+/**
  * Inverted triangle shape pointing downward (flat base at top, apex at bottom).
  *
  * Used for rendering bolus markers on graphs. The base sits at the data point's

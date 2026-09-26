@@ -526,7 +526,7 @@ fun BgGraphCompose(
             fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
             areaFill = null,
             pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF2DFF)), shape = TriangleShape), size = 28.dp)
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF66FF)), shape = BolusUnderLineShape), size = 48.dp)
             )
         )
     }

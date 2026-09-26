@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.db.ProcessedTbrEbData
+import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -65,6 +66,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
@@ -128,6 +130,7 @@ open class OpenAPSAutoISFPlugin(
     private val ch: ConcentrationHelper,
     private val tddCalculator: TddCalculator,
     private val displayRawSmoothing: DisplayRawSmoothing,
+    private val receiverStatusStore: ReceiverStatusStore,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -546,6 +549,7 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
         )
+        smbBoostedThisCycle = false
         markBolusBoosts(
             now = now,
             profilePercent = profile_percentage,
@@ -681,6 +685,70 @@ open class OpenAPSAutoISFPlugin(
             steps60 = stepSample?.steps60min ?: 0,
             livePump = activePlugin.activePump !is VirtualPump,
         )
+        applyMjCycle(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            steps60 = stepSample?.steps60min ?: 0,
+            steps180 = stepSample?.steps180min ?: 0,
+        )
+        applyRescue(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            maxIob = oapsProfile.max_iob,
+            targetBg = targetBg,
+            statesOn = statesOn,
+        )
+        applyProfileBatch(now = now, bg = glucoseStatus.glucose)
+        applyTtExits(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+        )
+        applyEvening(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            longDelta = glucoseStatus.longAvgDelta,
+            profilePercent = profile_percentage,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            steps60 = stepSample?.steps60min ?: 0,
+            steps180 = stepSample?.steps180min ?: 0,
+        )
+        applySensorNotes(now)
+        applyStepsSteroidsOff(
+            now = now,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            steps60 = stepSample?.steps60min ?: 0,
+            statesOn = statesOn,
+        )
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -774,6 +842,8 @@ open class OpenAPSAutoISFPlugin(
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
             lastAPSRun = now
+            lastCycleSmb = determineBasalResult.smb
+            lastCycleSmbAt = now
             if (autoIsfFactors.recorded) {
                 persistenceLayer.insertAutoIsfValue(
                     AIV(
@@ -1560,6 +1630,13 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
+    private var cobSustainedSince = 0L
+    private var smbBoostedThisCycle = false
+    private var lastCycleSmb = 0.0
+    private var lastCycleSmbAt = 0L
+    private var lastBigDoseAt = 0L
+    private var lastBigDoseBg = 0.0
+    private var lastBigDoseShort = 0.0
     private var mildThisCycle = false
     private var bg3ThisCycle = false
     private var mildFailsafeThisCycle = false
@@ -2087,9 +2164,1029 @@ open class OpenAPSAutoISFPlugin(
         }
     }
 
-    // PrepareSet50, GentleHypo, and Skittles run in that order so a same-loop drop is visible to the next one.
+    // Carbs must stay at 5 g or more for 45 minutes before the evening cap relaxes to 60%.
+    // The clock is forgotten when the app process stops.
+    private fun cobHasStayedUp(now: Long, cob: Double): Boolean {
+        if (cob >= 5.0) {
+            if (cobSustainedSince == 0L) cobSustainedSince = now
+        } else {
+            cobSustainedSince = 0L
+        }
+        if (cobSustainedSince <= 0L) return false
+        return (now - cobSustainedSince) / 60_000.0 >= 45.0
+    }
+
+    private suspend fun minutesSinceLastCarbs(now: Long): Int? {
+        val last = persistenceLayer.getNewestCarbs()?.timestamp ?: return null
+        return ((now - last).toDouble() / 60_000.0).toInt()
+    }
+
+    // Stuck high, poor response, and the unexplained-high backstop run before the night ceiling.
+    // The tier C revert is not throttled. OffHighProf runs before NightAcce so a later night write can replace it.
+    private suspend fun applyRescue(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        maxIob: Double,
+        targetBg: Double,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        val ukf = ukfRawNow(now)
+        val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val branch = stuckHighBranch(
+            ready = runMarks.ready(RunMark.STUCK_HIGH, 30, now),
+            bg = bg,
+            iob = iob,
+            maxIob = maxIob,
+            hp = hp,
+            targetMmol = targetBg / 18.0182,
+        )
+        if (branch == StuckHighBranch.RATIO) {
+            val boosted = stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max)
+            if (!deliveryNear(smb_delivery_ratio, boosted)) {
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
+                startBrakeTarget(now, targetBg, "AutoISF: stuck high ratio", 30)
+                escalateToStuckHighTierC(now)
+                runMarks.mark(RunMark.STUCK_HIGH, now)
+                aapsLogger.debug(LTag.APS, "Stuck high ratio -> $boosted")
+            }
+        } else if (branch == StuckHighBranch.TARGET) {
+            startBrakeTarget(now, rescueTargetMgdl(targetBg), "AutoISF: stuck high target", 30)
+            escalateToStuckHighTierC(now)
+            runMarks.mark(RunMark.STUCK_HIGH, now)
+            aapsLogger.debug(LTag.APS, "Stuck high target")
+        }
+        val recentBoost = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 3, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 3, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN, 3, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN_BG3, 3, now) ||
+            runMarks.recent(RunMark.UAM_BST, 3, now)
+        if (shouldLatchBigDose(lastCycleSmb, recentBoost) && lastCycleSmbAt > 0L) {
+            lastBigDoseAt = lastCycleSmbAt
+            lastBigDoseBg = bg
+            lastBigDoseShort = shortDelta
+        }
+        if (lastBigDoseAt > 0L) {
+            val stage = poorResponseStage(
+                minutesSinceDose = (now - lastBigDoseAt) / 60_000.0,
+                riseMgdl = bg - lastBigDoseBg,
+                stillRising = delta > 0.0,
+                noDecel = shortDelta >= lastBigDoseShort * 0.75,
+                iobRoom = iob < 0.30 * maxIob,
+                stage1Ready = runMarks.ready(RunMark.POOR_RESPONSE_1, 10, now),
+                stage2Ready = runMarks.ready(RunMark.POOR_RESPONSE_2, 10, now),
+            )
+            if (stage == 1) {
+                val boosted = poorResponseRatio(smb_delivery_ratio, smb_delivery_ratio_max)
+                if (!deliveryNear(smb_delivery_ratio, boosted)) {
+                    preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
+                    startBrakeTarget(now, targetBg, "AutoISF: poor response 1", 20)
+                    runMarks.mark(RunMark.POOR_RESPONSE_1, now)
+                    aapsLogger.debug(LTag.APS, "Poor response stage 1 ratio -> $boosted")
+                }
+            } else if (stage == 2) {
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max))
+                startBrakeTarget(now, rescueTargetMgdl(targetBg), "AutoISF: poor response 2", 30)
+                escalateToStuckHighTierC(now)
+                runMarks.mark(RunMark.POOR_RESPONSE_2, now)
+                aapsLogger.debug(LTag.APS, "Poor response stage 2")
+            }
+        }
+        val mealNow = cob > 0.0 || runMarks.recent(RunMark.UAM_BST, 120, now)
+        val tracked = nextUnexplainedHigh(
+            now = now,
+            highNow = bg > 144.1,
+            mealNow = mealNow,
+            since = preferences.get(LongNonKey.ApsAutoIsfUnexplainedHighSince),
+            mealSeen = preferences.get(BooleanNonKey.ApsAutoIsfUnexplainedHighMealSeen),
+        )
+        preferences.put(LongNonKey.ApsAutoIsfUnexplainedHighSince, tracked.since)
+        preferences.put(BooleanNonKey.ApsAutoIsfUnexplainedHighMealSeen, tracked.mealSeen)
+        if (unexplainedHighIsSustained(now, tracked.since) && !tracked.mealSeen &&
+            runMarks.ready(RunMark.UNEXPLAINED_HIGH, 30, now)
+        ) {
+            escalateToStuckHighTierC(now)
+            runMarks.mark(RunMark.UNEXPLAINED_HIGH, now)
+            aapsLogger.debug(LTag.APS, "Unexplained high tier C")
+        }
+        revertStuckHighTierC(now, bg)
+        val offHigh = offHighBlock(
+            ready = runMarks.ready(RunMark.OFF_HIGH, 30, now),
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            profilePercent = profilePercent,
+            onLowProfile = profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
+            ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+            nightHighTag = statesOn && store.inState("Profile", "HnAM"),
+        )
+        if (offHigh != null && offHighShouldAct(minuteOfDay, hp)) {
+            val rescue = preferences.get(LongNonKey.ApsAutoIsfOvernightRescueUntil) > now
+            if (!rescue) switchToLowAtSharedTier(now, "AutoISF: off high", 30)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.18)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
+            if (statesOn && store.inState("Profile", "HnAM") && store.hasStateValues("Profile")) {
+                store.setState("Profile", "C100")
+            }
+            runMarks.mark(RunMark.OFF_HIGH, now)
+            aapsLogger.debug(LTag.APS, "OffHighProf block $offHigh")
+        }
+    }
+
+    // Points Standard and Low at tier C and remembers the names they had. A second fire does not overwrite those names.
+    // Skipped while a hypo alarm is recent and an MJ cycle is still on. The ratio and temp target still happen.
+    private suspend fun escalateToStuckHighTierC(now: Long) {
+        if (preferences.get(BooleanNonKey.ApsAutoIsfStuckHighTierCActive)) return
+        val store = states()
+        val statesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
+        val hypoRevert = statesOn && store.inState("AlarmHypo", "AlarmRecent") &&
+            store.hasStateValues("MJ") && !store.inState("MJ", "NOMJremains")
+        if (hypoRevert) {
+            aapsLogger.debug(LTag.APS, "Stuck high tier C skipped: hypo alarm revert is active")
+            return
+        }
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val currentLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val currentStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val targetLow = lowRungs.getOrNull(2)?.ifBlank { currentLow }.orEmpty()
+        val targetStandard = standardRungs.getOrNull(2)?.ifBlank { currentStandard }.orEmpty()
+        if (targetLow.isBlank() || targetStandard.isBlank()) return
+        val running = profileFunction.getOriginalProfileName()
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, currentLow)
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, currentStandard)
+        preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
+        preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
+        val nudge = roleTierDeliveryNudge(
+            previousBand = roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow, standardRungs, lowRungs)),
+            newBand = 1,
+            smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
+            mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
+        )
+        if (nudge != null) {
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
+        }
+        val switchedTo = when (running) {
+            currentLow -> targetLow
+            currentStandard -> targetStandard
+            else -> ""
+        }
+        if (switchedTo.isNotBlank()) switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")
+        preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, true)
+        keepSteroidsOff()
+        aapsLogger.debug(LTag.APS, "Stuck high tier C on")
+    }
+
+    // Puts the saved role names back once glucose is under 7.5 mmol.
+    private suspend fun revertStuckHighTierC(now: Long, bg: Double) {
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfStuckHighTierCActive) || bg >= 135.1) return
+        val escalatedLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val restoredLow = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevLow).trim()
+        val restoredStandard = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevStandard).trim()
+        val running = profileFunction.getOriginalProfileName()
+        if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
+        if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
+        val switchedTo = when {
+            running == escalatedLow && restoredLow.isNotBlank() -> restoredLow
+            running == escalatedStandard && restoredStandard.isNotBlank() -> restoredStandard
+            else -> ""
+        }
+        if (switchedTo.isNotBlank()) switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C off")
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val nudge = roleTierDeliveryNudge(
+            previousBand = 1,
+            newBand = roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard, restoredLow, standardRungs, lowRungs)),
+            smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
+            mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
+        )
+        if (nudge != null) {
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
+        }
+        preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, false)
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, "")
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, "")
+        aapsLogger.debug(LTag.APS, "Stuck high tier C off")
+    }
+
+    // A boost earlier in this loop is left alone. NightAcce and SemiTwilight both restore the baseline.
+    private fun restoreSmbBaselineUnlessBoosted() {
+        if (smbBoostedThisCycle) return
+        preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
+    }
+
+    // Battery and the profile-name check run first. The batch step sees this loop's poor-response mark.
+    // The low-glucose tier A reset is last, so it can undo a step from the same loop.
+    private suspend fun applyProfileBatch(now: Long, bg: Double) {
+        val safety = preferences.get(StringNonKey.ApsAutoIsfSafetyProfileName).trim()
+        if (battery1ShouldFire(
+                ready = runMarks.ready(RunMark.BATTERY_1, 20, now),
+                running = profileFunction.getOriginalProfileName(),
+                safetyName = safety,
+                batteryPercent = receiverStatusStore.batteryLevel,
+                livePump = activePlugin.activePump !is VirtualPump,
+            )
+        ) {
+            switchToStandardFor(safety, 0, now, "AutoISF: battery 1%")
+            runMarks.mark(RunMark.BATTERY_1, now)
+            aapsLogger.debug(LTag.APS, "Battery 1% -> $safety (phone alert not sent)")
+        }
+        if (batteryOver1ShouldFire(
+                ready = runMarks.ready(RunMark.BATTERY_OVER_1, 5, now),
+                running = profileFunction.getOriginalProfileName(),
+                safetyName = safety,
+                batteryPercent = receiverStatusStore.batteryLevel,
+            )
+        ) {
+            switchToStandardAtSharedTier(now, 0)
+            val store = states()
+            if (preferences.get(BooleanKey.AutomationStatesEnabled) && store.hasStateValues("Profile")) store.setState("Profile", "AllOK")
+            runMarks.mark(RunMark.BATTERY_OVER_1, now)
+            aapsLogger.debug(LTag.APS, "Battery over 1% -> standard (SMS not sent)")
+        }
+        if (runMarks.ready(RunMark.PROFILE_ROLE_SANITY, 360, now)) {
+            val profiles = profileRepository.profile.value
+            val missing = missingProfileRoles(
+                standardFound = profiles?.getSpecificProfile(preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()) != null,
+                lowFound = profiles?.getSpecificProfile(preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()) != null,
+                safetyFound = profiles?.getSpecificProfile(safety) != null,
+            )
+            if (missing.isNotEmpty()) aapsLogger.debug(LTag.APS, "Profile role missing: $missing (phone alert not sent)")
+            runMarks.mark(RunMark.PROFILE_ROLE_SANITY, now)
+        }
+        val bglSince = heldSince(now, bg > 216.2, preferences.get(LongNonKey.ApsAutoIsfBatchBgl12Since))
+        preferences.put(LongNonKey.ApsAutoIsfBatchBgl12Since, bglSince)
+        val ukfGlucose = ukfRawNow(now).glucose
+        val ukfSince = heldSince(now, ukfGlucose != null && ukfGlucose > 252.2, preferences.get(LongNonKey.ApsAutoIsfBatchUkf14Since))
+        preferences.put(LongNonKey.ApsAutoIsfBatchUkf14Since, ukfSince)
+        val choice = profileBatchChoice(
+            holdA = preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled),
+            holdC = preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled),
+            autoOn = preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled),
+            bgl12For2h = heldForHours(now, bglSince, 2),
+            ukf14For2h = heldForHours(now, ukfSince, 2),
+            poorResponseRecent = runMarks.recent(RunMark.POOR_RESPONSE_2, 5, now),
+            gentleHypoRecent = runMarks.recent(RunMark.GENTLE_HYPO_RISK, 5, now),
+            morningStreak = preferences.get(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak),
+        )
+        when (choice) {
+            BatchChoice.BOTH_HOLDS -> aapsLogger.debug(LTag.APS, "Profile batch holds both on, skipped")
+            BatchChoice.HOLD_A -> if (resetToRung(now, 0, runMarks.ready(RunMark.PROFILE_BATCH_REVERT, 5, now))) {
+                runMarks.mark(RunMark.PROFILE_BATCH_REVERT, now)
+                aapsLogger.debug(LTag.APS, "Profile batch hold A")
+            }
+            BatchChoice.HOLD_C -> if (resetToRung(now, 2, runMarks.ready(RunMark.PROFILE_BATCH_REVERT_C, 5, now))) {
+                runMarks.mark(RunMark.PROFILE_BATCH_REVERT_C, now)
+                aapsLogger.debug(LTag.APS, "Profile batch hold C")
+            }
+            BatchChoice.STEP_DOWN, BatchChoice.STEP_UP -> {
+                stepBatch(now, up = choice == BatchChoice.STEP_UP)
+                if (choice == BatchChoice.STEP_DOWN && preferences.get(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak) >= 2) {
+                    preferences.put(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak, 0)
+                }
+            }
+            BatchChoice.NONE -> Unit
+        }
+        if (!runMarks.ready(RunMark.LOW_BG_TIER_A_SCAN, 5, now)) return
+        runMarks.mark(RunMark.LOW_BG_TIER_A_SCAN, now)
+        val from = now - 12 * 3_600_000L
+        val steps = persistenceLayer.getStepsCountFromTimeToTime(from, now).map { it.timestamp to it.steps60min }
+        val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
+            .map { it.timestamp to it.value }
+        val loopHit = sustainedLowEpisode(loopSeries, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000)
+        val ukfHit = sustainedLowEpisode(ukf1Series(now), steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000)
+        if ((loopHit || ukfHit) && resetToRung(now, 0, runMarks.ready(RunMark.LOW_BG_TIER_A, 30, now))) {
+            runMarks.mark(RunMark.LOW_BG_TIER_A, now)
+            aapsLogger.debug(LTag.APS, "Low BG tier A reset loop=$loopHit ukf=$ukfHit")
+        }
+    }
+
+    private suspend fun resetToRung(now: Long, index: Int, ready: Boolean): Boolean {
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val names = sharedRungNames(
+            index = index,
+            lowRungs = lowRungs,
+            standardRungs = standardRungs,
+            lowCurrent = lowCurrent,
+            standardAnchor = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
+            standardCurrent = standardCurrent,
+        ) ?: return false
+        if (lowCurrent == names.first && standardCurrent == names.second) return false
+        if (!ready) return false
+        return stepSharedRung(now, index)
+    }
+
+    private suspend fun stepBatch(now: Long, up: Boolean): Boolean {
+        if (!runMarks.ready(RunMark.PROFILE_BATCH_STEP, 30, now)) return false
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val slot = profileBatchSlot(
+            running = profileFunction.getOriginalProfileName(),
+            lowRole = lowCurrent,
+            standardRole = standardCurrent,
+            lowIndex = ladderIndexOf(lowCurrent, lowRungs),
+            standardIndex = ladderIndexOf(standardCurrent, standardRungs),
+            sharedIndex = sharedRoleLadderIndex(standardCurrent, lowCurrent, standardRungs, lowRungs),
+        )
+        val step = profileBatchStep(slot, up) ?: return false
+        val wrote = stepSharedRung(now, step.index, step.switchRunning)
+        if (step.thenStandard && wrote) {
+            val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+            if (standardName.isNotBlank()) switchToStandardFor(standardName, 0, now, "AutoISF: profile batch up")
+        }
+        if (step.thenLow) {
+            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+            if (lowName.isNotBlank()) switchToStandardFor(lowName, 0, now, "AutoISF: profile batch down")
+        }
+        if (!wrote) return false
+        runMarks.mark(RunMark.PROFILE_BATCH_STEP, now)
+        aapsLogger.debug(LTag.APS, "Profile batch step ${if (up) "up" else "down"}")
+        return true
+    }
+
+    // Oldest first. Libre raw through the display smoother, same series as the UKF1 line.
+    private suspend fun ukf1Series(now: Long): List<Pair<Long, Double>> {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 12 * 3_600_000L, now, ascending = false)
+            .filter { (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return emptyList()
+        val smoothed = displayRawSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        if (smoothed.size != readings.size) return emptyList()
+        return readings.mapIndexed { index, reading -> reading.timestamp to smoothed[index] }.asReversed()
+    }
+
+    // Temp-target exits, in the same order as 3.2.1. Each one re-reads the target, so an earlier cancel
+    // is visible to the next rule. CarbsTHoff needs no target, so it is last.
+    private suspend fun applyTtExits(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+    ) {
+        val store = states()
+        fun noRecent50() {
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
+        }
+        suspend fun cancel(note: String) {
+            persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                timestamp = now,
+                action = Action.CANCEL_TT,
+                source = Sources.Automation,
+                note = note,
+                listValues = emptyList(),
+            )
+        }
+        suspend fun ttMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget
+        val ukfDelta5 = ukfRawNow(now).delta5 ?: -9999.0
+        val full = tt57FullExit(
+            ready = runMarks.ready(RunMark.TT57_REVERSAL, 5, now),
+            ttMgdl = ttMgdl(),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            iob = iob,
+            cob = cob,
+            ukfDelta5 = ukfDelta5,
+            steps15 = steps15(now),
+            steps30 = steps30(now),
+            steps60 = steps60(now),
+        )
+        if (full != null) {
+            cancel("AutoISF: TT 5.7 $full")
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            writeProfilePercent(100, 0, "AutoISF: TT 5.7 $full")
+            noRecent50()
+            runMarks.mark(RunMark.TT57_REVERSAL, now)
+            aapsLogger.debug(LTag.APS, "TT 5.7 ended $full (SMS not sent)")
+        } else {
+            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val mild = tt57MildConfirmed(
+                boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled),
+                minuteOfDay = minuteOfDay,
+                daytimeBypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now),
+                bg = bg,
+                delta = delta,
+                rawDelta5 = ukfDelta5,
+                rawDelta1 = ukfRawNow(now).delta1 ?: -9999.0,
+                iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L),
+                smbCount5 = smbCount5(now),
+                onLowProfile = profileFunction.getOriginalProfileName() == lowName,
+                mjActive = statesOn && store.inState("MJ", "MJ active"),
+                readyBg3 = runMarks.ready(RunMark.BOLUS_GIVEN_BG3, 5, now),
+                steps5 = steps5(now),
+                steps30 = steps30(now),
+                smbIntervalSec = smbInterval5Sec(now),
+                deliveryBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
+            )
+            val light = tt57LightExit(
+                ready = runMarks.ready(RunMark.TT57_REVERSAL, 5, now),
+                ttMgdl = ttMgdl(),
+                bg = bg,
+                iob = iob,
+                cob = cob,
+                mildConfirmed = mild,
+            )
+            if (light != null) {
+                cancel("AutoISF: TT 5.7 $light")
+                runMarks.mark(RunMark.TT57_REVERSAL, now)
+                aapsLogger.debug(LTag.APS, "TT 5.7 ended $light (SMS not sent)")
+            }
+        }
+        val activity = activityTtExit(
+            ready = runMarks.ready(RunMark.ACTIVITY_TT_REVERSAL, 5, now),
+            ttMgdl = ttMgdl(),
+            bg = bg,
+            delta = delta,
+            iob = iob,
+            cob = cob,
+        )
+        if (activity != null) {
+            cancel("AutoISF: activity TT $activity")
+            runMarks.mark(RunMark.ACTIVITY_TT_REVERSAL, now)
+            aapsLogger.debug(LTag.APS, "Activity TT ended $activity (SMS not sent)")
+        }
+        if (t80OffShouldFire(
+                ready = runMarks.ready(RunMark.T80_OFF, 5, now),
+                ttMgdl = ttMgdl(),
+                bg = bg,
+                delta = delta,
+                steps5 = steps5(now),
+                steps15 = steps15(now),
+                steps30 = steps30(now),
+                steps60 = steps60(now),
+            )
+        ) {
+            cancel("AutoISF: TT 8.0 off")
+            runMarks.mark(RunMark.T80_OFF, now)
+            aapsLogger.debug(LTag.APS, "TT 8.0 ended (SMS not sent)")
+        }
+        if (carbsStop1ShouldFire(
+                ready = runMarks.ready(RunMark.CARBS_STOP_TT1, 5, now),
+                ttMgdl = ttMgdl(),
+                cob = cob,
+                delta = delta,
+                iob = iob,
+                minuteOfDay = minuteOfDay,
+            )
+        ) {
+            cancel("AutoISF: carbs stop TT 4.4")
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            writeProfilePercent(100, 0, "AutoISF: carbs stop TT 4.4")
+            runMarks.mark(RunMark.CARBS_STOP_TT1, now)
+            aapsLogger.debug(LTag.APS, "Carbs stop TT 4.4 (SMS not sent)")
+        }
+        val active = persistenceLayer.getTemporaryTargetActiveAt(now)
+        val ownMild = active != null && active.timestamp == preferences.get(LongNonKey.ApsAutoIsfLastBmildTtAt)
+        val stop57 = carbsStop57Block(
+            ready = runMarks.ready(RunMark.CARBS_STOP_TT57, 5, now),
+            ttMgdl = active?.lowTarget,
+            cob = cob,
+            iob = iob,
+            bg = bg,
+            delta = delta,
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            ownMildTt = ownMild,
+        )
+        if (stop57 != null) {
+            cancel("AutoISF: carbs stop TT 5.7 $stop57")
+            writeProfilePercent(100, 0, "AutoISF: carbs stop TT 5.7 $stop57")
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            noRecent50()
+            runMarks.mark(RunMark.CARBS_STOP_TT57, now)
+            aapsLogger.debug(LTag.APS, "Carbs stop TT 5.7 block $stop57 (SMS not sent)")
+        }
+        val th = carbsThOffBlock(
+            ready = runMarks.ready(RunMark.CARBS_TH_OFF, 5, now),
+            profilePercent = profilePercent,
+            ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+            steroidsOff = !statesOn || store.inState("Steroids", "Steroids Off"),
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+        )
+        if (th != null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            switchToStandardAtSharedTier(now, 30)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+            restoreSmbBaselineUnlessBoosted()
+            noRecent50()
+            runMarks.mark(RunMark.CARBS_TH_OFF, now)
+            aapsLogger.debug(LTag.APS, "Carbs TH off $th")
+        }
+    }
+
+    // Reminders only. Phone alerts and SMS are not sent. A missing sensor age counts as 0 hours.
+    private suspend fun applySensorNotes(now: Long) {
+        val livePump = activePlugin.activePump !is VirtualPump
+        val sensor = hoursSinceSensor(now) ?: 0.0
+        val pod = hoursSincePod(now)
+        val soak = preSoakBlock(
+            ready = runMarks.ready(RunMark.PRESOAK_SENSOR, 15, now),
+            livePump = livePump,
+            sensorHours = sensor,
+            podHours = pod,
+        )
+        if (soak != null) {
+            runMarks.mark(RunMark.PRESOAK_SENSOR, now)
+            aapsLogger.debug(LTag.APS, "Pre-soak sensor $soak days (phone alert not sent)")
+        }
+        if (sensorHourHit(
+                ready = runMarks.ready(RunMark.SENSOR_S1, 15, now),
+                livePump = livePump,
+                sensorHours = sensor,
+                podHours = pod,
+                low = 359.0,
+                high = 359.1,
+            )
+        ) {
+            runMarks.mark(RunMark.SENSOR_S1, now)
+            aapsLogger.debug(LTag.APS, "Sensor at 14.9 days (phone alert not sent)")
+        }
+        if (sensorHourHit(
+                ready = runMarks.ready(RunMark.SENSOR_S2, 15, now),
+                livePump = livePump,
+                sensorHours = sensor,
+                podHours = pod,
+                low = 357.9,
+                high = 358.0,
+            )
+        ) {
+            runMarks.mark(RunMark.SENSOR_S2, now)
+            aapsLogger.debug(LTag.APS, "Sensor at 14 days 22 hours (phone alert not sent)")
+        }
+        val sensorDays = hoursSinceSensor(now)?.div(24.0)
+        if (sensorAgeShouldTurnOff(
+                codeEnabled = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled),
+                podHours = pod,
+                sensorDays = sensorDays,
+            )
+        ) {
+            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, false)
+            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched, true)
+            if (runMarks.ready(RunMark.SENSOR_AGE_AUTO_OFF, 60, now)) {
+                runMarks.mark(RunMark.SENSOR_AGE_AUTO_OFF, now)
+                aapsLogger.debug(LTag.APS, "Sensor age code off (SMS not sent)")
+            }
+        }
+    }
+
+    // After the evening rules, so this IOB and profile write is the last one in the loop.
+    private suspend fun applyStepsSteroidsOff(
+        now: Long,
+        bg: Double,
+        delta: Double,
+        cob: Double,
+        iob: Double,
+        steps60: Int,
+        statesOn: Boolean,
+    ) {
+        if (!stepsSteroidsOffShouldFire(
+                ready = runMarks.ready(RunMark.STEPS_STEROIDS_OFF, 5, now),
+                steps60 = steps60,
+                iob = iob,
+                bg = bg,
+                delta = delta,
+                cob = cob,
+            )
+        ) return
+        val store = states()
+        if (statesOn && store.hasStateValues("Steroids")) store.setState("Steroids", "Steroids Off")
+        switchToLowAtSharedTier(now, "AutoISF: steps steroids off")
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
+        preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
+        runMarks.mark(RunMark.STEPS_STEROIDS_OFF, now)
+        aapsLogger.debug(LTag.APS, "Steps steroids off")
+    }
+
+    private suspend fun hoursSinceSensor(now: Long): Double? {
+        val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SENSOR_CHANGE) ?: return null
+        return (now - last.timestamp) / 3_600_000.0
+    }
+
+    private suspend fun hoursSincePod(now: Long): Double? {
+        val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return null
+        return (now - last.timestamp) / 3_600_000.0
+    }
+
+    // AcceUp and the exercise alert run first. The night ceiling runs before NightAcce, so a 22% write
+    // keeps NightAcce closed in the same loop. Twilight runs before NightAcce. SemiTwilight is last.
+    private suspend fun applyEvening(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps60: Int,
+        steps180: Int,
+    ) {
+        val store = states()
+        if (acceUpShouldFire(
+                ready = runMarks.ready(RunMark.ACCE_UP, 5, now),
+                minuteOfDay = minuteOfDay,
+                acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+                bg = bg,
+                profilePercent = profilePercent,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+                steroidsOn = statesOn && store.inState("Steroids", "SteroidsON"),
+            )
+        ) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
+            runMarks.mark(RunMark.ACCE_UP, now)
+            aapsLogger.debug(LTag.APS, "AcceUp to high weight")
+        }
+        if (exerciseLimitShouldFire(
+                ready = runMarks.ready(RunMark.EXERCISE_LIMIT, 30, now),
+                bg = bg,
+                delta = delta,
+                steps60 = steps60,
+            )
+        ) {
+            runMarks.mark(RunMark.EXERCISE_LIMIT, now)
+            aapsLogger.debug(LTag.APS, "Exercise limit Acce (phone alert not sent)")
+        }
+        val carbsHeld = cobHasStayedUp(now, cob)
+        val cap = eveningIobCap(
+            ready = runMarks.ready(RunMark.EVENING_IOB_CEILING, 5, now),
+            minuteOfDay = minuteOfDay,
+            noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            cobSustained = carbsHeld,
+        )
+        if (cap != null) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, cap)
+            runMarks.mark(RunMark.EVENING_IOB_CEILING, now)
+            aapsLogger.debug(LTag.APS, "Evening IOB ceiling -> $cap")
+        }
+        val nightCap = nightIobCeiling(
+            ready = runMarks.ready(RunMark.NIGHT_IOB_CEILING, 5, now),
+            minuteOfDay = minuteOfDay,
+            steps60 = steps60,
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            cobSustained = carbsHeld,
+        )
+        if (nightCap != null) {
+            if (nightCap.iob != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, nightCap.iob)
+            if (nightCap.acce != null) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, nightCap.acce)
+            runMarks.mark(RunMark.NIGHT_IOB_CEILING, now)
+            aapsLogger.debug(LTag.APS, "Night IOB ceiling iob=${nightCap.iob} acce=${nightCap.acce}")
+        }
+        if (stuckRisingShouldRequest(
+                ready = runMarks.ready(RunMark.STUCK_RISING, 5, now),
+                minuteOfDay = minuteOfDay,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+                // This repo does not store a delayed-bolus delivery time, so the request stays closed.
+                recentDelayedBolus = false,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+                cob = cob,
+                iob = iob,
+                steps60 = steps60,
+                steps180 = steps180,
+                bolusAgeMinutes = minutesSinceLastPositiveNormalBolus(now),
+                carbAgeMinutes = minutesSinceLastCarbs(now),
+            )
+        ) {
+            startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
+            runMarks.mark(RunMark.STUCK_RISING, now)
+            aapsLogger.debug(LTag.APS, "Stuck rising 4.2 mmol for 5 min (delayed-bolus stamp is not written yet)")
+        }
+        if (earlyDawnShouldFire(
+                ready = runMarks.ready(RunMark.EARLY_DAWN, 5, now),
+                minuteOfDay = minuteOfDay,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+                longDelta = longDelta,
+            )
+        ) {
+            startBrakeTarget(now, 4.4 * 18.0, "AutoISF: early dawn 4.4", 5)
+            runMarks.mark(RunMark.EARLY_DAWN, now)
+            aapsLogger.debug(LTag.APS, "Early dawn 4.4 mmol for 5 min")
+        }
+        val running = profileFunction.getOriginalProfileName()
+        val onRole = running == preferences.get(StringKey.ApsAutoIsfLowProfileName).trim() ||
+            running == preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val evening = eveningThBlock(
+            ready = runMarks.ready(RunMark.EVENING_TH, 5, now),
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            cob = cob,
+            ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            mjActive = statesOn && store.inState("MJ", "MJ active"),
+            onRoleProfile = onRole,
+            profilePercent = profilePercent,
+        )
+        val ukf = ukfRawNow(now)
+        val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        if (evening != null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.45)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 45)
+            if (eveningThShouldSwitchLow(minuteOfDay, hp)) {
+                switchToLowAtSharedTier(now, "AutoISF: evening low")
+            }
+            runMarks.mark(RunMark.EVENING_TH, now)
+            aapsLogger.debug(LTag.APS, "EveningTH block $evening")
+        }
+        if (twilightTh15ShouldFire(
+                ready = runMarks.ready(RunMark.TWILIGHT_TH15, 5, now),
+                minuteOfDay = minuteOfDay,
+                steps60 = steps60,
+                bg = bg,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+                steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+                delta = delta,
+            )
+        ) {
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 15)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            switchToLowAtSharedTier(now, "AutoISF: twilight 15")
+            runMarks.mark(RunMark.TWILIGHT_TH15, now)
+            aapsLogger.debug(LTag.APS, "TwilightTH15 acce 0.50 iobTH 15")
+        }
+        if (nightAcceShouldFire(
+                ready = runMarks.ready(RunMark.NIGHT_ACCE, 5, now),
+                minuteOfDay = minuteOfDay,
+                iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+                cob = cob,
+                ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+                bg = bg,
+                steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+                acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            )
+        ) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.35)
+            val rescue = preferences.get(LongNonKey.ApsAutoIsfOvernightRescueUntil) > now
+            if (eveningThShouldSwitchLow(minuteOfDay, hp) && !rescue) {
+                switchToLowAtSharedTier(now, "AutoISF: night acce low")
+            }
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 22)
+            restoreSmbBaselineUnlessBoosted()
+            preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+            runMarks.mark(RunMark.NIGHT_ACCE, now)
+            aapsLogger.debug(LTag.APS, "NightAcce acce 0.35 iobTH 22 (settings export not written)")
+        }
+        val semi = semiTwilightBlock(
+            ready = runMarks.ready(RunMark.SEMI_TWILIGHT, 5, now),
+            minuteOfDay = minuteOfDay,
+            steps180 = steps180,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+        )
+        if (semi == null) return
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+        preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
+        restoreSmbBaselineUnlessBoosted()
+        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
+        runMarks.mark(RunMark.SEMI_TWILIGHT, now)
+        aapsLogger.debug(LTag.APS, "SemiTwilight block $semi")
+    }
+
+    // MJ4, MJ5, and MJoff run before MoreMJ, so a clear in this loop closes MoreMJ for 65 minutes.
+    // MJ2 and MJ3 advance the night cycle before MJ recent reads it. MoreMJ and the morning role step come after.
+    // The morning step does not count a second change. That counter belongs to a later profile-batch rule.
+    private suspend fun applyMjCycle(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps60: Int,
+        steps180: Int,
+    ) {
+        val store = states()
+        if (mj4ShouldClear(
+                ready = runMarks.ready(RunMark.MJ4, 5, now),
+                mj4 = statesOn && store.inState("MJ", "MJ4"),
+            ) && statesOn && store.hasStateValues("MJ")
+        ) {
+            store.setState("MJ", "NOMJremains")
+            runMarks.mark(RunMark.MJ4, now)
+            aapsLogger.debug(LTag.APS, "MJ4 cleared")
+        }
+        if (mj5ShouldClear(
+                ready = runMarks.ready(RunMark.MJ5, 5, now),
+                mj5 = statesOn && store.inState("MJ", "MJ5"),
+            ) && statesOn && store.hasStateValues("MJ")
+        ) {
+            switchToStandardAtSharedTier(now, 30)
+            store.setState("MJ", "NOMJremains")
+            runMarks.mark(RunMark.MJ5, now)
+            aapsLogger.debug(LTag.APS, "MJ5 cleared, standard for 30 min")
+        }
+        if (mj2OldShouldFire(
+                ready = runMarks.ready(RunMark.MJ2_OLD, 5, now),
+                mjActive = statesOn && store.inState("MJ", "MJ active"),
+                minuteOfDay = minuteOfDay,
+            ) && statesOn && store.hasStateValues("MJ")
+        ) {
+            store.setState("MJ", "MJ2")
+            runMarks.mark(RunMark.MJ2_OLD, now)
+            aapsLogger.debug(LTag.APS, "MJ2 old")
+        }
+        if (mj3OldShouldFire(
+                ready = runMarks.ready(RunMark.MJ3_OLD, 5, now),
+                mj2 = statesOn && store.inState("MJ", "MJ2"),
+                minuteOfDay = minuteOfDay,
+            ) && statesOn && store.hasStateValues("MJ")
+        ) {
+            store.setState("MJ", "MJ3")
+            runMarks.mark(RunMark.MJ3_OLD, now)
+            aapsLogger.debug(LTag.APS, "MJ3 old")
+        }
+        val mjOff = mjOffBlock(
+            ready = runMarks.ready(RunMark.MJ_OFF, 5, now),
+            mj3 = statesOn && store.inState("MJ", "MJ3"),
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+        )
+        if (mjOff != null && statesOn && store.hasStateValues("MJ")) {
+            store.setState("MJ", "NOMJremains")
+            runMarks.mark(RunMark.MJ_OFF, now)
+            aapsLogger.debug(LTag.APS, "MJoff block $mjOff")
+        }
+        val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
+        val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        val ukf = ukfRawNow(now)
+        val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val tune = mjRecentShouldTune(
+            ready = runMarks.ready(RunMark.MJ_RECENT, 480, now),
+            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+            mjCycleOn = statesOn && store.hasStateValues("MJ") && !store.inState("MJ", "NOMJremains"),
+            ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
+            profilePercent = profilePercent,
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            cannulaHours = cannulaHours,
+        )
+        if (tune) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+            val rescue = preferences.get(LongNonKey.ApsAutoIsfOvernightRescueUntil) > now
+            if (mjRecentShouldSwitchLow(tune, minuteOfDay, hp, rescue)) {
+                switchToLowAtSharedTier(now, "AutoISF: MJ recent low")
+            }
+            runMarks.mark(RunMark.MJ_RECENT, now)
+            aapsLogger.debug(LTag.APS, "MJ recent acce 0.50 iobTH 70")
+        }
+        val more = moreMjTarget(
+            ready = runMarks.ready(RunMark.MORE_MJ, 5, now),
+            mjOffReady = runMarks.ready(RunMark.MJ_OFF, 65, now),
+            minuteOfDay = minuteOfDay,
+            acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+            steps180 = steps180,
+            steps60 = steps60,
+            noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+            bg = bg,
+            profilePercent = profilePercent,
+            cob = cob,
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            alarmRecent = statesOn && store.inState("AlarmHypo", "AlarmRecent"),
+            iob = iob,
+            noRecentHigh = !libreRawOver12Within(now, 48),
+        )
+        if (more != null && statesOn && store.hasStateValues("MJ")) {
+            store.setState("MJ", more)
+            runMarks.mark(RunMark.MORE_MJ, now)
+            aapsLogger.debug(LTag.APS, "MoreMJ -> $more")
+        }
+        val raw5 = rawDelta5MinMgdl(now)
+        val hp1 = raw5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val samples = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 8 * 3_600_000L, now, ascending = true)
+            .map { it.timestamp to it.value }
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val running = profileFunction.getOriginalProfileName()
+        val nextIndex = morningRoleIndex(
+            ready = runMarks.ready(RunMark.MORNING_ROLE_SWAP, 240, now),
+            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+            minuteOfDay = minuteOfDay,
+            hp = hp1,
+            mjKnown = statesOn && store.hasStateValues("MJ"),
+            noMjRemains = store.inState("MJ", "NOMJremains"),
+            recentBgHigh = recentBgStaysInRange(now, 8, samples, 90.0, null),
+            recentBgNormal = recentBgStaysInRange(now, 8, samples, 81.1, 126.1),
+            sourceIndex = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs),
+            ladderSize = standardRungs.size,
+        )
+        if (nextIndex != null && stepSharedRung(now, nextIndex)) {
+            val nowLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+            val nowStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+            if (lowCurrent != nowLow || standardCurrent != nowStandard) {
+                val streak = preferences.get(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak) + 1
+                preferences.put(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak, streak)
+            }
+            runMarks.mark(RunMark.MORNING_ROLE_SWAP, now)
+            aapsLogger.debug(LTag.APS, "Morning role step to letter $nextIndex")
+        }
+    }
+
+    // Writes both role names for one letter. Switches the running profile when it was the old Low or Standard name.
+    // Returns true when a name changed or the running profile was one of those roles.
+    private suspend fun stepSharedRung(now: Long, index: Int, switchRunning: Boolean = true): Boolean {
+        val lowRungs = lowLadderNames()
+        val standardRungs = standardLadderNames()
+        val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val names = sharedRungNames(
+            index = index,
+            lowRungs = lowRungs,
+            standardRungs = standardRungs,
+            lowCurrent = lowCurrent,
+            standardAnchor = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
+            standardCurrent = standardCurrent,
+        ) ?: return false
+        val (newLow, newStandard) = names
+        val running = profileFunction.getOriginalProfileName()
+        val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(standardCurrent, lowCurrent, standardRungs, lowRungs))
+        preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
+        preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
+        if (newLow != lowCurrent || newStandard != standardCurrent) {
+            val nudge = roleTierDeliveryNudge(
+                previousBand = previousBand,
+                newBand = roleTierBandForIndex(index),
+                smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
+                mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
+            )
+            if (nudge != null) {
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
+                preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
+            }
+        }
+        keepSteroidsOff()
+        val matched = running == lowCurrent || running == standardCurrent
+        val target = when (running) {
+            lowCurrent -> newLow
+            standardCurrent -> newStandard
+            else -> ""
+        }
+        if (switchRunning && target.isNotBlank() && running != target) {
+            if (!switchToStandardFor(target, 0, now, "AutoISF: morning role")) {
+                aapsLogger.debug(LTag.APS, "Morning role did not switch to $target")
+            }
+        }
+        return newLow != lowCurrent || newStandard != standardCurrent || matched
+    }
+
+    // PrepareSet50, GentleHypo, PP50Off, then Skittles. PP50Off runs before Skittles so a recovery
+    // does not undo a Skittles target started in the same loop. Its mark closes 50SetRecent for 15 minutes.
     // 50SetRecent and 50pcMakes5.7 look at the profile percent from the start of the loop.
-    // PP50Off is not written yet, so its 15 minute lock on 50SetRecent stays open.
     // ConnectPod only writes a log. The SMS is not sent.
     private suspend fun applyHypo50(
         now: Long,
@@ -2166,6 +3263,30 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
             runMarks.mark(RunMark.GENTLE_HYPO_RISK, now)
             aapsLogger.debug(LTag.APS, "GentleHypoRisk block $gentle")
+        }
+        val pp50 = pp50OffBlock(
+            ready = runMarks.ready(RunMark.PP50_OFF, 5, now),
+            lowBgRecent = statesOn && store.inState("LowBG", "50recent"),
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            iob = iob,
+            cob = cob,
+            cannulaHours = cannulaHours,
+            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
+        )
+        if (pp50 != null) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            val currentName = profileFunction.getOriginalProfileName().trim()
+            if (!writeNamedPercent(now, currentName, 100, 0, "AutoISF: PP50 off")) {
+                aapsLogger.debug(LTag.APS, "PP50Off did not write a profile switch")
+            }
+            if (statesOn && store.hasStateValues("LowBG")) store.setState("LowBG", "NO50rec")
+            runMarks.mark(RunMark.PP50_OFF, now)
+            aapsLogger.debug(LTag.APS, "PP50Off block $pp50")
         }
         val skittles = skittlesBlock(
             ready = runMarks.ready(RunMark.SKITTLES_HYPO_RISK, 5, now),
@@ -2561,7 +3682,16 @@ open class OpenAPSAutoISFPlugin(
 
     // Align Low Current and Standard Current to the letter already in force, then switch to that Standard name.
     // A band change nudges the SMB baseline by 0.01 and the mild ratio by 0.25. B and C share one band.
-    private suspend fun switchToStandardAtSharedTier(now: Long) {
+    private suspend fun switchToStandardAtSharedTier(now: Long, minutes: Int = 0) {
+        switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: BasalUp", minutes = minutes)
+    }
+
+    // Same letter alignment, then switch the running profile to the Low name.
+    private suspend fun switchToLowAtSharedTier(now: Long, note: String, minutes: Int = 0) {
+        switchToRoleAtSharedTier(now, toLow = true, note = note, minutes = minutes)
+    }
+
+    private suspend fun switchToRoleAtSharedTier(now: Long, toLow: Boolean, note: String, minutes: Int = 0) {
         val lowRungs = lowLadderNames()
         val standardRungs = standardLadderNames()
         val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
@@ -2594,9 +3724,10 @@ open class OpenAPSAutoISFPlugin(
             }
         }
         keepSteroidsOff()
-        if (newStandard.isNotBlank() && profileFunction.getOriginalProfileName() != newStandard) {
-            val switched = switchToStandardFor(newStandard, 0, now, "AutoISF: BasalUp")
-            if (!switched) aapsLogger.debug(LTag.APS, "BasalUp: standard profile was not switched")
+        val target = if (toLow) newLow else newStandard
+        if (target.isNotBlank() && profileFunction.getOriginalProfileName() != target) {
+            val switched = switchToStandardFor(target, minutes, now, note)
+            if (!switched) aapsLogger.debug(LTag.APS, "Role switch did not write $target")
         }
     }
 
@@ -2846,6 +3977,7 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
         }
         preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, deliveryRatio)
+        smbBoostedThisCycle = true
     }
 
     // Holds 5.0 mmol for 2 minutes. Skipped when a temp target is already active.
@@ -2872,6 +4004,7 @@ open class OpenAPSAutoISFPlugin(
                 ValueWithUnit.Minute(minutes)
             )
         )
+        preferences.put(LongNonKey.ApsAutoIsfLastBmildTtAt, now)
     }
 
     private suspend fun iobAt(time: Long): Double {

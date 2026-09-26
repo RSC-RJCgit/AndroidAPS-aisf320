@@ -44,6 +44,18 @@ enum class LongNonKey(
     // Epoch millis of the temp target HiBrkTwilight wrote. 0 means none. Local only.
     ApsAutoIsfHiBrkTwilightTtAt("autoisf_hibrk_twilight_tt_at", 0L, exportable = false),
 
+    // Epoch millis when glucose first stayed over 8.0 mmol with no meal yet. 0 means not holding. Local only.
+    ApsAutoIsfUnexplainedHighSince("autoisf_unexplained_high_since", 0L, exportable = false),
+
+    // Epoch millis when glucose first stayed over 12.0 mmol. 0 means not holding. Local only.
+    ApsAutoIsfBatchBgl12Since("autoisf_batch_bgl12_since_ts", 0L, exportable = false),
+
+    // Epoch millis when UKF raw first stayed over 14.0 mmol. 0 means not holding. Local only.
+    ApsAutoIsfBatchUkf14Since("autoisf_batch_ukf14_since_ts", 0L, exportable = false),
+
+    // Epoch millis of the 5.0 mmol hold the mild boost just started. 0 means none. Local only.
+    ApsAutoIsfLastBmildTtAt("autoisf_last_bmild_tt_at", 0L, exportable = false),
+
     // Server-modified time of the last secondary Nightscout page. 0 means the first download
     // still has to walk back 16 days. Local only: restoring it would skip treatments.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),

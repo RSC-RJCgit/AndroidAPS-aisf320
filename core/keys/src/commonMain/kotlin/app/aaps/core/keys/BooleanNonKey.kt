@@ -51,4 +51,19 @@ enum class BooleanNonKey(
     // Set when a mild boost fires under 5.9 mmol. DetermineBasal forces the target offset to 0 while this is set.
     // Cleared when no temp target is active.
     ApsAutoIsfMildOffsetZeroActive("autoisf_mild_offset_zero_active", false, exportable = false),
+
+    // True while Standard and Low point at tier C after a stuck-high rescue. Local only.
+    ApsAutoIsfStuckHighTierCActive("autoisf_stuck_high_tier_c_active", false, exportable = false),
+
+    // True when carbs or a UAM boost were seen during the current unexplained-high stretch. Local only.
+    ApsAutoIsfUnexplainedHighMealSeen("autoisf_unexplained_high_meal_seen", false, exportable = false),
+
+    // Profile-batch toggles. Off until something turns them on. Local only.
+    ApsAutoIsfProfileBatchAutoEnabled("autoisf_profile_batch_auto_enabled", false, exportable = false),
+    ApsAutoIsfProfileBatchRevertEnabled("autoisf_profile_batch_revert_enabled", false, exportable = false),
+    ApsAutoIsfProfileBatchRevertCEnabled("autoisf_profile_batch_revert_c_enabled", false, exportable = false),
+
+    // Sensor-age dosing code. On until a pod over 80 hours or a sensor over 15 days turns it off.
+    ApsAutoIsfSensorAgeCodeEnabled("autoisf_sensor_age_code_enabled", true, exportable = false),
+    ApsAutoIsfSensorAgeAutoOffLatched("autoisf_sensor_age_auto_off_latched", false, exportable = false),
 }
