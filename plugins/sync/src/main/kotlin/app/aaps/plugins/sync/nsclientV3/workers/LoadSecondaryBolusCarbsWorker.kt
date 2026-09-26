@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.time.T
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.configuration.Config
@@ -22,7 +23,9 @@ import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.LoggingWorker
+import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.utils.JsonHelper
+import app.aaps.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
@@ -55,6 +58,7 @@ class LoadSecondaryBolusCarbsWorker(
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var config: Config
     @Inject lateinit var nsIncomingDataProcessor: NsIncomingDataProcessor
+    @Inject lateinit var nsDeviceStatusHandler: NSDeviceStatusHandler
 
     companion object {
 
@@ -102,6 +106,20 @@ class LoadSecondaryBolusCarbsWorker(
         } catch (e: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS profile store failed", e)
             rxBus.send(EventNSClientNewLog("◄ SEC-NS ERR", "profile store: ${e.message ?: "Unknown error"}"))
+        }
+    }
+
+    // 2026-09-27, per explicit request: the device status (Live's result text: mirrored steps, loop-phone snapshot) comes from this site
+    // on a full AAPS on VirtualPump; the primary's is ignored in NSDeviceStatusHandler. Same 7-minute window as LoadDeviceStatusWorker.
+    private suspend fun loadSecondaryDeviceStatus(client: NSAndroidClient) {
+        if (!activePlugin.fullAapsOnVirtualPump(config)) return
+        try {
+            val from = dateUtil.now() - T.mins(7).msecs()
+            val statuses = client.getDeviceStatusModifiedSince(from)
+            if (statuses.isNotEmpty()) nsDeviceStatusHandler.handleNewData(statuses.toTypedArray(), fromSecondary = true)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS device status failed", e)
+            rxBus.send(EventNSClientNewLog("◄ SEC-NS ERR", "device status: ${e.message ?: "Unknown error"}"))
         }
     }
 
@@ -200,7 +218,9 @@ class LoadSecondaryBolusCarbsWorker(
                                 // receiver block can apply it on the loop phone. Display/store only here, like the acks.
                                 val setRoleCommand = te.type == TE.Type.NOTE && trimmedNote.startsWith("SetRole ")
                                 val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes && (te.type != TE.Type.NOTE ||
-                                    note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck || setRoleCommand)
+                                    note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck || setRoleCommand ||
+                                    // 2026-09-27: on Virtual the Live notes it acts on (MJ active, Steroids, battery) come from this site.
+                                    (activePlugin.fullAapsOnVirtualPump(config) && CodedAutomationNames.isLiveEchoKeptOnVirtual(note)))
                                 if (acceptedSecondaryEvent) {
                                     storeDataForDb.addToTherapyEvents(te)
                                     pageTherapyEvents++
@@ -251,6 +271,7 @@ class LoadSecondaryBolusCarbsWorker(
                 rxBus.send(EventNSClientNewLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync"))
             }
             loadSecondaryProfileStore(client)
+            loadSecondaryDeviceStatus(client)
             Result.success()
         } catch (e: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS fetch failed", e)

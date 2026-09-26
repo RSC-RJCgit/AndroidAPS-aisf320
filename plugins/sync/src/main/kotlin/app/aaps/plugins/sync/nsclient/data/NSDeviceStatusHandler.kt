@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclient.data
 
+import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import android.os.Build
 import app.aaps.core.data.model.AIV
 import app.aaps.core.interfaces.aps.RT
@@ -117,7 +118,14 @@ class NSDeviceStatusHandler @Inject constructor(
     private fun firstMatch(regex: Regex, text: String): Double? =
         regex.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
 
-    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
+    // 2026-09-27, per explicit request: on a full AAPS on VirtualPump with a secondary NS site set, the device status (Live's result text,
+    // used for the mirrored steps and the loop-phone snapshot) comes from the secondary site, so the primary's is ignored here. All three
+    // primary paths (socket, WebSocket, LoadDeviceStatusWorker) end in this function.
+    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, fromSecondary: Boolean = false) {
+        if (!fromSecondary && activePlugin.get().fullAapsOnVirtualPump(config) &&
+            preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
+            preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl).isNotBlank()
+        ) return
         var configurationDetected = false
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]

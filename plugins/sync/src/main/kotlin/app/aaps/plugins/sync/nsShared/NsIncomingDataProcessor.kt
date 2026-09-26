@@ -287,6 +287,8 @@ class NsIncomingDataProcessor @Inject constructor(
                     is NSTherapyEvent           ->
                         if (preferences.get(BooleanKey.NsClientAcceptTherapyEvent) || config.AAPSCLIENT || doFullSync)
                             treatment.toTherapyEvent().let { therapyEvent ->
+                                // Live notes come from the secondary site when it is set (see secondaryProvidesLiveData).
+                                if (therapyEvent.type == TE.Type.NOTE && secondaryProvidesLiveData()) return@let
                                 storeDataForDb.addToTherapyEvents(therapyEvent)
                                 if (therapyEvent.type == TE.Type.ANNOUNCEMENT &&
                                     preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements) &&
@@ -367,16 +369,18 @@ class NsIncomingDataProcessor @Inject constructor(
         }
     }
 
-    // 2026-09-27, per explicit request: on a full AAPS on VirtualPump with a secondary NS site set, the profile store comes from the
-    // secondary site (LoadSecondaryBolusCarbsWorker), not the primary. Every primary path (socket, WebSocket, LoadProfileStoreWorker) ends
-    // here, so ignoring them here covers all three. The existing "Receive profile store" switch still applies to the secondary's store.
-    private fun secondaryProvidesProfileStore(): Boolean =
+    // 2026-09-27, per explicit request: on a full AAPS on VirtualPump with a secondary NS site set (always the loop phone's site), the
+    // Live-derived data comes from the secondary site, not the primary: the profile store, the device status (NSDeviceStatusHandler) and
+    // the Live notes Virtual acts on. Every primary profile path (socket, WebSocket, LoadProfileStoreWorker) ends in processProfile, so
+    // ignoring it there covers all three; primary NOTE therapy events are skipped in processTreatments below. The existing
+    // "Receive profile store" switch still applies to the secondary's store.
+    private fun secondaryProvidesLiveData(): Boolean =
         activePlugin.fullAapsOnVirtualPump(config) &&
             preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
             preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl).isNotBlank()
 
     fun processProfile(profileJson: JSONObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
-        if (!fromSecondary && secondaryProvidesProfileStore()) {
+        if (!fromSecondary && secondaryProvidesLiveData()) {
             aapsLogger.debug(LTag.PROFILE, "Ignoring primary NS profile store: the secondary NS site provides it on this Virtual phone")
             return
         }
