@@ -218,6 +218,15 @@
     <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
     <string name="autoisf_history_iob">IOB</string>
     <string name="autoisf_history_iob_th" comment="Effective IOB threshold for this row, in units.">iobTH</string>
+    <string name="autoisf_history_target" comment="Glucose target for this loop, in the user's units.">Target</string>
+    <string name="autoisf_history_uam" comment="Unannounced meal for this loop, in grams.">UAMci</string>
+    <string name="autoisf_history_smb_ratio" comment="SMB delivery ratio in force for this loop. Example: 0.50">SMB ratio</string>
+    <string name="autoisf_history_acce_weight" comment="Acceleration ISF weight in force for this loop. Example: 0.50">acWt</string>
+    <string name="autoisf_history_pp_weight" comment="Post-prandial ISF weight in force for this loop. Example: 0.25">ppWt</string>
+    <string name="autoisf_history_slope" comment="Libre calibration slope in force for this loop. Example: 1.00">slope</string>
+    <string name="autoisf_history_cob" comment="Carbs still on board, in grams.">COB</string>
+    <string name="autoisf_history_basal" comment="Running basal rate, in U/h. Example: 0.80">basal</string>
+    <string name="autoisf_history_note" comment="Care-portal notes written during this loop.">notes</string>
     <string name="autoisf_history_smb">SMB</string>
     <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
     <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>

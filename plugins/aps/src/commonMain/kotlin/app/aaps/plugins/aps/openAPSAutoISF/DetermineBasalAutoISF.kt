@@ -810,6 +810,10 @@ class DetermineBasalAutoISF(
     var smbStackStartToStore: Long? = null
         private set
 
+    // Unannounced meal for this loop, in grams. 0 when carb sensitivity is 0.
+    var uamCarbImpactToStore: Double = 0.0
+        private set
+
     // Set only when a Tier 3 raise is still the SMB that gets delivered.
     var uamBoostFiredThisCycle: Boolean = false
         private set
@@ -1041,6 +1045,7 @@ class DetermineBasalAutoISF(
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
         smbStackStartToStore = null
+        uamCarbImpactToStore = 0.0
         uamBoostFiredThisCycle = false
         var rT = RT(
             algorithm = APSResult.Algorithm.AUTO_ISF,
@@ -1345,6 +1350,7 @@ class DetermineBasalAutoISF(
         // autotuned CR is still in effect even when basals and ISF are being adjusted by TT or autosens
         // this avoids overdosing insulin for large meals when low temp targets are active
         val csf = sens / profile.carb_ratio
+        uamCarbImpactToStore = if (csf > 0.0) uci / csf else 0.0
         consoleError.add("profile.sens: ${profile.sens}, sens: $sens, CSF: $csf")
 
         val maxCarbAbsorptionRate = 30 // g/h; maximum rate to assume carbs will absorb if no CI observed

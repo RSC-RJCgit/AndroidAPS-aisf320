@@ -25,4 +25,22 @@ data class AIV(
      * 0 means this row was stored before the line existed.
      */
     val iobThEffective: Double = 0.0,
+    /** Target glucose for this loop, mg/dL. 0 means this row was stored before the column existed. */
+    val targetMgdl: Double = 0.0,
+    /** Unannounced meal, in grams. 0 means none, or the row is old. */
+    val uamCarbImpact: Double = 0.0,
+    /** SMB delivery ratio in force for this loop. */
+    val smbDeliveryRatio: Double = 0.0,
+    /** Acceleration weight in force for this loop. */
+    val acceIsfWeight: Double = 0.0,
+    /** Post-prandial weight in force for this loop. */
+    val ppIsfWeight: Double = 0.0,
+    /** Libre calibration slope in force for this loop. */
+    val fslCalSlope: Double = 0.0,
+    /** Carbs still on board, grams. */
+    val cob: Double = 0.0,
+    /** Running basal rate, U/h. */
+    val basal: Double = 0.0,
+    /** Care-portal notes written during this loop. Empty when there were none. */
+    val note: String = "",
 )

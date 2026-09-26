@@ -27,6 +27,7 @@ import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
+import app.aaps.core.interfaces.overview.graph.TherapyEventType
 import app.aaps.core.interfaces.overview.graph.DeviationType
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -151,6 +152,7 @@ fun SecondaryGraphCompose(
     activityOverlay: Boolean = false,
     cobOverlay: Boolean = false,
     showSmbDoseLabels: Boolean = false,
+    secondaryMarks: SecondaryMarks = SecondaryMarks.NONE,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -214,7 +216,7 @@ fun SecondaryGraphCompose(
     val iobData = if (hasIob) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     val cobData = if (hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null
     val cobOverlayData = if (cobOverlay && hasIob && !hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null
-    val treatmentData = if (hasIob || hasCob || showSmbDoseLabels) viewModel.treatmentGraphFlow.collectAsStateWithLifecycle().value else null
+    val treatmentData = if (hasIob || hasCob || showSmbDoseLabels || secondaryMarks != SecondaryMarks.NONE) viewModel.treatmentGraphFlow.collectAsStateWithLifecycle().value else null
     val absIobData = if (primaryType == SeriesType.ABS_IOB) viewModel.absIobGraphFlow.collectAsStateWithLifecycle().value else null
     val bgiData = if (SeriesType.BGI in primaryTypes) viewModel.bgiGraphFlow.collectAsStateWithLifecycle().value else null
     val deviationsData = if (SeriesType.DEVIATIONS in primaryTypes) viewModel.deviationsGraphFlow.collectAsStateWithLifecycle().value else null
@@ -704,7 +706,7 @@ fun SecondaryGraphCompose(
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
     val smbText = rememberTextMeasurer()
     val graphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
-    val bgDots = if (showSmbDoseLabels) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
+    val bgDots = if (showSmbDoseLabels || secondaryMarks == SecondaryMarks.NOTES) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
     val smbStack = remember(showSmbDoseLabels, graphDisplay.showSmbLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
         if (!showSmbDoseLabels || !graphDisplay.showSmbLabels) return@remember emptyList()
         val smbs = treatmentData?.boluses.orEmpty().filter { it.bolusType == BolusType.SMB && it.amount > 0.0 }
@@ -729,7 +731,64 @@ fun SecondaryGraphCompose(
     val smbNumbers = remember(smbStack, smbText) {
         SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f)
     }
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers) { listOf(nowLine, visibleRangeReporter, smbNumbers) }
+    val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText) {
+        if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null
+        val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
+        val totals = smbTimedTotals(doses)
+        val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
+        val items = totals.mapIndexed { index, total ->
+            SmbStackItem(
+                x = timestampToX(total.first, minTimestamp),
+                label = formatBolusLabel(total.second, smbDoseFormatter),
+                stackIndex = stack[index],
+                color = Color(0xFFFFFF00),
+            )
+        }
+        SmbStackLabels(items, smbText, pinToBottom = true, stackStepFraction = 0.5f)
+    }
+    val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
+        if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
+        val notes = treatmentData?.therapyEvents.orEmpty().filter {
+            it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION
+        }.sortedBy { it.timestamp }
+        var anchor = Long.MIN_VALUE
+        val arrows = notes.map { note ->
+            val first = anchor == Long.MIN_VALUE || note.timestamp - anchor >= 25 * 60_000L
+            if (first) anchor = note.timestamp
+            val kind = bgDots.minByOrNull { abs(it.timestamp - note.timestamp) }
+                ?.takeIf { abs(it.timestamp - note.timestamp) <= 10 * 60_000L }
+                ?.dominantIsf
+            val color = when (kind) {
+                DominantIsf.ACCE -> acceColor
+                DominantIsf.BG -> bgIsfColor
+                DominantIsf.PP -> ppColor
+                DominantIsf.DURA -> duraColor
+                else -> Color(0xFFFFFF00)
+            }
+            val clock = dateUtil.timeString(note.timestamp).replace(":", "")
+            SmbStackItem(
+                x = timestampToX(note.timestamp, minTimestamp),
+                label = if (first) clock else "",
+                stackIndex = 0,
+                color = color,
+            )
+        }
+        val texts = notes.mapIndexed { index, note ->
+            SmbStackItem(
+                x = timestampToX(note.timestamp, minTimestamp),
+                label = abbreviateCareNote(note.label),
+                stackIndex = smbStackIndex(notes.map { it.timestamp }, windowMs = 25 * 60_000L)[index],
+                color = arrows[index].color,
+            )
+        }
+        listOf(
+            NoteArrows(arrows, smbText),
+            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.5f),
+        )
+    }
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks) {
+        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks
+    }
 
     // Union of Y values across all primary-layer series (IOB, COB, simple series, DevSlope-min,
     // deviation lines), windowed to the visible scroll/zoom range — computed once here since the

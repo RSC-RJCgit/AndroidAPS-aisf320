@@ -349,6 +349,30 @@ class NowLine(
  * Remember a [NowLine] decoration for the current time.
  * @param nowTimestamp current time in millis — pass a ticker value so the line updates periodically
  */
+enum class SecondaryMarks { NONE, SMB_TOTALS, NOTES }
+
+/** 20-minute windows. The label time is the end of the window, and the number is the insulin in it. */
+internal fun smbTimedTotals(events: List<Pair<Long, Double>>, windowMs: Long = 20 * 60_000L): List<Pair<Long, Double>> {
+    if (events.isEmpty()) return emptyList()
+    val sorted = events.sortedBy { it.first }
+    val totals = mutableListOf<Pair<Long, Double>>()
+    var start = 0L
+    for (event in sorted) {
+        if (start == 0L || event.first - start >= windowMs) {
+            start = event.first
+            val end = start + windowMs
+            val total = sorted.filter { it.first in start..end }.sumOf { it.second }
+            totals.add(end to total)
+        }
+    }
+    return totals
+}
+
+internal fun abbreviateCareNote(label: String): String {
+    val text = label.trim()
+    return if (text.length <= 8) text else text.take(8)
+}
+
 data class SmbStackItem(
     val x: Double,
     val label: String,
@@ -498,6 +522,46 @@ class SmbStackLabels(
                         anchor - layout.size.height - item.stackIndex * step
                     }
                     drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
+                }
+            }
+        }
+    }
+}
+
+/** Down arrows in the top part of the graph. The label is the trigger time, and only the first of a group has one. */
+class NoteArrows(
+    private val items: List<SmbStackItem>,
+    private val textMeasurer: TextMeasurer,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            for (item in items) {
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                val shaftStart = layerBounds.top + layerBounds.height * 0.22f
+                val shaftEnd = shaftStart + 16f
+                val tip = shaftEnd + 12f
+                val half = 5f
+                val path = Path().apply {
+                    moveTo(canvasX, tip)
+                    lineTo(canvasX + half, shaftEnd)
+                    lineTo(canvasX - half, shaftEnd)
+                    close()
+                }
+                with(mutableDrawScope) {
+                    drawLine(item.color, Offset(canvasX, shaftStart), Offset(canvasX, shaftEnd), strokeWidth = 2f)
+                    drawPath(path, item.color)
+                    if (item.label.isNotEmpty()) {
+                        val style = TextStyle(color = item.color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        val layout = textMeasurer.measure(item.label, style)
+                        drawText(layout, topLeft = Offset(canvasX - layout.size.width / 2f, shaftStart - layout.size.height))
+                    }
                 }
             }
         }

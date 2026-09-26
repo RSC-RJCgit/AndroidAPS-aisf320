@@ -323,6 +323,7 @@ open class OpenAPSAutoISFPlugin(
     }
 
     override suspend fun invoke(initiator: String, tempBasalFallback: Boolean) = withContext(Dispatchers.Default) {
+        cycleNotes.setLength(0)
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
@@ -578,6 +579,7 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
         )
         if (applyRemoteToggles(now)) isTempTarget = false
+        applySetRoleDuration(now)
         smbBoostedThisCycle = false
         markBolusBoosts(
             now = now,
@@ -908,6 +910,15 @@ open class OpenAPSAutoISFPlugin(
                         smbDelivered = determineBasalResult.smb,
                         ukfRawBgl = ukf.glucose ?: 0.0,
                         iobThEffective = if (use_iobTH) iobTHvirtual / iobTHtolerance * 100.0 else oapsProfile.max_iob,
+                        targetMgdl = oapsProfile.target_bg,
+                        uamCarbImpact = determineBasalAutoISF.uamCarbImpactToStore,
+                        smbDeliveryRatio = smb_delivery_ratio,
+                        acceIsfWeight = bgAccel_ISF_weight,
+                        ppIsfWeight = pp_ISF_weight,
+                        fslCalSlope = preferences.get(DoubleNonKey.FslCalSlope),
+                        cob = mealData.mealCOB,
+                        basal = currentTemp.rate,
+                        note = cycleNotes.toString().take(80),
                     )
                 )
             }
@@ -3084,6 +3095,18 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.MJ3 -> RunMark.MJ3
             RemoteToggleCode.MJ_ACTIVE -> RunMark.MJ_ACTIVE
             RemoteToggleCode.MJ2 -> RunMark.MJ2
+            RemoteToggleCode.PROFILE_STANDARD -> RunMark.PROFILE_STANDARD
+            RemoteToggleCode.PROFILE_LOW -> RunMark.PROFILE_LOW
+            RemoteToggleCode.SENSOR_AGE_CODE -> RunMark.SENSOR_AGE_CODE
+            RemoteToggleCode.LIBRE_UKF1 -> RunMark.LIBRE_UKF1
+            RemoteToggleCode.MJ_START -> RunMark.MJ_START
+            RemoteToggleCode.MJ_RESTORE -> RunMark.MJ_RESTORE
+            RemoteToggleCode.STEROID_START -> RunMark.STEROID_START
+            RemoteToggleCode.STEROID_130 -> RunMark.STEROID_130
+            RemoteToggleCode.STEROID_150 -> RunMark.STEROID_150
+            RemoteToggleCode.STEROID_190 -> RunMark.STEROID_190
+            RemoteToggleCode.STEROID_250 -> RunMark.STEROID_250
+            RemoteToggleCode.STEROID_OFF -> RunMark.STEROID_OFF
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3264,7 +3287,121 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.MJ3 -> setMjState("MJ3", "MJstate: MJ3", "MJs3")
             RemoteToggleCode.MJ_ACTIVE -> setMjState("MJ active", "MJstate: MJ active", "MJsAc")
             RemoteToggleCode.MJ2 -> setMjState("MJ2", "MJstate: MJ2", "MJs2")
+            RemoteToggleCode.PROFILE_STANDARD -> {
+                switchToStandardAtSharedTier(dateUtil.now())
+                val name = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                sendAutoSms("Profile: Standard ($name)")
+                carePortalNote("PrSt")
+            }
+            RemoteToggleCode.PROFILE_LOW -> {
+                switchToLowAtSharedTier(dateUtil.now(), "AutoISF: Low")
+                val name = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+                sendAutoSms("Profile: Low ($name)")
+                carePortalNote("PrLow")
+            }
+            RemoteToggleCode.SENSOR_AGE_CODE -> {
+                val newState = !preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)
+                preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
+                sendAutoSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
+                carePortalNote("SAC${if (newState) "On" else "Off"}")
+            }
+            RemoteToggleCode.LIBRE_UKF1 -> applyLibreUkf1()
+            RemoteToggleCode.MJ_START -> relayMj(start = true)
+            RemoteToggleCode.MJ_RESTORE -> relayMj(start = false)
+            RemoteToggleCode.STEROID_START -> relaySteroid(StringKey.ApsAutoIsfSteroid110ProfileName, 75, "Turn SteroidsON", "SteroidsON", turnOn = true)
+            RemoteToggleCode.STEROID_130 -> relaySteroid(StringKey.ApsAutoIsfSteroid130ProfileName, 78, "Steroids 110% are ON.. press to increase? to 130", "Steroids130", turnOn = null)
+            RemoteToggleCode.STEROID_150 -> relaySteroid(StringKey.ApsAutoIsfSteroid150ProfileName, 81, "Steroids 130% are ON.. press to increase? to 150", "Steroids150", turnOn = null)
+            RemoteToggleCode.STEROID_190 -> relaySteroid(StringKey.ApsAutoIsfSteroid190ProfileName, 84, "Steroids 150% are ON.. press to increase? to 190", "Steroids190", turnOn = null)
+            RemoteToggleCode.STEROID_250 -> relaySteroid(StringKey.ApsAutoIsfSteroid250ProfileName, 88, "Steroids 190% are ON.. press to increase? to 250", "Steroids250", turnOn = null)
+            RemoteToggleCode.STEROID_OFF -> relaySteroid(StringKey.ApsAutoIsfSteroid100ProfileName, 71, "Steroids are ON.. press to turn OFF? 71_0.71", "SteroidsOff", turnOn = false, weight = 0.71)
         }
+    }
+
+    // Virtual pump only. A live pump forces the smoother off and says why.
+    private suspend fun applyLibreUkf1() {
+        val virtual = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+        if (!virtual) {
+            preferences.put(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing, false)
+            sendAutoSms("LibreUKFset1 blocked: Virtual Pump only")
+            carePortalNote("UKF1Block")
+            return
+        }
+        val next = !preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)
+        preferences.put(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing, next)
+        sendAutoSms("LibreUKFset1 Virtual: ${if (next) "ON" else "OFF"}")
+        carePortalNote(if (next) "UKF1VOn" else "UKF1VOff")
+    }
+
+    // Same steps as the MJ buttons: low or standard profile, weight, IOB threshold, and the MJ state.
+    private suspend fun relayMj(start: Boolean) {
+        if (config.AAPSCLIENT || !preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        val now = dateUtil.now()
+        if (start) {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.35)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+            switchToLowAtSharedTier(now, "AutoISF: MJ")
+            setMjState("MJ active", "Injection MJ 0.35_.70", "MJ active")
+        } else {
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
+            switchToStandardAtSharedTier(now)
+            setMjState("NOMJremains", "MJ dose 4+ days old", "NOMJremains")
+        }
+    }
+
+    // Same steps as the steroid buttons. turnOn null leaves the Steroids state as it is.
+    private suspend fun relaySteroid(nameKey: StringKey, iobTh: Int, sms: String, note: String, turnOn: Boolean?, weight: Double = 0.70) {
+        if (config.AAPSCLIENT || !preferences.get(BooleanKey.AutomationStatesEnabled)) return
+        val now = dateUtil.now()
+        if (turnOn == true) setNamedState("Steroids", "SteroidsON")
+        if (turnOn == false) setNamedState("Steroids", "Steroids Off")
+        writeNamedPercent(now, preferences.get(nameKey), 100, 0, note)
+        preferences.put(IntKey.ApsAutoIsfIobThPercent, iobTh)
+        preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
+        sendAutoSms(sms)
+        carePortalNote(note)
+    }
+
+    private fun setNamedState(group: String, value: String) {
+        val store = states()
+        if (store.hasStateValues(group) && value in store.getStateValues(group)) store.setState(group, value)
+    }
+
+    // A 100% profile switch of 51 to 57 minutes names a Standard or Low role, then the switch is made indefinite.
+    private suspend fun applySetRoleDuration(now: Long) {
+        val cursor = preferences.get(LongNonKey.ApsAutoIsfSetRoleDurationHandledAt)
+        val active = persistenceLayer.getProfileSwitchActiveAt(now) ?: return
+        if (!active.isValid || active.timestamp <= cursor) return
+        val roleIndex = (active.duration / 60_000L).toInt() - 50
+        if (active.percentage == 100 && roleIndex in 1..7) {
+            val roleKey = setRoleKeyForIndex(roleIndex)
+            if (roleKey != null && applySetRole(roleKey, active.profileName)) {
+                writeNamedPercent(now, active.profileName, 100, 0, "SetRole")
+                sendAutoSms("SetRole(dur): ${roleKey.key} -> ${active.profileName}")
+                carePortalNote("RoleSet")
+            }
+        }
+        preferences.put(LongNonKey.ApsAutoIsfSetRoleDurationHandledAt, active.timestamp)
+    }
+
+    private fun setRoleKeyForIndex(oneBasedIndex: Int): StringKey? = listOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName,
+    ).getOrNull(oneBasedIndex - 1)
+
+    private fun applySetRole(roleKey: StringKey, profileName: String): Boolean {
+        val name = profileName.trim()
+        if (name.isBlank()) return false
+        if (profileRepository.profile.value?.getSpecificProfile(name) == null) return false
+        if (name.contains("steroid", ignoreCase = true) || name.contains("%")) return false
+        preferences.put(roleKey, name)
+        keepSteroidsOff()
+        return true
     }
 
     // Manual MJ state. Written only when that value is one of the stored choices, so a short list cannot crash the loop.
@@ -3298,6 +3435,7 @@ open class OpenAPSAutoISFPlugin(
     }
 
     private var lastCareNoteAt = 0L
+    private val cycleNotes = StringBuilder()
 
     private fun sendAutoSms(text: String) {
         smsCommunicator.sendNotificationToAllNumbers(text)
@@ -3312,6 +3450,8 @@ open class OpenAPSAutoISFPlugin(
     }
 
     private suspend fun carePortalNote(text: String) {
+        if (cycleNotes.isNotEmpty()) cycleNotes.append(' ')
+        cycleNotes.append(text)
         var ts = dateUtil.now()
         if (ts <= lastCareNoteAt) ts = lastCareNoteAt + 1
         lastCareNoteAt = ts

@@ -29,4 +29,13 @@ data class AutoIsfValues(
     var ukfRawBgl: Double = 0.0,
     /** Effective IOB threshold in units. Older rows are 0. */
     var iobThEffective: Double = 0.0,
+    var targetMgdl: Double = 0.0,
+    var uamCarbImpact: Double = 0.0,
+    var smbDeliveryRatio: Double = 0.0,
+    var acceIsfWeight: Double = 0.0,
+    var ppIsfWeight: Double = 0.0,
+    var fslCalSlope: Double = 0.0,
+    var cob: Double = 0.0,
+    var basal: Double = 0.0,
+    var note: String = "",
 )

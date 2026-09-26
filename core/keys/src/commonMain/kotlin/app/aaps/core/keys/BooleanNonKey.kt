@@ -71,4 +71,7 @@ enum class BooleanNonKey(
     ApsAutoIsfOldSensorAdjEnabled("autoisf_old_sensor_adj_enabled", true, exportable = false),
     ApsAutoIsfOldSensorAdjActive("autoisf_old_sensor_adj_active", false, exportable = false),
     ApsAutoIsfOldPodInsReqBoostActive("autoisf_old_pod_insreq_boost_active", false, exportable = false),
+
+    // Libre raw display smoothing. On until a virtual-pump toggle turns it off. Local only.
+    ApsAutoIsfFslUseUkfSmoothing("autoisf_fsl_use_ukf_smoothing", true, exportable = false),
 }

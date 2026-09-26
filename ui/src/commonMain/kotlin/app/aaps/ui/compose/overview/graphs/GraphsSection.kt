@@ -455,7 +455,12 @@ fun GraphsSection(
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
                     seriesTypes = secondary.series,
-                    showSmbDoseLabels = false,
+                    showSmbDoseLabels = i == 0,
+                    secondaryMarks = when (i) {
+                        1 -> SecondaryMarks.SMB_TOTALS
+                        2 -> SecondaryMarks.NOTES
+                        else -> SecondaryMarks.NONE
+                    },
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
                     derivedTimeRange = derivedTimeRange,

@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.smoothing.Smoothing
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.smoothing.keys.UkfDoubleNonKey
 import app.aaps.plugins.smoothing.keys.UkfIntNonKey
@@ -1327,6 +1328,7 @@ class UnscentedKalmanFilterPlugin(
      */
     override fun smoothForDisplay(points: List<Pair<Long, Double>>): List<Double> {
         if (points.isEmpty()) return emptyList()
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)) return points.map { max(it.second, 39.0) }
         if (points.size < 2) return points.map { max(it.second, 39.0) }
 
         val result = DoubleArray(points.size)

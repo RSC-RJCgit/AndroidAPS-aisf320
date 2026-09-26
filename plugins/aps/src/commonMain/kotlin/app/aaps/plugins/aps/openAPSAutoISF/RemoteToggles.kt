@@ -46,6 +46,18 @@ internal enum class RemoteToggleCode {
     MJ3,
     MJ_ACTIVE,
     MJ2,
+    PROFILE_STANDARD,
+    PROFILE_LOW,
+    SENSOR_AGE_CODE,
+    LIBRE_UKF1,
+    MJ_START,
+    MJ_RESTORE,
+    STEROID_START,
+    STEROID_130,
+    STEROID_150,
+    STEROID_190,
+    STEROID_250,
+    STEROID_OFF,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -89,6 +101,18 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.146, 0.0001) -> RemoteToggleCode.MJ3
     ttNear(ttMgdl, 5.222, 0.0001) -> RemoteToggleCode.MJ_ACTIVE
     ttNear(ttMgdl, 5.224, 0.0001) -> RemoteToggleCode.MJ2
+    ttNear(ttMgdl, 5.148, 0.0001) -> RemoteToggleCode.PROFILE_STANDARD
+    ttNear(ttMgdl, 5.150, 0.0001) -> RemoteToggleCode.PROFILE_LOW
+    ttNear(ttMgdl, 5.156, 0.0001) -> RemoteToggleCode.SENSOR_AGE_CODE
+    ttNear(ttMgdl, 5.152, 0.0001) -> RemoteToggleCode.LIBRE_UKF1
+    ttNear(ttMgdl, 5.158, 0.0001) -> RemoteToggleCode.MJ_START
+    ttNear(ttMgdl, 5.160, 0.0001) -> RemoteToggleCode.MJ_RESTORE
+    ttNear(ttMgdl, 5.162, 0.0001) -> RemoteToggleCode.STEROID_START
+    ttNear(ttMgdl, 5.168, 0.0001) -> RemoteToggleCode.STEROID_130
+    ttNear(ttMgdl, 5.170, 0.0001) -> RemoteToggleCode.STEROID_150
+    ttNear(ttMgdl, 5.172, 0.0001) -> RemoteToggleCode.STEROID_190
+    ttNear(ttMgdl, 5.174, 0.0001) -> RemoteToggleCode.STEROID_250
+    ttNear(ttMgdl, 5.176, 0.0001) -> RemoteToggleCode.STEROID_OFF
     else -> null
 }
 

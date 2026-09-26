@@ -20,6 +20,15 @@ fun AutoIsfValues.fromDb(): AIV =
         smbDelivered = smbDelivered,
         ukfRawBgl = ukfRawBgl,
         iobThEffective = iobThEffective,
+        targetMgdl = targetMgdl,
+        uamCarbImpact = uamCarbImpact,
+        smbDeliveryRatio = smbDeliveryRatio,
+        acceIsfWeight = acceIsfWeight,
+        ppIsfWeight = ppIsfWeight,
+        fslCalSlope = fslCalSlope,
+        cob = cob,
+        basal = basal,
+        note = note,
     )
 
 fun AIV.toDb(): AutoIsfValues =
@@ -39,4 +48,13 @@ fun AIV.toDb(): AutoIsfValues =
         smbDelivered = smbDelivered,
         ukfRawBgl = ukfRawBgl,
         iobThEffective = iobThEffective,
+        targetMgdl = targetMgdl,
+        uamCarbImpact = uamCarbImpact,
+        smbDeliveryRatio = smbDeliveryRatio,
+        acceIsfWeight = acceIsfWeight,
+        ppIsfWeight = ppIsfWeight,
+        fslCalSlope = fslCalSlope,
+        cob = cob,
+        basal = basal,
+        note = note,
     )

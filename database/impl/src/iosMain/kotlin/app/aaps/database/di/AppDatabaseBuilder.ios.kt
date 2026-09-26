@@ -10,6 +10,7 @@ import app.aaps.database.AppRepository
 import app.aaps.database.migration35to36
 import app.aaps.database.migration36to37
 import app.aaps.database.migration37to38
+import app.aaps.database.migration38to39
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -88,7 +89,7 @@ class IosAppDatabaseBuilder(
                 }
             })
             .fallbackToDestructiveMigration(false)
-            .addMigrations(migration35to36, migration36to37, migration37to38)
+            .addMigrations(migration35to36, migration36to37, migration37to38, migration38to39)
             .build()
 
     /**

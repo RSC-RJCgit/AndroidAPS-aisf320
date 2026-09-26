@@ -64,5 +64,8 @@ enum class LongNonKey(
     // Server-modified time of the last secondary Nightscout page. 0 means the first download
     // still has to walk back 16 days. Local only: restoring it would skip treatments.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),
+
+    // Profile-switch time already used as a Set-role duration. Local only.
+    ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
 }
 
