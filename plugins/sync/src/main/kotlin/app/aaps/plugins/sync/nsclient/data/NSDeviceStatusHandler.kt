@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsclient.data
 
-import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
+import app.aaps.plugins.sync.nsShared.isFollowerPhone
+import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
 import android.os.Build
 import app.aaps.core.data.model.AIV
 import app.aaps.core.interfaces.aps.RT

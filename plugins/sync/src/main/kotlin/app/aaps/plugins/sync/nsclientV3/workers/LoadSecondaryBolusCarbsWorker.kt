@@ -29,6 +29,7 @@ import app.aaps.core.utils.JsonHelper
 import app.aaps.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
+import app.aaps.plugins.sync.nsShared.isFollowerPhone
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent

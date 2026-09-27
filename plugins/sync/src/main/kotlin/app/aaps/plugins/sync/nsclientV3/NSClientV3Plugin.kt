@@ -75,6 +75,7 @@ import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsShared.NSClientFragment
+import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
 import app.aaps.plugins.sync.nsShared.events.EventConnectivityOptionChanged
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
