@@ -57,6 +57,7 @@ import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import com.patrykandpatrick.vico.compose.cartesian.Scroll
+import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
 import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
@@ -149,7 +150,7 @@ fun GraphsSection(
         rememberVicoScrollState(
             scrollEnabled = true,
             initialScroll = Scroll.Absolute.End
-        ) to rememberVicoZoomState(
+        ) to rememberSafeZoomState(
             zoomEnabled = true,
             initialZoom = startZoom,
             minZoom = bgMinZoom,
@@ -160,15 +161,15 @@ fun GraphsSection(
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
     // These are always created to keep Compose's remember slots stable
     val sec0scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec0zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val sec0zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
     val sec1scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec1zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val sec1zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
     val sec2scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec2zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val sec2zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
     val sec3scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec3zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val sec3zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
     val sec4scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec4zoom = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val sec4zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
     val nowTimestamp by graphViewModel.nowTimestamp.collectAsStateWithLifecycle()
@@ -209,14 +210,14 @@ fun GraphsSection(
         scrollEnabled = true,
         initialScroll = Scroll.Absolute.End
     )
-    val beltZoomState = rememberVicoZoomState(
+    val beltZoomState = rememberSafeZoomState(
         zoomEnabled = false,
         initialZoom = startZoom
     )
 
     // Fixed IOB graph - non-interactive, synced from BG
     val iobScrollState = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val iobZoomState = rememberVicoZoomState(zoomEnabled = false, initialZoom = startZoom)
+    val iobZoomState = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
     // without writing to state during composition. Unattached states are no-ops for
@@ -756,4 +757,37 @@ private fun GraphSeriesBottomSheet(
             }
         }
     }
+}
+
+// Vico saves the zoom factor. A saved NaN is kept, the point size becomes NaN, and the chart crashes.
+// This slot is new, so the old NaN is left behind. A bad factor is replaced before it is stored.
+private const val SAFE_ZOOM_SLOT = "finite-zoom"
+private const val VICO_MAX_ZOOM = 10f
+private const val MIN_USABLE_ZOOM = 0.0001f
+
+@Composable
+private fun rememberSafeZoomState(
+    zoomEnabled: Boolean,
+    initialZoom: Zoom,
+    minZoom: Zoom = Zoom.Content,
+    maxZoom: Zoom? = null,
+): VicoZoomState {
+    val defaultMax = remember { Zoom.max(Zoom.fixed(VICO_MAX_ZOOM), Zoom.Content) }
+    val resolvedMax = maxZoom ?: defaultMax
+    val safeInitial = remember(initialZoom) { initialZoom.ifNotUsable(1f) }
+    val safeMin = remember(minZoom) { minZoom.ifNotUsable(MIN_USABLE_ZOOM) }
+    val safeMax = remember(resolvedMax) { resolvedMax.ifNotUsable(VICO_MAX_ZOOM) }
+    return key(SAFE_ZOOM_SLOT) {
+        rememberVicoZoomState(
+            zoomEnabled = zoomEnabled,
+            initialZoom = safeInitial,
+            minZoom = safeMin,
+            maxZoom = safeMax,
+        )
+    }
+}
+
+private fun Zoom.ifNotUsable(fallback: Float): Zoom = Zoom { context, layerDimensions, bounds ->
+    val zoom = getValue(context, layerDimensions, bounds)
+    if (zoom.isFinite() && zoom > 0f) zoom else fallback
 }
