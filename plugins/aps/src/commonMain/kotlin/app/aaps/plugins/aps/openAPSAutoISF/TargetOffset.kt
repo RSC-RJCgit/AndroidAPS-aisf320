@@ -45,9 +45,15 @@ internal fun todOffsetMmol(
     else -> offset2200
 }
 
-// Base is smb_delivery_ratio_max * 18 mg/dL. A time-of-day nudge is added in mg/dL. MildOffsetZero replaces the sum with 0. Cap is 36.
-internal fun varOffsetMgdl(smbDeliveryRatioMax: Double, todOffsetMgdl: Double, mildOffsetZero: Boolean): Double {
-    var offset = smbDeliveryRatioMax * 18.0
+// When the SMB offset preference is on, that mmol value times 18 is the base. Otherwise the base is smb_delivery_ratio_max * 18.
+// A time-of-day nudge is added in mg/dL either way. MildOffsetZero replaces the sum with 0. Cap is 36.
+internal fun varOffsetMgdl(
+    smbDeliveryRatioMax: Double,
+    todOffsetMgdl: Double,
+    mildOffsetZero: Boolean,
+    smbOffsetOverrideMmol: Double? = null,
+): Double {
+    var offset = if (smbOffsetOverrideMmol != null) smbOffsetOverrideMmol * 18.0 else smbDeliveryRatioMax * 18.0
     if (todOffsetMgdl != 0.0) offset += todOffsetMgdl
     if (mildOffsetZero) offset = 0.0
     return min(36.0, offset)
@@ -63,8 +69,9 @@ internal fun targetOffset(
     bg: Double,
     cob: Double,
     carbAgeMin: Double,
+    smbOffsetOverrideMmol: Double? = null,
 ): TargetOffset {
-    val varOffset = varOffsetMgdl(smbDeliveryRatioMax, todOffsetMgdl, mildOffsetZero)
+    val varOffset = varOffsetMgdl(smbDeliveryRatioMax, todOffsetMgdl, mildOffsetZero, smbOffsetOverrideMmol)
     val targetBgOrig = targetBgOrigMgdl(tempTargetSet, minBg, hour)
     val targetBgOffset = min(targetBgOrig + varOffset, 126.0)
     val lowCob = cob == 0.0 || (cob < 5.0 && carbAgeMin > 120.0)

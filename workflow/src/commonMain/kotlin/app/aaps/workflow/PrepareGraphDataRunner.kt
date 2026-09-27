@@ -839,8 +839,8 @@ class PrepareGraphDataRunner(
                 hypoPrediction = hypoPrediction,
                 statusTarget = latestAutoIsf?.let { statusTargetLine(it) },
                 statusIsf = latestAutoIsf?.let { statusIsfLine(it) },
-                statusRatio = latestAutoIsf?.let { statusRatioLine(it) },
-                statusSteps = latestAutoIsf?.let { statusStepsLine(it.timestamp) },
+                statusRatio = latestAutoIsf?.let { statusRatioLine(it, autoIsfRows) },
+                statusSteps = latestAutoIsf?.let { statusStepsLine(it.timestamp, hypoPrediction) },
             )
         )
 
@@ -878,17 +878,49 @@ class PrepareGraphDataRunner(
         return "f=${factorOrDash(row.finalIsf)} ac=${factorOrDash(row.acceIsf)} bg=${factorOrDash(row.bgIsf)} pp=${factorOrDash(row.ppIsf)} du=${factorOrDash(row.duraIsf)} smb=$smb"
     }
 
-    // The same weights the UK graph 1 line starts with.
-    private fun statusRatioLine(row: AIV): String =
-        "DR=${twoDecimals(row.smbDeliveryRatio)} AW=${twoDecimals(row.acceIsfWeight)} PW=${twoDecimals(row.ppIsfWeight)}"
+    // Graph 1 ratio line: delivery ratio, accel weight, Libre slope, BG acceleration, IOB change over 5 minutes.
+    private fun statusRatioLine(row: AIV, rows: List<AIV>): String {
+        val slope = if (row.fslCalSlope == 0.0) "--" else twoDecimals(row.fslCalSlope)
+        val iod = iobChangeOver5Min(row, rows)?.let { twoDecimals(it) } ?: "--"
+        return "DR=${twoDecimals(row.smbDeliveryRatio)} AW=${twoDecimals(row.acceIsfWeight)} LS=$slope acce=${twoDecimals(row.bgAcceleration)} IOd5=$iod"
+    }
 
-    private suspend fun statusStepsLine(at: Long): String {
+    private suspend fun statusStepsLine(at: Long, hypo: Double?): String {
         val steps = persistenceLayer.getLastStepsCountFromTimeToTime(at - 20 * 60_000L, at + 60_000L)
         val s5 = steps?.steps5min ?: 0
         val s15 = steps?.steps15min ?: 0
         val s30 = steps?.steps30min ?: 0
         val s60 = steps?.steps60min ?: 0
-        return "S5=$s5 S15=$s15 S30=$s30 S60=$s60"
+        val hp = hypo?.let { oneDecimal(it) } ?: "--"
+        return "S5=$s5 S15=$s15 S30=$s30 S60=$s60 MJ=${latestMjState(at)} HP=$hp"
+    }
+
+    // Nearest AutoISF row about 5 minutes earlier, within 3 minutes. Null when none is close enough.
+    private fun iobChangeOver5Min(current: AIV, rows: List<AIV>): Double? {
+        val target = current.timestamp - 5 * 60_000L
+        val prior = rows.minByOrNull { abs(it.timestamp - target) } ?: return null
+        if (abs(prior.timestamp - target) > 3 * 60_000L) return null
+        return current.iob - prior.iob
+    }
+
+    // Latest MJ care-portal note in the last 24 hours. No note means NOM.
+    private suspend fun latestMjState(at: Long): String {
+        val notes = persistenceLayer.getTherapyEventDataFromTime(at - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
+        val note = notes.firstOrNull {
+            val text = it.note ?: ""
+            it.timestamp <= at && (
+                text == "MJ" || text == "MJ active" || text == "MJsAc" ||
+                    text == "MJ2" || text == "MJs2" ||
+                    text == "MJ3" || text == "MJs3" || text == "MoreMJ" ||
+                    text == "A1" || text == "NOMJremains" || text == "MJsNO" || text.startsWith("MJoff")
+                )
+        } ?: return "NOM"
+        return when (note.note) {
+            "MJ", "MJ active", "MJsAc" -> "MJa"
+            "MJ2", "MJs2" -> "MJ2"
+            "MJ3", "MJs3", "MoreMJ" -> "MJ3"
+            else -> "NOM"
+        }
     }
 
     private fun factorOrDash(value: Double): String = if (value == 1.0 || value == 0.0) "--" else twoDecimals(value)

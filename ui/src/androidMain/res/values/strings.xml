@@ -217,6 +217,7 @@
     <string name="autoisf_history_short_delta" comment="Short average BG delta.">Short delta</string>
     <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
     <string name="autoisf_history_iob">IOB</string>
+    <string name="autoisf_history_iod5" comment="Change in IOB over about 5 minutes, in units. Example: 0.12">IOd5</string>
     <string name="autoisf_history_iob_th" comment="Effective IOB threshold for this row, in units.">iobTH</string>
     <string name="autoisf_history_target" comment="Glucose target for this loop, in the user's units.">Target</string>
     <string name="autoisf_history_uam" comment="Unannounced meal for this loop, in grams.">UAMci</string>

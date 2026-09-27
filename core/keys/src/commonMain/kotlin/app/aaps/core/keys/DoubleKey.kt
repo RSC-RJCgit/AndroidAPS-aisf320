@@ -460,6 +460,18 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfSmbOffsetOverride(
+        key = "autoisf_smb_offset_override",
+        defaultValue = 0.5,
+        min = 0.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_smb_offset_override,
+        summary = KeysStrings.pref_summary_aps_smb_offset_override,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfMildBoostRatio(
         key = "autoisf_mild_boost_ratio",
         defaultValue = 0.20,

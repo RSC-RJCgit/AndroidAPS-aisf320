@@ -122,6 +122,7 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_short_delta),
     stringResource(UiStrings.autoisf_history_long_delta),
     stringResource(UiStrings.autoisf_history_iob),
+    stringResource(UiStrings.autoisf_history_iod5),
     stringResource(UiStrings.autoisf_history_iob_th),
     stringResource(UiStrings.autoisf_history_smb),
     stringResource(UiStrings.autoisf_history_target),
@@ -142,7 +143,7 @@ private fun historyHeaders(): List<String> = listOf(
 
 private fun AutoIsfHistoryRow.scrollingCells(): List<String> = listOf(
     glucose, ukf, ukfDelta5, ukfDelta15, finalIsf, acceIsf, bgIsf, ppIsf, duraIsf,
-    acceleration, delta, shortDelta, longDelta, iob, iobTh, smb,
+    acceleration, delta, shortDelta, longDelta, iob, iob5, iobTh, smb,
     target, uam, smbRatio, acceWeight, ppWeight, slope, cob, basal, note,
     steps5, steps15, steps30, steps60, steps180
 )
@@ -167,6 +168,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         glucose,
         glucose,
         glucose,
+        insulin,
         insulin,
         insulin,
         factorColor(row.smbFactor, insulin),

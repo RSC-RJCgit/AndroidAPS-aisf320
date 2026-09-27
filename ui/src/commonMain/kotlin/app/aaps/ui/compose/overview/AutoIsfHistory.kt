@@ -43,6 +43,7 @@ data class AutoIsfHistoryRow(
     val shortDelta: String,
     val longDelta: String,
     val iob: String,
+    val iob5: String,
     val iobTh: String,
     val smb: String,
     val target: String,
@@ -80,6 +81,15 @@ fun autoIsfAdjustmentText(value: Double, format2: (Double) -> String): String =
 /** A zero insulin amount is shown as a dash. */
 fun autoIsfAmountText(value: Double, format2: (Double) -> String): String =
     if (value == 0.0) "--" else format2(value)
+
+/** Change in IOB over about 5 minutes. "--" when no earlier row is close enough. */
+fun iob5MinChangeText(rows: List<AIV>, index: Int, format2: (Double) -> String): String {
+    val row = rows[index]
+    val target = row.timestamp - 5 * 60_000L
+    val prior = rows.minByOrNull { abs(it.timestamp - target) } ?: return "--"
+    if (abs(prior.timestamp - target) > 3 * 60_000L) return "--"
+    return format2(row.iob - prior.iob)
+}
 
 /** UKF change over about 5 or 15 minutes, in the same units as the other deltas. */
 fun ukfDeltaText(rows: List<AIV>, index: Int, minutesBack: Int, deltaText: (Double) -> String): String {
@@ -121,6 +131,7 @@ fun List<AIV>.autoIsfHistoryRows(
         shortDelta = deltaText(row.shortAvgDelta),
         longDelta = deltaText(row.longAvgDelta),
         iob = autoIsfAmountText(row.iob, format2),
+        iob5 = iob5MinChangeText(this, index, format2),
         iobTh = autoIsfAmountText(row.iobThEffective, format2),
         smb = autoIsfAmountText(row.smbDelivered, format2),
         target = autoIsfAmountText(row.targetMgdl, glucoseText),

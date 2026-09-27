@@ -165,6 +165,8 @@ internal object RunMark {
     const val WIZARD_PCT_UP = "WizardPctUpTT"
     const val MILD_BOOST_DOWN = "MildBoostDownTT"
     const val MILD_BOOST_UP = "MildBoostUpTT"
+    const val SMB_OFFSET_DOWN = "SmbOffsetDownTT"
+    const val SMB_OFFSET_UP = "SmbOffsetUpTT"
     const val ACTIVITY_PROF_50 = "ActivityProf50"
     const val ACTIVITY_OFF = "ActivityOff"
 }

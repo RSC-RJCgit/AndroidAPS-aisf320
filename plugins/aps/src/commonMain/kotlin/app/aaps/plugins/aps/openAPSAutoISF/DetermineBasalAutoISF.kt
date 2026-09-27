@@ -1041,6 +1041,7 @@ class DetermineBasalAutoISF(
         daytimeGateBypass: Boolean = false,
         recentLowBg: Double = 999.0,
         todOffsetMgdl: Double = 0.0,
+        smbOffsetOverrideMmol: Double? = null,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -2220,6 +2221,7 @@ class DetermineBasalAutoISF(
                     smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
                     todOffsetMgdl = todOffsetMgdl,
                     mildOffsetZero = mildOffsetZero,
+                    smbOffsetOverrideMmol = smbOffsetOverrideMmol,
                     tempTargetSet = profile.temptargetSet,
                     minBg = profile.min_bg,
                     hour = offsetHour,

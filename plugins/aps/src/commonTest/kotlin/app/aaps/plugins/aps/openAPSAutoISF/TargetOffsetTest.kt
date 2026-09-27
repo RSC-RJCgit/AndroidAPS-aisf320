@@ -94,4 +94,22 @@ class TargetOffsetTest {
         )
         assertEquals(16.2, offset.varOffset, 0.0001)
     }
+
+    @Test
+    fun simpleOffsetUsesThePreferenceInsteadOfTheDeliveryRatio() {
+        val offset = targetOffset(
+            smbDeliveryRatioMax = 0.5,
+            todOffsetMgdl = 0.0,
+            mildOffsetZero = false,
+            tempTargetSet = false,
+            minBg = 90.0,
+            hour = 12,
+            bg = 95.0,
+            cob = 0.0,
+            carbAgeMin = 363.0,
+            smbOffsetOverrideMmol = 0.8,
+        )
+        assertEquals(14.4, offset.varOffset, 0.0001)
+        assertEquals(104.4, offset.targetBgOffset, 0.0001)
+    }
 }

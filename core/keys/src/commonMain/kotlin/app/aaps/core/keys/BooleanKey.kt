@@ -235,6 +235,14 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_use_live_steps,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfSmbOffsetOverrideEnabled(
+        "autoisf_smb_offset_override_enabled",
+        false,
+        KeysStrings.pref_title_aps_smb_offset_override_enabled,
+        KeysStrings.pref_summary_aps_smb_offset_override_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfBoostAutomationsEnabled(
         "autoisf_boost_automations_enabled",
         true,

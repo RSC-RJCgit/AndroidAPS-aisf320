@@ -857,6 +857,8 @@ open class OpenAPSAutoISFPlugin(
             smbIntervalSec = smbInterval5Sec(now),
             smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
             mildOffsetZero = preferences.get(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive),
+            smbOffsetOverrideMmol = if (preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled))
+                preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) else null,
             mildThisCycle = mildThisCycle,
             bg3ThisCycle = bg3ThisCycle,
             mildFailsafeThisCycle = mildFailsafeThisCycle,
@@ -1435,6 +1437,16 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
             DoubleKey.ApsAutoIsfMildBoostRatio,
+            BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+            DoubleKey.ApsAutoIsfSmbOffsetOverride,
+            DoubleKey.ApsAutoIsfTodOffset0002,
+            DoubleKey.ApsAutoIsfTodOffset0204,
+            DoubleKey.ApsAutoIsfTodOffset0406,
+            DoubleKey.ApsAutoIsfTodOffset0609,
+            DoubleKey.ApsAutoIsfTodOffset0912,
+            DoubleKey.ApsAutoIsfTodOffset1218,
+            DoubleKey.ApsAutoIsfTodOffset1822,
+            DoubleKey.ApsAutoIsfTodOffset2200,
             BooleanKey.ApsAutoIsfUamBoostEnabled,
             BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled,
             DoubleKey.ApsAutoIsfUamBoostMaxBolus,
@@ -3134,6 +3146,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.WIZARD_PCT_UP -> RunMark.WIZARD_PCT_UP
             RemoteToggleCode.MILD_BOOST_DOWN -> RunMark.MILD_BOOST_DOWN
             RemoteToggleCode.MILD_BOOST_UP -> RunMark.MILD_BOOST_UP
+            RemoteToggleCode.SMB_OFFSET_DOWN -> RunMark.SMB_OFFSET_DOWN
+            RemoteToggleCode.SMB_OFFSET_UP -> RunMark.SMB_OFFSET_UP
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3383,6 +3397,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.WIZARD_PCT_UP -> nudgeWizardPct(5, "WizardPctUp")
             RemoteToggleCode.MILD_BOOST_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfMildBoostRatio, -0.25, 0.1, 1.0, "MildBoostDown", "MB", 2, omitLeadingZero = true)
             RemoteToggleCode.MILD_BOOST_UP -> nudgeDouble(DoubleKey.ApsAutoIsfMildBoostRatio, 0.25, 0.1, 1.0, "MildBoostUp", "MB", 2, omitLeadingZero = true)
+            RemoteToggleCode.SMB_OFFSET_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfSmbOffsetOverride, -0.1, 0.50, 1.50, "SmbOffsetDown", "SO", 1)
+            RemoteToggleCode.SMB_OFFSET_UP -> nudgeDouble(DoubleKey.ApsAutoIsfSmbOffsetOverride, 0.1, 0.50, 1.50, "SmbOffsetUp", "SO", 1)
         }
     }
 

@@ -931,7 +931,7 @@ fun BgGraphCompose(
     if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null || autoIsfGraph.statusRatio != null || autoIsfGraph.statusSteps != null) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
-        val twoLinesUp = with(LocalDensity.current) { (lineSp * 2).toDp() }
+        val linesUp = with(LocalDensity.current) { (lineSp * 1.5f).toDp() }
         val tight = TextStyle(
             fontSize = lineSp,
             lineHeight = lineSp,
@@ -954,7 +954,7 @@ fun BgGraphCompose(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + twoLinesUp).coerceAtLeast(0.dp))
+                .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + linesUp).coerceAtLeast(0.dp))
         ) {
             autoIsfGraph.statusTarget?.let { line ->
                 Text(text = line, color = Color.White, style = tight)

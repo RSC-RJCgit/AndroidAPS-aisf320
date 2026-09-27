@@ -91,6 +91,8 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.WIZARD_PCT_UP, remoteToggleCode(mgdl(5.048)))
         assertEquals(RemoteToggleCode.MILD_BOOST_DOWN, remoteToggleCode(mgdl(5.052)))
         assertEquals(RemoteToggleCode.MILD_BOOST_UP, remoteToggleCode(mgdl(5.054)))
+        assertEquals(RemoteToggleCode.SMB_OFFSET_DOWN, remoteToggleCode(mgdl(5.036)))
+        assertEquals(RemoteToggleCode.SMB_OFFSET_UP, remoteToggleCode(mgdl(5.038)))
         assertNull(remoteToggleCode(mgdl(5.036)))
         assertNull(remoteToggleCode(mgdl(5.042)))
         assertNull(remoteToggleCode(mgdl(5.142)))

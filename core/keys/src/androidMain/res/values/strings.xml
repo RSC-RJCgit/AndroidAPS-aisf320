@@ -88,8 +88,8 @@
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
     <string name="pref_title_aps_use_live_steps">Use the live phone\'s steps</string>
     <string name="pref_summary_aps_use_live_steps">Virtual pump only. On uses the step counts the live phone sent to Nightscout, for dosing and for the history table. Off uses this phone\'s own steps.</string>
-    <string name="pref_title_aps_boost_automations">Boost automations</string>
-    <string name="pref_summary_aps_boost_automations">Allow the night FastRise skip. Off leaves that mark unset.</string>
+    <string name="pref_title_aps_boost_automations">Enable boost automations (BolusGiven + Mild)</string>
+    <string name="pref_summary_aps_boost_automations">Master switch for BolusGiven and BolusGivenMild together. Off disables both.</string>
     <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>
     <string name="pref_summary_aps_custom_automations">On blocks a native automation when its name matches a coded AutoISF automation, unless you allowed that name on the review list. Off leaves every native automation running. Nothing is blocked yet, because those coded automations are not in this app.</string>
     <string name="pref_title_aps_automation_states">Automation states</string>
@@ -124,17 +124,17 @@
     <string name="pref_summary_aps_pp_weight_normal" comment="A weight from 0.000 to 0.150. Default 0.080. The live post-meal weight returns to this after a boost.">Resting post-meal weight. The live weight returns to this after a boost. Default 0.080.</string>
     <string name="pref_title_aps_smb_delivery_baseline">SMB delivery baseline</string>
     <string name="pref_summary_aps_smb_delivery_baseline" comment="A ratio with no unit. 0.14 is the default. 0.17 is the old tuning point the IOB gates were built from.">Base SMB delivery ratio. The mild and strong boost IOB gates scale from 0.17 down to this value. Default 0.14.</string>
-    <string name="pref_title_aps_mild_boost_ratio">Mild SMB boost base</string>
+    <string name="pref_title_aps_mild_boost_ratio">Mild boost delivery ratio</string>
     <string name="pref_summary_aps_mild_boost_ratio" comment="A ratio with no unit. Default 0.20. A mild rise adds 0.15. A strong rise adds 0.03.">Starting SMB delivery ratio for a rise boost. A mild rise adds 0.15. A strong rise adds 0.03. Default 0.20.</string>
-    <string name="pref_title_aps_uam_boost">Tier 3 UAM boost</string>
-    <string name="pref_summary_aps_uam_boost">On lets a mild or strong rise raise the SMB above the ordinary amount, between 09:00 and 21:00. Default off.</string>
+    <string name="pref_title_aps_uam_boost">Enable Tier 3 UAM Boost</string>
+    <string name="pref_summary_aps_uam_boost">Default off. Master switch for Tier 3 UAM Boost. This is separate from Enable boost automations above.</string>
     <string name="pref_title_aps_uam_boost_unrestricted">Tier 3 unrestricted</string>
     <string name="pref_summary_aps_uam_boost_unrestricted">On skips the Tier 3 size cap, the 20 minute gap, and the IOB percent gate. Default off.</string>
-    <string name="pref_title_aps_uam_boost_max_bolus">Tier 3 max SMB</string>
+    <string name="pref_title_aps_uam_boost_max_bolus">UAM Boost max bolus (boost_max)</string>
     <string name="pref_summary_aps_uam_boost_max_bolus" comment="Insulin units. Default 2.5. The delivered SMB is also capped by max IOB divided by 9.5.">Largest SMB Tier 3 may propose. Default 2.5 U. A second cap is max IOB divided by 9.5.</string>
-    <string name="pref_title_aps_uam_boost_max_iob_percent">Tier 3 max IOB percent</string>
+    <string name="pref_title_aps_uam_boost_max_iob_percent">UAM Boost max IOB (% of max_iob)</string>
     <string name="pref_summary_aps_uam_boost_max_iob_percent" comment="Percent of max IOB. Default 10. Example: 10 percent of 9.5 U is 0.95 U.">Tier 3 stops raising the SMB once IOB reaches this percent of max IOB. Default 10.</string>
-    <string name="pref_title_aps_uam_boost_scale">Tier 3 scale</string>
+    <string name="pref_title_aps_uam_boost_scale">UAM Boost scale (boost_scale)</string>
     <string name="pref_summary_aps_uam_boost_scale" comment="A multiplier from 0.1 to 3.0. Default 1.0. The live profile percent scales it again.">Multiplier for the Tier 3 SMB. The current profile percent scales it again. Default 1.0.</string>
     <string name="pref_title_aps_low_profile_name">Low profile name</string>
     <string name="pref_summary_aps_low_profile_name">Exact profile name that blocks the mild and strong bolus boosts. Leave empty until that profile exists.</string>
@@ -487,14 +487,18 @@
     <string name="pref_title_autoisf_max">AutoISF max</string>
     <string name="pref_title_autoisf_max_low">AutoISF max at low glucose</string>
     <string name="openapsama_autoISF_max_low_summary">Upper limit for AutoISF when glucose is low. Nothing in the dose calculation reads this yet. A temp target of 5.080 or 5.082 mmol changes it.</string>
-    <string name="pref_title_aps_tod_offset_0002">SMB offset 00:00 to 02:00</string>
-    <string name="pref_title_aps_tod_offset_0204">SMB offset 02:00 to 04:00</string>
-    <string name="pref_title_aps_tod_offset_0406">SMB offset 04:00 to 06:00</string>
-    <string name="pref_title_aps_tod_offset_0609">SMB offset 06:00 to 09:00</string>
-    <string name="pref_title_aps_tod_offset_0912">SMB offset 09:00 to 12:00</string>
-    <string name="pref_title_aps_tod_offset_1218">SMB offset 12:00 to 18:00</string>
-    <string name="pref_title_aps_tod_offset_1822">SMB offset 18:00 to 22:00</string>
-    <string name="pref_title_aps_tod_offset_2200">SMB offset 22:00 to 24:00</string>
+    <string name="pref_title_aps_smb_offset_override_enabled">Simple SMB offset override</string>
+    <string name="pref_summary_aps_smb_offset_override_enabled">On uses the SMB offset below instead of the SMB delivery-ratio max. The eight time-of-day offsets still add on top either way.</string>
+    <string name="pref_title_aps_smb_offset_override">SMB offset (mmol/L above target)</string>
+    <string name="pref_summary_aps_smb_offset_override" comment="mmol/L above the glucose target. Default 0.5. Example: 0.8 holds SMB until glucose is 0.8 mmol above target. Max 2.0.">Default 0.5. Used only when Simple SMB offset override is on. Max 2.0 mmol/L.</string>
+    <string name="pref_title_aps_tod_offset_0002">Time-of-day offset, 00–02h</string>
+    <string name="pref_title_aps_tod_offset_0204">Time-of-day offset, 02–04h</string>
+    <string name="pref_title_aps_tod_offset_0406">Time-of-day offset, 04–06h</string>
+    <string name="pref_title_aps_tod_offset_0609">Time-of-day offset, 06–09h</string>
+    <string name="pref_title_aps_tod_offset_0912">Time-of-day offset, 09–12h</string>
+    <string name="pref_title_aps_tod_offset_1218">Time-of-day offset, 12–18h</string>
+    <string name="pref_title_aps_tod_offset_1822">Time-of-day offset, 18–22h</string>
+    <string name="pref_title_aps_tod_offset_2200">Time-of-day offset, 22–00h</string>
     <string name="pref_summary_aps_tod_offset" comment="The number is mmol added to the SMB hold-back. Example: 0.5 means hold SMB until glucose is 0.5 mmol higher.">mmol added to the SMB offset for this clock window. 0 leaves the offset unchanged. Range is -2.0 to 2.0.</string>
     <string name="openapsama_autoISF_max_summary">Similar to autosens_max this defines how strong ISF can become.\n\nThe default value 1.0 effectively shuts off this effect.\n\nWARNING: Be extremely careful when using values above 2.5</string>
     <string name="pref_title_bg_accel_weight">BG acceleration ISF weight</string>
