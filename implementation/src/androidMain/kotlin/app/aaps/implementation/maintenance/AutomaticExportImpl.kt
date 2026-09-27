@@ -30,6 +30,7 @@ class AutomaticExportImpl(
     private val dateUtil: DateUtil,
     private val aapsLogger: AAPSLogger,
     private val historyFilesWriter: HistoryFilesWriter,
+    private val aapsLogsExporter: AutoIsfAapsLogsExporter,
     private val maintenance: Maintenance,
     private val importExportPrefs: ImportExportPrefs,
     private val exportPasswordDataStore: ExportPasswordDataStore,
@@ -45,10 +46,12 @@ class AutomaticExportImpl(
                 preferences.put(LongNonKey.LastCloudLogExport, now)
                 preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
                 maintenance.exportCoordinated("AUTOMATIC_6H")
+                aapsLogsExporter.write("AUTOMATIC_6H", now)
                 exportSettingsIfEnabled()
             } else if (historyDue) {
                 preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
                 historyFilesWriter.writeAndUpload("AUTOMATIC_6H", now)
+                aapsLogsExporter.write("AUTOMATIC_6H", now)
                 exportSettingsIfEnabled()
             }
         } catch (e: Exception) {
