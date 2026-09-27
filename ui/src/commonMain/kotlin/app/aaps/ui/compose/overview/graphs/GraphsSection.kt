@@ -298,8 +298,8 @@ fun GraphsSection(
         lastBgTimestamp = newTimestamp
     }
 
-    // Correct secondary graph scroll drift — Vico may internally adjust scroll
-    // when model producers fire. Watch for any divergence and re-sync to BG.
+    // Keep every graph on the same time. A drag on a lower graph moves all of them,
+    // including the main graph. A chart rebuild that clamps a graph to 0 does not.
     // No isSyncing guard needed: primary sync only reads BG state, so writing to
     // secondary states here cannot trigger primary sync (no feedback loop).
     // Keyed on bgScrollState/bgZoomState (not Unit) — MUST restart when they're recreated by a
@@ -308,6 +308,8 @@ fun GraphsSection(
     // in the first attempt at this feature).
     var lastLeaderScroll by remember { mutableFloatStateOf(Float.NaN) }
     var lastLeaderMax by remember { mutableFloatStateOf(Float.NaN) }
+    // Last scroll of belt, IOB, then each lower graph. Used to see which one the user moved.
+    val followerScroll = remember { FloatArray(7) { Float.NaN } }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             // Only read states that are attached to a chart (belt + IOB fixed + active secondary)
@@ -346,15 +348,29 @@ fun GraphsSection(
                     return@collect
                 }
                 if (lastLeaderScroll.isNaN()) lastLeaderScroll = bgScroll
-                val finger = states.firstOrNull { (scroll, _) -> abs(scroll - bgScroll) > 24f }
-                // A subgraph rebuild lands on 0 while the main graph is still on a real time.
-                val subgraphReset = finger != null && finger.first < 1f && bgScroll > 24f
-                val leader = when {
-                    abs(bgScroll - lastLeaderScroll) > 1f -> bgScroll
-                    subgraphReset -> bgScroll
-                    finger != null -> finger.first
-                    else -> bgScroll
+                val haveBaseline = states.indices.all { index ->
+                    index >= followerScroll.size || !followerScroll[index].isNaN()
                 }
+                if (!haveBaseline) {
+                    for (index in states.indices) {
+                        if (index < followerScroll.size) followerScroll[index] = states[index].first
+                    }
+                    return@collect
+                }
+                // The graph that just moved, and is not already on the main graph's time, leads.
+                // Belt is included: it can be dragged too. A value that was already away from the
+                // main graph, and did not just move, is not a new drag.
+                val moved = states.indices.firstOrNull { index ->
+                    val previous = followerScroll[index]
+                    val now = states[index].first
+                    abs(now - previous) > 24f && abs(now - bgScroll) > 24f
+                }?.let { states[it].first }
+                for (index in states.indices) {
+                    if (index < followerScroll.size) followerScroll[index] = states[index].first
+                }
+                // A rebuild clamps a graph to the oldest time. That is not a drag.
+                val subgraphReset = moved != null && moved < 1f && bgScroll > 24f
+                val leader = if (moved != null && !subgraphReset) moved else bgScroll
                 val needsSync = leader != bgScroll || states.any { (scroll, zoom) ->
                     abs(scroll - leader) > 1f || abs(zoom - bgZoom) > 0.001f
                 }
@@ -371,6 +387,8 @@ fun GraphsSection(
                     beltScrollState.scroll(Scroll.Absolute.pixels(leader))
                     iobScrollState.scroll(Scroll.Absolute.pixels(leader))
                     for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
+                } else {
+                    lastLeaderScroll = bgScroll
                 }
             }
     }
