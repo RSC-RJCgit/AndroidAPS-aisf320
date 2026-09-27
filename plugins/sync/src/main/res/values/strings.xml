@@ -89,7 +89,7 @@
     <string name="ns_secondary_receive_therapy_events_summary">Additionally pull sensor/site/insulin/pump-battery-change events from the secondary NS, so cannula- and sensor-age automations work correctly on this phone. Turn off if this phone should not receive those events (e.g. to avoid duplicating entries it already gets from its own pump/CGM)</string>
     <string name="ns_secondary_url">Secondary NS URL</string>
     <string name="ns_secondary_url_summary">Nightscout URL to download bolus and carbs from (e.g. https://mymainns.herokuapp.com)</string>
-    <string name="ns_bg_from_live_site_title">Get BG from this connection (Live's site)</string>
+    <string name="ns_bg_from_live_site_title">Get BG from this connection (Lives site)</string>
     <string name="ns_bg_from_live_site_summary">Default off (BG keeps coming from this phone's own main NS site). When on, BG comes from the site above instead -- one clear source, not a mix. Use this to make sure BG is coming from Live and not from whichever site a saved profile happened to leave the main connection pointed at.</string>
     <string name="ns_secondary_token">Secondary NS access token</string>
     <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site</string>
