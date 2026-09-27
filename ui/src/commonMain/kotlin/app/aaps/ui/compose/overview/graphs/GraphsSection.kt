@@ -253,7 +253,9 @@ fun GraphsSection(
                     graphViewModel.onGraphInteraction()
                 }
                 val count = activeCount
-                if (zoom != lastZoom) {
+                // NaN is not equal to NaN, so an unready zoom would be copied on every tick.
+                // A zoom of NaN makes a point's circle size NaN, and the chart crashes.
+                if (zoom.isFinite() && zoom > 0f && zoom != lastZoom) {
                     lastZoom = zoom
                     beltZoomState.zoom(Zoom.fixed(zoom))
                     iobZoomState.zoom(Zoom.fixed(zoom))
@@ -261,7 +263,7 @@ fun GraphsSection(
                 }
                 // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
                 // the initial "recent time" position on the other graphs.
-                if (bgScrollState.maxValue > 1f) {
+                if (scroll.isFinite() && bgScrollState.maxValue > 1f) {
                     beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
@@ -327,6 +329,8 @@ fun GraphsSection(
                 val bgScroll = bgScrollState.value
                 val bgMax = bgScrollState.maxValue
                 val bgZoom = bgZoomState.value
+                // The chart reports NaN until it has a size. Copying that crashes the point draw.
+                if (!bgScroll.isFinite() || !bgMax.isFinite() || !bgZoom.isFinite() || bgZoom <= 0f) return@collect
                 // The first layout often happens while the chart width is still 0, so the
                 // "recent time" start is stored as 0. Once there is a real width, and the
                 // user has not moved the graph yet, go to the end.
@@ -370,7 +374,8 @@ fun GraphsSection(
                 }
                 // A rebuild clamps a graph to the oldest time. That is not a drag.
                 val subgraphReset = moved != null && moved < 1f && bgScroll > 24f
-                val leader = if (moved != null && !subgraphReset) moved else bgScroll
+                val leader = if (moved != null && moved.isFinite() && !subgraphReset) moved else bgScroll
+                if (!leader.isFinite()) return@collect
                 val needsSync = leader != bgScroll || states.any { (scroll, zoom) ->
                     abs(scroll - leader) > 1f || abs(zoom - bgZoom) > 0.001f
                 }
