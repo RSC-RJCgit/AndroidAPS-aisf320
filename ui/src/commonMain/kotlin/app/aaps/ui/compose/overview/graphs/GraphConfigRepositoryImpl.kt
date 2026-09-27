@@ -128,7 +128,7 @@ class GraphConfigRepositoryImpl(
                 if (type == SeriesType.IOB) continue
                 if (type !in series) series.add(type)
             }
-            return series.take(2)
+            return series.take(3)
         }
 
         fun fromJson(json: String): GraphConfig {

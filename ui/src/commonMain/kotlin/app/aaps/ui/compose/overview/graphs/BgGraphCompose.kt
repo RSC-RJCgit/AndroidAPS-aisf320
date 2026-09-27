@@ -151,7 +151,6 @@ fun BgGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     visibleTimeRange: Pair<Long, Long>? = null,
-    graph1Label: String = "",
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -929,9 +928,10 @@ fun BgGraphCompose(
         scrollState = scrollState,
         zoomState = zoomState
     )
-    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null || graph1Label.isNotEmpty()) {
+    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null || autoIsfGraph.statusRatio != null || autoIsfGraph.statusSteps != null) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
+        val twoLinesUp = with(LocalDensity.current) { (lineSp * 2).toDp() }
         val tight = TextStyle(
             fontSize = lineSp,
             lineHeight = lineSp,
@@ -954,7 +954,7 @@ fun BgGraphCompose(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 8.dp, bottom = (44.dp - threeLinesDown).coerceAtLeast(0.dp))
+                .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + twoLinesUp).coerceAtLeast(0.dp))
         ) {
             autoIsfGraph.statusTarget?.let { line ->
                 Text(text = line, color = Color.White, style = tight)
@@ -962,8 +962,11 @@ fun BgGraphCompose(
             autoIsfGraph.statusIsf?.let { line ->
                 IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
             }
-            if (graph1Label.isNotEmpty()) {
-                Text(text = graph1Label, color = Color.White, style = tight)
+            autoIsfGraph.statusRatio?.let { line ->
+                Text(text = line, color = Color.White, style = tight)
+            }
+            autoIsfGraph.statusSteps?.let { line ->
+                Text(text = line, color = Color.White, style = tight)
             }
         }
     }

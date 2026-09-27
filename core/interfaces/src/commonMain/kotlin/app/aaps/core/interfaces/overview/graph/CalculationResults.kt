@@ -213,6 +213,10 @@ data class AutoIsfGraphData(
     val statusTarget: String? = null,
     /** ISF factor line for the main graph. Null before the first loop row. */
     val statusIsf: String? = null,
+    /** Delivery ratio and the ISF weights. Null before the first loop row. */
+    val statusRatio: String? = null,
+    /** Step counts. Null before the first loop row. */
+    val statusSteps: String? = null,
 ) {
 
     fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {

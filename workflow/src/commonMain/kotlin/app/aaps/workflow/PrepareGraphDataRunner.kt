@@ -839,6 +839,8 @@ class PrepareGraphDataRunner(
                 hypoPrediction = hypoPrediction,
                 statusTarget = latestAutoIsf?.let { statusTargetLine(it) },
                 statusIsf = latestAutoIsf?.let { statusIsfLine(it) },
+                statusRatio = latestAutoIsf?.let { statusRatioLine(it) },
+                statusSteps = latestAutoIsf?.let { statusStepsLine(it.timestamp) },
             )
         )
 
@@ -874,6 +876,19 @@ class PrepareGraphDataRunner(
     private fun statusIsfLine(row: AIV): String {
         val smb = if (row.smbDeliveryRatio == 0.0) "--" else twoDecimals(row.smbDeliveryRatio)
         return "f=${factorOrDash(row.finalIsf)} ac=${factorOrDash(row.acceIsf)} bg=${factorOrDash(row.bgIsf)} pp=${factorOrDash(row.ppIsf)} du=${factorOrDash(row.duraIsf)} smb=$smb"
+    }
+
+    // The same weights the UK graph 1 line starts with.
+    private fun statusRatioLine(row: AIV): String =
+        "DR=${twoDecimals(row.smbDeliveryRatio)} AW=${twoDecimals(row.acceIsfWeight)} PW=${twoDecimals(row.ppIsfWeight)}"
+
+    private suspend fun statusStepsLine(at: Long): String {
+        val steps = persistenceLayer.getLastStepsCountFromTimeToTime(at - 20 * 60_000L, at + 60_000L)
+        val s5 = steps?.steps5min ?: 0
+        val s15 = steps?.steps15min ?: 0
+        val s30 = steps?.steps30min ?: 0
+        val s60 = steps?.steps60min ?: 0
+        return "S5=$s5 S15=$s15 S30=$s30 S60=$s60"
     }
 
     private fun factorOrDash(value: Double): String = if (value == 1.0 || value == 0.0) "--" else twoDecimals(value)
