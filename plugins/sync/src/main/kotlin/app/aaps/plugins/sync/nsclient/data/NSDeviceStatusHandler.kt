@@ -122,10 +122,7 @@ class NSDeviceStatusHandler @Inject constructor(
     // used for the mirrored steps and the loop-phone snapshot) comes from the secondary site, so the primary's is ignored here. All three
     // primary paths (socket, WebSocket, LoadDeviceStatusWorker) end in this function.
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, fromSecondary: Boolean = false) {
-        if (!fromSecondary && activePlugin.get().fullAapsOnVirtualPump(config) &&
-            preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
-            preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl).isNotBlank()
-        ) return
+        if (!fromSecondary && activePlugin.get().isFollowerPhone(config) && preferences.liveConnectionConfigured()) return
         var configurationDetected = false
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]

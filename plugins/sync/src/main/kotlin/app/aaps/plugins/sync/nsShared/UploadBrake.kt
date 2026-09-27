@@ -19,6 +19,19 @@ import app.aaps.core.keys.interfaces.Preferences
 fun ActivePlugin.fullAapsOnVirtualPump(config: Config): Boolean = !config.AAPSCLIENT && activePump is VirtualPump
 
 /**
+ * 2026-09-27, per explicit request: a follower phone is a full AAPS on VirtualPump or an AAPSClient. Either kind can have a second NS
+ * connection set up (the app's own "secondary NS" fields) that points at Live's own NS site -- that is the only thing that connection is
+ * ever used for on a follower phone. When it is configured, Live-derived reads (device status, the notes Virtual/Client act on, the
+ * profile store, and now optionally glucose) come from it instead of from whichever site is this phone's own main one, and a Client's
+ * outgoing instructions (temporary targets, profile switches, running-mode changes) go to it too, so Live reads them from the site it is
+ * actually watching.
+ */
+fun ActivePlugin.isFollowerPhone(config: Config): Boolean = config.AAPSCLIENT || fullAapsOnVirtualPump(config)
+
+fun Preferences.liveConnectionConfigured(): Boolean =
+    get(BooleanKey.NsClientSecondaryEnabled) && get(StringKey.NsClientSecondaryUrl).trim().isNotEmpty()
+
+/**
  * Temp basal / extended bolus receive brake (2026-09-26, per explicit request): a full AAPS on VirtualPump simulates its own temp basals, so
  * it never takes Live's real ones from Nightscout, whatever the "Receive TBR/EB" switch says (26 Sep 13:54: basal IOB 4.41 on Virtual against
  * 1.78 on Live, from Live's Omnipod Dash temp basals stacking on Virtual's own). Everyone else keeps the old rule: the switch, AAPSClient,

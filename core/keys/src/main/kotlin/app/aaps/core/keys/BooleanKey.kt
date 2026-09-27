@@ -265,6 +265,10 @@ enum class BooleanKey(
     NsClientAcceptInsulinExcludeSmb("ns_receive_insulin_exclude_smb", false, showInNsClientMode = false, dependency = NsClientAcceptInsulin),
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false),
     NsClientSecondaryAcceptTherapyEvent("nsclient_secondary_receive_therapy_events", true, dependency = NsClientSecondaryEnabled),
+    // 2026-09-27, per explicit request: off by default (today's behaviour -- glucose from this phone's own main NS site -- is unchanged
+    // unless this is turned on). Available on both a full AAPS and AAPSClient; only takes effect once the connection pointing at Live's
+    // own NS site is also configured (NsClientSecondaryEnabled + a URL).
+    NsClientBgFromLiveSite("ns_bg_from_live_site", false, dependency = NsClientSecondaryEnabled),
     NsClientAcceptCarbs("ns_receive_carbs", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptRunningMode("ns_receive_running_mode", false, showInNsClientMode = false, hideParentScreenIfHidden = true),

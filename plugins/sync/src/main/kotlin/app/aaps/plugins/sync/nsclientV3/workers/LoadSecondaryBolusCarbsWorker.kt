@@ -19,6 +19,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
+import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
@@ -87,8 +88,31 @@ class LoadSecondaryBolusCarbsWorker(
     // 2026-09-27, per explicit request: a full AAPS on VirtualPump takes its profile store from the secondary NS site (the primary's
     // store is ignored, see NsIncomingDataProcessor.processProfile). Same first-load / modified-since logic as LoadProfileStoreWorker,
     // with its own cursor. Never fails the treatment import: errors are logged and the last stored profile stays.
+    // 2026-09-27, per explicit request: when "Get BG from this connection" is on (Settings, dependent on this connection being enabled),
+    // glucose comes from here instead of from this phone's own main site -- see NsIncomingDataProcessor.bgFromLiveSite/processSgvs. Same
+    // modified-since cursor pattern as LoadBgWorker, using the treatment cursor's own last-modified value as a simple starting point since
+    // SGVs and treatments share the same NS "last modified" clock; a short 10-minute overlap keeps it safe either way.
+    private suspend fun loadSecondaryGlucose(client: NSAndroidClient) {
+        if (!activePlugin.isFollowerPhone(config) || !preferences.get(BooleanKey.NsClientBgFromLiveSite)) return
+        try {
+            val cursor = preferences.get(LongKey.NsClientSecondaryBgLastModified)
+            val from = if (cursor == 0L) dateUtil.now() - T.hours(24).msecs() else (cursor - T.mins(10).msecs()).coerceAtLeast(0L)
+            val response = client.getSgvsModifiedSince(from, 500)
+            val sgvs = response.values
+            response.lastServerModified?.takeIf { it > cursor }?.let { preferences.put(LongKey.NsClientSecondaryBgLastModified, it) }
+            if (sgvs.isNotEmpty()) {
+                rxBus.send(EventNSClientNewLog("◄ SEC-NS", "${sgvs.size} SGVs from Live's NS site"))
+                nsIncomingDataProcessor.processSgvs(sgvs, doFullSync = false, fromLiveSite = true)
+                storeDataForDb.storeGlucoseValuesToDb()
+            }
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS glucose failed", e)
+            rxBus.send(EventNSClientNewLog("◄ SEC-NS ERR", "glucose: ${e.message ?: "Unknown error"}"))
+        }
+    }
+
     private suspend fun loadSecondaryProfileStore(client: NSAndroidClient) {
-        if (!activePlugin.fullAapsOnVirtualPump(config)) return
+        if (!activePlugin.isFollowerPhone(config)) return
         try {
             val cursor = preferences.get(LongKey.NsClientSecondaryProfileLastModified)
             val response = if (cursor == 0L) client.getLastProfileStore() else client.getProfileModifiedSince(cursor)
@@ -112,7 +136,7 @@ class LoadSecondaryBolusCarbsWorker(
     // 2026-09-27, per explicit request: the device status (Live's result text: mirrored steps, loop-phone snapshot) comes from this site
     // on a full AAPS on VirtualPump; the primary's is ignored in NSDeviceStatusHandler. Same 7-minute window as LoadDeviceStatusWorker.
     private suspend fun loadSecondaryDeviceStatus(client: NSAndroidClient) {
-        if (!activePlugin.fullAapsOnVirtualPump(config)) return
+        if (!activePlugin.isFollowerPhone(config)) return
         try {
             val from = dateUtil.now() - T.mins(7).msecs()
             val statuses = client.getDeviceStatusModifiedSince(from)
@@ -220,7 +244,9 @@ class LoadSecondaryBolusCarbsWorker(
                                 val acceptedSecondaryEvent = te.type in secondaryTherapyEventTypes && (te.type != TE.Type.NOTE ||
                                     note.startsWith("StLow ") || note.startsWith("StorageLow ") || anyDeskCommand || anyDeskAck || setRoleCommand ||
                                     // 2026-09-27: on Virtual the Live notes it acts on (MJ active, Steroids, battery) come from this site.
-                                    (activePlugin.fullAapsOnVirtualPump(config) && CodedAutomationNames.isLiveEchoKeptOnVirtual(note)))
+                                    // A Client mirrors Live, so it takes every note Live wrote from the Live-pointing connection; Virtual
+                                    // only takes the ones it acts on.
+                                    config.AAPSCLIENT || (activePlugin.fullAapsOnVirtualPump(config) && CodedAutomationNames.isLiveEchoKeptOnVirtual(note)))
                                 if (acceptedSecondaryEvent) {
                                     storeDataForDb.addToTherapyEvents(te)
                                     pageTherapyEvents++
@@ -272,6 +298,7 @@ class LoadSecondaryBolusCarbsWorker(
             }
             loadSecondaryProfileStore(client)
             loadSecondaryDeviceStatus(client)
+            loadSecondaryGlucose(client)
             Result.success()
         } catch (e: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS fetch failed", e)

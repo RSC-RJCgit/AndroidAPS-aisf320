@@ -104,10 +104,17 @@ class NsIncomingDataProcessor @Inject constructor(
      *
      * @return true if there was an accepted SGV
      */
-    fun processSgvs(sgvs: Any, doFullSync: Boolean): Boolean {
+    // 2026-09-27, per explicit request: a follower phone with "Get BG from this connection" on, and the Live-pointing connection
+    // configured, takes glucose from there instead of from this phone's own main site -- see loadSecondaryGlucose in
+    // LoadSecondaryBolusCarbsWorker. A full sync always uses the phone's own main site regardless, same as every other collection here.
+    fun bgFromLiveSite(): Boolean =
+        activePlugin.isFollowerPhone(config) && preferences.get(BooleanKey.NsClientBgFromLiveSite) && preferences.liveConnectionConfigured()
+
+    fun processSgvs(sgvs: Any, doFullSync: Boolean, fromLiveSite: Boolean = false): Boolean {
         // Objective0
         preferences.put(BooleanNonKey.ObjectivesBgIsAvailableInNs, true)
 
+        if (!fromLiveSite && !doFullSync && bgFromLiveSite()) return false
         if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !doFullSync) return false
 
         var latestDateInReceivedData: Long = 0
@@ -369,15 +376,13 @@ class NsIncomingDataProcessor @Inject constructor(
         }
     }
 
-    // 2026-09-27, per explicit request: on a full AAPS on VirtualPump with a secondary NS site set (always the loop phone's site), the
-    // Live-derived data comes from the secondary site, not the primary: the profile store, the device status (NSDeviceStatusHandler) and
-    // the Live notes Virtual acts on. Every primary profile path (socket, WebSocket, LoadProfileStoreWorker) ends in processProfile, so
-    // ignoring it there covers all three; primary NOTE therapy events are skipped in processTreatments below. The existing
-    // "Receive profile store" switch still applies to the secondary's store.
-    private fun secondaryProvidesLiveData(): Boolean =
-        activePlugin.fullAapsOnVirtualPump(config) &&
-            preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
-            preferences.get(app.aaps.core.keys.StringKey.NsClientSecondaryUrl).isNotBlank()
+    // 2026-09-27, per explicit request: on a follower phone (a full AAPS on VirtualPump, or an AAPSClient) that has a connection set up
+    // pointing at Live's own NS site, the Live-derived data comes from that connection, not from this phone's own main site: the profile
+    // store, the device status (NSDeviceStatusHandler) and the notes each kind of follower acts on. Every profile path on the phone's own
+    // main site (socket, WebSocket, LoadProfileStoreWorker) ends in processProfile, so ignoring it there covers all three; NOTE therapy
+    // events from the main site are skipped in processTreatments below. The existing "Receive profile store" switch still applies to
+    // whichever store is actually accepted.
+    private fun secondaryProvidesLiveData(): Boolean = activePlugin.isFollowerPhone(config) && preferences.liveConnectionConfigured()
 
     fun processProfile(profileJson: JSONObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
         if (!fromSecondary && secondaryProvidesLiveData()) {

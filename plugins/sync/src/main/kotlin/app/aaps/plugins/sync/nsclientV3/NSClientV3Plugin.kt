@@ -648,10 +648,45 @@ class NSClientV3Plugin @Inject constructor(
         return false
     }
 
+    // 2026-09-27, per explicit request: an AAPSClient with a connection set up pointing at Live's own NS site sends its temporary targets,
+    // profile switches and running-mode changes there instead of to its own main site, so Live reads them from the site it is actually
+    // watching. Notes stay on Client's own main site: Live reads a Client command note (ADesk) through the connection ON LIVE'S PHONE that
+    // points at Client's own site, so moving Client's notes off that site would break that channel. Everything else (carbs, boluses, other
+    // therapy events, pairing and the other KMP functions) also stays on Client's own main site. Same URL/token handling as
+    // LoadSecondaryBolusCarbsWorker; one client is kept per URL+token.
+    private var liveUploadClientCache: Pair<String, NSAndroidClient>? = null
+
+    private fun liveUploadClient(): NSAndroidClient? {
+        if (!preferences.liveConnectionConfigured()) return null
+        val url = preferences.get(StringKey.NsClientSecondaryUrl).trim()
+        val token = preferences.get(StringKey.NsClientSecondaryAccessToken).trim()
+        val key = "$url|$token"
+        liveUploadClientCache?.takeIf { it.first == key }?.let { return it.second }
+        val client = NSAndroidClientImpl(
+            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+            accessToken = token,
+            context = context,
+            logging = false,
+            logger = { msg -> aapsLogger.debug(LTag.HTTP, "Live-site upload: $msg") }
+        )
+        liveUploadClientCache = key to client
+        return client
+    }
+
+    private fun routeToLiveSite(dataPair: DataSyncSelector.DataPair): Boolean =
+        config.AAPSCLIENT && (
+            dataPair is DataSyncSelector.PairTemporaryTarget ||
+                dataPair is DataSyncSelector.PairProfileSwitch ||
+                dataPair is DataSyncSelector.PairRunningMode
+            ) && liveUploadClient() != null
+
     private suspend fun dbOperationTreatments(collection: String = "treatments", dataPair: DataSyncSelector.DataPair, progress: String, operation: Operation, profile: Profile?): Boolean {
+        val toLiveSite = routeToLiveSite(dataPair)
+        val uploadClient = if (toLiveSite) liveUploadClient() else nsAndroidClient
+        if (toLiveSite) rxBus.send(EventNSClientNewLog("► LIVE-NS", "${dataPair.javaClass.simpleName} to Live's NS site"))
         val call = when (operation) {
-            Operation.CREATE -> nsAndroidClient?.let { return@let it::createTreatment }
-            Operation.UPDATE -> nsAndroidClient?.let { return@let it::updateTreatment }
+            Operation.CREATE -> uploadClient?.let { return@let it::createTreatment }
+            Operation.UPDATE -> uploadClient?.let { return@let it::updateTreatment }
         }
         when (dataPair) {
             is DataSyncSelector.PairBolus                  -> dataPair.value.toNSBolus()
@@ -974,6 +1009,7 @@ class NSClientV3Plugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryAcceptTherapyEvent, summary = R.string.ns_secondary_receive_therapy_events_summary, title = R.string.ns_secondary_receive_therapy_events))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientBgFromLiveSite, summary = R.string.ns_bg_from_live_site_summary, title = R.string.ns_bg_from_live_site_title))
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_alarm_options"

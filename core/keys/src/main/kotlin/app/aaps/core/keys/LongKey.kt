@@ -28,6 +28,7 @@ enum class LongKey(
     // event-time cursor above so the first upgraded run performs a recovery scan for backdated entries.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0, defaultedBySM = true),
     NsClientSecondaryProfileLastModified("nsclient_secondary_profile_last_modified", 0, defaultedBySM = true),
+    NsClientSecondaryBgLastModified("nsclient_secondary_bg_last_modified", 0, defaultedBySM = true),
     // Last time we raised NSCLIENT_TOKEN_FAILED (24h gate). 0 = never, or cleared after a good auth.
     NsClientTokenFailNotifiedAt("nsclient_token_fail_notified_at", 0, defaultedBySM = true),
     NsClientVirtualUploadWarnedAt("nsclient_virtual_upload_warned_at", 0, defaultedBySM = true),
