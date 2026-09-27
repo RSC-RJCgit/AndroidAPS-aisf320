@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.6.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.7.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -30,13 +30,23 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .6, 2026-09-20)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .7, 2026-09-27)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.6.patch
-  git apply bolus-calculator-on-3426-aisf321.6.patch
+  git apply --check bolus-calculator-on-3426-aisf321.7.patch
+  git apply bolus-calculator-on-3426-aisf321.7.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .7 (2026-09-27):
+- A cancelled split/delayed/FPU dose (bolus stopped, superseded, profile switch, pump suspended, superbolus active, retry
+  timeout, or BG safety check failed) used to leave only the coded graph note ("C1.30" etc.) -- no Treatments-tab row, no
+  tappable calc description, unlike a calculated-zero part. cancelDoseNote() now optionally also inserts a real 0U bolus
+  plus a full calc-description record (same followUpCalculation() construction as every other follow-up dose), at every
+  cancellation site except the one that already gets its own calc description moments earlier from insertZeroDoseTreatment
+  (the isLast IOB-rose branch), so that event is not recorded twice. A calculated-zero part, and every delivered (non-zero)
+  split/delayed/FPU dose, already had a calc description attached (confirmed unchanged); this only fixes the cancelled case.
+- Retains all patch .6 changes below.
 
 Changes in patch .6 (2026-09-20):
 - Restore Overview settings "Split bolus when over max" and "Split bolus interval (min)".
