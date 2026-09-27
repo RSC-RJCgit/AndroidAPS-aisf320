@@ -160,16 +160,18 @@ fun GraphsSection(
     }
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
-    // These are always created to keep Compose's remember slots stable
-    val sec0scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    // These are always created to keep Compose's remember slots stable.
+    // A finger on a lower graph does nothing. Only the main graph scrolls, and that
+    // position is copied onto these so every graph shows the same time.
+    val sec0scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val sec0zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec1scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec1scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val sec1zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec2scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec2scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val sec2zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec3scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec3scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val sec3zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec4scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec4scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val sec4zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
@@ -208,7 +210,7 @@ fun GraphsSection(
 
     // Treatment belt graph - non-interactive, synced from BG
     val beltScrollState = rememberSafeScrollState(
-        scrollEnabled = true,
+        scrollEnabled = false,
         initialScroll = Scroll.Absolute.End
     )
     val beltZoomState = rememberSafeZoomState(
@@ -217,7 +219,7 @@ fun GraphsSection(
     )
 
     // Fixed IOB graph - non-interactive, synced from BG
-    val iobScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val iobScrollState = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -235,6 +237,14 @@ fun GraphsSection(
         arrayOf(sec0zoom, sec1zoom, sec2zoom, sec3zoom, sec4zoom)
     }
 
+    // Set just before this code moves the main graph, so that move is not counted as a finger drag.
+    val skipInteractionUntilMs = remember { longArrayOf(0L) }
+    // The live overview stays on the current time until the user drags the main graph.
+    var followNow by remember { mutableStateOf(!fitWholeWindow) }
+    var placedOnNow by remember(bgScrollState) { mutableStateOf(false) }
+    val latestTimeRange = rememberUpdatedState(derivedTimeRange)
+    val latestNow = rememberUpdatedState(nowTimestamp)
+
     // Observe BG graph scroll/zoom and sync to belt + active secondary graphs
     // Keys include ALL state objects — identical pattern to the original working sync
     LaunchedEffect(
@@ -251,8 +261,11 @@ fun GraphsSection(
             .collect { (scroll, zoom) ->
                 if (initialValue) {
                     initialValue = false
-                } else {
+                } else if (placedOnNow && dateUtil.now() >= skipInteractionUntilMs[0]) {
+                    // Startup and our own move to the current time also change the scroll.
+                    // Only a later move is the user dragging the main graph.
                     graphViewModel.onGraphInteraction()
+                    followNow = false
                 }
                 val count = activeCount
                 // NaN is not equal to NaN, so an unready zoom would be copied on every tick.
@@ -278,7 +291,6 @@ fun GraphsSection(
 
     // Auto-scroll when new BG value arrives
     val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
-    val predictions by graphViewModel.predictionsFlow.collectAsStateWithLifecycle()
     var lastBgTimestamp by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(bgInfoState.bgInfo?.timestamp) {
@@ -290,118 +302,108 @@ fun GraphsSection(
                 lastBgTimestamp = newTimestamp
                 return@LaunchedEffect
             }
-            // Keep the hours the user is already looking at. Only slide the window so the new
-            // reading stays at the live edge. Recreating the zoom state here used to snap back to 6 hours.
-            val showPredictions = SeriesType.PREDICTIONS in graphConfig.bgOverlays
+            // Keep the hours the user is already looking at. Slide the window so the current
+            // time is the right edge. Recreating the zoom state here used to snap back to 6 hours.
             val timeRange = derivedTimeRange
-            if (showPredictions && predictions.isNotEmpty() && timeRange != null) {
-                val (minTimestamp, _) = timeRange
-                val nowX = timestampToX(dateUtil.now(), minTimestamp)
-                bgScrollState.animateScroll(Scroll.Absolute.x(nowX + 120.0, bias = 1f))
-            } else {
+            if (fitWholeWindow || timeRange == null) {
                 bgScrollState.scroll(Scroll.Absolute.End)
+            } else {
+                followNow = true
+                skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                bgScrollState.scroll(scrollSoNowIsAtEnd(timeRange.first, dateUtil.now()))
             }
         }
         lastBgTimestamp = newTimestamp
     }
 
-    // Keep every graph on the same time. A drag on a lower graph moves all of them,
-    // including the main graph. A chart rebuild that clamps a graph to 0 does not.
-    // No isSyncing guard needed: primary sync only reads BG state, so writing to
-    // secondary states here cannot trigger primary sync (no feedback loop).
+    // Only the main graph is dragged. This puts the current time on the right edge, and
+    // copies that place back onto a lower graph if a rebuild moved it.
     // Keyed on bgScrollState/bgZoomState (not Unit) — MUST restart when they're recreated by a
     // reset, otherwise this keeps comparing secondary graphs against a stale, abandoned pre-reset
-    // reference forever and fires wrong corrections (the actual cause of the "dancing" regression
-    // in the first attempt at this feature).
-    var lastLeaderScroll by remember { mutableFloatStateOf(Float.NaN) }
-    var lastLeaderMax by remember { mutableFloatStateOf(Float.NaN) }
-    // Last scroll of belt, IOB, then each lower graph. Used to see which one the user moved.
-    val followerScroll = remember { FloatArray(7) { Float.NaN } }
+    // reference forever and fires wrong corrections.
+    var lastMainScroll by remember { mutableFloatStateOf(Float.NaN) }
+    var lastMainMax by remember { mutableFloatStateOf(Float.NaN) }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
-            // Only read states that are attached to a chart (belt + IOB fixed + active secondary)
             val count = activeCount
-            buildList {
-                add(beltScrollState.value to beltZoomState.value)
-                add(iobScrollState.value to iobZoomState.value)
-                for (i in 0 until count) {
-                    add(secScrollStates[i].value to secZoomStates[i].value)
+            Triple(
+                latestTimeRange.value,
+                latestNow.value,
+                buildList {
+                    add(beltScrollState.value to beltZoomState.value)
+                    add(iobScrollState.value to iobZoomState.value)
+                    for (i in 0 until count) {
+                        add(secScrollStates[i].value to secZoomStates[i].value)
+                    }
                 }
-            }
+            )
         }
             .debounce(100) // Let Vico settle after model update
-            .collect { states ->
+            .collect { (range, now, states) ->
                 val bgScroll = bgScrollState.value
                 val bgMax = bgScrollState.maxValue
-                val bgZoom = bgZoomState.value
                 // The chart reports NaN until it has a size. Copying that crashes the point draw.
-                if (!bgScroll.isFinite() || !bgMax.isFinite() || !bgZoom.isFinite() || bgZoom <= 0f) return@collect
-                // The first layout often happens while the chart width is still 0, so the
-                // "recent time" start is stored as 0. Once there is a real width, and the
-                // user has not moved the graph yet, go to the end.
-                val neverPlaced = lastLeaderScroll.isNaN() || lastLeaderScroll < 1f
-                val neverHadWidth = lastLeaderMax.isNaN() || lastLeaderMax < 1f
-                if (bgMax > 24f && bgScroll < 1f && neverPlaced && neverHadWidth) {
-                    lastLeaderMax = bgMax
-                    bgScrollState.scroll(Scroll.Absolute.End)
+                if (!bgScroll.isFinite() || !bgMax.isFinite()) return@collect
+                val bgZoom = bgZoomState.value
+                val zoomOk = bgZoom.isFinite() && bgZoom > 0f
+                // The first layout often stores the start as 0, or at the axis end, which can be
+                // the next hour. Once there is a real width, put the current time on the right edge.
+                if (!placedOnNow && bgMax > 24f && (fitWholeWindow || range != null)) {
+                    placedOnNow = true
+                    lastMainMax = bgMax
+                    if (!fitWholeWindow && followNow && range != null) {
+                        skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                        bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
+                    } else if (bgScroll < 1f) {
+                        bgScrollState.scroll(Scroll.Absolute.End)
+                    }
+                    lastMainScroll = bgScrollState.value
                     return@collect
                 }
-                // A model rebuild can drop the width to 0 and clamp the scroll to the oldest
-                // time. That is not a finger drag. Put the recent end back, or the last place.
-                val wasAtEnd = !lastLeaderScroll.isNaN() && abs(lastLeaderScroll - lastLeaderMax) < 48f
-                val rebuiltToStart = bgMax > 24f && bgScroll < 1f && lastLeaderScroll > 24f && abs(bgMax - lastLeaderMax) > 24f
-                lastLeaderMax = bgMax
+                // A model rebuild can clamp the scroll to the oldest time. That is not a finger drag.
+                val wasAtEnd = !lastMainScroll.isNaN() && !lastMainMax.isNaN() && abs(lastMainScroll - lastMainMax) < 48f
+                val rebuiltToStart = bgMax > 24f && bgScroll < 1f && lastMainScroll > 24f &&
+                    !lastMainMax.isNaN() && abs(bgMax - lastMainMax) > 24f
+                lastMainMax = bgMax
                 if (rebuiltToStart) {
-                    if (wasAtEnd) bgScrollState.scroll(Scroll.Absolute.End)
-                    else bgScrollState.scroll(Scroll.Absolute.pixels(lastLeaderScroll.coerceAtMost(bgMax)))
+                    if (followNow && !fitWholeWindow && range != null) {
+                        skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                        bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
+                    } else if (wasAtEnd) {
+                        bgScrollState.scroll(Scroll.Absolute.End)
+                    } else {
+                        bgScrollState.scroll(Scroll.Absolute.pixels(lastMainScroll.coerceAtMost(bgMax)))
+                    }
+                    lastMainScroll = bgScrollState.value
                     return@collect
                 }
-                if (lastLeaderScroll.isNaN()) lastLeaderScroll = bgScroll
-                val haveBaseline = states.indices.all { index ->
-                    index >= followerScroll.size || !followerScroll[index].isNaN()
+                if (lastMainScroll.isNaN()) lastMainScroll = bgScroll
+                if (bgMax <= 1f) return@collect
+                // A lower graph never leads. If one has drifted, copy the main graph onto it.
+                val drifted = states.any { (scroll, zoom) ->
+                    !scroll.isFinite() || abs(scroll - bgScroll) > 1f ||
+                        (zoomOk && zoom.isFinite() && abs(zoom - bgZoom) > 0.001f)
                 }
-                if (!haveBaseline) {
-                    for (index in states.indices) {
-                        if (index < followerScroll.size) followerScroll[index] = states[index].first
-                    }
+                if (!drifted) {
+                    lastMainScroll = bgScroll
                     return@collect
                 }
-                // The graph that just moved, and is not already on the main graph's time, leads.
-                // Belt is included: it can be dragged too. A value that was already away from the
-                // main graph, and did not just move, is not a new drag.
-                val moved = states.indices.firstOrNull { index ->
-                    val previous = followerScroll[index]
-                    val now = states[index].first
-                    abs(now - previous) > 24f && abs(now - bgScroll) > 24f
-                }?.let { states[it].first }
-                for (index in states.indices) {
-                    if (index < followerScroll.size) followerScroll[index] = states[index].first
-                }
-                // A rebuild clamps a graph to the oldest time. That is not a drag.
-                val subgraphReset = moved != null && moved < 1f && bgScroll > 24f
-                val leader = if (moved != null && moved.isFinite() && !subgraphReset) moved else bgScroll
-                if (!leader.isFinite()) return@collect
-                val needsSync = leader != bgScroll || states.any { (scroll, zoom) ->
-                    abs(scroll - leader) > 1f || abs(zoom - bgZoom) > 0.001f
-                }
-                if (needsSync) {
-                    lastLeaderScroll = leader
-                    if (abs(bgScrollState.value - leader) > 1f) {
-                        bgScrollState.scroll(Scroll.Absolute.pixels(leader))
-                    }
-                    val count = activeCount
+                lastMainScroll = bgScroll
+                if (zoomOk) {
                     if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(bgZoom))
                     if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(bgZoom))
+                    val count = activeCount
                     for (i in 0 until count) {
                         if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
                     }
-                    delay(10)
-                    beltScrollState.scroll(Scroll.Absolute.pixels(leader))
-                    iobScrollState.scroll(Scroll.Absolute.pixels(leader))
-                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
-                } else {
-                    lastLeaderScroll = bgScroll
                 }
+                delay(10)
+                val leader = bgScrollState.value
+                if (!leader.isFinite()) return@collect
+                beltScrollState.scroll(Scroll.Absolute.pixels(leader))
+                iobScrollState.scroll(Scroll.Absolute.pixels(leader))
+                val count = activeCount
+                for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
             }
     }
 
@@ -797,6 +799,12 @@ private fun rememberSafeZoomState(
 private fun Zoom.ifNotUsable(fallback: Float): Zoom = Zoom { context, layerDimensions, bounds ->
     val zoom = getValue(context, layerDimensions, bounds)
     if (zoom.isFinite() && zoom > 0f) zoom else fallback
+}
+
+/** Scroll that puts the current time on the right edge of the chart. */
+private fun scrollSoNowIsAtEnd(minTimestamp: Long, nowTimestamp: Long): Scroll.Absolute {
+    val nowX = timestampToX(nowTimestamp, minTimestamp)
+    return if (nowX.isFinite()) Scroll.Absolute.x(nowX, bias = 1f) else Scroll.Absolute.End
 }
 
 // Vico also saves the scroll. A saved NaN is kept, every point's x becomes NaN, and the same

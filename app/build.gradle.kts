@@ -298,6 +298,11 @@ dependencies {
     api(libs.jetbrains.androidx.compose.navigation)
 }
 
+// socket.io-client brings Crockford's org.json. Android already has those classes,
+// and packaging both is rejected. The phone uses the platform copy.
+configurations.configureEach {
+    exclude(group = "org.json", module = "json")
+}
 
 println("-------------------")
 println("isMaster: ${isMaster()}")

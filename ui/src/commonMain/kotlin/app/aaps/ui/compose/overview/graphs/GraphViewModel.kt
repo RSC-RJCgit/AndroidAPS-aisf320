@@ -183,9 +183,10 @@ class GraphViewModel(
         initialValue = BgInfoUiState(bgInfo = null, timeAgoText = "")
     )
 
-    // Derived time range from actual data (recalculates as series arrive)
-    // When PREDICTIONS overlay is enabled, extends into the future to fit prediction points;
-    // otherwise clamps to toTime so the x-axis doesn't reserve empty future space.
+    // Derived time range from actual data (recalculates as series arrive).
+    // Predictions extend the axis into the future so those points fit.
+    // Otherwise the live graph ends at the current time. toTime is the current time
+    // rounded up to the next hour, and that left an empty stretch past now.
     val derivedTimeRange: StateFlow<Pair<Long, Long>?> = combine(
         cache.bgReadingsFlow,
         cache.bucketedDataFlow,
@@ -204,14 +205,18 @@ class GraphViewModel(
         // not the extent of what happens to be in it. Without this a day whose readings start in the
         // evening gets an axis only as wide as those readings, and zooming out to the whole day then
         // leaves the readings squashed into a corner instead of filling the day.
+        val now = dateUtil.now()
         val range = if (allTimestamps.isEmpty() || fullWindow) {
             cacheTimeRange?.let {
-                val upper = if (showPredictions) it.endTime else it.toTime
+                val upper = when {
+                    showPredictions -> it.endTime
+                    fullWindow -> it.toTime
+                    else -> now
+                }
                 Pair(it.fromTime, upper)
             } ?: run {
                 // Clean DB: no data and no cached range (worker never ran) — fall back to the
                 // default window so the axis frame still renders instead of staying blank.
-                val now = dateUtil.now()
                 Pair(now - Constants.GRAPH_TIME_RANGE_HOURS * 3600_000L, now)
             }
         } else {
@@ -229,19 +234,29 @@ class GraphViewModel(
                 ?: cacheTimeRange?.fromTime
                 ?: (dateUtil.now() - Constants.GRAPH_TIME_RANGE_HOURS * 3600_000L)
             val maxTime = allTimestamps.maxOrNull() ?: return@combine null
-            val cacheUpper = cacheTimeRange?.let { if (showPredictions) it.endTime else it.toTime }
-            val effectiveMax = if (cacheUpper != null) maxOf(maxTime, cacheUpper) else maxTime
+            // Predictions may sit past now. With them off, stop at now instead of the next hour.
+            val effectiveMax = if (showPredictions) {
+                val cacheUpper = cacheTimeRange?.endTime
+                if (cacheUpper != null) maxOf(maxTime, cacheUpper) else maxTime
+            } else {
+                maxOf(maxTime, now)
+            }
             Pair(minTime, effectiveMax)
         }
         // The right edge every series is measured against. A series that stops before this is drawn
         // short of the axis, which is what a basal line ending before "now" looks like. `by` names
-        // which input won, because the cure differs: `data` means a reading or a prediction reaches
-        // past the cached range, `range` means the cached range is the wider of the two.
+        // which input won: `data` is a point past the cached range, `now` is the current time,
+        // and `range` is the cached window.
         aapsLogger.debug(LTag.UI) {
             val cacheUpper = cacheTimeRange?.let { if (showPredictions) it.endTime else it.toTime }
             val dataMax = allTimestamps.maxOrNull()
+            val by = when {
+                !fullWindow && showPredictions && cacheUpper != null && dataMax != null && dataMax > cacheUpper -> "data"
+                !fullWindow && !showPredictions -> "now"
+                else -> "range"
+            }
             "Graph axis: to=${dateUtil.dateAndTimeAndSecondsString(range.second)} " +
-                "by=${if (!fullWindow && cacheUpper != null && dataMax != null && dataMax > cacheUpper) "data" else "range"} " +
+                "by=$by " +
                 "data=${dataMax?.let { dateUtil.dateAndTimeAndSecondsString(it) } ?: "none"} " +
                 "range=${cacheUpper?.let { dateUtil.dateAndTimeAndSecondsString(it) } ?: "none"} " +
                 "now=${dateUtil.dateAndTimeAndSecondsString(dateUtil.now())} " +
