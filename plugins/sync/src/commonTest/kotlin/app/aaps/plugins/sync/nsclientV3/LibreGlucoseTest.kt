@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3
 
+import app.aaps.core.utils.calibratedLibre
+import app.aaps.core.utils.libreSpecial
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

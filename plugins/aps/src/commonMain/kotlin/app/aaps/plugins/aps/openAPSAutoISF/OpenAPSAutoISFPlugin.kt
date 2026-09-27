@@ -916,7 +916,7 @@ open class OpenAPSAutoISFPlugin(
                         smbDeliveryRatio = smb_delivery_ratio,
                         acceIsfWeight = bgAccel_ISF_weight,
                         ppIsfWeight = pp_ISF_weight,
-                        fslCalSlope = preferences.get(DoubleNonKey.FslCalSlope),
+                        fslCalSlope = preferences.get(DoubleKey.FslCalSlope),
                         cob = mealData.mealCOB,
                         basal = currentTemp.rate,
                         note = cycleNotes.toString().take(80),
@@ -2998,7 +2998,7 @@ open class OpenAPSAutoISFPlugin(
         return if (index < 0) null else readings[index].timestamp
     }
 
-    // Writes the Libre slope and offset. This app does not read those values back into the glucose yet.
+    // Writes the Libre slope and offset. Incoming glucose reads them when Apply Libre slope is on.
     private fun applyOldSensorSlope(
         now: Long,
         bg: Double,
@@ -3009,16 +3009,16 @@ open class OpenAPSAutoISFPlugin(
     ) {
         val slopeBase = preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)
         val offsetBase = preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)
-        val currentSlope = preferences.get(DoubleNonKey.FslCalSlope)
-        val currentOffset = preferences.get(DoubleNonKey.FslCalOffset)
+        val currentSlope = preferences.get(DoubleKey.FslCalSlope)
+        val currentOffset = preferences.get(DoubleKey.FslCalOffset)
         val active = preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjActive)
         if (!preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)) {
             if (active || slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
                 if (slopeRestoreDeferred(bg, delta, shortDelta)) {
                     aapsLogger.debug(LTag.APS, "Sensor age slope restore deferred")
                 } else {
-                    preferences.put(DoubleNonKey.FslCalSlope, slopeBase)
-                    preferences.put(DoubleNonKey.FslCalOffset, offsetBase)
+                    preferences.put(DoubleKey.FslCalSlope, slopeBase)
+                    preferences.put(DoubleKey.FslCalOffset, offsetBase)
                     preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, false)
                     aapsLogger.debug(LTag.APS, "Sensor age slope restored")
                 }
@@ -3037,14 +3037,14 @@ open class OpenAPSAutoISFPlugin(
                 preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, true)
             }
             if (slopesDiffer(currentSlope, tier.slope) || slopesDiffer(currentOffset, tier.offset)) {
-                preferences.put(DoubleNonKey.FslCalSlope, tier.slope)
-                preferences.put(DoubleNonKey.FslCalOffset, tier.offset)
+                preferences.put(DoubleKey.FslCalSlope, tier.slope)
+                preferences.put(DoubleKey.FslCalOffset, tier.offset)
                 aapsLogger.debug(LTag.APS, "Old sensor tier ${tier.name}")
             }
         } else {
             if (slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
-                preferences.put(DoubleNonKey.FslCalSlope, slopeBase)
-                preferences.put(DoubleNonKey.FslCalOffset, offsetBase)
+                preferences.put(DoubleKey.FslCalSlope, slopeBase)
+                preferences.put(DoubleKey.FslCalOffset, offsetBase)
             }
             preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, false)
         }
@@ -3396,10 +3396,10 @@ open class OpenAPSAutoISFPlugin(
     // Move the saved Libre slope, and the live slope when it still matches that saved value.
     private suspend fun nudgeLibreSlope(delta: Double, smsName: String) {
         val orig = preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)
-        val live = preferences.get(DoubleNonKey.FslCalSlope)
+        val live = preferences.get(DoubleKey.FslCalSlope)
         val next = (orig + delta).coerceIn(0.60, 1.00)
         preferences.put(DoubleNonKey.ApsAutoIsfLibreSlopeOrig, next)
-        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleNonKey.FslCalSlope, (live + delta).coerceIn(0.60, 1.00))
+        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleKey.FslCalSlope, (live + delta).coerceIn(0.60, 1.00))
         sendAutoSms("$smsName: ${fixedDecimals(next, 2)}")
         carePortalNote(compactSettingNote("LS", next, 2, omitLeadingZero = true))
     }
@@ -3408,10 +3408,10 @@ open class OpenAPSAutoISFPlugin(
     // The remote step stays inside 1.20 to 1.60 even though the stored key allows a wider range.
     private suspend fun nudgeLibreOffset(delta: Double, smsName: String) {
         val orig = preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)
-        val live = preferences.get(DoubleNonKey.FslCalOffset)
+        val live = preferences.get(DoubleKey.FslCalOffset)
         val next = (orig + delta).coerceIn(1.20, 1.60)
         preferences.put(DoubleNonKey.ApsAutoIsfLibreOffsetOrig, next)
-        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleNonKey.FslCalOffset, (live + delta).coerceIn(1.20, 1.60))
+        if (liveMatchesBaseline(live, orig)) preferences.put(DoubleKey.FslCalOffset, (live + delta).coerceIn(1.20, 1.60))
         sendAutoSms("$smsName: ${fixedDecimals(next, 2)}")
         carePortalNote(compactSettingNote("L", next, 2))
     }

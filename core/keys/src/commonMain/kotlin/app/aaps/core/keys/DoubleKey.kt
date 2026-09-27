@@ -564,6 +564,35 @@ enum class DoubleKey(
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
 
+    // Same stored names the hidden keys used. Not tied to simple mode, so a saved slope stays in use.
+    FslCalOffset(
+        key = "fslCal_Offset",
+        defaultValue = 0.0,
+        min = -50.0,
+        max = 50.0,
+        title = KeysStrings.fslCal_Offset_title,
+        summary = KeysStrings.fslCal_Offset_summary,
+        unitType = UnitType.DOUBLE_2
+    ),
+    FslCalSlope(
+        key = "fslCal_Slope",
+        defaultValue = 1.0,
+        min = 0.5,
+        max = 1.5,
+        title = KeysStrings.fslCal_Slope_title,
+        summary = KeysStrings.fslCal_Slope_summary,
+        unitType = UnitType.DOUBLE_2
+    ),
+    FslSmoothAlpha(
+        key = "fsl_exp1_factor",
+        defaultValue = 0.3,
+        min = 0.1,
+        max = 1.0,
+        title = KeysStrings.fsl_exp1_factor_title,
+        summary = KeysStrings.fsl_exp1_factor_summary,
+        unitType = UnitType.DOUBLE_2
+    ),
+
     ;
 
 }

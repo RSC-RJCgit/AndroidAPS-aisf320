@@ -341,7 +341,7 @@ class ChipsViewModel(
             List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
             List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
             List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
-            List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.FslCalSlope)), 5.026, 5.028),
+            List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalSlope)), 5.026, 5.028),
             List1Row("Libre offset", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
             List1Row("Wizard bolus %", preferences.get(IntKey.OverviewBolusPercentage).toString(), 5.046, 5.048),
             List1Row("Mild boost", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)), 5.052, 5.054),

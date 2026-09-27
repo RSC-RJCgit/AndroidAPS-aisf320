@@ -390,6 +390,9 @@ enum class BooleanKey(
     WearNotifyOnSmb(key = "wear_notifySMB", defaultValue = true, title = KeysStrings.pref_title_wear_notify_on_smb, summary = KeysStrings.pref_summary_wear_notify_on_smb),
     WearBroadcastData(key = "wear_broadcast_data", defaultValue = false, title = KeysStrings.pref_title_wear_broadcast_data, summary = KeysStrings.pref_summary_wear_broadcast_data, showInApsMode = false, showInPumpControlMode = false),
 
+    // Same stored name as the old hidden switch. On until the user turns it off.
+    FslApplySmoothing("fsl_apply_smoothing", true, KeysStrings.fsl_apply_smoothing_title, KeysStrings.fsl_apply_smoothing_summary),
+
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_pump, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_cgm, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 

@@ -27,10 +27,13 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.utils.calibratedLibre
+import app.aaps.core.utils.libreSpecial
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.localmodel.entry.NSMbgV3
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
@@ -124,7 +127,7 @@ class NsIncomingDataProcessor(
             }
         }
         if (glucoseValues.isNotEmpty()) {
-            if (preferences.get(BooleanNonKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
+            if (preferences.get(BooleanKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
             nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -138,9 +141,9 @@ class NsIncomingDataProcessor(
 
     // Raw Libre becomes slope * value + offset, then LibreSpecial. UKF set 1 replaces that when the batch has two points.
     private fun applyLibre(values: MutableList<GV>) {
-        val slope = preferences.get(DoubleNonKey.FslCalSlope)
-        val offset = preferences.get(DoubleNonKey.FslCalOffset)
-        val alpha = preferences.get(DoubleNonKey.FslSmoothAlpha)
+        val slope = preferences.get(DoubleKey.FslCalSlope)
+        val offset = preferences.get(DoubleKey.FslCalOffset)
+        val alpha = preferences.get(DoubleKey.FslSmoothAlpha)
         val maxGap = preferences.get(IntNonKey.FslMaxSmoothGap).toDouble()
         val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
         val useUkf = preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)

@@ -1,18 +1,18 @@
-package app.aaps.plugins.sync.nsclientV3
+package app.aaps.core.utils
 
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
 /** Slope and offset applied to a raw Libre value. The result stays at least 40 mg/dL. */
-internal fun calibratedLibre(raw: Double, slope: Double, offset: Double, unitFactor: Double): Double =
+fun calibratedLibre(raw: Double, slope: Double, offset: Double, unitFactor: Double): Double =
     max(40.0, raw * slope + offset * unitFactor)
 
 /**
  * LibreSpecial. One exponential step from the previous smooth value.
  * [alpha] is the usual 0.3 and [maxGap] is the usual 20 minutes.
  */
-internal fun libreSpecial(
+fun libreSpecial(
     calibrated: Double,
     lastSmooth: Double,
     elapsedMinutes: Double,

@@ -52,6 +52,7 @@ import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.objects.extensions.freshness
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
+import app.aaps.core.ui.compose.preference.libreSpecialSettings
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.AuthorizedClientsRepository
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlReceiver
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlRoundTrip
@@ -1221,6 +1222,7 @@ class NSClientV3Plugin(
             StringKey.NsClientUrl,
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
+            libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
                 key = "ns_client_synchronization",
                 title = SyncStrings.ns_sync_options,
