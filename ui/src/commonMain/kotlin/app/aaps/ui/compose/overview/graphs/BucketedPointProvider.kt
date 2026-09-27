@@ -1,6 +1,5 @@
 package app.aaps.ui.compose.overview.graphs
 
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -43,7 +42,7 @@ class BucketedPointProvider(
     private fun createFilledPoint(color: Color) = LineCartesianLayer.Point(
         component = ShapeComponent(
             fill = Fill(color),
-            shape = CircleShape
+            shape = SafeCircleShape
         ),
         size = 6.dp
     )
@@ -90,7 +89,7 @@ class ReadingPointProvider(
     private val regularPoint = LineCartesianLayer.Point(
         component = ShapeComponent(
             fill = Fill(Color.Transparent),
-            shape = CircleShape,
+            shape = SafeCircleShape,
             strokeFill = Fill(regularColor.copy(alpha = 0.3f)),
             strokeThickness = 1.dp
         ),
@@ -103,7 +102,7 @@ class ReadingPointProvider(
     private val uniformPoint = uniformColor?.let { filled(it) }
 
     private fun filled(color: Color) = LineCartesianLayer.Point(
-        component = ShapeComponent(fill = Fill(color), shape = CircleShape),
+        component = ShapeComponent(fill = Fill(color), shape = SafeCircleShape),
         size = 6.dp
     )
 

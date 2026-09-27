@@ -1,10 +1,10 @@
 package app.aaps.ui.compose.overview.graphs
 
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -197,7 +197,7 @@ fun createNormalizerLine(): LineCartesianLayer.Line =
         areaFill = null,
         pointProvider = LineCartesianLayer.PointProvider.single(
             LineCartesianLayer.Point(
-                component = ShapeComponent(fill = Fill(Color.Transparent), shape = CircleShape),
+                component = ShapeComponent(fill = Fill(Color.Transparent), shape = SafeCircleShape),
                 size = NORMALIZER_POINT_SIZE
             )
         )
@@ -223,6 +223,17 @@ fun normalizerX(maxX: Double): List<Double> = listOf(0.0, maxX)
  * Used for rendering SMB markers on graphs. The triangle sits on the X axis
  * with the point facing up, making it visually distinct from circle dots.
  */
+/**
+ * A circle for chart points. Compose's `CircleShape` throws when the box width or height is not a
+ * real number. A bad scroll or a bad reading used to kill the overview that way. This shape draws
+ * nothing instead.
+ */
+val SafeCircleShape: Shape = GenericShape { size, _ ->
+    if (size.width.isFinite() && size.height.isFinite() && size.width > 0f && size.height > 0f) {
+        addOval(Rect(0f, 0f, size.width, size.height))
+    }
+}
+
 val TriangleShape: Shape = GenericShape { size, _ ->
     val baseHalf = size.width * 0.3f         // Narrow base for sharper triangle
     val cx = size.width / 2f
@@ -276,7 +287,7 @@ fun createPredictionLine(color: Color): LineCartesianLayer.Line =
             LineCartesianLayer.Point(
                 component = ShapeComponent(
                     fill = Fill(color),
-                    shape = CircleShape
+                    shape = SafeCircleShape
                 ),
                 size = 4.dp
             )
@@ -754,10 +765,12 @@ private fun niceNum(range: Double, round: Boolean): Double {
  * zero or pivot anchoring — used for series like VAR_SENSITIVITY and HEART_RATE.
  */
 fun niceScale(min: Double, max: Double, maxTickCount: Int = 5): NiceScale {
-    val safeMax = if (max > min) max else min + 1.0
-    val range = niceNum(safeMax - min, round = false)
+    val low = if (min.isFinite()) min else 0.0
+    val high = if (max.isFinite()) max else low
+    val safeMax = if (high > low) high else low + 1.0
+    val range = niceNum(safeMax - low, round = false)
     val step = niceNum(range / (maxTickCount - 1), round = true)
-    return NiceScale(floor(min / step) * step, ceil(safeMax / step) * step, step)
+    return NiceScale(floor(low / step) * step, ceil(safeMax / step) * step, step)
 }
 
 /** Rounds [value] up to the nearest nice number (1/2/5/10 x 10^n). Used for a lone axis bound. */
@@ -790,7 +803,9 @@ const val SENS_MIN_DEVIATION = 5.0
  * directly (via [niceScale]) would not preserve that centering.
  */
 fun niceScaleAroundPivot(min: Double, max: Double, pivot: Double, maxTickCount: Int = 5, minDeviation: Double = 0.0): NiceScale {
-    val rawDeviation = maxOf(abs(pivot - min), abs(max - pivot))
+    val safeMin = if (min.isFinite()) min else pivot
+    val safeMax = if (max.isFinite()) max else pivot
+    val rawDeviation = maxOf(abs(pivot - safeMin), abs(safeMax - pivot))
     // Below the floor (e.g. SENS sitting flat around 100%): snap to a fixed 3-tick scale
     // (pivot-minDeviation, pivot, pivot+minDeviation) instead of nice-ifying a near-zero range,
     // which would otherwise produce an overly tight, non-round scale (e.g. 99/99.5/100/100.5/101).
@@ -816,7 +831,8 @@ val ZERO_FLOOR_SERIES_TYPES = setOf(SeriesType.BGI, SeriesType.DEVIATIONS, Serie
  * A flat line at 1.0 gets a tiny gap so the axis does not collapse.
  */
 fun isfAxis(peak: Double): NiceScale {
-    val maxY = if (peak <= 1.0) 1.0 + 1.0e-6 else peak
+    val safePeak = if (peak.isFinite()) peak else 1.0
+    val maxY = if (safePeak <= 1.0) 1.0 + 1.0e-6 else safePeak
     val minY = 2.0 - maxY
     return NiceScale(minY, maxY, (maxY - minY) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
 }
@@ -826,7 +842,8 @@ fun isfAxis(peak: Double): NiceScale {
  * so zero stays in the middle, the same way the UK IOB threshold line is scaled.
  */
 fun iobThAxis(min: Double, max: Double): NiceScale {
-    val peak = maxOf(abs(min), abs(max)).coerceAtLeast(0.1)
+    val raw = maxOf(abs(min), abs(max))
+    val peak = if (raw.isFinite()) raw.coerceAtLeast(0.1) else 0.1
     return NiceScale(-peak, peak, (2.0 * peak) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
 }
 
@@ -849,6 +866,7 @@ val AUTO_ISF_SERIES_TYPES = setOf(
  * Used for IOB and [ZERO_FLOOR_SERIES_TYPES].
  */
 fun zeroFloorNiceRange(dataMin: Double, dataMax: Double, maxTickCount: Int = 5, disparityRatio: Double = 10.0): NiceScale {
+    if (!dataMin.isFinite() || !dataMax.isFinite()) return niceScale(0.0, 1.0, maxTickCount)
     if (dataMin >= 0.0) return niceScale(0.0, dataMax, maxTickCount)
     val absMin = -dataMin
     val ratio = if (absMin > 0.0) dataMax / absMin else Double.MAX_VALUE

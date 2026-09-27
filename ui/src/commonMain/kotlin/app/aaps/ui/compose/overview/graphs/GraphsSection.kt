@@ -57,6 +57,7 @@ import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import com.patrykandpatrick.vico.compose.cartesian.Scroll
+import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
 import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
@@ -147,7 +148,7 @@ fun GraphsSection(
     // first attempt at this).
     var bgViewportResetTrigger by remember { mutableIntStateOf(0) }
     val (bgScrollState, bgZoomState) = key(bgViewportResetTrigger) {
-        rememberVicoScrollState(
+        rememberSafeScrollState(
             scrollEnabled = true,
             initialScroll = Scroll.Absolute.End
         ) to rememberSafeZoomState(
@@ -160,15 +161,15 @@ fun GraphsSection(
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
     // These are always created to keep Compose's remember slots stable
-    val sec0scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec0scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec0zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec1scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec1scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec1zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec2scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec2scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec2zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec3scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec3scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec3zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec4scroll = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val sec4scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec4zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
@@ -206,7 +207,7 @@ fun GraphsSection(
     }
 
     // Treatment belt graph - non-interactive, synced from BG
-    val beltScrollState = rememberVicoScrollState(
+    val beltScrollState = rememberSafeScrollState(
         scrollEnabled = true,
         initialScroll = Scroll.Absolute.End
     )
@@ -216,7 +217,7 @@ fun GraphsSection(
     )
 
     // Fixed IOB graph - non-interactive, synced from BG
-    val iobScrollState = rememberVicoScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val iobScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -255,12 +256,15 @@ fun GraphsSection(
                 }
                 val count = activeCount
                 // NaN is not equal to NaN, so an unready zoom would be copied on every tick.
-                // A zoom of NaN makes a point's circle size NaN, and the chart crashes.
+                // A zoom that is not a real number is left alone. Multiplying it keeps the NaN,
+                // and the chart crashes.
                 if (zoom.isFinite() && zoom > 0f && zoom != lastZoom) {
                     lastZoom = zoom
-                    beltZoomState.zoom(Zoom.fixed(zoom))
-                    iobZoomState.zoom(Zoom.fixed(zoom))
-                    for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(zoom))
+                    if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(zoom))
+                    if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(zoom))
+                    for (i in 0 until count) {
+                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(zoom))
+                    }
                 }
                 // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
                 // the initial "recent time" position on the other graphs.
@@ -386,9 +390,11 @@ fun GraphsSection(
                         bgScrollState.scroll(Scroll.Absolute.pixels(leader))
                     }
                     val count = activeCount
-                    beltZoomState.zoom(Zoom.fixed(bgZoom))
-                    iobZoomState.zoom(Zoom.fixed(bgZoom))
-                    for (i in 0 until count) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
+                    if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(bgZoom))
+                    if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(bgZoom))
+                    for (i in 0 until count) {
+                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
+                    }
                     delay(10)
                     beltScrollState.scroll(Scroll.Absolute.pixels(leader))
                     iobScrollState.scroll(Scroll.Absolute.pixels(leader))
@@ -759,9 +765,10 @@ private fun GraphSeriesBottomSheet(
     }
 }
 
-// Vico saves the zoom factor. A saved NaN is kept, the point size becomes NaN, and the chart crashes.
+// Vico saves the zoom factor. A saved NaN is kept, the point position becomes NaN, and the chart crashes.
 // This slot is new, so the old NaN is left behind. A bad factor is replaced before it is stored.
 private const val SAFE_ZOOM_SLOT = "finite-zoom"
+private const val SAFE_SCROLL_SLOT = "finite-scroll"
 private const val VICO_MAX_ZOOM = 10f
 private const val MIN_USABLE_ZOOM = 0.0001f
 
@@ -791,3 +798,25 @@ private fun Zoom.ifNotUsable(fallback: Float): Zoom = Zoom { context, layerDimen
     val zoom = getValue(context, layerDimensions, bounds)
     if (zoom.isFinite() && zoom > 0f) zoom else fallback
 }
+
+// Vico also saves the scroll. A saved NaN is kept, every point's x becomes NaN, and the same
+// circle crash follows. This slot is new, so the old NaN is left behind.
+@Composable
+private fun rememberSafeScrollState(
+    scrollEnabled: Boolean,
+    initialScroll: Scroll.Absolute,
+): VicoScrollState {
+    val safeInitial = remember(initialScroll) { initialScroll.ifNotUsable() }
+    return key(SAFE_SCROLL_SLOT) {
+        rememberVicoScrollState(
+            scrollEnabled = scrollEnabled,
+            initialScroll = safeInitial,
+        )
+    }
+}
+
+private fun Scroll.Absolute.ifNotUsable(): Scroll.Absolute =
+    Scroll.Absolute { context, layerDimensions, bounds, maxValue ->
+        val scroll = getValue(context, layerDimensions, bounds, maxValue)
+        if (scroll.isFinite() && scroll >= 0f) scroll else 0f
+    }

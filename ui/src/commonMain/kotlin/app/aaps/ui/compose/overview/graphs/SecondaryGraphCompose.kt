@@ -1,7 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -1460,7 +1459,7 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
             areaFill = null,
             pointProvider = LineCartesianLayer.PointProvider.single(
                 LineCartesianLayer.Point(
-                    component = ShapeComponent(fill = Fill(color), shape = CircleShape),
+                    component = ShapeComponent(fill = Fill(color), shape = SafeCircleShape),
                     size = 4.dp
                 )
             )
@@ -1595,7 +1594,7 @@ fun rememberCobLineStyles(): CobLineStyles {
                 fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
                 areaFill = null,
                 pointProvider = LineCartesianLayer.PointProvider.single(
-                    LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(cobColor), shape = CircleShape), size = 6.dp)
+                    LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(cobColor), shape = SafeCircleShape), size = 6.dp)
                 )
             ),
             carbsLine = LineCartesianLayer.Line(
