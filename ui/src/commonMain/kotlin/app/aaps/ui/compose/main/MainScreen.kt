@@ -334,7 +334,7 @@ fun MainScreen(
                     // Version overlay
                     VersionOverlay(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
+                            .align(Alignment.TopStart)
                             .padding(contentPadding)
                     )
 

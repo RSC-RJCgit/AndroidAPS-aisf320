@@ -586,9 +586,26 @@ class WizardBolusExecutorImpl(
                     deliverECarbs(p.carbs, dateUtil.now() + T.mins(p.carbTimeMinutes.toLong()).msecs(), p.carbsDurationHours, p.carbTimeMinutes, notes, source, wrapped)
 
                 else                             -> {
-                    // Insulin (± carbs): deliver the parked amounts as-is. carbsTime = now + offset; carbsDuration in hours.
+                    // Insulin (± carbs). A negative time is already in the past, so it is stored
+                    // then and the pump is not told to deliver now. Any other offset is still
+                    // delivered, and the treatment keeps that time.
                     val carbsTime = if (p.carbs > 0) dateUtil.now() + T.mins(p.carbTimeMinutes.toLong()).msecs() else null
-                    deliver(p.insulin, p.carbs, carbsTime = carbsTime, carbsDuration = p.carbsDurationHours, bolusCalculatorResult = p.bcr, notes = notes, source = source, onError = wrapped, eventType = p.eventType)
+                    val stamp = p.bolusTimestamp
+                    val past = stamp != null && stamp < dateUtil.now() - 30_000L
+                    deliver(
+                        p.insulin,
+                        p.carbs,
+                        carbsTime = carbsTime,
+                        carbsDuration = p.carbsDurationHours,
+                        bolusCalculatorResult = p.bcr,
+                        notes = notes,
+                        source = source,
+                        onError = wrapped,
+                        eventType = p.eventType,
+                        recordOnly = past,
+                        iCfg = if (past) p.iCfg else null,
+                        timestamp = stamp
+                    )
                 }
             }
             // eCarbs split (e.g. a CARBS-mode QuickWizard entry with eCarbs configured): the immediate carbs are
@@ -772,7 +789,11 @@ class WizardBolusExecutorImpl(
         val out = mutableListOf<ConfirmationLine>()
         if (insulin > 0.0) {
             out += ConfirmationLine(ConfirmationRole.BOLUS, rh.gs(InterfacesStrings.confirmation_line, rh.gs(InterfacesStrings.bolus), decimalFormatter.toPumpSupportedBolusWithUnits(insulin, pumpDescription.bolusStep)))
-            if (recordOnly) {
+            val stamp = bolus.timestamp
+            val past = stamp > 0L && stamp < dateUtil.now() - 30_000L
+            if (stamp > 0L && abs(stamp - dateUtil.now()) > 60_000L)
+                out += ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.time), dateUtil.dateAndTimeString(stamp)))
+            if (recordOnly || past) {
                 out += ConfirmationLine(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_recorded_only))
                 bolus.iCfg?.let { out += ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(CoreUiStrings.selected_insulin, it.insulinLabel)) }
             } else if (abs(insulin - bolus.insulin) > pumpDescription.pumpType.determineCorrectBolusStepSize(insulin)) {

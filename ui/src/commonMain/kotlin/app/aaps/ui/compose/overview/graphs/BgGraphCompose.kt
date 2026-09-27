@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -150,6 +151,7 @@ fun BgGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     visibleTimeRange: Pair<Long, Long>? = null,
+    graph1Label: String = "",
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -281,12 +283,13 @@ fun BgGraphCompose(
                     }
                 }
 
-                // Prediction series - each type as a separate line
+                // Prediction cloud stays inside the green band. A point under the low mark is drawn on that line.
+                val cloudFloor = chartConfig.lowMark
                 for (predSeries in PREDICTION_SERIES) {
                     val predPoints = seriesRegistry[predSeries]
                     if (!predPoints.isNullOrEmpty()) {
                         val dataPoints = predPoints
-                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value.coerceAtLeast(cloudFloor) }
                             .sortedBy { it.first }
                         series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
                         activeSeries.add(predSeries)
@@ -362,11 +365,13 @@ fun BgGraphCompose(
                 }
             }
 
-            // Block 5 → Activity layer. UK graph 0 starts at 0 and puts the activity peak at
-            // 80% of that top (maxY * 0.8 / max activity). The same scale is used for the carb model.
+            // Activity and the carb model sit on the bottom of the green band, not on chart zero.
+            // The peak still uses 80% of the room above that line.
             lineModel {
+                val floor = chartConfig.lowMark
+                val headroom = (currentMaxBgY - floor).coerceAtLeast(1.0)
+                val activityTop = headroom * 0.8
                 val maxAct = currentActivityData.maxActivity
-                val activityTop = currentMaxBgY * 0.8
                 if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
@@ -374,13 +379,13 @@ fun BgGraphCompose(
                     val scaleFactor = activityTop / maxAct
 
                     val pts = currentActivityData.activity
-                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
+                        .map { timestampToX(it.timestamp, minTimestamp) to (floor + it.value * scaleFactor) }
                         .sortedBy { it.first }
                     series(x = pts.map { it.first }, y = pts.map { it.second })
 
                     if (currentActivityData.activityPrediction.size >= 2) {
                         val predPts = currentActivityData.activityPrediction
-                            .map { timestampToX(it.timestamp, minTimestamp) to (it.value * scaleFactor) }
+                            .map { timestampToX(it.timestamp, minTimestamp) to (floor + it.value * scaleFactor) }
                             .sortedBy { it.first }
                         series(x = predPts.map { it.first }, y = predPts.map { it.second })
                     } else {
@@ -394,7 +399,7 @@ fun BgGraphCompose(
                 } else {
                     val carbScale = activityTop / maxCarb
                     val carbPts = carbs
-                        .map { timestampToX(it.timestamp, minTimestamp) to (it.value * carbScale) }
+                        .map { timestampToX(it.timestamp, minTimestamp) to (floor + it.value * carbScale) }
                         .sortedBy { it.first }
                     series(x = carbPts.map { it.first }, y = carbPts.map { it.second })
                 }
@@ -426,6 +431,7 @@ fun BgGraphCompose(
     val ukfPoints = if (showUkf) bgReadings.mapNotNull { point ->
         point.ukfValue.takeIf { it > 0.0 }?.let { point.copy(value = it) }
     } else emptyList()
+    var epsLabelAnchors by remember { mutableStateOf(emptyList<SmbStackItem>()) }
 
     LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
@@ -441,6 +447,16 @@ fun BgGraphCompose(
         val allBgValues = (bgReadings + bucketedData).map { it.value }
         val maxBgY = if (allBgValues.isNotEmpty()) maxOf(allBgValues.max(), chartConfig.highMark) else chartConfig.highMark
         val minBgY = if (allBgValues.isNotEmpty()) minOf(allBgValues.min(), chartConfig.lowMark) else chartConfig.lowMark
+        val epsBaseline = (maxBgY - minBgY) * 0.75
+        epsLabelAnchors = epsPoints.mapNotNull { eps ->
+            if (eps.label.isEmpty()) return@mapNotNull null
+            SmbStackItem(
+                x = timestampToX(eps.timestamp, minTimestamp),
+                label = eps.label,
+                stackIndex = 0,
+                anchorY = minBgY + eps.originalPercentage / 100.0 * epsBaseline,
+            )
+        }
 
         // Windowed axis min/max: BG values within the visible scroll/zoom window (not the full
         // loaded range), floored/ceiled at chartConfig.lowMark/highMark (the "Low mark"/"High mark"
@@ -461,8 +477,8 @@ fun BgGraphCompose(
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
-        // Activity is drawn from 0, so the axis has to start at 0 or the bottom of the curve is cut off.
-        val niceBgScale = if (showActivity) niceScale(0.0, dataMax) else niceScale(dataMin, dataMax)
+        // Activity is drawn from the low mark, so the axis does not have to start at 0.
+        val niceBgScale = niceScale(dataMin, dataMax)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
@@ -823,10 +839,18 @@ fun BgGraphCompose(
     val bolusNumbers = remember(bolusStack, bolusText) {
         SmbStackLabels(bolusStack, bolusText, pinToBottom = false)
     }
+    val epsText = rememberTextMeasurer()
+    val epsNumbers = remember(epsLabelAnchors, epsText, profileSwitchColor) {
+        SmbStackLabels(
+            epsLabelAnchors.map { it.copy(color = profileSwitchColor) },
+            epsText,
+            pinToBottom = false
+        )
+    }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers)
     }
 
     // =========================================================================
@@ -905,7 +929,7 @@ fun BgGraphCompose(
         scrollState = scrollState,
         zoomState = zoomState
     )
-    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null) {
+    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null || graph1Label.isNotEmpty()) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
         val tight = TextStyle(
@@ -917,23 +941,29 @@ fun BgGraphCompose(
                 trim = LineHeightStyle.Trim.Both
             )
         )
+        if (hypoPrediction != null) {
+            Text(
+                text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
+                color = Color.White,
+                style = tight,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 8.dp, top = 4.dp)
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 8.dp, bottom = (44.dp - threeLinesDown).coerceAtLeast(0.dp))
         ) {
-            if (hypoPrediction != null) {
-                Text(
-                    text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
-                    color = Color.White,
-                    style = tight
-                )
-            }
             autoIsfGraph.statusTarget?.let { line ->
                 Text(text = line, color = Color.White, style = tight)
             }
             autoIsfGraph.statusIsf?.let { line ->
                 IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
+            }
+            if (graph1Label.isNotEmpty()) {
+                Text(text = graph1Label, color = Color.White, style = tight)
             }
         }
     }

@@ -161,17 +161,16 @@ fun GraphsSection(
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
     // These are always created to keep Compose's remember slots stable.
-    // A finger on a lower graph does nothing. Only the main graph scrolls, and that
-    // position is copied onto these so every graph shows the same time.
-    val sec0scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    // A finger on any graph moves every graph. Pinch stays on the main graph.
+    val sec0scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec0zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec1scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec1scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec1zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec2scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec2scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec2zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec3scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec3scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec3zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
-    val sec4scroll = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    val sec4scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val sec4zoom = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
@@ -218,8 +217,8 @@ fun GraphsSection(
         initialZoom = startZoom
     )
 
-    // Fixed IOB graph - non-interactive, synced from BG
-    val iobScrollState = rememberSafeScrollState(scrollEnabled = false, initialScroll = Scroll.Absolute.End)
+    // Fixed IOB graph. A finger here moves every graph, including the main one.
+    val iobScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberSafeZoomState(zoomEnabled = false, initialZoom = startZoom)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -316,13 +315,15 @@ fun GraphsSection(
         lastBgTimestamp = newTimestamp
     }
 
-    // Only the main graph is dragged. This puts the current time on the right edge, and
-    // copies that place back onto a lower graph if a rebuild moved it.
+    // Opening puts the current time on the right edge. After that, a drag on any graph
+    // moves the window, and that place is copied onto the other graphs. A rebuild that
+    // jumps a graph back to the start is not a drag.
     // Keyed on bgScrollState/bgZoomState (not Unit) — MUST restart when they're recreated by a
     // reset, otherwise this keeps comparing secondary graphs against a stale, abandoned pre-reset
     // reference forever and fires wrong corrections.
     var lastMainScroll by remember { mutableFloatStateOf(Float.NaN) }
     var lastMainMax by remember { mutableFloatStateOf(Float.NaN) }
+    val lastFollowerScroll = remember { FloatArray(7) { Float.NaN } }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             val count = activeCount
@@ -358,6 +359,7 @@ fun GraphsSection(
                         bgScrollState.scroll(Scroll.Absolute.End)
                     }
                     lastMainScroll = bgScrollState.value
+                    for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
                     return@collect
                 }
                 // A model rebuild can clamp the scroll to the oldest time. That is not a finger drag.
@@ -375,11 +377,46 @@ fun GraphsSection(
                         bgScrollState.scroll(Scroll.Absolute.pixels(lastMainScroll.coerceAtMost(bgMax)))
                     }
                     lastMainScroll = bgScrollState.value
+                    for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
                     return@collect
                 }
                 if (lastMainScroll.isNaN()) lastMainScroll = bgScroll
                 if (bgMax <= 1f) return@collect
-                // A lower graph never leads. If one has drifted, copy the main graph onto it.
+                // A finger on a lower graph moves that graph while the main one stays still.
+                // A jump back to the start while the main graph is still showing hours is a rebuild.
+                val mainStable = abs(bgScroll - lastMainScroll) < 24f
+                var finger: Float? = null
+                if (mainStable) {
+                    for (i in states.indices) {
+                        if (i >= lastFollowerScroll.size) break
+                        val scroll = states[i].first
+                        val prev = lastFollowerScroll[i]
+                        if (!scroll.isFinite()) continue
+                        val moved = !prev.isNaN() && abs(scroll - prev) > 24f
+                        val apart = abs(scroll - bgScroll) > 24f
+                        val rebuild = scroll < 1f && bgScroll > 24f
+                        if (moved && apart && !rebuild) {
+                            finger = scroll
+                            break
+                        }
+                    }
+                }
+                if (finger != null && finger.isFinite()) {
+                    followNow = false
+                    graphViewModel.onGraphInteraction()
+                    skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                    bgScrollState.scroll(Scroll.Absolute.pixels(finger))
+                    beltScrollState.scroll(Scroll.Absolute.pixels(finger))
+                    iobScrollState.scroll(Scroll.Absolute.pixels(finger))
+                    val count = activeCount
+                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(finger))
+                    lastMainScroll = finger
+                    for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = finger
+                    return@collect
+                }
+                for (i in states.indices) {
+                    if (i < lastFollowerScroll.size && states[i].first.isFinite()) lastFollowerScroll[i] = states[i].first
+                }
                 val drifted = states.any { (scroll, zoom) ->
                     !scroll.isFinite() || abs(scroll - bgScroll) > 1f ||
                         (zoomOk && zoom.isFinite() && abs(zoom - bgZoom) > 0.001f)
@@ -404,6 +441,7 @@ fun GraphsSection(
                 iobScrollState.scroll(Scroll.Absolute.pixels(leader))
                 val count = activeCount
                 for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
+                for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = leader
             }
     }
 
@@ -417,6 +455,19 @@ fun GraphsSection(
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
         Box {
+            val graph1Label = buildString {
+                append(stringResource(CoreUiStrings.iob))
+                append(" / ")
+                append(stringResource(CoreUiStrings.basal_shortname))
+                if (SeriesType.ACTIVITY in graphConfig.iobOverlays) {
+                    append(" / ")
+                    append(stringResource(CoreUiStrings.activity_shortname))
+                }
+                if (SeriesType.COB in graphConfig.iobOverlays) {
+                    append(" / ")
+                    append(stringResource(CoreUiStrings.cob))
+                }
+            }
             BgGraphCompose(
                 viewModel = graphViewModel,
                 bgOverlays = graphConfig.bgOverlays,
@@ -425,6 +476,7 @@ fun GraphsSection(
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 visibleTimeRange = bgVisibleTimeRange,
+                graph1Label = graph1Label,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(graphConfig.bgHeight.dp)
@@ -474,7 +526,19 @@ fun GraphsSection(
                     .height(graphConfig.iobHeight.dp)
             )
             Text(
-                text = stringResource(CoreUiStrings.iob) + " / " + stringResource(CoreUiStrings.basal_shortname),
+                text = buildString {
+                    append(stringResource(CoreUiStrings.iob))
+                    append(" / ")
+                    append(stringResource(CoreUiStrings.basal_shortname))
+                    if (SeriesType.ACTIVITY in graphConfig.iobOverlays) {
+                        append(" / ")
+                        append(stringResource(CoreUiStrings.activity_shortname))
+                    }
+                    if (SeriesType.COB in graphConfig.iobOverlays) {
+                        append(" / ")
+                        append(stringResource(CoreUiStrings.cob))
+                    }
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier
