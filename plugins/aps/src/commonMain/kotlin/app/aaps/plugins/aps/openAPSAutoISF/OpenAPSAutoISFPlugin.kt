@@ -1534,6 +1534,9 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
             BooleanKey.ApsAutoIsfShowCarbModelCurve,
             BooleanKey.ApsAutoIsfShowGraph5,
+            BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled,
+            BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled,
+            BooleanKey.ApsAutoIsfShowInsulinTotals,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -3280,6 +3283,11 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.SMB_OFFSET_UP -> RunMark.SMB_OFFSET_UP
             RemoteToggleCode.PEAK_INSULIN_DOWN -> RunMark.PEAK_INSULIN_DOWN
             RemoteToggleCode.PEAK_INSULIN_UP -> RunMark.PEAK_INSULIN_UP
+            RemoteToggleCode.MJ_BUTTONS -> RunMark.MJ_BUTTONS
+            RemoteToggleCode.STEROID_BUTTON -> RunMark.STEROID_BUTTON
+            RemoteToggleCode.LOCATION_SMS -> RunMark.LOCATION_SMS
+            RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
+            RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3550,7 +3558,25 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.SMB_OFFSET_UP -> nudgeDouble(DoubleKey.ApsAutoIsfSmbOffsetOverride, 0.1, 0.50, 1.50, "SmbOffsetUp", "SO", 1)
             RemoteToggleCode.PEAK_INSULIN_DOWN -> nudgeInsulinPeak(-5, "PeakInsulinTimeDown")
             RemoteToggleCode.PEAK_INSULIN_UP -> nudgeInsulinPeak(5, "PeakInsulinTimeUp")
+            RemoteToggleCode.MJ_BUTTONS -> toggleBool(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, "MJ buttons", "MJB")
+            RemoteToggleCode.STEROID_BUTTON -> toggleBool(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, "Steroid buttons", "StB")
+            RemoteToggleCode.LOCATION_SMS -> toggleBool(BooleanKey.AutomationCodedLocationsEnabled, "Location texts", "Loc")
+            RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
+            RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
         }
+    }
+
+    private suspend fun setLocationSmsPhone() {
+        val model = thisPhoneModel()
+        if (model.isEmpty()) {
+            sendAutoSms("Location texts from this phone are not available here")
+            return
+        }
+        val current = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+        val next = if (current.equals(model, ignoreCase = true)) "" else model
+        preferences.put(StringKey.AutomationLocationSmsDeviceModel, next)
+        sendAutoSms(if (next.isEmpty()) "Location texts from this phone: OFF" else "Location texts from this phone: $next")
+        carePortalNote(if (next.isEmpty()) "LocPOff" else "LocPOn")
     }
 
     // Peak time of the insulin on the running profile, in minutes. 35 to 120, step 5.
@@ -4572,14 +4598,20 @@ open class OpenAPSAutoISFPlugin(
     private suspend fun exportSettingsFile(): Boolean {
         var message = "Settings export ignored: unattended settings export is disabled"
         var exported = false
+        var passwordWasValid = false
         if (exportPasswordDataStore.exportPasswordStoreEnabled()) {
             val (password, isExpired, _) = exportPasswordDataStore.getPasswordFromDataStore()
             if (password.isNotEmpty() && !isExpired) {
+                passwordWasValid = true
                 exported = importExportPrefs.exportSharedPreferencesNonInteractive(password)
                 message = if (exported) "Settings exported" else "Settings export failed"
             } else {
                 message = "Settings export password missing or expired"
                 exportPasswordDataStore.clearPasswordDataStore()
+            }
+            if (passwordWasValid && !exported && runMarks.ready(RunMark.SETTINGS_EXPORT_ACCESS, 360, dateUtil.now())) {
+                sendAutoSms("Settings export failed: the AAPS folder could not be written")
+                runMarks.mark(RunMark.SETTINGS_EXPORT_ACCESS, dateUtil.now())
             }
         }
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(

@@ -34,10 +34,13 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.ui.compose.overview.AutoIsfHistoryRow
 import app.aaps.ui.compose.overview.autoIsfHistoryRows
@@ -132,6 +135,14 @@ class ChipsViewModel(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = CobUiState()
+    )
+
+    val overviewActions: StateFlow<List<OverviewAction>> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
+        buildOverviewActions()
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
     )
 
     val sensitivityUiState: StateFlow<SensitivityUiState> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
@@ -306,6 +317,61 @@ class ChipsViewModel(
         }
     }
 
+    private suspend fun buildOverviewActions(): List<OverviewAction> {
+        if (config.AAPSCLIENT) return emptyList()
+        if (activePlugin.activeAPS?.algorithm != APSResult.Algorithm.AUTO_ISF) return emptyList()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return emptyList()
+        val states = preferences.get(StringNonKey.AutomationCurrentStates)
+        val mj = stateValue(states, "MJ")
+        val steroids = stateValue(states, "Steroids")
+        val actions = mutableListOf<OverviewAction>()
+        if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) {
+            when (mj) {
+                "NOMJremains" -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_start), 5.158)
+                "" -> Unit
+                else -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_restore), 5.160)
+            }
+        }
+        if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) {
+            val hour = dateUtil.hourString().toIntOrNull() ?: 0
+            val profile = profileFunction.getProfile()
+            val originalPercent = (profile as? ProfileSealed.EPS)?.value?.originalPercentage ?: profile?.percentage
+            val profileName = profileFunction.getOriginalProfileName()
+            val atHundred = originalPercent == 100
+            if (hour >= 6 && mj == "NOMJremains" && steroids == "Steroids Off") {
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_on), 5.162)
+            }
+            if (atHundred && steroids == "SteroidsON" && profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)) {
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_130), 5.168)
+            }
+            if (atHundred && steroids == "SteroidsON" && mj == "NOMJremains") {
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_150), 5.170)
+                }
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_190), 5.172)
+                }
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_250), 5.174)
+                }
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_off), 5.176)
+            }
+        }
+        return actions
+    }
+
+    private fun stateValue(json: String, name: String): String {
+        val key = "\"$name\""
+        val at = json.indexOf(key)
+        if (at < 0) return ""
+        val colon = json.indexOf(':', at + key.length)
+        if (colon < 0) return ""
+        val open = json.indexOf('"', colon + 1)
+        val close = if (open < 0) -1 else json.indexOf('"', open + 1)
+        if (open < 0 || close < 0) return ""
+        return json.substring(open + 1, close)
+    }
+
     fun list1Rows(): List<List1Row> {
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         val two: (Double) -> String = { decimalFormatter.to2Decimal(it) }
@@ -360,9 +426,14 @@ class ChipsViewModel(
             List1Row("Steroids 190", preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName), 5.172, null),
             List1Row("Steroids 250", preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName), 5.174, null),
             List1Row("Steroids off", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
+            List1Row("MJ buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)), 5.164, null),
+            List1Row("Steroid buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)), 5.166, null),
             List1Row("Send AnyDesk restart", "send now", 5.178, null),
             List1Row("Tier 3 UAM boost", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
             List1Row("AutoISF calcs UKF1", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
+            List1Row("Location texts", onOff(preferences.get(BooleanKey.AutomationCodedLocationsEnabled)), 5.198, null),
+            List1Row("Location text phone", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
+            List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
             List1Row("Profile batch auto", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
             List1Row("Profile batch hold A", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
             List1Row("Profile batch hold C", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),

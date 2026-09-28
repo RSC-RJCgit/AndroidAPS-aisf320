@@ -154,7 +154,8 @@ class AutomationRuntime(
     private val uel: UserEntryLogger,
     private val profileRepository: ProfileRepository,
     private val sceneApi: SceneAutomationApi,
-    private val pairedBtDevices: PairedBtDevices
+    private val pairedBtDevices: PairedBtDevices,
+    private val codedLocations: CodedLocations,
 ) : Automation, PermissionProvider, BtConnectionSource {
 
     override val executionEnabled: Boolean get() = config.APS
@@ -327,7 +328,10 @@ class AutomationRuntime(
      * collection pass, so the permission appears/disappears as the event set changes.
      */
     override fun requiredPermissions(): List<PermissionGroup> =
-        if (config.APS && usesLocationTrigger()) locationPermissions.groups() else emptyList()
+        if (config.APS && locationNeeded()) locationPermissions.groups() else emptyList()
+
+    private fun locationNeeded(): Boolean =
+        usesLocationTrigger() || preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
 
     /** True when any enabled event's trigger tree contains a [TriggerLocation]. */
     private fun usesLocationTrigger(): Boolean =
@@ -418,13 +422,20 @@ class AutomationRuntime(
             updateLocationService()
         }.launchIn(newScope)
 
+        preferences.observe(BooleanKey.AutomationCodedLocationsEnabled).drop(1).onEach {
+            updateLocationService()
+        }.launchIn(newScope)
+
         // processActions() stays launched rather than called inline, so a slow run never holds up the
         // collector that delivers the next event. Runs do not overlap: processActionsMutex serializes
         // them.
         rxBus.toFlow(EventLocationChange::class)
             .collectResilient(newScope, aapsLogger, LTag.AUTOMATION, start = CoroutineStart.UNDISPATCHED) {
                 aapsLogger.debug(LTag.AUTOMATION, "Grabbed location: ${it.position.latitude} ${it.position.longitude} Provider: ${it.provider}")
-                scope?.launch { processActions() }
+                scope?.launch {
+                    codedLocations.onFix(it.position.latitude, it.position.longitude, it.accuracyMetres)
+                    processActions()
+                }
             }
         rxBus.toFlow(EventBTChange::class)
             .collectResilient(newScope, aapsLogger, LTag.AUTOMATION, start = CoroutineStart.UNDISPATCHED) {
@@ -455,7 +466,7 @@ class AutomationRuntime(
     // right now - waiting for the process to be in foreground, and retrying after a location
     // permission grant.
     private fun updateLocationService() {
-        val need = eventsLock.withLock { usesLocationTrigger() }
+        val need = locationNeeded()
         locationServiceController.setLocationUpdatesEnabled(need)
     }
 

@@ -427,6 +427,35 @@ enum class BooleanKey(
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_pump, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_cgm, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
+    ApsAutoIsfMjKotlinButtonsEnabled(
+        "autoisf_mj_kotlin_buttons",
+        false,
+        KeysStrings.pref_title_mj_kotlin_buttons,
+        KeysStrings.pref_summary_mj_kotlin_buttons,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroidKotlinButtonEnabled(
+        "autoisf_steroid_kotlin_button",
+        false,
+        KeysStrings.pref_title_steroid_kotlin_button,
+        KeysStrings.pref_summary_steroid_kotlin_button,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfShowInsulinTotals(
+        "autoisf_show_insulin_totals",
+        false,
+        KeysStrings.pref_title_show_insulin_totals,
+        KeysStrings.pref_summary_show_insulin_totals,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    AutomationCodedLocationsEnabled(
+        "automation_coded_locations",
+        false,
+        KeysStrings.pref_title_coded_locations,
+        KeysStrings.pref_summary_coded_locations,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+
     ;
 
 }

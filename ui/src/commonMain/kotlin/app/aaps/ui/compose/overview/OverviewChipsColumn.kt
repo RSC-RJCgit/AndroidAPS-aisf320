@@ -26,6 +26,8 @@ import app.aaps.ui.compose.overview.chips.IobCobChipsRow
 import app.aaps.ui.compose.overview.chips.IobUiState
 import app.aaps.ui.compose.overview.chips.ProfileChip
 import app.aaps.ui.compose.overview.chips.RunningModeChip
+import app.aaps.ui.compose.overview.chips.OverviewAction
+import app.aaps.ui.compose.overview.chips.OverviewActionButtons
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
@@ -52,6 +54,8 @@ fun OverviewChipsColumn(
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
     onOpenAutoIsfHistory: () -> Unit = {},
+    actionButtons: List<OverviewAction> = emptyList(),
+    onAction: (Double) -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
@@ -69,6 +73,9 @@ fun OverviewChipsColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        if (actionButtons.isNotEmpty()) {
+            OverviewActionButtons(actions = actionButtons, onAction = onAction)
+        }
         if (trailingContent != null) {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val chipsWidth = (maxWidth * 0.4f).coerceIn(140.dp, 220.dp)

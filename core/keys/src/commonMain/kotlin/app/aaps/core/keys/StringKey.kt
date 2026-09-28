@@ -150,6 +150,29 @@ enum class StringKey(
         ),
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    AutomationLocationSmsDeviceModel(
+        key = "automation_location_sms_device_model",
+        defaultValue = "",
+        title = KeysStrings.pref_title_location_sms_model,
+        summary = KeysStrings.pref_summary_location_sms_model,
+    ),
+    AutomationLocationSmsNumbers(
+        key = "automation_location_sms_numbers",
+        defaultValue = "",
+        title = KeysStrings.pref_title_location_sms_numbers,
+        summary = KeysStrings.pref_summary_location_sms_numbers,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    AutomationAirport1("automation_airport_1", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAirport2("automation_airport_2", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAirport3("automation_airport_3", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAirport4("automation_airport_4", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAirport5("automation_airport_5", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAddress1("automation_address_1", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAddress2("automation_address_2", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAddress3("automation_address_3", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAddress4("automation_address_4", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    AutomationAddress5("automation_address_5", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
     SmsAllowedNumbers(
         key = "smscommunicator_allowednumbers",

@@ -73,7 +73,7 @@ class BolusTimerImplTest : TestBase() {
         dateUtil = DateUtilImpl(context)
         automationRuntime = AutomationRuntime(
             mock<LocationPermissions>(), eventFactory, aapsLogger, rh, preferences, loop, rxBus, constraintChecker, config, locationServiceController, dateUtil,
-            activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore, uel, profileRepository, sceneApi, mock()
+            activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore, uel, profileRepository, sceneApi, mock(), mock()
         )
     }
 

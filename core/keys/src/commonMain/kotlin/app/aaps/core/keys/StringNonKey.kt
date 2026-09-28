@@ -40,6 +40,7 @@ enum class StringNonKey(
     // Current automation state values and their allowed lists. Local to the loop phone.
     AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}"),
     AutomationStateValues(key = "automation_state_values", defaultValue = "{}"),
+    CodedLocationStates(key = "coded_location_states", defaultValue = "", exportable = false),
     // Saved review of native automations whose names are close to a coded AutoISF name.
     // The value is a JSON object of title to allowed (true or false). A missing title is not reviewed yet.
     CodedAutomationDecisions(key = "automation_coded_decisions", defaultValue = ""),

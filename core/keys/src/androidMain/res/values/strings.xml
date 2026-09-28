@@ -553,6 +553,20 @@
     <string name="fslCal_Slope_summary">SLOPE in the formula. Calibrated Libre = offset + SLOPE * raw Libre.</string>
     <string name="fsl_exp1_factor_title">Libre smooth factor</string>
     <string name="fsl_exp1_factor_summary">How far each new reading moves toward the calibrated value. 1.0 means no smoothing.</string>
+    <string name="pref_title_mj_kotlin_buttons">MJ buttons</string>
+    <string name="pref_summary_mj_kotlin_buttons">Show the MJ start and restore buttons on the overview.</string>
+    <string name="pref_title_steroid_kotlin_button">Steroid buttons</string>
+    <string name="pref_summary_steroid_kotlin_button">Show the steroid buttons on the overview.</string>
+    <string name="pref_title_show_insulin_totals">Insulin totals row</string>
+    <string name="pref_summary_show_insulin_totals">Show twelve insulin totals on the IOB graph.</string>
+    <string name="pref_title_coded_locations">Location texts</string>
+    <string name="pref_summary_coded_locations">Send a text and a note when this phone arrives at or leaves a saved place. Starts off.</string>
+    <string name="pref_title_location_sms_model">Location text phone</string>
+    <string name="pref_summary_location_sms_model">Only the phone whose model matches this value sends location texts. List 2 can set it to this phone.</string>
+    <string name="pref_title_location_sms_numbers">Extra location numbers</string>
+    <string name="pref_summary_location_sms_numbers">More phone numbers for location texts, separated by semicolons. The normal SMS list is still used.</string>
+    <string name="pref_title_location_slot">Location place</string>
+    <string name="pref_summary_location_slot" comment="The six parts are label, place, radius in metres, arrival note, exit note, cooldown in minutes. A hyphen turns the place off. Example: Airport|@-34.90,138.50|500|Arr|Dep|30">label|place or @lat,lon|radius|arrival|exit|cooldown. Use - to turn it off.</string>
 
     <!-- IntentKey preferences -->
 

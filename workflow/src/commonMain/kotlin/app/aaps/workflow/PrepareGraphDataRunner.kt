@@ -808,7 +808,7 @@ class PrepareGraphDataRunner(
             }
         }
 
-        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose))
+        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose, insulinTotals = insulinIntervalTotals(data.iobCobCalculator, fromTime, endTime)))
         data.cache.updateAbsIobGraph(AbsIobGraphData(absIob = absIobListCompose))
         data.cache.updateCobGraph(CobGraphData(cob = cobListCompose, failOverPoints = cobFailOverListCompose))
         data.cache.updateActivityGraph(
@@ -950,5 +950,51 @@ class PrepareGraphDataRunner(
             ppOf = { it.ppIsf },
             duraOf = { it.duraIsf }
         )
+
+    private suspend fun insulinIntervalTotals(calculator: IobCobCalculator, windowStart: Long, windowEnd: Long): List<String> {
+        if (!preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) return emptyList()
+        val span = windowEnd - windowStart
+        if (span <= 0L) return emptyList()
+        val totals = DoubleArray(12)
+        var minute = windowStart
+        while (minute < windowEnd) {
+            val profile = profileFunction.getProfile(minute)
+            if (profile != null) {
+                val basal = calculator.getBasalData(profile, minute)
+                val slot = ((minute - windowStart) * 12 / span).toInt().coerceIn(0, 11)
+                totals[slot] += basal.tempBasalAbsolute / 60.0
+            }
+            minute += T.mins(1).msecs()
+        }
+        persistenceLayer.getBolusesFromTimeToTime(windowStart, windowEnd, true)
+            .filter { it.isValid && it.timestamp in windowStart until windowEnd }
+            .forEach { bolus ->
+                val slot = ((bolus.timestamp - windowStart) * 12 / span).toInt().coerceIn(0, 11)
+                totals[slot] += bolus.amount
+            }
+        if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) {
+            persistenceLayer.getExtendedBolusesStartingFromTimeToTime(windowStart - T.hours(12).msecs(), windowEnd, true)
+                .filter { it.isValid && it.duration > 0L && !it.isEmulatingTempBasal }
+                .forEach { extended ->
+                    for (slot in 0 until 12) {
+                        val slotStart = windowStart + span * slot / 12
+                        val slotEnd = windowStart + span * (slot + 1) / 12
+                        val overlap = minOf(slotEnd, extended.end) - maxOf(slotStart, extended.timestamp)
+                        if (overlap > 0L) totals[slot] += extended.rate * overlap / T.hours(1).msecs().toDouble()
+                    }
+                }
+        }
+        return totals.map { insulinTotalLabel(it) }
+    }
+
+    private fun insulinTotalLabel(value: Double): String {
+        val text = twoDecimals(value)
+        return when {
+            text == "0.00" || text == "-0.00" -> "0"
+            text.startsWith("0.") -> text.drop(1)
+            text.startsWith("-0.") -> "-" + text.drop(2)
+            else -> text
+        }
+    }
 
 }

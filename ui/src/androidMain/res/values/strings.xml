@@ -398,5 +398,14 @@
     <string name="cal_precheck_no_pair">No CGM reading in the last 10 minutes. Check sensor connection.</string>
     <string name="cal_precheck_delta_too_high">Glucose is changing too fast (Δ %1$s %3$s per 5 min, limit %2$s). Wait for stability.</string>
     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
+    <string name="overview_action_confirm">Run this now?</string>
+    <string name="overview_mj_start">Press if MJ or want 3 days of 80% as hypo concern</string>
+    <string name="overview_mj_restore">Press if MJ dose is 4 or more days old, or to restore the 100% profile</string>
+    <string name="overview_steroid_on">Steroids are off. Turn steroids on?</string>
+    <string name="overview_steroid_130">Steroids 110% are on. Increase to 130?</string>
+    <string name="overview_steroid_150">Steroids 130% are on. Increase to 150?</string>
+    <string name="overview_steroid_190">Steroids 150% are on. Increase to 190?</string>
+    <string name="overview_steroid_250">Steroids 190% are on. Increase to 250?</string>
+    <string name="overview_steroid_off">Steroids are on, or restart over 8.0. Turn off?</string>
 
 </resources>

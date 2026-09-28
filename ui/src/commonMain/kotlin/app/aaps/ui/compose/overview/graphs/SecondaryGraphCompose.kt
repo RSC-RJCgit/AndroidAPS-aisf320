@@ -1,7 +1,11 @@
 package app.aaps.ui.compose.overview.graphs
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1079,49 +1083,67 @@ fun SecondaryGraphCompose(
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
 
-    if (hasBasalLayer) {
-        val basalLayer = rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
-            rangeProvider = basalRangeProvider,
-            verticalAxisPosition = Axis.Position.Vertical.End
-        )
-        CartesianChartHost(
-            chart = rememberCartesianChart(
-                primaryLayer, basalLayer,
-                startAxis = startAxis,
-                bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
-            ),
-            modelProducer = modelProducer,
-            modifier = modifier.fillMaxWidth(),
-            scrollState = scrollState, zoomState = zoomState
-        )
-    } else if (isDualAxis) {
-        val secondaryLayer = rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(secondaryAxisLines),
-            rangeProvider = secondaryRangeProvider,
-            verticalAxisPosition = Axis.Position.Vertical.End
-        )
-        CartesianChartHost(
-            chart = rememberCartesianChart(
-                primaryLayer, secondaryLayer,
-                startAxis = startAxis,
-                bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
-            ),
-            modelProducer = modelProducer,
-            modifier = modifier.fillMaxWidth(),
-            scrollState = scrollState, zoomState = zoomState
-        )
-    } else {
-        CartesianChartHost(
-            chart = rememberCartesianChart(
-                primaryLayer,
-                startAxis = startAxis,
-                bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
-            ),
-            modelProducer = modelProducer,
-            modifier = modifier.fillMaxWidth(),
-            scrollState = scrollState, zoomState = zoomState
-        )
+    val insulinTotals = iobData?.insulinTotals?.takeIf { it.size == 12 }
+    Column(modifier = modifier.fillMaxWidth()) {
+        val chartModifier = Modifier.fillMaxWidth().weight(1f)
+        if (hasBasalLayer) {
+            val basalLayer = rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
+                rangeProvider = basalRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.End
+            )
+            CartesianChartHost(
+                chart = rememberCartesianChart(
+                    primaryLayer, basalLayer,
+                    startAxis = startAxis,
+                    bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
+                ),
+                modelProducer = modelProducer,
+                modifier = chartModifier,
+                scrollState = scrollState, zoomState = zoomState
+            )
+        } else if (isDualAxis) {
+            val secondaryLayer = rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(secondaryAxisLines),
+                rangeProvider = secondaryRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.End
+            )
+            CartesianChartHost(
+                chart = rememberCartesianChart(
+                    primaryLayer, secondaryLayer,
+                    startAxis = startAxis,
+                    bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
+                ),
+                modelProducer = modelProducer,
+                modifier = chartModifier,
+                scrollState = scrollState, zoomState = zoomState
+            )
+        } else {
+            CartesianChartHost(
+                chart = rememberCartesianChart(
+                    primaryLayer,
+                    startAxis = startAxis,
+                    bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
+                ),
+                modelProducer = modelProducer,
+                modifier = chartModifier,
+                scrollState = scrollState, zoomState = zoomState
+            )
+        }
+        if (insulinTotals != null) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                insulinTotals.forEach { label ->
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
     }
 }
 

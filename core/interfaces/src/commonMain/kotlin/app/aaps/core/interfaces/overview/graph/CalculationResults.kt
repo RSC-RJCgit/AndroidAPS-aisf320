@@ -130,7 +130,8 @@ data class CobFailOverPoint(
  */
 data class IobGraphData(
     val iob: List<GraphDataPoint>,
-    val predictions: List<GraphDataPoint>
+    val predictions: List<GraphDataPoint>,
+    val insulinTotals: List<String> = emptyList(),
 )
 
 /**
