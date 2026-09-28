@@ -17,6 +17,9 @@ interface FileListProvider : PrefsFileInfo {
     fun ensureTempDirExists(): DocumentFile?
     fun ensureExtraDirExists(): DocumentFile?
 
+    /** True when [filename] is in the extra folder. Uses the saved folder, then the real file path. */
+    fun extraFileExists(filename: String): Boolean
+
     fun newPreferenceFile(): DocumentFile?
     fun newExportCsvFile(): DocumentFile?
     fun newCwfFile(filename: String, withDate: Boolean = true): DocumentFile?

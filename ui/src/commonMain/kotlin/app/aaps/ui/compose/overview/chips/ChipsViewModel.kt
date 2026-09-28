@@ -214,6 +214,11 @@ class ChipsViewModel(
             isEnabled = isEnabled,
             hasData = lastAutosensData != null,
             autoIsfHistory = activePlugin.activeAPS?.algorithm == APSResult.Algorithm.AUTO_ISF
+                || config.AAPSCLIENT
+                || persistenceLayer.getAutoIsfValuesFromTimeToTime(
+                    dateUtil.now() - AUTO_ISF_HISTORY_WINDOW_MS,
+                    dateUtil.now()
+                ).isNotEmpty()
         )
     }
 
@@ -227,6 +232,8 @@ class ChipsViewModel(
         viewModelScope.launch {
             autoIsfHistoryRows = loadAutoIsfHistory()
             autoIsfHistoryOpen = true
+            // The table is already open. A slow cloud upload must not hold it back.
+            runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") }
         }
     }
 
@@ -236,7 +243,6 @@ class ChipsViewModel(
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
     suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
-        maintenance.exportCoordinated("ISF_LONG_PRESS")
         val now = dateUtil.now()
         val units = profileFunction.getUnits()
         val fromLivePhone = config.APS && !config.AAPSCLIENT &&

@@ -3,6 +3,7 @@ package app.aaps.implementation.maintenance
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import android.provider.DocumentsContract
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import app.aaps.core.interfaces.configuration.Config
@@ -170,6 +171,29 @@ class FileListProviderImpl(
         val baseDir = DocumentFile.fromTreeUri(context, uri)
         val files = baseDir?.listFiles()
         return files?.firstOrNull { it.name == extraPath } ?: baseDir?.createDirectory(extraPath)
+    }
+
+    override fun extraFileExists(filename: String): Boolean {
+        if (filename.isEmpty() || filename.contains('/') || filename.contains('\\')) return false
+        val listed = runCatching {
+            val prefUri = preferences().getIfExists(StringKey.AapsDirectoryUri) ?: return@runCatching null
+            val baseDir = DocumentFile.fromTreeUri(context, prefUri.toUri())
+            baseDir?.listFiles()?.firstOrNull { it.name == extraPath }
+        }.getOrNull()
+        if (runCatching { listed?.findFile(filename) }.getOrNull() != null) return true
+        if (runCatching { listed?.listFiles()?.any { it.name == filename } }.getOrNull() == true) return true
+        val base = storedAapsDirectory() ?: return false
+        return File(File(base, extraPath), filename).isFile
+    }
+
+    /** The saved AAPS folder as a real path, for primary storage such as primary:AAPS3. */
+    private fun storedAapsDirectory(): File? {
+        val prefUri = runCatching { preferences().getIfExists(StringKey.AapsDirectoryUri) }.getOrNull() ?: return null
+        val docId = runCatching { DocumentsContract.getTreeDocumentId(prefUri.toUri()) }.getOrNull() ?: return null
+        if (!docId.startsWith("primary:")) return null
+        val relative = docId.removePrefix("primary:")
+        if (relative.isEmpty() || relative.contains("..")) return null
+        return File(Environment.getExternalStorageDirectory(), relative)
     }
 
     override fun ensureResultDirExists(): File {

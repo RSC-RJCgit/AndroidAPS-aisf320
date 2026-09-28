@@ -105,6 +105,6 @@ class ConfigImpl(
     override fun isEnabled(option: ExternalOptions): Boolean =
         option in externalOptionsOverride.enabled() ||
             enabledOptionsCache.getOrPut(option) {
-                fileListProvider().ensureExtraDirExists()?.findFile(option.filename) != null
+                fileListProvider().extraFileExists(option.filename)
             }
 }

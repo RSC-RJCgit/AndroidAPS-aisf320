@@ -355,7 +355,6 @@ fun GraphsSection(
                 }
             )
         }
-            .debounce(100) // Let Vico settle after model update
             .collect { (range, now, states) ->
                 val bgScroll = bgScrollState.value
                 val bgMax = bgScrollState.maxValue
@@ -411,12 +410,10 @@ fun GraphsSection(
                     for (i in states.indices) {
                         if (i >= lastFollowerScroll.size) break
                         val scroll = states[i].first
-                        val prev = lastFollowerScroll[i]
                         if (!scroll.isFinite()) continue
-                        val moved = !prev.isNaN() && abs(scroll - prev) > 24f
-                        val apart = abs(scroll - bgScroll) > 24f
+                        val apart = abs(scroll - bgScroll) > 1f
                         val rebuild = scroll < 1f && bgScroll > 24f
-                        if (moved && apart && !rebuild) {
+                        if (apart && !rebuild) {
                             finger = scroll
                             break
                         }
