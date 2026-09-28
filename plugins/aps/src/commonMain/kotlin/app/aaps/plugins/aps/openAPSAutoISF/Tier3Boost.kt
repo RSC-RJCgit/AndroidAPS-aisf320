@@ -101,3 +101,20 @@ internal fun tier3BoostMicroBolus(
     }
     return Tier3Result(smb, enhanced, finalAllowance, fastCarb, notes.toString())
 }
+
+// True when this cycle's mild or bg3 rise must not start a UAM boost.
+// The temp target has to be the 4.0 high brake, the rise has to be quiet, and a missing 15 minute raw fails open.
+internal fun hiBrkQuietUamBlock(
+    ttMgdl: Double?,
+    highBrakeRecent: Boolean,
+    bg: Double,
+    shortDelta: Double,
+    ukfDelta15: Double?,
+): Boolean {
+    val fourMgdl = 4.0 * 18.0182
+    val tolerance = 0.08 * 18.0182
+    val ttIsFour = ttMgdl != null && abs(ttMgdl - fourMgdl) <= tolerance
+    if (!ttIsFour || !highBrakeRecent) return false
+    if (bg >= 135.1 || shortDelta >= 1.8) return false
+    return ukfDelta15 != null && ukfDelta15 < 3.6
+}

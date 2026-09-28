@@ -930,7 +930,7 @@ fun BgGraphCompose(
     if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
-        val linesUp = with(LocalDensity.current) { (lineSp * 0.5f).toDp() }
+        val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
         val tight = TextStyle(
             fontSize = lineSp,
             lineHeight = lineSp,
@@ -950,7 +950,7 @@ fun BgGraphCompose(
                 IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
             }
             autoIsfGraph.statusSteps?.let { line ->
-                Text(text = line, color = AapsTheme.generalColors.bgVeryLow, style = tight)
+                Text(text = line, color = duraColor, style = tight)
             }
         }
     }
@@ -997,7 +997,7 @@ private fun IsfStatusLine(
                     val smb = valueOf("smb")
                     if (smb == null || smb == 0.0) fallbackSmb else dominant ?: fallbackSmb
                 }
-                else -> AapsTheme.generalColors.bgVeryLow
+                else -> duraColor
             }
             if (index > 0) Spacer(Modifier.width(4.dp))
             Text(text = token, color = color, style = style)

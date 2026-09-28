@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -565,6 +566,7 @@ fun GraphsSection(
             autoIsfStatus.hypoPrediction?.let { hypo ->
                 GraphCornerLine(
                     text = "hypoprediction= ${oneDecimalText(hypo)}",
+                    color = Color.White,
                     modifier = Modifier.align(Alignment.TopStart)
                 )
             }
@@ -945,10 +947,14 @@ private fun Scroll.Absolute.ifNotUsable(): Scroll.Absolute =
     }
 
 @Composable
-private fun GraphCornerLine(text: String, modifier: Modifier = Modifier) {
+private fun GraphCornerLine(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = AapsTheme.generalColors.duraIsf,
+) {
     Text(
         text = text,
-        color = AapsTheme.generalColors.bgVeryLow,
+        color = color,
         style = TextStyle(fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold),
         modifier = modifier.padding(start = 8.dp, top = 1.dp)
     )

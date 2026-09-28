@@ -796,6 +796,20 @@ open class OpenAPSAutoISFPlugin(
             steps60 = stepSample?.steps60min ?: 0,
             statesOn = statesOn,
         )
+        val activeTt = persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget
+        val hiBrkQuiet = hiBrkQuietUamBlock(
+            ttMgdl = activeTt,
+            highBrakeRecent = runMarks.recent(RunMark.HIGH_DAYTIME_BRAKE, 6, now) ||
+                runMarks.recent(RunMark.HIGH_EVE_NIGHT_BRAKE, 6, now),
+            bg = glucoseStatus.glucose,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            ukfDelta15 = ukf.delta15,
+        )
+        if (hiBrkQuiet && (mildThisCycle || bg3ThisCycle) && runMarks.ready(RunMark.UAM_BOOST_HI_BRK_BLOCK, 15, now)) {
+            carePortalNote("UamBlk")
+            runMarks.mark(RunMark.UAM_BOOST_HI_BRK_BLOCK, now)
+            aapsLogger.debug(LTag.APS, "UAM boost suppressed under a quiet high brake")
+        }
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -871,6 +885,7 @@ open class OpenAPSAutoISFPlugin(
                 preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) else null,
             mildThisCycle = mildThisCycle,
             bg3ThisCycle = bg3ThisCycle,
+            hiBrkQuietUamBlock = hiBrkQuiet,
             mildFailsafeThisCycle = mildFailsafeThisCycle,
             uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled),
             uamBoostUnrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled),

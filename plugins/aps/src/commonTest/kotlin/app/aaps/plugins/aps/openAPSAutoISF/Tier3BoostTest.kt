@@ -102,4 +102,43 @@ class Tier3BoostTest {
         assertFalse(atNight.enhanced)
         assertEquals(0.1, atNight.microBolus)
     }
+
+    @Test
+    fun aQuietHighBrakeBlocksTheUamBoost() {
+        assertTrue(
+            hiBrkQuietUamBlock(
+                ttMgdl = 72.1,
+                highBrakeRecent = true,
+                bg = 122.0,
+                shortDelta = 1.0,
+                ukfDelta15 = 3.0,
+            )
+        )
+    }
+
+    @Test
+    fun aMissingRawDoesNotBlockTheUamBoost() {
+        assertFalse(
+            hiBrkQuietUamBlock(
+                ttMgdl = 72.1,
+                highBrakeRecent = true,
+                bg = 122.0,
+                shortDelta = 1.0,
+                ukfDelta15 = null,
+            )
+        )
+    }
+
+    @Test
+    fun aSteepShortDeltaDoesNotBlockTheUamBoost() {
+        assertFalse(
+            hiBrkQuietUamBlock(
+                ttMgdl = 72.1,
+                highBrakeRecent = true,
+                bg = 122.0,
+                shortDelta = 1.8,
+                ukfDelta15 = 1.0,
+            )
+        )
+    }
 }

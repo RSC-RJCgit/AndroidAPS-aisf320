@@ -14,6 +14,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import android.os.Build
 import app.aaps.implementation.maintenance.cloud.CloudConstants
 import app.aaps.implementation.maintenance.cloud.CloudStorageManager
 import dev.zacsweers.metro.AppScope
@@ -26,6 +27,7 @@ import java.time.format.DateTimeFormatter
 /**
  * AutoISF csv, text and settings, plus the 30 hour user-entries csv.
  * Written next to the logs, and uploaded when cloud storage is on.
+ * The file name includes the patient name and the phone model, the same way as the Documents export.
  */
 @SingleIn(AppScope::class)
 @Inject
@@ -57,16 +59,17 @@ class HistoryFilesWriter(
             }
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val stamp = LocalDateTime.now().format(STAMP)
+        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
         val dir = File(loggerUtils.logDirectory)
         if (!dir.exists() && !dir.mkdirs()) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE reason=no log directory")
             return
         }
         val files = listOf(
-            File(dir, "AutoISF_$stamp.csv") to autoIsfExportCsv(rows),
-            File(dir, "AutoISF_$stamp.txt") to autoIsfExportText(rows),
-            File(dir, "AutoISF_settings_$stamp.txt") to autoIsfSettingsText(autoIsfSettings()),
-            File(dir, "UserEntries_30h_$stamp.csv") to userEntryPresentationHelper.userEntriesToCsv(entries)
+            File(dir, exportNamedFile("AutoISF", scope, stamp, "csv")) to autoIsfExportCsv(rows),
+            File(dir, exportNamedFile("AutoISF", scope, stamp, "txt")) to autoIsfExportText(rows),
+            File(dir, exportNamedFile("AutoISF_settings", scope, stamp, "txt")) to autoIsfSettingsText(autoIsfSettings()),
+            File(dir, exportNamedFile("UserEntries_30h", scope, stamp, "csv")) to userEntryPresentationHelper.userEntriesToCsv(entries)
         )
         var written = 0
         for ((file, text) in files) {
@@ -84,10 +87,12 @@ class HistoryFilesWriter(
     private suspend fun upload(trigger: String, files: List<File>) {
         if (files.isEmpty() || !cloudStorageManager.isCloudStorageActive()) return
         val provider = cloudStorageManager.getActiveProvider() ?: return
+        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
+        val path = if (scope.isEmpty()) CloudConstants.CLOUD_PATH_AIV else "${CloudConstants.CLOUD_PATH_AIV}_$scope"
         var uploaded = 0
         for (file in files) {
             val mime = if (file.name.endsWith(".csv")) "text/csv" else "text/plain"
-            val id = provider.uploadFileToPath(file.name, file.readBytes(), mime, CloudConstants.CLOUD_PATH_AIV)
+            val id = provider.uploadFileToPath(file.name, file.readBytes(), mime, path)
                 ?: provider.uploadFile(file.name, file.readBytes(), mime)
             if (id != null) uploaded++
             else aapsLogger.error(LTag.CORE, "Export $trigger cloud upload failed for ${file.name}")

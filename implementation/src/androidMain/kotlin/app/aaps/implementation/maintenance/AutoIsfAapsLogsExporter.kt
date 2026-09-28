@@ -78,7 +78,7 @@ class AutoIsfAapsLogsExporter(
     suspend fun write(trigger: String, now: Long = dateUtil.now()) {
         try {
             val root = fileListProvider.ensureAapsLogsDirExists()
-            val patientName = scopedExportName()
+            val patientName = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
             val dir = if (patientName.isNotEmpty()) File(root, patientName).also { it.mkdirs() } else root
             if (!dir.isDirectory) {
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AAPSLOGS result=FAILURE reason=no directory")
@@ -93,16 +93,15 @@ class AutoIsfAapsLogsExporter(
             val rawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
             val notes = persistenceLayer.getTherapyEventDataFromTime(from - TimeUnit.HOURS.toMillis(24), TE.Type.NOTE, ascending = false)
             val baseStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
-            val stamp = if (patientName.isNotEmpty()) "${patientName}_$baseStamp" else baseStamp
             val ukf3 = computeUkf3RawMgdl(rawReadings)
             val cobT = calculatedCobT(records)
             val rows = records.map { exportFields(it, apsResults, steps, records, smbBoluses, notes, rawReadings, cobT, ukf3) }
             val files = listOf(
-                File(dir, "AutoISF_$stamp.csv") to csvText(rows),
-                File(dir, "AutoISF_$stamp.txt") to tableText(rows),
-                File(dir, "AutoISF_settings_$stamp.txt") to settingsText(now),
+                File(dir, exportNamedFile("AutoISF", patientName, baseStamp, "csv")) to csvText(rows),
+                File(dir, exportNamedFile("AutoISF", patientName, baseStamp, "txt")) to tableText(rows),
+                File(dir, exportNamedFile("AutoISF_settings", patientName, baseStamp, "txt")) to settingsText(now),
                 File(dir, userEntriesName(patientName, now)) to userEntriesText(now),
-                File(dir, "UKFcheck_$stamp.txt") to ukfCheckText(),
+                File(dir, exportNamedFile("UKFcheck", patientName, baseStamp, "txt")) to ukfCheckText(),
             )
             var written = 0
             val writtenFiles = mutableListOf<File>()
@@ -125,17 +124,9 @@ class AutoIsfAapsLogsExporter(
         }
     }
 
-    private fun scopedExportName(): String {
-        val base = preferences.get(StringKey.GeneralPatientName).trim()
-        if (base.isEmpty()) return ""
-        val model = Build.MODEL.replace(Regex("[^A-Za-z0-9]"), "")
-        return "${base}_$model"
-    }
-
     private fun userEntriesName(patientName: String, now: Long): String {
         val stamp = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).format(Date(now))
-        val suffix = if (patientName.isNotEmpty()) "_$patientName" else ""
-        return "UserEntries_30h${suffix}_$stamp.txt"
+        return exportNamedFile("UserEntries_30h", patientName, stamp, "txt")
     }
 
     private suspend fun userEntriesText(now: Long): String {

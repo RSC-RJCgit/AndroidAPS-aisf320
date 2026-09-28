@@ -1042,6 +1042,7 @@ class DetermineBasalAutoISF(
         recentLowBg: Double = 999.0,
         todOffsetMgdl: Double = 0.0,
         smbOffsetOverrideMmol: Double? = null,
+        hiBrkQuietUamBlock: Boolean = false,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -2002,8 +2003,8 @@ class DetermineBasalAutoISF(
                     hour = tier3Hour,
                     daytimeBypass = daytimeGateBypass,
                     unrestricted = uamBoostUnrestricted,
-                    mildThisCycle = mildThisCycle,
-                    bg3ThisCycle = bg3ThisCycle,
+                    mildThisCycle = mildThisCycle && !hiBrkQuietUamBlock,
+                    bg3ThisCycle = bg3ThisCycle && !hiBrkQuietUamBlock,
                     uamBoostRecent = uamBoostRecent,
                     smbDeliveryRatio = profile.smb_delivery_ratio,
                     microBolus = microBolus,
