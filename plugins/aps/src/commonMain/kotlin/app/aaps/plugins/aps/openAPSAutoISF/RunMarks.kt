@@ -143,6 +143,8 @@ internal object RunMark {
     const val STEROID_OFF = "SteroidTurnOffActionTT"
     const val ANYDESK = "AnyDeskRestartActionTT"
     const val EXPORT_SETTINGS_POD = "ExportSettingsPodActivation"
+    const val UKF1_DOSING = "Ukf1DosingToggleTT"
+    const val UKF1_DELTA_LOG = "Ukf1DeltaMetricsLog"
     const val TIER3_BOOST = "Tier3BoostToggleTT"
     const val PROFILE_BATCH_AUTO_TT = "ProfileBatchAutoToggleTT"
     const val PROFILE_BATCH_REVERT_TT = "ProfileBatchRevertToggleTT"

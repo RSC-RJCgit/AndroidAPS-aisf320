@@ -495,6 +495,30 @@ enum class DoubleKey(
         unitType = UnitType.INSULIN,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfUkf1DeltaCompensationSlope(
+        key = "autoisf_ukf1_delta_compensation_slope",
+        defaultValue = 1.0,
+        min = 0.3,
+        max = 3.0,
+        title = KeysStrings.pref_title_aps_ukf1_delta_compensation_slope,
+        summary = KeysStrings.pref_summary_aps_ukf1_delta_compensation_slope,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUkf1DeltaCompensationOffset(
+        key = "autoisf_ukf1_delta_compensation_offset",
+        defaultValue = 0.0,
+        min = -5.0,
+        max = 5.0,
+        title = KeysStrings.pref_title_aps_ukf1_delta_compensation_offset,
+        summary = KeysStrings.pref_summary_aps_ukf1_delta_compensation_offset,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfUamBoostScale(
         key = "boost_scale_value",
         defaultValue = 1.0,

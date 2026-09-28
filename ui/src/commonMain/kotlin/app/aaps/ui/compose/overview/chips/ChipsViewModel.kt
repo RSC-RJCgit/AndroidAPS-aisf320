@@ -356,6 +356,7 @@ class ChipsViewModel(
             List1Row("Steroids off", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
             List1Row("Send AnyDesk restart", "send now", 5.178, null),
             List1Row("Tier 3 UAM boost", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
+            List1Row("AutoISF calcs UKF1", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
             List1Row("Profile batch auto", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
             List1Row("Profile batch hold A", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
             List1Row("Profile batch hold C", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),

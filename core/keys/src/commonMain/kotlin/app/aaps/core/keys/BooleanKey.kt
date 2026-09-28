@@ -227,6 +227,14 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_show_graph5,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfUseUkf1ForDosing(
+        "autoisf_use_ukf1_for_dosing",
+        false,
+        KeysStrings.pref_title_aps_use_ukf1_for_dosing,
+        KeysStrings.pref_summary_aps_use_ukf1_for_dosing,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTddSensitivity(
         "autoisf_tdd_sensitivity",
         true,

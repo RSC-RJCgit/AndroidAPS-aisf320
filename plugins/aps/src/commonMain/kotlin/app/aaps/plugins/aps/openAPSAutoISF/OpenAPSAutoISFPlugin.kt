@@ -26,6 +26,8 @@ import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.plugins.aps.openAPS.AccelerationCalculator
+import app.aaps.plugins.aps.openAPS.DeltaCalculator
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.concurrent.AapsLock
@@ -308,6 +310,8 @@ open class OpenAPSAutoISFPlugin(
 
     /** Guards [autoIsfCache]. Was `synchronized(autoIsfCache)`, which is JVM only. */
     private val isfCacheLock = AapsLock()
+    private val metricDeltaCalculator = DeltaCalculator(aapsLogger)
+    private val accelerationCalculator = AccelerationCalculator()
 
     private suspend fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
         val profile = profileFunction.getProfile(timestamp) ?: return Pair("OFF", null)
@@ -332,7 +336,8 @@ open class OpenAPSAutoISFPlugin(
         cycleNotes.setLength(0)
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
-        val glucoseStatus = glucoseStatusProvider.glucoseStatusData
+        val fetchedGlucose = glucoseStatusProvider.glucoseStatusData
+        val glucoseStatus = (fetchedGlucose as? GlucoseStatusAutoIsf)?.let { applyUkf1DosingOverride(it) } ?: fetchedGlucose
         val profile = profileFunction.getProfile()
         val pump = activePlugin.activePump
         if (profile == null) {
@@ -350,6 +355,7 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.debug(LTag.APS, rh.gs(ApsStrings.openapsma_no_glucose_data))
             return@withContext
         }
+        logUkf1DeltaMetrics(dateUtil.now(), glucoseStatus)
 
         val inputConstraints = ConstraintObject(0.0, aapsLogger) // fake. only for collecting all results
 
@@ -1040,7 +1046,7 @@ open class OpenAPSAutoISFPlugin(
 
     suspend fun autoISF(profile: Profile, factors: AutoIsfFactors? = null): Double {
         val sens = profile.getProfileIsfMgdl()
-        val glucose_status = glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData = false)
+        val glucose_status = applyUkf1DosingOverride(glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData = false))
 
         val high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity
         var target_bg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), CoreUiStrings.temp_target_value, HardLimits.LIMIT_TARGET_BG)
@@ -1484,6 +1490,9 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsAutoIsfUamBoostMaxBolus,
             IntKey.ApsAutoIsfUamBoostMaxIobPercent,
             DoubleKey.ApsAutoIsfUamBoostScale,
+            BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+            DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope,
+            DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset,
             StringKey.ApsAutoIsfLowProfileName,
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
@@ -2745,6 +2754,63 @@ open class OpenAPSAutoISFPlugin(
         return true
     }
 
+    // Virtual pump only, and off unless the switch is on. A real pump and a client keep the live deltas.
+    // Turning it off returns to the live numbers on the next loop. It does not undo a bolus already given.
+    private suspend fun applyUkf1DosingOverride(base: GlucoseStatusAutoIsf?): GlucoseStatusAutoIsf? {
+        val status = base ?: return null
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)) return status
+        if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) return status
+        val history45 = ukf1RecentHistory(45)
+        val latest = history45.firstOrNull() ?: return status
+        val history47 = ukf1RecentHistory(47)
+        val deltas = metricDeltaCalculator.calculateDeltasGeneric(history45)
+        val accel = accelerationCalculator.fitBestParabola(history47)
+        val slope = preferences.get(DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope)
+        val offset = preferences.get(DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset)
+        return status.copy(
+            glucose = latest.second,
+            date = latest.first,
+            delta = deltas.delta * slope + offset,
+            shortAvgDelta = deltas.shortAvgDelta * slope + offset,
+            longAvgDelta = deltas.longAvgDelta * slope + offset,
+            bgAcceleration = accel.bgAcceleration * slope,
+            deltaPl = accel.deltaPl * slope,
+            deltaPn = accel.deltaPn * slope,
+            corrSqu = accel.corrSqu,
+        )
+    }
+
+    // Newest first. Raw noise through the display smoother, for the last lookback minutes.
+    private suspend fun ukf1RecentHistory(lookbackMinutes: Long): List<Pair<Long, Double>> {
+        val now = dateUtil.now()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - lookbackMinutes * 60_000L, now, ascending = false)
+            .filter { (it.noise ?: 0.0) > 10.0 }
+            .sortedByDescending { it.timestamp }
+        if (readings.isEmpty()) return emptyList()
+        val smoothed = displayRawSmoothing.smoothForDisplay(readings.map { it.timestamp to it.noise!! })
+        if (smoothed.size != readings.size) return emptyList()
+        return readings.mapIndexed { index, reading -> reading.timestamp to smoothed[index] }
+    }
+
+    // Compare UKF1 deltas with the loop deltas. Log only, every 5 minutes, and not on a client.
+    private suspend fun logUkf1DeltaMetrics(now: Long, loop: GlucoseStatus) {
+        if (config.AAPSCLIENT) return
+        if (!runMarks.ready(RunMark.UKF1_DELTA_LOG, 5, now)) return
+        val deltas = metricDeltaCalculator.calculateDeltasGeneric(ukf1RecentHistory(45))
+        val accel = accelerationCalculator.fitBestParabola(ukf1RecentHistory(47))
+        val loopIsf = loop as? GlucoseStatusAutoIsf
+        aapsLogger.debug(
+            LTag.APS,
+            "Ukf1DeltaMetrics: delta5=${round(deltas.delta, 2)} delta15=${round(deltas.shortAvgDelta, 2)} delta30=${round(deltas.longAvgDelta, 2)} " +
+                "accel=${round(accel.bgAcceleration, 3)} deltaPl=${round(accel.deltaPl, 2)} deltaPn=${round(accel.deltaPn, 2)} " +
+                "window=${round(accel.windowMinutes, 1)}min corrSqu=${round(accel.corrSqu, 3)} " +
+                "(loop: delta5=${round(loop.delta, 2)} delta15=${round(loop.shortAvgDelta, 2)} delta30=${round(loop.longAvgDelta, 2)} " +
+                "accel=${loopIsf?.let { round(it.bgAcceleration, 3) } ?: "--"} deltaPl=${loopIsf?.let { round(it.deltaPl, 2) } ?: "--"} " +
+                "deltaPn=${loopIsf?.let { round(it.deltaPn, 2) } ?: "--"})"
+        )
+        runMarks.mark(RunMark.UKF1_DELTA_LOG, now)
+    }
+
     // Oldest first. Libre raw through the display smoother, same series as the UKF1 line.
     private suspend fun ukf1Series(now: Long): List<Pair<Long, Double>> {
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 12 * 3_600_000L, now, ascending = false)
@@ -3162,6 +3228,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_250 -> RunMark.STEROID_250
             RemoteToggleCode.STEROID_OFF -> RunMark.STEROID_OFF
             RemoteToggleCode.ANYDESK -> RunMark.ANYDESK
+            RemoteToggleCode.UKF1_DOSING -> RunMark.UKF1_DOSING
             RemoteToggleCode.TIER3_BOOST -> RunMark.TIER3_BOOST
             RemoteToggleCode.PROFILE_BATCH_AUTO -> RunMark.PROFILE_BATCH_AUTO_TT
             RemoteToggleCode.PROFILE_BATCH_REVERT -> RunMark.PROFILE_BATCH_REVERT_TT
@@ -3411,6 +3478,11 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_250 -> relaySteroid(StringKey.ApsAutoIsfSteroid250ProfileName, 88, "Steroids 190% are ON.. press to increase? to 250", "Steroids250", turnOn = null)
             RemoteToggleCode.STEROID_OFF -> relaySteroid(StringKey.ApsAutoIsfSteroid100ProfileName, 71, "Steroids are ON.. press to turn OFF? 71_0.71", "SteroidsOff", turnOn = false, weight = 0.71)
             RemoteToggleCode.ANYDESK -> restartAnyDesk()
+            RemoteToggleCode.UKF1_DOSING -> toggleBool(
+                BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+                "AutoISF calcs UKF1",
+                "U1D",
+            )
             RemoteToggleCode.TIER3_BOOST -> toggleBool(
                 BooleanKey.ApsAutoIsfUamBoostEnabled,
                 "Tier 3 UAM Boost",

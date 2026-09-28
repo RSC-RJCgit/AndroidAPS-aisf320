@@ -61,6 +61,7 @@ internal enum class RemoteToggleCode {
     STEROID_250,
     STEROID_OFF,
     ANYDESK,
+    UKF1_DOSING,
     TIER3_BOOST,
     PROFILE_BATCH_AUTO,
     PROFILE_BATCH_REVERT,
@@ -177,6 +178,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.036, 0.0001) -> RemoteToggleCode.SMB_OFFSET_DOWN
     ttNear(ttMgdl, 5.038, 0.0001) -> RemoteToggleCode.SMB_OFFSET_UP
     ttNear(ttMgdl, 5.042, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH
+    ttNear(ttMgdl, 5.196, 0.0001) -> RemoteToggleCode.UKF1_DOSING
     ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
     ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP
     else -> null

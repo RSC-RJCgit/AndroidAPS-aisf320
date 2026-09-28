@@ -67,6 +67,7 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.STEROID_250, remoteToggleCode(mgdl(5.174)))
         assertEquals(RemoteToggleCode.STEROID_OFF, remoteToggleCode(mgdl(5.176)))
         assertEquals(RemoteToggleCode.ANYDESK, remoteToggleCode(mgdl(5.178)))
+        assertEquals(RemoteToggleCode.UKF1_DOSING, remoteToggleCode(mgdl(5.196)))
         assertEquals(RemoteToggleCode.TIER3_BOOST, remoteToggleCode(mgdl(5.194)))
         assertEquals(RemoteToggleCode.PROFILE_BATCH_AUTO, remoteToggleCode(mgdl(5.210)))
         assertEquals(RemoteToggleCode.PROFILE_BATCH_REVERT, remoteToggleCode(mgdl(5.212)))
