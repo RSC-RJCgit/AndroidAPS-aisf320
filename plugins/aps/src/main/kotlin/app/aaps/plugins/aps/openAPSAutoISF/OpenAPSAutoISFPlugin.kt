@@ -2567,14 +2567,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val highEveNightBrakeEnabled = true
     private val highDaytimeBrakeEnabled = true
 
-    // True only when the independent raw/noise UKF's 5-min AND 15-min deltas are both above 0. Entry gate for
-    // HighDaytimeBrake / HighEveNightBrake (2026-09-19). False when UKF data is unavailable, so the brakes do
+    // True only when the independent raw/noise UKF's 15-min delta is above 0. Entry gate for HighDaytimeBrake /
+    // HighEveNightBrake / HiBrkTwilight (2026-09-19). False when UKF data is unavailable, so the brakes do
     // not fire blind.
+    // 5-min channel dropped 2026-09-28: the incident that originally justified requiring both channels (19 Sep
+    // 19:57/20:10 fires that ended in a low) cited raw UKF15 at -0.19/-0.15 -- delta15, not delta5. Real Client
+    // data 28 Sep 13:57-14:01 showed the cost of keeping delta5 too: BGL plateaued 9.2-9.3mmol, HP1 6.7-6.9,
+    // duraISF dominant, every other gate satisfied, but RawUKF5 flickered slightly negative (-0.02..-0.25) from
+    // plateau noise while RawUKF15 stayed positive (0.12-0.24) the whole stretch -- HighDaytimeBrake never fired.
+    // delta15 alone still carries the actual protective signal the gate was built from.
     private fun ukfRawDeltasPositive(): Boolean {
         val m = ukfRawMetrics()
-        val d5 = m.delta5 ?: return false
         val d15 = m.delta15 ?: return false
-        return d5 > 0.0 && d15 > 0.0
+        return d15 > 0.0
     }
 
     private fun hiBrkOwnFourTtActive(): Boolean {
@@ -3451,7 +3456,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
+            val iobNow = totalIobAt(dateUtil.now())
+            val iobChange5 = iobNow - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // Switched 2026-08-30 at explicit request from the pure raw/noise channel (rawDelta5MinMgdl/
             // rawDelta1MinMgdl -- Giv-3/bg3 now uses ukfRawMetrics too) to ukfRawMetrics(),
             // the same Kalman-filtered raw-channel helper HP2 (hypoPrediction2Mmol) already relies on
@@ -3542,6 +3548,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // cut, not yet device-verified against a case that needed the full-strength tier and
                 // would have been wrongly capped by this -- watch for that before trusting the number.
                 && !(g < 135.1 /* 7.5 mmol */ && iobChange5 > 0.8)
+                // IOB ceiling, added 2026-09-28: mild had no ceiling at all. Real case: Client 28 Sep fired BMild
+                // three times in 34 min (08:34/08:58/09:08) -- the third fire went out at IOB ~2.9-3.4U, and BG
+                // round-tripped down to a gentle-hypo 4.6mmol ~75-100 min later. 2.5U (not bg3's own flat 2.0U)
+                // deliberately leaves headroom: the same Client upload later showed a genuine continued-rise case
+                // (11:49-12:00, BGL 6.4->7.5) sitting on ~2.0-2.06U IOB with no automation re-arming at all --
+                // a flat 2.0U ceiling here would foreclose a legitimate re-arm in that kind of case too. 2.5 still
+                // blocks the 09:08 overstack (IOB was already 2.91U) while leaving BMild able to fire through the
+                // ~2.0-2.5U band a genuine ongoing rise can sit in.
+                && iobNow < 2.5
         }
 
         // Extracted 2026-09-01 from BolusGiven's inline `val bg3 = ...`, same pure-query pattern as
