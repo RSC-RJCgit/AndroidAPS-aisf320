@@ -141,6 +141,7 @@ open class OpenAPSAutoISFPlugin(
     private val receiverStatusStore: ReceiverStatusStore,
     private val smsCommunicator: SmsCommunicator,
     private val maintenance: Maintenance,
+    private val anyDeskFront: AnyDeskFront,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -3154,6 +3155,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_190 -> RunMark.STEROID_190
             RemoteToggleCode.STEROID_250 -> RunMark.STEROID_250
             RemoteToggleCode.STEROID_OFF -> RunMark.STEROID_OFF
+            RemoteToggleCode.ANYDESK -> RunMark.ANYDESK
             RemoteToggleCode.TIER3_BOOST -> RunMark.TIER3_BOOST
             RemoteToggleCode.PROFILE_BATCH_AUTO -> RunMark.PROFILE_BATCH_AUTO_TT
             RemoteToggleCode.PROFILE_BATCH_REVERT -> RunMark.PROFILE_BATCH_REVERT_TT
@@ -3402,6 +3404,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_190 -> relaySteroid(StringKey.ApsAutoIsfSteroid190ProfileName, 84, "Steroids 150% are ON.. press to increase? to 190", "Steroids190", turnOn = null)
             RemoteToggleCode.STEROID_250 -> relaySteroid(StringKey.ApsAutoIsfSteroid250ProfileName, 88, "Steroids 190% are ON.. press to increase? to 250", "Steroids250", turnOn = null)
             RemoteToggleCode.STEROID_OFF -> relaySteroid(StringKey.ApsAutoIsfSteroid100ProfileName, 71, "Steroids are ON.. press to turn OFF? 71_0.71", "SteroidsOff", turnOn = false, weight = 0.71)
+            RemoteToggleCode.ANYDESK -> restartAnyDesk()
             RemoteToggleCode.TIER3_BOOST -> toggleBool(
                 BooleanKey.ApsAutoIsfUamBoostEnabled,
                 "Tier 3 UAM Boost",
@@ -3680,6 +3683,27 @@ open class OpenAPSAutoISFPlugin(
             .map { it.replace("\\s+".toRegex(), "") }
             .filter { it.isNotEmpty() }
             .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+    }
+
+    // A virtual pump does not open AnyDesk. A client records the request and leaves the launch to the real pump phone.
+    private suspend fun restartAnyDesk() {
+        val virtualFull = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+        if (virtualFull) return
+        val role = if (config.AAPSCLIENT) "C" else "R"
+        val receipt = "AcTT$role relay-TT receipt"
+        carePortalNote(receipt)
+        val realLoopPhone = !config.AAPSCLIENT && activePlugin.activePump !is VirtualPump
+        if (!realLoopPhone) {
+            aapsLogger.info(LTag.APS, "$receipt; not the AnyDesk host, launch skipped")
+            return
+        }
+        anyDeskFront.bringToFront { shown ->
+            pluginScope.launch {
+                carePortalNote(if (shown) "AdOn" else "AdMs")
+                val detail = if (shown) "AnyDesk brought to front" else "AnyDesk was not opened"
+                aapsLogger.info(LTag.APS, "$receipt; $detail")
+            }
+        }
     }
 
     private suspend fun carePortalNote(text: String) {

@@ -66,6 +66,7 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.STEROID_190, remoteToggleCode(mgdl(5.172)))
         assertEquals(RemoteToggleCode.STEROID_250, remoteToggleCode(mgdl(5.174)))
         assertEquals(RemoteToggleCode.STEROID_OFF, remoteToggleCode(mgdl(5.176)))
+        assertEquals(RemoteToggleCode.ANYDESK, remoteToggleCode(mgdl(5.178)))
         assertEquals(RemoteToggleCode.TIER3_BOOST, remoteToggleCode(mgdl(5.194)))
         assertEquals(RemoteToggleCode.PROFILE_BATCH_AUTO, remoteToggleCode(mgdl(5.210)))
         assertEquals(RemoteToggleCode.PROFILE_BATCH_REVERT, remoteToggleCode(mgdl(5.212)))
@@ -98,7 +99,6 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.PEAK_INSULIN_DOWN, remoteToggleCode(mgdl(5.074)))
         assertEquals(RemoteToggleCode.PEAK_INSULIN_UP, remoteToggleCode(mgdl(5.076)))
         assertNull(remoteToggleCode(mgdl(5.154)))
-        assertNull(remoteToggleCode(mgdl(5.178)))
         assertNull(remoteToggleCode(mgdl(5.0)))
         assertNull(remoteToggleCode(mgdl(5.010)))
     }

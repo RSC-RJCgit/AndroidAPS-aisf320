@@ -60,6 +60,7 @@ internal enum class RemoteToggleCode {
     STEROID_190,
     STEROID_250,
     STEROID_OFF,
+    ANYDESK,
     TIER3_BOOST,
     PROFILE_BATCH_AUTO,
     PROFILE_BATCH_REVERT,
@@ -146,6 +147,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.172, 0.0001) -> RemoteToggleCode.STEROID_190
     ttNear(ttMgdl, 5.174, 0.0001) -> RemoteToggleCode.STEROID_250
     ttNear(ttMgdl, 5.176, 0.0001) -> RemoteToggleCode.STEROID_OFF
+    ttNear(ttMgdl, 5.178, 0.0001) -> RemoteToggleCode.ANYDESK
     ttNear(ttMgdl, 5.194, 0.0001) -> RemoteToggleCode.TIER3_BOOST
     ttNear(ttMgdl, 5.210, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_AUTO
     ttNear(ttMgdl, 5.212, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_REVERT
