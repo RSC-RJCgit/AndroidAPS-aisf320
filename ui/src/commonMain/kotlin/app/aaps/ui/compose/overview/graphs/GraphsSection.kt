@@ -69,7 +69,6 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
 import kotlin.math.round
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 
@@ -255,6 +254,10 @@ fun GraphsSection(
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
 
+    // A drag on a lower graph is applied to the main graph on the next frame.
+    // Until that lands, do not copy the old main position onto the other graphs.
+    val pendingScroll = remember { floatArrayOf(Float.NaN) }
+
     // Observe BG graph scroll/zoom and sync to belt + active secondary graphs
     // Keys include ALL state objects — identical pattern to the original working sync
     LaunchedEffect(
@@ -292,7 +295,7 @@ fun GraphsSection(
                 }
                 // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
                 // the initial "recent time" position on the other graphs.
-                if (scroll.isFinite() && bgScrollState.maxValue > 1f) {
+                if (scroll.isFinite() && bgScrollState.maxValue > 1f && pendingScroll[0].isNaN()) {
                     beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(scroll))
@@ -346,7 +349,6 @@ fun GraphsSection(
                 latestTimeRange.value,
                 latestNow.value,
                 buildList {
-                    add(beltScrollState.value to beltZoomState.value)
                     add(iobScrollState.value to iobZoomState.value)
                     for (i in 0 until count) {
                         add(secScrollStates[i].value to secZoomStates[i].value)
@@ -355,6 +357,7 @@ fun GraphsSection(
                 }
             )
         }
+            .conflate()
             .collect { (range, now, states) ->
                 val bgScroll = bgScrollState.value
                 val bgMax = bgScrollState.maxValue
@@ -379,6 +382,7 @@ fun GraphsSection(
                     lastMainScroll = bgScrollState.value
                     for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
                     for (i in lastFollowerZoom.indices) lastFollowerZoom[i] = Float.NaN
+                    pendingScroll[0] = Float.NaN
                     return@collect
                 }
                 // A model rebuild can clamp the scroll to the oldest time. That is not a finger drag.
@@ -398,10 +402,46 @@ fun GraphsSection(
                     lastMainScroll = bgScrollState.value
                     for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
                     for (i in lastFollowerZoom.indices) lastFollowerZoom[i] = Float.NaN
+                    pendingScroll[0] = Float.NaN
                     return@collect
                 }
                 if (lastMainScroll.isNaN()) lastMainScroll = bgScroll
                 if (bgMax <= 1f) return@collect
+                if (!pendingScroll[0].isNaN()) {
+                    // The main graph has not reached the place a lower graph was dragged to.
+                    // Keep that place. Do not copy the old main position back onto the others.
+                    if (abs(bgScroll - pendingScroll[0]) > 24f) {
+                        var newer: Float? = null
+                        for (i in states.indices) {
+                            val scroll = states[i].first
+                            if (!scroll.isFinite() || scroll < 1f) continue
+                            if (abs(scroll - pendingScroll[0]) > 1f) {
+                                newer = scroll
+                                break
+                            }
+                        }
+                        if (newer != null) {
+                            pendingScroll[0] = newer
+                            lastMainScroll = newer
+                            bgScrollState.scroll(Scroll.Absolute.pixels(newer))
+                            beltScrollState.scroll(Scroll.Absolute.pixels(newer))
+                            iobScrollState.scroll(Scroll.Absolute.pixels(newer))
+                            if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(newer))
+                            val count = activeCount
+                            for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(newer))
+                            for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = newer
+                        }
+                        return@collect
+                    }
+                    pendingScroll[0] = Float.NaN
+                    lastMainScroll = bgScroll
+                }
+                // The main graph moved. Its own effect already copies that place to the other graphs.
+                // A lower graph that is still on the old place is not a finger, so it must not pull the main graph back.
+                if (abs(bgScroll - lastMainScroll) > 1f) {
+                    lastMainScroll = bgScroll
+                    return@collect
+                }
                 // A finger on a lower graph moves that graph while the main one stays still.
                 // A jump back to the start while the main graph is still showing hours is a rebuild.
                 val mainStable = abs(bgScroll - lastMainScroll) < 24f
@@ -456,6 +496,7 @@ fun GraphsSection(
                     followNow = false
                     graphViewModel.onGraphInteraction()
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                    pendingScroll[0] = finger
                     bgScrollState.scroll(Scroll.Absolute.pixels(finger))
                     beltScrollState.scroll(Scroll.Absolute.pixels(finger))
                     iobScrollState.scroll(Scroll.Absolute.pixels(finger))
@@ -489,15 +530,12 @@ fun GraphsSection(
                         if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
                     }
                 }
-                delay(10)
-                val leader = bgScrollState.value
-                if (!leader.isFinite()) return@collect
-                beltScrollState.scroll(Scroll.Absolute.pixels(leader))
-                iobScrollState.scroll(Scroll.Absolute.pixels(leader))
-                if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(leader))
+                beltScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
+                iobScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
+                if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(bgScroll))
                 val count = activeCount
-                for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
-                for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = leader
+                for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(bgScroll))
+                for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = bgScroll
                 if (zoomOk) {
                     lastMainZoom = bgZoom
                     for (i in lastFollowerZoom.indices) lastFollowerZoom[i] = bgZoom

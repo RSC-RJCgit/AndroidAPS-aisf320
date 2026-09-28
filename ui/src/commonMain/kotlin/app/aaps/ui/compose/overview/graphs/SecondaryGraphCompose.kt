@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.abs
+import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
@@ -470,12 +471,23 @@ fun SecondaryGraphCompose(
             .collect { visibleRange = it }
     }
 
+    // The live window above is for the insulin labels. Rebuilding the chart model on every
+    // scroll tick makes a drag on the main graph wait, so the axis scale waits until the finger stops.
+    var settledVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { rawVisibleRange }
+            .debounce(280)
+            .collect { settledVisibleRange = it }
+    }
+    val settledMinX = settledVisibleRange?.first
+    val settledMaxX = settledVisibleRange?.second
+
     // Expose this graph's own (already debounced) visible window upward — used by BgGraphCompose
     // to window its own axis from this graph's synced scroll/zoom instead of attaching its own
     // decoration (that was tried and found to break BG's own pinch-zoom gesture handling).
     val currentOnVisibleRangeChanged by rememberUpdatedState(onVisibleRangeChanged)
-    LaunchedEffect(visibleRange) {
-        currentOnVisibleRangeChanged?.invoke(visibleRange)
+    LaunchedEffect(settledVisibleRange) {
+        currentOnVisibleRangeChanged?.invoke(settledVisibleRange)
     }
 
     val visibleMinX = visibleRange?.first
@@ -550,8 +562,8 @@ fun SecondaryGraphCompose(
         processedActivityOverlay,
         processedCobOverlay,
         maxX,
-        visibleMinX,
-        visibleMaxX
+        settledMinX,
+        settledMaxX
     ) {
         // Always populate the model — even with no data / no real time range — so the chart frame
         // (axes, grid, now-line) renders the empty-state normalizer series instead of staying blank.
@@ -604,7 +616,7 @@ fun SecondaryGraphCompose(
             // identical to last time (see VISIBLE_RANGE_KEY doc) — otherwise scrolling/zooming
             // would re-submit the same partials and get silently skipped, never picking up the
             // updated primaryRangeProvider.
-            extras { it[VISIBLE_RANGE_KEY] = visibleMinX to visibleMaxX }
+            extras { it[VISIBLE_RANGE_KEY] = settledMinX to settledMaxX }
         }
     }
 
@@ -809,9 +821,9 @@ fun SecondaryGraphCompose(
     // `primaryY=[null..null] n=0` against `modelY=[0.0..43.0] slots=[CarbsMarker]`, giving an axis of
     // 0..44 that a COB curve reaching 148 was drawn straight through.
     val primaryYValues = remember(
-        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, visibleMinX, visibleMaxX
+        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, settledMinX, settledMaxX
     ) {
-        windowedPrimaryY(visibleMinX, visibleMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        windowedPrimaryY(settledMinX, settledMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
     }
 
     // IOB (with basal overlay active): zero-floor nice range — 0 if the visible window has no
@@ -846,9 +858,9 @@ fun SecondaryGraphCompose(
     // below a point that is "below zero" on the other. We compute a shared zero
     // fraction from both data extents and extend each side's range to match it.
     // Only applied to true dual-axis case (no basal overlay, secondary present).
-    val dualAxisRanges = remember(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, visibleMinX, visibleMaxX) {
+    val dualAxisRanges = remember(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, settledMinX, settledMaxX) {
         if (!isDualAxis || hasBasalLayer) return@remember null
-        val secondaryY = windowedY(processedSecondary, visibleMinX, visibleMaxX)
+        val secondaryY = windowedY(processedSecondary, settledMinX, settledMaxX)
         if (primaryYValues.isEmpty() || secondaryY.isEmpty()) return@remember null
 
         // An ISF line keeps the UK scale (1.0 in the middle, the peak at the top). An IOB
@@ -1002,7 +1014,7 @@ fun SecondaryGraphCompose(
     // Basal range: 0 at top, -basalMaxY at bottom → basal occupies the top BASAL_HEIGHT_FRACTION of the height.
     // Windowed to the visible scroll/zoom range, like the primary IOB scale above, so basal doesn't
     // stay flattened/clipped when scrolled away from the loaded range's peak.
-    val basalMaxY = remember(basalData, processedBasalProfile, processedBasalActual, visibleMinX, visibleMaxX) {
+    val basalMaxY = remember(basalData, processedBasalProfile, processedBasalActual, settledMinX, settledMaxX) {
         if (basalData == null || basalData.maxBasal <= 0.0) return@remember 1.0
         // Profile/actual are stored sparsely (only at rate changes — see rebuildBasalGraph), so a
         // zoom window entirely inside one constant segment (e.g. an extended zero-temp) can contain
@@ -1015,12 +1027,12 @@ fun SecondaryGraphCompose(
         // the window either, so without this it would be invisible to this scale computation even
         // though its bar is drawn across the whole visible window (and could overlap IOB if it's
         // the true max) — reflects just this window's real level instead of the whole day's range.
-        fun inWindow(x: Double) = visibleMinX == null || visibleMaxX == null || x in visibleMinX..visibleMaxX
+        fun inWindow(x: Double) = settledMinX == null || settledMaxX == null || x in settledMinX..settledMaxX
         val literalWindowed = processedBasalProfile.filter { inWindow(it.first) }.map { it.second } +
             processedBasalActual.filter { inWindow(it.first) }.map { it.second }
         val hiddenValues = listOfNotNull(
-            visibleMinX?.let { stepValueAt(processedBasalProfile, it) },
-            visibleMinX?.let { stepValueAt(processedBasalActual, it) }
+            settledMinX?.let { stepValueAt(processedBasalProfile, it) },
+            settledMinX?.let { stepValueAt(processedBasalActual, it) }
         )
         val windowedAbsMax = (literalWindowed + hiddenValues).map { -it }.maxOrNull()
         (windowedAbsMax?.takeIf { it > 0.0 } ?: hiddenValues.maxOfOrNull { -it } ?: basalData.maxBasal) / BASAL_HEIGHT_FRACTION
@@ -1083,7 +1095,14 @@ fun SecondaryGraphCompose(
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
 
-    val insulinTotals = iobData?.insulinTotals?.takeIf { it.size == 12 }
+    val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
+        val samples = iobData?.insulinByMinute.orEmpty()
+        if (samples.isEmpty()) return@remember emptyList()
+        val start = visibleMinX?.let { minTimestamp + (it * 60_000.0).toLong() } ?: samples.minOf { it.timestamp }
+        val end = visibleMaxX?.let { minTimestamp + (it * 60_000.0).toLong() }
+            ?: (samples.maxOf { it.timestamp } + 60_000L)
+        insulinLabelsFor(samples, start, end)
+    }
     Column(modifier = modifier.fillMaxWidth()) {
         val chartModifier = Modifier.fillMaxWidth().weight(1f)
         if (hasBasalLayer) {
@@ -1130,9 +1149,9 @@ fun SecondaryGraphCompose(
                 scrollState = scrollState, zoomState = zoomState
             )
         }
-        if (insulinTotals != null) {
+        if (insulinLabels.size == 12) {
             Row(modifier = Modifier.fillMaxWidth()) {
-                insulinTotals.forEach { label ->
+                insulinLabels.forEach { label ->
                     Text(
                         text = label,
                         modifier = Modifier.weight(1f),
@@ -1144,6 +1163,31 @@ fun SecondaryGraphCompose(
                 }
             }
         }
+    }
+}
+
+private fun insulinLabelsFor(samples: List<GraphDataPoint>, start: Long, end: Long): List<String> {
+    val span = end - start
+    if (span <= 0L) return emptyList()
+    val totals = DoubleArray(12)
+    for (sample in samples) {
+        if (sample.timestamp < start || sample.timestamp >= end) continue
+        val slot = ((sample.timestamp - start) * 12 / span).toInt().coerceIn(0, 11)
+        totals[slot] += sample.value
+    }
+    return totals.map { insulinTotalLabel(it) }
+}
+
+private fun insulinTotalLabel(value: Double): String {
+    val hundredths = round(value * 100.0).toInt()
+    val sign = if (hundredths < 0) "-" else ""
+    val absHundredths = abs(hundredths)
+    val text = "$sign${absHundredths / 100}.${(absHundredths % 100).toString().padStart(2, '0')}"
+    return when {
+        text == "0.00" || text == "-0.00" -> "0"
+        text.startsWith("0.") -> text.drop(1)
+        text.startsWith("-0.") -> "-" + text.drop(2)
+        else -> text
     }
 }
 

@@ -131,7 +131,8 @@ data class CobFailOverPoint(
 data class IobGraphData(
     val iob: List<GraphDataPoint>,
     val predictions: List<GraphDataPoint>,
-    val insulinTotals: List<String> = emptyList(),
+    /** Insulin units in each minute of the loaded window. The graph turns the visible part into 12 labels. */
+    val insulinByMinute: List<GraphDataPoint> = emptyList(),
 )
 
 /**
