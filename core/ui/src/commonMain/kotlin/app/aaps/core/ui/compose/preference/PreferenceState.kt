@@ -31,6 +31,7 @@ import app.aaps.core.keys.interfaces.SyncDirection
 import app.aaps.core.keys.interfaces.UnitDoublePreferenceKey
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -187,10 +188,11 @@ fun calculatePreferenceVisibility(
         }
     }
 
-    // On a client, a Bidirectional synced key is master-arbitrated — lock the whole row while the
-    // master is unreachable, so the user can't make an edit that won't sync now (it would queue
-    // silently and could expire past the replay window). Master/previews never gated (default true).
-    if (config.AAPSCLIENT && preferenceKey.sync?.direction == SyncDirection.Bidirectional && !LocalMasterReachable.current)
+    // A paired client sends a bidirectional edit to the master. Lock the row while that master
+    // cannot be reached, so the edit is not queued and then dropped. An unpaired client keeps the
+    // edit on this phone, so the row stays open.
+    val pairedClient = config.AAPSCLIENT && LocalClientPaired.current
+    if (pairedClient && preferenceKey.sync?.direction == SyncDirection.Bidirectional && !LocalMasterReachable.current)
         enabled = false
 
     return PreferenceVisibilityState(visible, enabled)

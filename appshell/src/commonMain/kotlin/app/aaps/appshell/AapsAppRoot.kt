@@ -54,6 +54,7 @@ import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalMasterControlAllowed
+import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -118,6 +119,7 @@ fun AapsAppRoot(
 ) {
     val navController = rememberNavController().also(onNavControllerReady)
     val masterReachable by nsClient.masterReachable.collectAsStateWithLifecycle()
+    val clientPaired by nsClient.masterOrPairedClientFlow.collectAsStateWithLifecycle()
     val masterControlAllowed by nsClient.masterControlAllowed.collectAsStateWithLifecycle()
 
     // Global self-heal — event-driven, NOT a poll (a timer would keep the CPU awake). Probe once when
@@ -143,6 +145,7 @@ fun AapsAppRoot(
         LocalAppIcon provides { modifier -> appIcon(modifier) },
         LocalConfig provides config,
         LocalMasterReachable provides masterReachable,
+        LocalClientPaired provides clientPaired,
         LocalMasterControlAllowed provides masterControlAllowed,
         LocalProfileUtil provides profileUtil,
         LocalCheckPassword provides passwordHasher::checkPassword,

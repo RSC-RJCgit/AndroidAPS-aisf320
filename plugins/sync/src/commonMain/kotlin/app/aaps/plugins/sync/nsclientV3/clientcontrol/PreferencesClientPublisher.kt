@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.DoubleNonPreferenceKey
 import app.aaps.core.keys.interfaces.IntNonPreferenceKey
@@ -85,6 +86,12 @@ class PreferencesClientPublisher(
                 .onEach { key -> pendingMutex.withLock { pending.add(key) } }
                 .debounce(SETTLE_MS)
                 .collect {
+                    // No master yet. The value is already stored on this phone. A round-trip would
+                    // only show a not-paired error.
+                    if (preferences.get(StringNonKey.NsClientControlClientId).isEmpty()) {
+                        pendingMutex.withLock { pending.clear() }
+                        return@collect
+                    }
                     val batch = pendingMutex.withLock { pending.toList().also { pending.clear() } }
                     val changes = batch.mapNotNull { key -> serialize(key)?.let { key.key to it } }.toMap()
                     if (changes.isEmpty()) return@collect

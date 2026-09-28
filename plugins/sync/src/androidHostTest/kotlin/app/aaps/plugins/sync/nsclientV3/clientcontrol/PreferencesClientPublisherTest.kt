@@ -52,6 +52,7 @@ class PreferencesClientPublisherTest {
         whenever(preferences.syncedLocalChanges).thenReturn(changes)
         whenever(preferences.get(key as BooleanNonPreferenceKey)).thenReturn(true)
         whenever(preferences.get(LongComposedKey.SyncedPrefModified, key.key)).thenReturn(100L)
+        whenever(preferences.get(StringNonKey.NsClientControlClientId)).thenReturn("paired-client")
         sut = PreferencesClientPublisher(preferences, clientControlRoundTrip, config, rh, aapsLogger)
     }
 
@@ -97,6 +98,18 @@ class PreferencesClientPublisherTest {
         advanceTimeBy(600); runCurrent()
 
         verify(clientControlRoundTrip).run(eq(ClientControlActionDispatcher.Command.PreferenceEdit(mapOf(qw.key to (blob to 300L)))), any())
+    }
+
+    @Test
+    fun doesNotRoundTripWhenUnpaired() = runTest {
+        whenever(preferences.get(StringNonKey.NsClientControlClientId)).thenReturn("")
+        sut.start(backgroundScope)
+        runCurrent()
+
+        changes.emit(key)
+        advanceTimeBy(600); runCurrent()
+
+        verify(clientControlRoundTrip, never()).run(any(), any())
     }
 
     @Test
