@@ -1,6 +1,5 @@
 package app.aaps.ui.compose.overview.chips
 
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,7 +38,6 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
-import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.ui.compose.overview.AutoIsfHistoryRow
 import app.aaps.ui.compose.overview.autoIsfHistoryRows

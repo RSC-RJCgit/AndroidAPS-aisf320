@@ -59,7 +59,9 @@ import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.maintenance.Maintenance
+import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
@@ -78,6 +80,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.extensions.asSettingsExport
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.plannedRemainingMinutes
 import app.aaps.core.objects.extensions.target
@@ -142,6 +145,8 @@ open class OpenAPSAutoISFPlugin(
     private val smsCommunicator: SmsCommunicator,
     private val maintenance: Maintenance,
     private val anyDeskFront: AnyDeskFront,
+    private val importExportPrefs: ImportExportPrefs,
+    private val exportPasswordDataStore: ExportPasswordDataStore,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -675,6 +680,7 @@ open class OpenAPSAutoISFPlugin(
             statesOn = statesOn,
             livePump = activePlugin.activePump !is VirtualPump,
         )
+        exportSettingsAfterNewPod(now, statesOn)
         revertRaisedWeights(
             now = now,
             bg = glucoseStatus.glucose,
@@ -4445,6 +4451,55 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Shower12 drops the IOB threshold to 12% before Usual2, so Usual2 can still raise it in the same loop.
+    // A new pod that is newer than the last settings export writes a fresh settings file,
+    // switches to the Low profile, and sets Profile to PP130. A client and a virtual pump skip this.
+    // The first pod on a phone that has never exported settings does not run, matching the old rule.
+    private suspend fun exportSettingsAfterNewPod(now: Long, statesOn: Boolean) {
+        if (config.AAPSCLIENT) return
+        if (activePlugin.activePump is VirtualPump) return
+        if (!runMarks.ready(RunMark.EXPORT_SETTINGS_POD, 5, now)) return
+        val lastPod = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return
+        val lastExport = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.SETTINGS_EXPORT) ?: return
+        if (lastExport.timestamp >= lastPod.timestamp) return
+        sendAutoSms("ExportSettingsPodActivation")
+        val exported = exportSettingsFile()
+        persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+            timestamp = now,
+            action = Action.CANCEL_TT,
+            source = Sources.Automation,
+            note = "ExportSettingsPodActivation",
+            listValues = emptyList(),
+        )
+        switchToLowAtSharedTier(now, "AutoISF: NewPod")
+        if (statesOn && states().hasStateValues("Profile")) states().setState("Profile", "PP130")
+        runMarks.mark(RunMark.EXPORT_SETTINGS_POD, now)
+        aapsLogger.info(LTag.APS, "ExportSettingsPodActivation exported=$exported")
+    }
+
+    private suspend fun exportSettingsFile(): Boolean {
+        var message = "Settings export ignored: unattended settings export is disabled"
+        var exported = false
+        if (exportPasswordDataStore.exportPasswordStoreEnabled()) {
+            val (password, isExpired, _) = exportPasswordDataStore.getPasswordFromDataStore()
+            if (password.isNotEmpty() && !isExpired) {
+                exported = importExportPrefs.exportSharedPreferencesNonInteractive(password)
+                message = if (exported) "Settings exported" else "Settings export failed"
+            } else {
+                message = "Settings export password missing or expired"
+                exportPasswordDataStore.clearPasswordDataStore()
+            }
+        }
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE.asSettingsExport(error = message),
+            timestamp = dateUtil.now(),
+            action = Action.EXPORT_SETTINGS,
+            source = Sources.Automation,
+            note = message,
+            listValues = listOf(),
+        )
+        return exported
+    }
+
     // Pod2 and Pod1 run before a pod-change 130% switch, so they do not undo that switch.
     // Pod2 sets Profile to PP130, switches to Standard, and sends the 78-hour text.
     // Bolus2 stays off. OldPod2 stays off.

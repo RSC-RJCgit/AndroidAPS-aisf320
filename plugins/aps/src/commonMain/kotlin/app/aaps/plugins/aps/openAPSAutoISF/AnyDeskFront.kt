@@ -8,6 +8,6 @@ package app.aaps.plugins.aps.openAPSAutoISF
  */
 interface AnyDeskFront {
 
-    /** [shown] is true only after AnyDesk's own screen was opened. */
+    /** `shown` is true only after AnyDesk's own screen was opened. */
     fun bringToFront(onResult: (shown: Boolean) -> Unit)
 }

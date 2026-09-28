@@ -60,7 +60,6 @@ import app.aaps.core.ui.compose.blockSystemEdgeGesture
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.stringResource
-import app.aaps.ui.UiStrings
 import com.patrykandpatrick.vico.compose.cartesian.Scroll
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
