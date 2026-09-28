@@ -68,6 +68,9 @@ enum class LongNonKey(
     // Server time of the profile store last taken from the secondary Nightscout.
     NsClientSecondaryProfileModified("nsclient_secondary_profile_modified", 0L, exportable = false),
 
+    // Server time of the newest glucose page taken from the secondary Nightscout. 0 means not yet.
+    NsClientSecondaryGlucoseModified("nsclient_secondary_glucose_modified", 0L, exportable = false),
+
     // Profile-switch time already used as a Set-role duration. Local only.
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
 

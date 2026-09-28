@@ -2,6 +2,7 @@ package app.aaps.plugins.sync.nsclientV3.workers
 
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -34,11 +35,13 @@ import dev.zacsweers.metro.Inject
  * Runs when that site is turned on. The two addresses are not compared. Manual boluses and carbs
  * follow the receive switches. Temp basals and extended boluses are never taken. Notes stay on
  * the short keep-list, including the one note "MJ active". The profile store and the live step
- * counts come from this site as well.
+ * counts come from this site as well. A client takes its glucose from this site only when
+ * "Get BG from this connection" is on.
  */
 @Inject
 class LoadSecondaryTreatmentsRunner(
     private val aapsLogger: AAPSLogger,
+    private val config: Config,
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
     private val storeDataForDb: StoreDataForDb,
@@ -172,6 +175,7 @@ class LoadSecondaryTreatmentsRunner(
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
         downloadProfile(client)
         downloadLiveSteps(client)
+        downloadGlucose(client)
         return WorkOutcome.Success
     }
 
@@ -211,6 +215,32 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
+    // Smoothed readings live on the second site. One day fills the graph; later polls take what changed.
+    private suspend fun downloadGlucose(client: NSAndroidClientImpl) {
+        if (!glucoseFromSecondarySite(
+                config.AAPSCLIENT,
+                secondaryEnabled = true,
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            )
+        ) return
+        try {
+            val cursor = preferences.get(LongNonKey.NsClientSecondaryGlucoseModified)
+            val from = if (cursor == 0L) dateUtil.now() - GLUCOSE_LOOKBACK_MS
+            else (cursor - GLUCOSE_OVERLAP_MS).coerceAtLeast(0L)
+            val response = if (cursor == 0L) client.getSgvsNewerThan(from, PAGE_SIZE)
+            else client.getSgvsModifiedSince(from, PAGE_SIZE)
+            val sgvs = response.values
+            if (sgvs.isNotEmpty()) nsIncomingDataProcessor.processSgvs(sgvs, doFullSync = false)
+            storeDataForDb.storeGlucoseValuesToDb()
+            val modified = response.lastServerModified ?: dateUtil.now()
+            if (modified > cursor) preferences.put(LongNonKey.NsClientSecondaryGlucoseModified, modified)
+            nsClientRepository.addLog("◄ SEC-NS", "${sgvs.size} glucose values from secondary NS")
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS glucose fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Glucose error")
+        }
+    }
+
     private fun fallbackInsulin(): ICfg =
         profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
 
@@ -220,5 +250,7 @@ class LoadSecondaryTreatmentsRunner(
         const val MAX_PAGES = 64
         const val CURSOR_OVERLAP_MS = 2L * 60 * 60 * 1000
         const val RECOVERY_LOOKBACK_MS = 16L * 24 * 60 * 60 * 1000
+        const val GLUCOSE_LOOKBACK_MS = 24L * 60 * 60 * 1000
+        const val GLUCOSE_OVERLAP_MS = 10L * 60 * 1000
     }
 }

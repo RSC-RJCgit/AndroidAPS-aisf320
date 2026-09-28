@@ -29,6 +29,7 @@ import app.aaps.plugins.sync.nsclientV3.SettingsIdentifiers
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlPublisher
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.OrphanDetector
 import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.extensions.toRunningConfiguration
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -108,9 +109,18 @@ class NsFrameHandler(
             "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()), live = true)
 
             "entries"      -> {
-                docString.toNSSgvV3()?.let {
-                    nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false)
-                    storeDataForDb.requestStoreGlucoseValues()
+                // A client that takes glucose from the second Nightscout ignores frames from the
+                // main site. Those frames would put the raw value back.
+                if (!glucoseFromSecondarySite(
+                        config.AAPSCLIENT,
+                        preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                        preferences.get(BooleanKey.NsClientBgFromLiveSite)
+                    )
+                ) {
+                    docString.toNSSgvV3()?.let {
+                        nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false)
+                        storeDataForDb.requestStoreGlucoseValues()
+                    }
                 }
                 // The same collection also carries AAPS calibration entries.
                 docString.toCalibrationMbg()?.let {

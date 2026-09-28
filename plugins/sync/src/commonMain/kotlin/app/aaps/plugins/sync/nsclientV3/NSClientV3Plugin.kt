@@ -1245,6 +1245,7 @@ class NSClientV3Plugin(
                 title = KeysStrings.ns_secondary_settings,
                 items = listOf(
                     BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientBgFromLiveSite,
                     BooleanKey.NsClientSecondaryAcceptTherapyEvent,
                     StringKey.NsClientSecondaryUrl,
                     StringKey.NsClientSecondaryAccessToken

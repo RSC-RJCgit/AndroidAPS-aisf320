@@ -35,4 +35,12 @@ class SecondaryTreatmentFilterTest {
         assertTrue(stepsFromPrimarySite(secondaryEnabled = false))
         assertFalse(stepsFromPrimarySite(secondaryEnabled = true))
     }
+
+    @Test
+    fun `a client reads glucose from the second site only when that switch is on`() {
+        assertTrue(glucoseFromSecondarySite(isClient = true, secondaryEnabled = true, bgFromThisConnection = true))
+        assertFalse(glucoseFromSecondarySite(isClient = true, secondaryEnabled = true, bgFromThisConnection = false))
+        assertFalse(glucoseFromSecondarySite(isClient = true, secondaryEnabled = false, bgFromThisConnection = true))
+        assertFalse(glucoseFromSecondarySite(isClient = false, secondaryEnabled = true, bgFromThisConnection = true))
+    }
 }

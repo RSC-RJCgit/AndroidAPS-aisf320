@@ -31,6 +31,14 @@ internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?): Boolea
 /** Once the secondary site is on, step counts come from it. The two addresses are not compared. */
 internal fun stepsFromPrimarySite(secondaryEnabled: Boolean): Boolean = !secondaryEnabled
 
+/**
+ * A client reads glucose from the second Nightscout only when "Get BG from this connection" is on.
+ * The second site can stay on for treatments and the profile without also supplying glucose.
+ * The main site stays the one used for pairing.
+ */
+internal fun glucoseFromSecondarySite(isClient: Boolean, secondaryEnabled: Boolean, bgFromThisConnection: Boolean): Boolean =
+    isClient && secondaryEnabled && bgFromThisConnection
+
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,
     TE.Type.SENSOR_STARTED,

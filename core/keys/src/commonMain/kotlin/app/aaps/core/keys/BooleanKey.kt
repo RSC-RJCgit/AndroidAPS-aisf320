@@ -352,6 +352,14 @@ enum class BooleanKey(
         KeysStrings.ns_secondary_receive_therapy_events_summary,
         dependency = NsClientSecondaryEnabled
     ),
+    // On by default. A client then takes glucose from the second site. Turn off to leave glucose on the main site.
+    NsClientBgFromLiveSite(
+        "ns_bg_from_live_site",
+        true,
+        KeysStrings.ns_bg_from_live_site,
+        KeysStrings.ns_bg_from_live_site_summary,
+        dependency = NsClientSecondaryEnabled
+    ),
     NsClientNotificationsFromAlarms("ns_alarms", false, KeysStrings.pref_title_ns_notifications_from_alarms, calculatedDefaultValue = true),
     NsClientNotificationsFromAnnouncements("ns_announcements", false, KeysStrings.pref_title_ns_notifications_from_announcements, calculatedDefaultValue = true),
     NsClientUseCellular("ns_cellular", true, KeysStrings.pref_title_ns_use_cellular),

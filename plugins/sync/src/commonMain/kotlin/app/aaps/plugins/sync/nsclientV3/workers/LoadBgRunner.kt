@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3.workers
 
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSClientRepository
@@ -26,6 +27,7 @@ import kotlin.math.max
 @Inject
 class LoadBgRunner(
     private val aapsLogger: AAPSLogger,
+    private val config: Config,
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
     private val nsClientV3Plugin: NSClientV3Plugin,
@@ -38,6 +40,13 @@ class LoadBgRunner(
     suspend fun run(): WorkOutcome {
         if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !nsClientV3Plugin.doingFullSync)
             return WorkOutcome.Skipped("Load not enabled")
+        if (glucoseFromSecondarySite(
+                config.AAPSCLIENT,
+                preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            )
+        )
+            return WorkOutcome.Skipped("secondary")
 
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
         var continueLoading = true

@@ -435,6 +435,8 @@
     <string name="ns_secondary_settings">Secondary NS (bolus, carbs, and profile)</string>
     <string name="ns_secondary_enabled">Download bolus, carbs, and profile from secondary NS</string>
     <string name="ns_secondary_enabled_summary">Pull manual boluses, carbs, and the profile store from a separate Nightscout site, for example the main phone. SMBs are not copied. This phone does not take the profile store from its own Nightscout while this is on.</string>
+    <string name="ns_bg_from_live_site">Get BG from this connection (Live\'s site)</string>
+    <string name="ns_bg_from_live_site_summary">On by default. BG comes from the site above, so it stays the Live site. Turn off to use this phone\'s own main NS site. One source, not a mix.</string>
     <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
     <string name="ns_secondary_receive_therapy_events_summary">Also pull sensor, site, insulin, and pump-battery changes from the secondary Nightscout, so cannula and sensor age on this phone stay correct. Turn off if this phone should not receive those events.</string>
     <string name="ns_secondary_url">Secondary NS URL</string>
