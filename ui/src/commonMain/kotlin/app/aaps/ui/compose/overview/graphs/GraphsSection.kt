@@ -42,7 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.overview.graph.GraphConfig
@@ -63,6 +66,7 @@ import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
+import kotlin.math.round
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -352,13 +356,16 @@ fun GraphsSection(
                 // The first layout often stores the start as 0, or at the axis end, which can be
                 // the next hour. Once there is a real width, put the current time on the right edge.
                 if (!placedOnNow && bgMax > 24f && (fitWholeWindow || range != null)) {
-                    placedOnNow = true
                     lastMainMax = bgMax
                     if (!fitWholeWindow && followNow && range != null) {
                         skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                         bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
-                    } else if (bgScroll < 1f) {
-                        bgScrollState.scroll(Scroll.Absolute.End)
+                        // The first value is often still 0, the oldest hour. Keep asking until
+                        // the current time is actually on the right, then a later drag can move it.
+                        if (bgScroll > 24f) placedOnNow = true
+                    } else {
+                        if (bgScroll < 1f) bgScrollState.scroll(Scroll.Absolute.End)
+                        placedOnNow = true
                     }
                     lastMainScroll = bgScrollState.value
                     for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
@@ -536,6 +543,7 @@ fun GraphsSection(
                 onDismiss = { editingBgOverlays = false }
             )
         }
+        val autoIsfStatus = graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
         // Fixed IOB graph (Graph 1) with optional Activity overlay
         var editingIobOverlays by remember { mutableStateOf(false) }
         Box(modifier = Modifier.offset(y = (-8).dp)) {
@@ -553,6 +561,12 @@ fun GraphsSection(
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp)
             )
+            autoIsfStatus.hypoPrediction?.let { hypo ->
+                GraphCornerLine(
+                    text = "hypoprediction= ${oneDecimalText(hypo)}",
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
+            }
             Text(
                 text = buildString {
                     append(stringResource(CoreUiStrings.iob))
@@ -571,7 +585,7 @@ fun GraphsSection(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 36.dp, top = 2.dp)
+                    .padding(start = 36.dp, top = if (autoIsfStatus.hypoPrediction != null) 14.dp else 2.dp)
             )
             if (!isSimpleMode) {
                 GraphEditButton(
@@ -622,13 +636,21 @@ fun GraphsSection(
                         .fillMaxWidth()
                         .height(secondary.height.dp)
                 )
+                val corner = when (i) {
+                    0 -> autoIsfStatus.statusTarget
+                    1 -> autoIsfStatus.statusRatio
+                    else -> null
+                }
+                corner?.let { line ->
+                    GraphCornerLine(text = line, modifier = Modifier.align(Alignment.TopStart))
+                }
                 Text(
                     text = seriesListLabel(secondary.series),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 36.dp, top = 2.dp)
+                        .padding(start = 36.dp, top = if (corner != null) 14.dp else 2.dp)
                 )
                 if (!isSimpleMode) {
                     GraphEditButton(
@@ -920,3 +942,20 @@ private fun Scroll.Absolute.ifNotUsable(): Scroll.Absolute =
         val scroll = getValue(context, layerDimensions, bounds, maxValue)
         if (scroll.isFinite() && scroll >= 0f) scroll else 0f
     }
+
+@Composable
+private fun GraphCornerLine(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurface,
+        style = TextStyle(fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold),
+        modifier = modifier.padding(start = 8.dp, top = 1.dp)
+    )
+}
+
+private fun oneDecimalText(value: Double): String {
+    val scaled = round(value * 10.0).toInt()
+    val sign = if (scaled < 0) "-" else ""
+    val whole = abs(scaled)
+    return "$sign${whole / 10}.${whole % 10}"
+}

@@ -167,6 +167,8 @@ internal object RunMark {
     const val MILD_BOOST_UP = "MildBoostUpTT"
     const val SMB_OFFSET_DOWN = "SmbOffsetDownTT"
     const val SMB_OFFSET_UP = "SmbOffsetUpTT"
+    const val PEAK_INSULIN_DOWN = "PeakInsulinTimeDownTT"
+    const val PEAK_INSULIN_UP = "PeakInsulinTimeUpTT"
     const val ACTIVITY_PROF_50 = "ActivityProf50"
     const val ACTIVITY_OFF = "ActivityOff"
 }

@@ -2,6 +2,7 @@ package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,7 +41,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.time.Clock
-import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
@@ -176,7 +176,6 @@ fun BgGraphCompose(
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
     val autoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
-    val hypoPrediction = autoIsfGraph.hypoPrediction
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -928,10 +927,10 @@ fun BgGraphCompose(
         scrollState = scrollState,
         zoomState = zoomState
     )
-    if (autoIsfGraph.statusTarget != null || autoIsfGraph.statusIsf != null || hypoPrediction != null || autoIsfGraph.statusRatio != null || autoIsfGraph.statusSteps != null) {
+    if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
-        val linesUp = with(LocalDensity.current) { (lineSp * 1.5f).toDp() }
+        val linesUp = with(LocalDensity.current) { (lineSp * 0.5f).toDp() }
         val tight = TextStyle(
             fontSize = lineSp,
             lineHeight = lineSp,
@@ -941,29 +940,14 @@ fun BgGraphCompose(
                 trim = LineHeightStyle.Trim.Both
             )
         )
-        if (hypoPrediction != null) {
-            Text(
-                text = "hypoprediction= ${oneDecimal(hypoPrediction)}",
-                color = Color.White,
-                style = tight,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 8.dp, top = 4.dp)
-            )
-        }
         Column(
+            verticalArrangement = Arrangement.spacedBy(0.dp),
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + linesUp).coerceAtLeast(0.dp))
         ) {
-            autoIsfGraph.statusTarget?.let { line ->
-                Text(text = line, color = Color.White, style = tight)
-            }
             autoIsfGraph.statusIsf?.let { line ->
                 IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
-            }
-            autoIsfGraph.statusRatio?.let { line ->
-                Text(text = line, color = Color.White, style = tight)
             }
             autoIsfGraph.statusSteps?.let { line ->
                 Text(text = line, color = Color.White, style = tight)
@@ -1019,13 +1003,6 @@ private fun IsfStatusLine(
             Text(text = token, color = color, style = style)
         }
     }
-}
-
-private fun oneDecimal(value: Double): String {
-    val tenths = round(value * 10.0).toInt()
-    val sign = if (tenths < 0) "-" else ""
-    val absTenths = abs(tenths)
-    return "$sign${absTenths / 10}.${absTenths % 10}"
 }
 
 /**

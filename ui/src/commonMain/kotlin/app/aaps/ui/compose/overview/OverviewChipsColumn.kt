@@ -51,7 +51,7 @@ fun OverviewChipsColumn(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
-    onLoadAutoIsfHistory: suspend () -> List<AutoIsfHistoryRow> = { emptyList() },
+    onOpenAutoIsfHistory: () -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
@@ -144,7 +144,7 @@ fun OverviewChipsColumn(
         )
         SensitivityChipBlock(
             state = sensitivityUiState,
-            onLoadAutoIsfHistory = onLoadAutoIsfHistory,
+            onOpenAutoIsfHistory = onOpenAutoIsfHistory,
             modifier = Modifier.fillMaxWidth()
         )
     }

@@ -219,6 +219,23 @@ class ChipsViewModel(
         )
     }
 
+    var autoIsfHistoryOpen by mutableStateOf(false)
+        private set
+    var autoIsfHistoryRows by mutableStateOf<List<AutoIsfHistoryRow>>(emptyList())
+        private set
+
+    /** Opens the history table. Kept here so turning the phone does not close it. */
+    fun openAutoIsfHistory() {
+        viewModelScope.launch {
+            autoIsfHistoryRows = loadAutoIsfHistory()
+            autoIsfHistoryOpen = true
+        }
+    }
+
+    fun closeAutoIsfHistory() {
+        autoIsfHistoryOpen = false
+    }
+
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
     suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
         maintenance.exportCoordinated("ISF_LONG_PRESS")
@@ -246,8 +263,16 @@ class ChipsViewModel(
     var list1Generation by mutableIntStateOf(0)
         private set
 
+    var insulinPeakText by mutableStateOf("--")
+        private set
+
     fun openList1() {
         list1Open = true
+        viewModelScope.launch { refreshInsulinPeak() }
+    }
+
+    private suspend fun refreshInsulinPeak() {
+        insulinPeakText = profileFunction.getRunningOrRequestedICfg()?.peak?.toString() ?: "--"
     }
 
     fun closeList1() {
@@ -270,7 +295,8 @@ class ChipsViewModel(
     fun applyList1(mmol: Double) {
         rxBus.send(EventAutoIsfDirectTtCode(mmol))
         viewModelScope.launch {
-            delay(200)
+            delay(400)
+            refreshInsulinPeak()
             list1Generation++
             list2Generation++
         }
@@ -289,6 +315,7 @@ class ChipsViewModel(
             List1Row("pp ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)), 5.056, 5.058),
             List1Row("acce ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)), 5.062, 5.064),
             List1Row("higher ISF range Wt", one(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)), 5.068, 5.070),
+            List1Row("Peak insulin time", insulinPeakText, 5.074, 5.076),
             List1Row("autoISF max (lowBG)", one(preferences.get(DoubleKey.ApsAutoIsfMaxLow)), 5.080, 5.082),
             List1Row("autoISF max (N)", one(preferences.get(DoubleKey.ApsAutoIsfMax)), 5.086, 5.088),
             List1Row("SMB offset", one(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride)), 5.036, 5.038),

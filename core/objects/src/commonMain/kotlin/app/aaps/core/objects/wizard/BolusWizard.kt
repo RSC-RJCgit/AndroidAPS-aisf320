@@ -405,8 +405,13 @@ class BolusWizard(
         return this
     }
 
-    private fun calculatorNote(base: String): String {
+    private fun calculatorNote(base: String, eCarbsGrams: Int, eCarbsDelayMinutes: Int, eCarbsDurationHours: Int): String {
         val extras = mutableListOf<String>()
+        if (eCarbsGrams > 0) {
+            extras.add(rh.gs(InterfacesStrings.wizard_carbs_split, carbs, eCarbsGrams))
+            extras.add(rh.gs(InterfacesStrings.wizard_ecarbs, eCarbsGrams, eCarbsDurationHours, eCarbsDelayMinutes))
+        }
+        if (carbTime != 0) extras.add(rh.gs(InterfacesStrings.wizard_carbs_time, carbTime))
         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
         if (riseBoostApplied) extras.add(rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
@@ -588,7 +593,11 @@ class BolusWizard(
         }
     }
 
-    fun createBolusCalculatorResult(): BCR {
+    fun createBolusCalculatorResult(
+        eCarbsGrams: Int = 0,
+        eCarbsDelayMinutes: Int = 0,
+        eCarbsDurationHours: Int = 0,
+    ): BCR {
         val unit = profileFunction.getUnits()
         return BCR(
             timestamp = dateUtil.now(),
@@ -620,7 +629,7 @@ class BolusWizard(
             totalInsulin = calculatedTotalInsulin,
             percentageCorrection = percentageCorrection,
             profileName = profileName,
-            note = calculatorNote(notes)
+            note = calculatorNote(notes, eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours)
         )
     }
 
@@ -835,7 +844,11 @@ class BolusWizard(
                 carbs == 0                     -> Action.BOLUS
                 else                           -> Action.TREATMENT
             }
-            val bolusCalculatorResult = createBolusCalculatorResult()
+            val entryExtended = quickWizardEntry?.takeIf { it.useEcarbs() == QuickWizardEntry.ALWAYS && it.carbs2() > 0 }
+            val extendedGrams = if (eCarbsGrams > 0) eCarbsGrams else entryExtended?.carbs2() ?: 0
+            val extendedDelay = if (eCarbsGrams > 0) eCarbsDelayMinutes else entryExtended?.time() ?: 0
+            val extendedHours = if (eCarbsGrams > 0) eCarbsDurationHours else entryExtended?.duration() ?: 0
+            val bolusCalculatorResult = createBolusCalculatorResult(extendedGrams, extendedDelay, extendedHours)
             quickWizardEntry?.markAsUsed()
             // Schedule carb timer before bolus delivery. Scheduling in the bolus completion callback
             // fails when the screen is off because Android blocks startActivity() from the background.

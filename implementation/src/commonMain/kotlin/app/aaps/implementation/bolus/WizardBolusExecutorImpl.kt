@@ -259,10 +259,15 @@ class WizardBolusExecutorImpl(
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
 
         evictStalePending()
+        val eCarbsGrams = if (entry.useEcarbs() == QuickWizardEntry.ALWAYS) entry.carbs2() else 0
         pending.park(wizard.timeStamp, PendingBolus(
             wizard.unclampedCalculatedInsulin,
             wizard.carbs,
-            wizard.createBolusCalculatorResult(),
+            wizard.createBolusCalculatorResult(
+                eCarbsGrams = eCarbsGrams,
+                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.time() else 0,
+                eCarbsDurationHours = if (eCarbsGrams > 0) entry.duration() else 0,
+            ),
             wizard.timeStamp,
             entry,
             carbTimeMinutes = entry.carbTime(),
@@ -274,7 +279,6 @@ class WizardBolusExecutorImpl(
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
         val advisorApplies = wizard.needsBolusAdvisor()
-        val eCarbsGrams = if (entry.useEcarbs() == QuickWizardEntry.ALWAYS) entry.carbs2() else 0
         return WizardBolusExecutor.PrepareResult.Preview(
             insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
@@ -346,7 +350,11 @@ class WizardBolusExecutorImpl(
             PendingBolus(
                 wizard.unclampedCalculatedInsulin,
                 wizard.carbs,
-                wizard.createBolusCalculatorResult(),
+                wizard.createBolusCalculatorResult(
+                    eCarbsGrams = inputs.eCarbsGrams,
+                    eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
+                    eCarbsDurationHours = inputs.eCarbsDurationHours,
+                ),
                 wizard.timeStamp,
                 entry = null,
                 carbTimeMinutes = inputs.carbTime,

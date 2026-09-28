@@ -162,6 +162,8 @@
     <string name="bolus_recorded_only">Bolus will be recorded only (not delivered by pump)</string>
     <string name="advisoralarm">Run alarm when is time to eat</string>
     <string name="wizard_ecarbs">eCarbs %1$dg / %2$dh (+%3$dmin)</string>
+    <string name="wizard_carbs_split" comment="%1$d = carbs given now, in grams. %2$d = extended carbs, in grams. Example: Carbs 9+2 g">Carbs %1$d+%2$d g</string>
+    <string name="wizard_carbs_time" comment="%1$d = minutes. A plus means later, a minus means earlier. Example: Carbs +15 min">Carbs %1$+d min</string>
     <string name="wizard_carbs_halved">Carb insulin halved for a recent low.</string>
     <string name="wizard_hp_safety" comment="%1$.2f = units before the cut, %2$.2f = units after the cut, %3$.2f = carb-on-board insulin removed. Example: HP safety: 1.20 U to 0.68 U, carbs on board removed 0.30 U">HP safety: %1$.2f U to %2$.2f U, carbs on board removed %3$.2f U</string>
     <string name="wizard_rise_boost" comment="%1$.2f = units before the boost, %2$.2f = units after the boost. Example: Rise boost: 1.00 U to 1.33 U">Rise boost: %1$.2f U to %2$.2f U</string>

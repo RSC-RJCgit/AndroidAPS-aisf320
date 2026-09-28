@@ -3148,6 +3148,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.MILD_BOOST_UP -> RunMark.MILD_BOOST_UP
             RemoteToggleCode.SMB_OFFSET_DOWN -> RunMark.SMB_OFFSET_DOWN
             RemoteToggleCode.SMB_OFFSET_UP -> RunMark.SMB_OFFSET_UP
+            RemoteToggleCode.PEAK_INSULIN_DOWN -> RunMark.PEAK_INSULIN_DOWN
+            RemoteToggleCode.PEAK_INSULIN_UP -> RunMark.PEAK_INSULIN_UP
         }
         if (!runMarks.ready(mark, 2, now)) return false
         applyToggleAction(code)
@@ -3399,7 +3401,21 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.MILD_BOOST_UP -> nudgeDouble(DoubleKey.ApsAutoIsfMildBoostRatio, 0.25, 0.1, 1.0, "MildBoostUp", "MB", 2, omitLeadingZero = true)
             RemoteToggleCode.SMB_OFFSET_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfSmbOffsetOverride, -0.1, 0.50, 1.50, "SmbOffsetDown", "SO", 1)
             RemoteToggleCode.SMB_OFFSET_UP -> nudgeDouble(DoubleKey.ApsAutoIsfSmbOffsetOverride, 0.1, 0.50, 1.50, "SmbOffsetUp", "SO", 1)
+            RemoteToggleCode.PEAK_INSULIN_DOWN -> nudgeInsulinPeak(-5, "PeakInsulinTimeDown")
+            RemoteToggleCode.PEAK_INSULIN_UP -> nudgeInsulinPeak(5, "PeakInsulinTimeUp")
         }
+    }
+
+    // Peak time of the insulin on the running profile, in minutes. 35 to 120, step 5.
+    private suspend fun nudgeInsulinPeak(delta: Int, smsName: String) {
+        val current = profileFunction.getRunningOrRequestedICfg() ?: return
+        val next = (current.peak + delta).coerceIn(35, 120)
+        if (next == current.peak) return
+        val edited = current.deepClone()
+        edited.setPeak(next)
+        if (!profileFunction.createProfileSwitchWithNewInsulin(edited, Sources.Automation)) return
+        sendAutoSms("$smsName: insulinPeak=$next")
+        carePortalNote("IP" + next.toString().padStart(3, '0'))
     }
 
     private suspend fun nudgeBoostIob(delta: Int, smsName: String) {
@@ -3847,6 +3863,7 @@ open class OpenAPSAutoISFPlugin(
             startBrakeTarget(now, 4.4 * 18.0, "AutoISF: early dawn 4.4", 5)
             runMarks.mark(RunMark.EARLY_DAWN, now)
             sendAutoSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${decimals(bg / 18.016, 1)}")
+            carePortalNote("EDSR")
             aapsLogger.debug(LTag.APS, "Early dawn 4.4 mmol for 5 min")
         }
         val running = profileFunction.getOriginalProfileName()

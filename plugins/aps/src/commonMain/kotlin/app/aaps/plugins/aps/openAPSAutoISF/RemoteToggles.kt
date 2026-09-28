@@ -86,6 +86,8 @@ internal enum class RemoteToggleCode {
     MILD_BOOST_UP,
     SMB_OFFSET_DOWN,
     SMB_OFFSET_UP,
+    PEAK_INSULIN_DOWN,
+    PEAK_INSULIN_UP,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -169,6 +171,8 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.054, 0.0001) -> RemoteToggleCode.MILD_BOOST_UP
     ttNear(ttMgdl, 5.036, 0.0001) -> RemoteToggleCode.SMB_OFFSET_DOWN
     ttNear(ttMgdl, 5.038, 0.0001) -> RemoteToggleCode.SMB_OFFSET_UP
+    ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
+    ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP
     else -> null
 }
 

@@ -198,6 +198,12 @@ fun OverviewScreen(
 
         List1Dialog(chipsViewModel)
         List2Dialog(chipsViewModel)
+        if (chipsViewModel.autoIsfHistoryOpen) {
+            AutoIsfHistoryDialog(
+                rows = chipsViewModel.autoIsfHistoryRows,
+                onDismiss = chipsViewModel::closeAutoIsfHistory
+            )
+        }
 
         // Calculation progress (IOB / graph data). Overlaid on top of content so it never reflows
         // the layout — previously a flow child of the content Column which caused the screen to jump.
