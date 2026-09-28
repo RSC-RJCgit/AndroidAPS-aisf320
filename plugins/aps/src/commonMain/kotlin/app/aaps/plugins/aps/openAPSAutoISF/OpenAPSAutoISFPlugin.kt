@@ -771,6 +771,16 @@ open class OpenAPSAutoISFPlugin(
             steps60 = stepSample?.steps60min ?: 0,
             steps180 = stepSample?.steps180min ?: 0,
         )
+        applyTodOffsetsZero(
+            now = now,
+            bg = glucoseStatus.glucose,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            rawDelta5 = ukf.delta5,
+            cob = mealData.mealCOB,
+            iob = iobData.iob,
+            statesOn = statesOn,
+            steps60 = stepSample?.steps60min ?: 0,
+        )
         applySensorNotes(
             now = now,
             bg = glucoseStatus.glucose,
@@ -1728,6 +1738,8 @@ open class OpenAPSAutoISFPlugin(
 
     // Marks BolusGiven, BolusGivenBg3, or BolusGivenMild when the 3.2.1 rise gates pass.
     private var cobSustainedSince = 0L
+    private var todOffsetNegClearSince = 0L
+    private var todOffsetPosClearSince = 0L
     private var smbBoostedThisCycle = false
     private var lastCycleSmb = 0.0
     private var lastCycleSmbAt = 0L
@@ -1827,6 +1839,7 @@ open class OpenAPSAutoISFPlugin(
             steps30 = steps30,
             smbIntervalSec = interval,
             deliveryBaseline = baseline,
+            iob = iob,
         )
         val blocked = bg3 && bg3BoostBlocked(
             recentBolusGiven = runMarks.recent(RunMark.BOLUS_GIVEN, 60, now),
@@ -1886,7 +1899,10 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("BMildFS")
             aapsLogger.debug(LTag.APS, "BolusGivenMildFailsafe marked")
         } else if (blocked) {
-            carePortalNote("GivBlk")
+            if (runMarks.ready(RunMark.BOLUS_GIVEN_BG3_BLOCK, 15, now)) {
+                carePortalNote("GivBlk")
+                runMarks.mark(RunMark.BOLUS_GIVEN_BG3_BLOCK, now)
+            }
             aapsLogger.debug(LTag.APS, "BolusGiven bg3 suppressed")
         }
         if (not50RecentlyShouldFire(
@@ -3747,6 +3763,65 @@ open class OpenAPSAutoISFPlugin(
     private suspend fun hoursSincePod(now: Long): Double? {
         val last = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE) ?: return null
         return (now - last.timestamp) / 3_600_000.0
+    }
+
+    // Clear a time-of-day offset only after its sign has been wrong for 10 minutes, then wait 30 minutes.
+    private suspend fun applyTodOffsetsZero(
+        now: Long,
+        bg: Double,
+        shortDelta: Double,
+        rawDelta5: Double?,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps60: Int,
+    ) {
+        val nomj = statesOn && states().inState("MJ", "NOMJremains")
+        val hp = rawDelta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val want = todOffsetClearSignals(nomj, hp, shortDelta, steps60)
+        if (want.clearNegative) {
+            if (todOffsetNegClearSince == 0L) todOffsetNegClearSince = now
+        } else {
+            todOffsetNegClearSince = 0L
+        }
+        if (want.clearPositive) {
+            if (todOffsetPosClearSince == 0L) todOffsetPosClearSince = now
+        } else {
+            todOffsetPosClearSince = 0L
+        }
+        val held = 10 * 60_000L
+        val clearNegative = todOffsetNegClearSince != 0L && now - todOffsetNegClearSince >= held
+        val clearPositive = todOffsetPosClearSince != 0L && now - todOffsetPosClearSince >= held
+        val keys = listOf(
+            DoubleKey.ApsAutoIsfTodOffset0002,
+            DoubleKey.ApsAutoIsfTodOffset0204,
+            DoubleKey.ApsAutoIsfTodOffset0406,
+            DoubleKey.ApsAutoIsfTodOffset0609,
+            DoubleKey.ApsAutoIsfTodOffset0912,
+            DoubleKey.ApsAutoIsfTodOffset1218,
+            DoubleKey.ApsAutoIsfTodOffset1822,
+            DoubleKey.ApsAutoIsfTodOffset2200,
+        ).filter { key ->
+            val value = preferences.get(key)
+            (value < 0.0 && clearNegative) || (value > 0.0 && clearPositive)
+        }
+        if (keys.isEmpty() || !runMarks.ready(RunMark.TOD_OFFSETS_ZERO, 30, now)) return
+        val resettingPositive = keys.any { preferences.get(it) > 0.0 }
+        val resettingNegative = keys.any { preferences.get(it) < 0.0 }
+        val resetValues = keys.joinToString(",") { key -> "${key.name}=${decimals(preferences.get(key), 2)}" }
+        keys.forEach { key -> preferences.put(key, 0.0) }
+        val shortMmol = decimals(shortDelta / 18.0182, 2)
+        val hpText = decimals(hp ?: 0.0, 2)
+        val reason = when {
+            clearPositive && resettingPositive -> "NOMJremains+StepsLow+HP2=$hpText>6.0+SD=$shortMmol<0.1"
+            steps60 >= 1000 && resettingNegative -> "StepsHigh"
+            !nomj -> "NOT_NOMJremains"
+            else -> "HP2=$hpText<4.0+SD=$shortMmol<0.1"
+        }
+        sendAutoSms("TodOffsetsZero: $reason; $resetValues")
+        carePortalNote("TOD0")
+        runMarks.mark(RunMark.TOD_OFFSETS_ZERO, now)
+        aapsLogger.debug(LTag.APS, "Tod offsets cleared: $reason")
     }
 
     // AcceUp and the exercise alert run first. The night ceiling runs before NightAcce, so a 22% write

@@ -18,7 +18,7 @@ fun SensitivityChipBlock(
     onOpenAutoIsfHistory: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    if (state.asText.isEmpty() && state.isfFrom.isEmpty()) return
+    if (state.asText.isEmpty() && state.isfFrom.isEmpty() && !state.autoIsfHistory) return
 
     var showSensitivityDialog by remember { mutableStateOf(false) }
     SensitivityChip(

@@ -83,7 +83,7 @@ data class GraphConfig(
         const val MAX_GRAPH_HEIGHT_DP = 250
 
         /** Main glucose graph only. The other graphs stay at [MAX_GRAPH_HEIGHT_DP]. */
-        const val MAX_BG_GRAPH_HEIGHT_DP = 400
+        const val MAX_BG_GRAPH_HEIGHT_DP = 500
     }
 }
 

@@ -47,6 +47,13 @@ class BoostCriteriaTest {
     }
 
     @Test
+    fun mildStaysOnUnderTwoUnitsAndStopsAtTwo() {
+        assertTrue(mild(iob = 1.96))
+        assertFalse(mild(iob = 2.0))
+        assertFalse(mild(iob = 2.91))
+    }
+
+    @Test
     fun aFastSmbStackRaisesTheMildBar() {
         assertTrue(mild(delta = 5.5, rawDelta5 = 5.5, smbIntervalSec = 9999.0))
         assertFalse(mild(delta = 5.5, rawDelta5 = 5.5, smbIntervalSec = 60.0))
@@ -103,6 +110,7 @@ class BoostCriteriaTest {
         iobChange5: Double = 0.5,
         cob: Double = 0.0,
         smbIntervalSec: Double = 9999.0,
+        iob: Double = 1.0,
     ) = mildBoostShouldFire(
         readyMild = true,
         readyBg3 = true,
@@ -126,6 +134,7 @@ class BoostCriteriaTest {
         steps30 = 0,
         smbIntervalSec = smbIntervalSec,
         deliveryBaseline = 0.14,
+        iob = iob,
     )
 
     private fun strong(

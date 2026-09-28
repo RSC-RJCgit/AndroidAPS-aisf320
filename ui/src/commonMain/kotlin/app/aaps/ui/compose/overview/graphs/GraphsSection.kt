@@ -52,6 +52,7 @@ import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.keys.interfaces.TextRef
+import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.blockSystemEdgeGesture
@@ -947,7 +948,7 @@ private fun Scroll.Absolute.ifNotUsable(): Scroll.Absolute =
 private fun GraphCornerLine(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = AapsTheme.generalColors.bgVeryLow,
         style = TextStyle(fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold),
         modifier = modifier.padding(start = 8.dp, top = 1.dp)
     )
