@@ -122,6 +122,8 @@ internal object RunMark {
     const val TOD_2200_DOWN = "TodOffset2200DownTT"
     const val TOD_2200_UP = "TodOffset2200UpTT"
     const val GRAPH2 = "Graph2ToggleTT"
+    const val GRAPH5 = "Graph5ToggleTT"
+    const val CLEAN_GRAPH = "CleanGraphTT"
     const val CLOUD_LOGS = "CloudLogsUploadTT"
     const val MJ_NO = "MjStateNoMjTT"
     const val MJ3 = "MjStateMj3TT"

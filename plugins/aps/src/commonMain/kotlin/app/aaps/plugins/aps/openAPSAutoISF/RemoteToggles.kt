@@ -41,6 +41,8 @@ internal enum class RemoteToggleCode {
     TOD_2200_DOWN,
     TOD_2200_UP,
     GRAPH2,
+    GRAPH5,
+    CLEAN_GRAPH,
     CLOUD_LOGS,
     MJ_NO,
     MJ3,
@@ -127,6 +129,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.136, 0.0001) -> RemoteToggleCode.TOD_2200_UP
     ttNear(ttMgdl, 5.138, 0.0001) -> RemoteToggleCode.GRAPH2
     ttNear(ttMgdl, 5.140, 0.0001) -> RemoteToggleCode.CLOUD_LOGS
+    ttNear(ttMgdl, 5.142, 0.0001) -> RemoteToggleCode.GRAPH5
     ttNear(ttMgdl, 5.144, 0.0001) -> RemoteToggleCode.MJ_NO
     ttNear(ttMgdl, 5.146, 0.0001) -> RemoteToggleCode.MJ3
     ttNear(ttMgdl, 5.222, 0.0001) -> RemoteToggleCode.MJ_ACTIVE
@@ -171,6 +174,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.054, 0.0001) -> RemoteToggleCode.MILD_BOOST_UP
     ttNear(ttMgdl, 5.036, 0.0001) -> RemoteToggleCode.SMB_OFFSET_DOWN
     ttNear(ttMgdl, 5.038, 0.0001) -> RemoteToggleCode.SMB_OFFSET_UP
+    ttNear(ttMgdl, 5.042, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH
     ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
     ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP
     else -> null

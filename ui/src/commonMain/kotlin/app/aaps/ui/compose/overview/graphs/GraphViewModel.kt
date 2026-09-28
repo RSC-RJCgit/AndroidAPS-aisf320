@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -85,6 +86,9 @@ class GraphViewModel(
     private val _graphDisplay = MutableStateFlow(GraphDisplay())
     val graphDisplay: StateFlow<GraphDisplay> = _graphDisplay.asStateFlow()
 
+    /** Second copy of the main glucose graph. Off until the Graph 5 switch is turned on. */
+    val showGraph5: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsAutoIsfShowGraph5)
+
     /** Basal-rate icon: arrows on, arrows off, then plain green dots. */
     fun onBasalIconLongPress() {
         _graphDisplay.update { it.copy(basalToggleIndex = (it.basalToggleIndex + 1) % 3) }
@@ -114,6 +118,13 @@ class GraphViewModel(
         preferences.observe(UnitDoubleKey.OverviewLowMark)
             .drop(1)
             .onEach { lowMark -> _chartConfigFlow.update { it.copy(lowMark = lowMark) } }
+            .launchIn(viewModelScope)
+        preferences.observe(BooleanNonKey.ApsAutoIsfCleanGraphRequested)
+            .onEach { requested ->
+                if (!requested) return@onEach
+                _graphDisplay.update { it.copy(showSmbLabels = false, basalToggleIndex = 2) }
+                preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, false)
+            }
             .launchIn(viewModelScope)
     }
 

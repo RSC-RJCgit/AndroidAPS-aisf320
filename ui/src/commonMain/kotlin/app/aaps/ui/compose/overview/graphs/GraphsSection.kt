@@ -227,6 +227,12 @@ fun GraphsSection(
     val iobScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val iobZoomState = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom)
 
+    // Graph 5 is a second copy of the main glucose graph. A finger here moves every graph.
+    val g5ScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
+    val g5ZoomState = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom)
+    val showGraph5 by graphViewModel.showGraph5.collectAsStateWithLifecycle()
+    val showGraph5Now = rememberUpdatedState(showGraph5)
+
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
     // without writing to state during composition. Unattached states are no-ops for
     // .zoom()/.scroll(), but we skip them to avoid redundant calls.
@@ -280,6 +286,7 @@ fun GraphsSection(
                     lastZoom = zoom
                     if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(zoom))
                     if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(zoom))
+                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(Zoom.fixed(zoom))
                     for (i in 0 until count) {
                         if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(zoom))
                     }
@@ -289,6 +296,7 @@ fun GraphsSection(
                 if (scroll.isFinite() && bgScrollState.maxValue > 1f) {
                     beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
+                    if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(scroll))
                     for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
                 }
             }
@@ -330,8 +338,8 @@ fun GraphsSection(
     var lastMainScroll by remember { mutableFloatStateOf(Float.NaN) }
     var lastMainMax by remember { mutableFloatStateOf(Float.NaN) }
     var lastMainZoom by remember { mutableFloatStateOf(Float.NaN) }
-    val lastFollowerScroll = remember { FloatArray(7) { Float.NaN } }
-    val lastFollowerZoom = remember { FloatArray(7) { Float.NaN } }
+    val lastFollowerScroll = remember { FloatArray(8) { Float.NaN } }
+    val lastFollowerZoom = remember { FloatArray(8) { Float.NaN } }
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             val count = activeCount
@@ -344,6 +352,7 @@ fun GraphsSection(
                     for (i in 0 until count) {
                         add(secScrollStates[i].value to secZoomStates[i].value)
                     }
+                    if (showGraph5Now.value) add(g5ScrollState.value to g5ZoomState.value)
                 }
             )
         }
@@ -438,6 +447,7 @@ fun GraphsSection(
                     bgZoomState.zoom(fixed)
                     if (beltZoomState.value.isFinite()) beltZoomState.zoom(fixed)
                     if (iobZoomState.value.isFinite()) iobZoomState.zoom(fixed)
+                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(fixed)
                     val zoomCount = activeCount
                     for (i in 0 until zoomCount) {
                         if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(fixed)
@@ -453,6 +463,7 @@ fun GraphsSection(
                     bgScrollState.scroll(Scroll.Absolute.pixels(finger))
                     beltScrollState.scroll(Scroll.Absolute.pixels(finger))
                     iobScrollState.scroll(Scroll.Absolute.pixels(finger))
+                    if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(finger))
                     val count = activeCount
                     for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(finger))
                     lastMainScroll = finger
@@ -476,6 +487,7 @@ fun GraphsSection(
                 if (zoomOk) {
                     if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(bgZoom))
                     if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(bgZoom))
+                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(Zoom.fixed(bgZoom))
                     val count = activeCount
                     for (i in 0 until count) {
                         if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(bgZoom))
@@ -486,6 +498,7 @@ fun GraphsSection(
                 if (!leader.isFinite()) return@collect
                 beltScrollState.scroll(Scroll.Absolute.pixels(leader))
                 iobScrollState.scroll(Scroll.Absolute.pixels(leader))
+                if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(leader))
                 val count = activeCount
                 for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(leader))
                 for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = leader
@@ -543,6 +556,20 @@ fun GraphsSection(
                     graphViewModel.updateGraphConfig(graphConfig.copy(bgOverlays = current))
                 },
                 onDismiss = { editingBgOverlays = false }
+            )
+        }
+        if (showGraph5) {
+            BgGraphCompose(
+                viewModel = graphViewModel,
+                bgOverlays = graphConfig.bgOverlays,
+                scrollState = g5ScrollState,
+                zoomState = g5ZoomState,
+                derivedTimeRange = derivedTimeRange,
+                nowTimestamp = nowTimestamp,
+                visibleTimeRange = bgVisibleTimeRange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(graphConfig.iobHeight.dp)
             )
         }
         val autoIsfStatus = graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value

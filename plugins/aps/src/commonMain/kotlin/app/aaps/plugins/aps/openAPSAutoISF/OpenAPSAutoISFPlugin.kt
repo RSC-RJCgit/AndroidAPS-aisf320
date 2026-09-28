@@ -1496,6 +1496,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfFastRiseEnabled,
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
             BooleanKey.ApsAutoIsfShowCarbModelCurve,
+            BooleanKey.ApsAutoIsfShowGraph5,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -3134,6 +3135,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.TOD_2200_DOWN -> RunMark.TOD_2200_DOWN
             RemoteToggleCode.TOD_2200_UP -> RunMark.TOD_2200_UP
             RemoteToggleCode.GRAPH2 -> RunMark.GRAPH2
+            RemoteToggleCode.GRAPH5 -> RunMark.GRAPH5
+            RemoteToggleCode.CLEAN_GRAPH -> RunMark.CLEAN_GRAPH
             RemoteToggleCode.CLOUD_LOGS -> RunMark.CLOUD_LOGS
             RemoteToggleCode.MJ_NO -> RunMark.MJ_NO
             RemoteToggleCode.MJ3 -> RunMark.MJ3
@@ -3351,6 +3354,17 @@ open class OpenAPSAutoISFPlugin(
                 preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, next)
                 sendAutoSms("Graph2Toggle: ${if (next) "ON" else "OFF"}")
                 carePortalNote(if (next) "G2On" else "G2Off")
+            }
+            RemoteToggleCode.GRAPH5 -> {
+                val next = !preferences.get(BooleanKey.ApsAutoIsfShowGraph5)
+                preferences.put(BooleanKey.ApsAutoIsfShowGraph5, next)
+                sendAutoSms("Graph5Toggle: ${if (next) "ON" else "OFF"}")
+                carePortalNote(if (next) "G5On" else "G5Off")
+            }
+            RemoteToggleCode.CLEAN_GRAPH -> {
+                preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
+                sendAutoSms("CleanGraph: no SMBs/arrows, solid green")
+                carePortalNote("CGrph")
             }
             RemoteToggleCode.CLOUD_LOGS -> {
                 maintenance.exportCoordinated("REMOTE_TT")

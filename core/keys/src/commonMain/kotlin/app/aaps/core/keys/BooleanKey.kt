@@ -220,6 +220,13 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_show_carb_model_curve,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfShowGraph5(
+        "show_graph5",
+        false,
+        KeysStrings.pref_title_aps_show_graph5,
+        KeysStrings.pref_summary_aps_show_graph5,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTddSensitivity(
         "autoisf_tdd_sensitivity",
         true,

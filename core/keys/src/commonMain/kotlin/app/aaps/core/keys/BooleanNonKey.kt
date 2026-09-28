@@ -75,4 +75,7 @@ enum class BooleanNonKey(
     // Libre raw display smoothing. On until a virtual-pump toggle turns it off. Local only.
     ApsAutoIsfFslUseUkfSmoothing("autoisf_fsl_use_ukf_smoothing", true, exportable = false),
 
+    // One-shot. The overview applies it on the next draw, then clears it.
+    ApsAutoIsfCleanGraphRequested("autoisf_clean_graph_requested", false, exportable = false),
+
 }

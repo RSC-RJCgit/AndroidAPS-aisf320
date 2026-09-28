@@ -339,6 +339,7 @@ class ChipsViewModel(
         return listOf(
             List1Row("Tog Graph2 (carb model curve) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)), 5.138, null),
             List1Row("Cloud logs upload", "send now", 5.140, null),
+            List1Row("Tog Graph5 (main clone) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowGraph5)), 5.142, null),
             List1Row("MJ state: MJ active", "set this state", 5.222, null),
             List1Row("MJ state: MJ2", "set this state", 5.224, null),
             List1Row("MJ state: MJ3", "set this state", 5.146, null),
@@ -371,6 +372,7 @@ class ChipsViewModel(
             List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
             List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalSlope)), 5.026, 5.028),
             List1Row("Libre offset", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
+            List1Row("Clean main graph", "no SMBs, solid green", 5.042, null),
             List1Row("Wizard bolus %", preferences.get(IntKey.OverviewBolusPercentage).toString(), 5.046, 5.048),
             List1Row("Mild boost", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)), 5.052, 5.054),
         )
