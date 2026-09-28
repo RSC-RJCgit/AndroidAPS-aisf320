@@ -157,6 +157,15 @@ internal class NightscoutApi(
         }
     }
 
+    /** The newest Profile Switch, including one older than the treatment history window. */
+    suspend fun getLatestProfileSwitch() = call(HttpMethod.Get, treatmentListSerializer) {
+        nsUrl("v3", "treatments") {
+            encodedParameters.append("eventType", "Profile Switch")
+            encodedParameters.append("sort\$desc", "created_at")
+            encodedParameters.append("limit", "1")
+        }
+    }
+
     suspend fun createTreatment(remoteTreatment: RemoteTreatment) =
         call(HttpMethod.Post, RemoteCreateUpdateResponse.serializer()) {
             nsUrl("v3", "treatments"); jsonBody(remoteTreatment)

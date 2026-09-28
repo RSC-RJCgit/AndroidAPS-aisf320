@@ -62,10 +62,11 @@ interface NsLoadExecutor {
     fun cancel()
 
     /**
-     * Downloads boluses and carbs from the secondary Nightscout site.
+     * Downloads boluses, carbs, and the profile from the secondary Nightscout site.
      *
-     * Kept if one download is already going. It is not part of the main round, so a failure on
-     * this phone's own Nightscout cannot skip it, and it cannot cancel that round.
+     * Kept if one download is already going, unless [force] is set. A full sync sets [force] so the
+     * 2-year site is read again. It is not part of the main round, so a failure on this phone's own
+     * Nightscout cannot skip it, and it cannot cancel that round.
      */
-    fun enqueueSecondaryTreatments()
+    fun enqueueSecondaryTreatments(force: Boolean = false)
 }

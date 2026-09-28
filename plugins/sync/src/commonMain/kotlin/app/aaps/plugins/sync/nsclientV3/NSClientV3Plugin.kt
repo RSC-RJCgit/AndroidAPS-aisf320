@@ -700,6 +700,8 @@ class NSClientV3Plugin(
         storeLastLoadedSrvModified()
         dataSyncSelectorV3.resetToNextFullSync()
         fullSyncRequested.store(true)
+        // The profile list on the 2-year site must be fetched again, not skipped as already seen.
+        preferences.put(LongNonKey.NsClientSecondaryProfileModified, 0L)
     }
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
@@ -1141,15 +1143,19 @@ class NSClientV3Plugin(
         preferences.put(NsclientStringKey.V3LastModified, Json.encodeToString(LastModified.serializer(), lastLoadedSrvModified))
     }
 
-    private fun enqueueSecondaryTreatments() {
+    private fun enqueueSecondaryTreatments(force: Boolean = false) {
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
-        nsLoadExecutor.enqueueSecondaryTreatments()
+        nsLoadExecutor.enqueueSecondaryTreatments(force)
     }
 
     internal fun executeLoop(origin: String) {
+        val fullSync = fullSyncRequested.load()
+        if (fullSync && preferences.get(BooleanKey.NsClientSecondaryEnabled))
+            nsClientRepository.addLog("● RUN", "Full sync also reads the secondary Nightscout")
         // Before the pause and token checks. Virtual 5 Sep: a 401 on the primary site blocked
         // this download all morning, so the virtual pump never saw carbs or boluses.
-        enqueueSecondaryTreatments()
+        // A full sync replaces a download that is already queued, so the 2-year site is read now.
+        enqueueSecondaryTreatments(force = fullSync)
         if (preferences.get(BooleanKey.NsClient3UseWs) && initialLoadFinished) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             nsClientRepository.addLog("● RUN", "paused  $origin")

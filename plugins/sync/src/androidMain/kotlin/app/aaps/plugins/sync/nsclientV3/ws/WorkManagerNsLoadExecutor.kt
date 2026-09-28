@@ -74,10 +74,10 @@ class WorkManagerNsLoadExecutor(
         workManager.cancelUniqueWork(JOB_NAME)
     }
 
-    override fun enqueueSecondaryTreatments() {
+    override fun enqueueSecondaryTreatments(force: Boolean) {
         workManager.enqueueUniqueWork(
             SECONDARY_JOB_NAME,
-            ExistingWorkPolicy.KEEP,
+            if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java).build()
         )
     }

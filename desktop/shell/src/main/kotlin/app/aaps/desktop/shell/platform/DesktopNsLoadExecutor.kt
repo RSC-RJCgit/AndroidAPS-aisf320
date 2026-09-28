@@ -108,8 +108,9 @@ class DesktopNsLoadExecutor(
         round = null
     }
 
-    override fun enqueueSecondaryTreatments() {
-        if (secondary?.isActive == true) return
+    override fun enqueueSecondaryTreatments(force: Boolean) {
+        if (!force && secondary?.isActive == true) return
+        if (force) secondary?.cancel()
         secondary = scope.launch(Dispatchers.IO) { loadSecondary().run() }
     }
 

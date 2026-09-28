@@ -37,6 +37,9 @@ interface NSAndroidClient {
     suspend fun getTreatmentsNewerThan(createdAt: String, limit: Int): ReadResponse<List<NSTreatment>>
     suspend fun getTreatmentsModifiedSince(from: Long, limit: Int): ReadResponse<List<NSTreatment>>
 
+    /** Newest Profile Switch on this site. One row, not the history window. */
+    suspend fun getLatestProfileSwitch(): ReadResponse<List<NSTreatment>>
+
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse
     suspend fun getDeviceStatusModifiedSince(from: Long): List<NSDeviceStatus>
 

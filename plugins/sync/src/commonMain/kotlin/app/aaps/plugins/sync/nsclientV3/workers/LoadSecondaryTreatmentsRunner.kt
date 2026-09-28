@@ -94,6 +94,11 @@ class LoadSecondaryTreatmentsRunner(
         var page = 0
         var continueLoading = true
         val recoveryNote = if (recoveryScan) " (16-day recovery)" else ""
+        nsClientRepository.addLog("◄ SEC-NS", "Reading the profile from the secondary Nightscout")
+        // The profile list has to be in place before a profile switch is stored. A switch that
+        // names a profile this phone does not have yet is dropped, and a later sync does not retry it.
+        downloadProfile(client)
+        downloadLatestProfileSwitch(client)
         nsClientRepository.addLog(
             "◄ SEC-NS",
             "Fetching secondary treatments since ${dateUtil.dateAndTimeAndSecondsString(queryFrom)}$recoveryNote"
@@ -173,7 +178,6 @@ class LoadSecondaryTreatmentsRunner(
         )
         if (page >= MAX_PAGES && continueLoading)
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
-        downloadProfile(client)
         downloadLiveSteps(client)
         downloadGlucose(client)
         return WorkOutcome.Success
@@ -212,6 +216,25 @@ class LoadSecondaryTreatmentsRunner(
         } catch (error: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS profile fetch failed", error)
             nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Profile error")
+        }
+    }
+
+    // The active profile can be older than the 16-day treatment window. Ask for that one row
+    // after the profile list, so the name can be resolved.
+    private suspend fun downloadLatestProfileSwitch(client: NSAndroidClientImpl) {
+        if (!preferences.get(BooleanKey.NsClientAcceptProfileSwitch)) return
+        try {
+            val treatment = client.getLatestProfileSwitch().values.filterIsInstance<NSProfileSwitch>().firstOrNull()
+            if (treatment == null) {
+                nsClientRepository.addLog("◄ SEC-NS", "No profile switch from secondary NS")
+                return
+            }
+            nsIncomingDataProcessor.storeSecondaryProfileSwitch(treatment)
+            storeDataForDb.storeTreatmentsToDb(fullSync = false)
+            nsClientRepository.addLog("◄ SEC-NS", "Profile switch from secondary NS: ${treatment.profile}")
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS profile switch fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Profile switch error")
         }
     }
 

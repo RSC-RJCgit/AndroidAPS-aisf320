@@ -145,7 +145,7 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
 
         sut.executeLoop("TEST")
 
-        verify(nsLoadExecutor).enqueueSecondaryTreatments()
+        verify(nsLoadExecutor).enqueueSecondaryTreatments(false)
         verify(nsLoadExecutor, never()).runChain(any())
     }
 }
