@@ -16,7 +16,9 @@ internal fun timeWindowContains(minuteOfDay: Int, startHour: Int, startMinute: I
  * Mild bolus-boost gate. Marks only. It does not change the delivery ratio, the IOB threshold, or the profile.
  * Raw deltas are Libre raw mg/dL. A missing raw value must be passed as -9999 so the rise gate stays closed.
  * [deliveryBaseline] is the SMB delivery baseline preference. 0.17 is the old tuning point the IOB gate was built from.
- * [iob] is current insulin on board. Mild stays closed at 2.0 U and above.
+ * [iob] is current insulin on board. Mild stays closed at 2.5 U and above.
+ * That ceiling is higher than bg3's flat 2.0 U on purpose. 2.0 U still stops a clear overstack,
+ * as at 09:08. 2.5 U leaves room when glucose stays high and keeps rising, as from 11:49 to 12:00.
  */
 internal fun mildBoostShouldFire(
     readyMild: Boolean,
@@ -64,7 +66,7 @@ internal fun mildBoostShouldFire(
         steps5 <= 100 &&
         steps30 <= 200 &&
         !(bg < 135.1 && iobChange5 > 0.8) &&
-        iob < 2.0
+        iob < 2.5
 }
 
 /**

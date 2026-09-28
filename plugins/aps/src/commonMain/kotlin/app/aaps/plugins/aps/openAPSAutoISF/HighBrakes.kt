@@ -53,12 +53,15 @@ internal fun ttIsFourMmol(lowTargetMgdl: Double?): Boolean {
 }
 
 // Night, day, and dawn plateau brakes. A fire blocks the later brakes in the same loop.
-// A cut-short does not. Missing UKF deltas or a missing hypo prediction block a fire.
+// A cut-short does not. A missing 15-minute UKF rise, or a missing hypo prediction, blocks a fire.
+// The 5-minute UKF rise is not part of this gate. On 19 Sep at 19:57 and 20:10 the fires that
+// ended in a low had a negative 15-minute rise, not a 5-minute one. On 28 Sep from 13:57 to 14:01
+// the 15-minute rise stayed positive while the 5-minute rise flickered negative from noise.
 internal fun highBrakePlan(s: HighBrakeSnapshot): HighBrakePlan {
     val plateau = hiBrkDeltasPlateaued(s.delta, s.shortDelta, s.longDelta)
     val cutNight = ttIsFourMmol(s.ttLowMgdl) && s.nightMarkedWithin6 && (s.iobChange5 >= 1.0 || !plateau)
     val duraDominant = s.duraIsf >= s.acceIsf && s.duraIsf >= s.bgIsf && s.duraIsf >= s.ppIsf
-    val ukfUp = s.ukfDelta5 != null && s.ukfDelta15 != null && s.ukfDelta5 > 0.0 && s.ukfDelta15 > 0.0
+    val ukfUp = s.ukfDelta15 != null && s.ukfDelta15 > 0.0
     val noTarget = s.ttLowMgdl == null
     val iobOk = s.iobChange5 < 0.5
     val shared = s.factorsReady && s.steroidsOff && plateau && noTarget && duraDominant && ukfUp && iobOk

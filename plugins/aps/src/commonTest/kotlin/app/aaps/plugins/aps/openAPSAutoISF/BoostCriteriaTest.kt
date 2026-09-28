@@ -47,9 +47,10 @@ class BoostCriteriaTest {
     }
 
     @Test
-    fun mildStaysOnUnderTwoUnitsAndStopsAtTwo() {
+    fun mildStaysOnUnderTwoPointFiveUnitsAndStopsAtTwoPointFive() {
         assertTrue(mild(iob = 1.96))
-        assertFalse(mild(iob = 2.0))
+        assertTrue(mild(iob = 2.0))
+        assertFalse(mild(iob = 2.5))
         assertFalse(mild(iob = 2.91))
     }
 

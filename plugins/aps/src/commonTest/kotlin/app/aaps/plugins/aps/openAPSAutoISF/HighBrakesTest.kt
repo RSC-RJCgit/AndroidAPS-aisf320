@@ -15,8 +15,14 @@ class HighBrakesTest {
     }
 
     @Test
-    fun nightStaysClosedWhenUkfIsFalling() {
-        val plan = highBrakePlan(sample(minuteOfDay = 23 * 60, bg = 170.0, ukfDelta5 = -1.0))
+    fun nightStaysOpenWhenOnlyTheFiveMinuteUkfRiseFlickersNegative() {
+        val plan = highBrakePlan(sample(minuteOfDay = 23 * 60, bg = 170.0, ukfDelta5 = -1.0, ukfDelta15 = 2.0))
+        assertTrue(plan.fireNight)
+    }
+
+    @Test
+    fun nightStaysClosedWhenTheFifteenMinuteUkfRiseIsNegative() {
+        val plan = highBrakePlan(sample(minuteOfDay = 23 * 60, bg = 170.0, ukfDelta15 = -1.0))
         assertFalse(plan.fireNight)
     }
 
@@ -68,6 +74,7 @@ class HighBrakesTest {
         minuteOfDay: Int,
         bg: Double,
         ukfDelta5: Double? = 2.0,
+        ukfDelta15: Double? = 2.0,
         hp1Mmol: Double? = 7.0,
         ttLowMgdl: Double? = null,
         nightMarkedWithin6: Boolean = false,
@@ -80,7 +87,7 @@ class HighBrakesTest {
         shortDelta = 0.9,
         longDelta = 2.0,
         ukfDelta5 = ukfDelta5,
-        ukfDelta15 = 2.0,
+        ukfDelta15 = ukfDelta15,
         factorsReady = true,
         duraIsf = 1.4,
         acceIsf = 1.0,
