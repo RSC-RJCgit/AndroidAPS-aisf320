@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.RT
 import app.aaps.plugins.aps.openAPS.AccelerationCalculator
 import app.aaps.plugins.aps.openAPS.DeltaCalculator
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
@@ -913,6 +914,26 @@ open class OpenAPSAutoISFPlugin(
                     LiveSteps.reasonText(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now), steps180(now))
                 )
             }
+            val iobThEffective = if (autoIsfFactors.recorded && use_iobTH) iobTHvirtual / iobTHtolerance * 100.0
+            else if (autoIsfFactors.recorded) oapsProfile.max_iob
+            else 0.0
+            if (autoIsfFactors.recorded) {
+                attachAutoIsfForNightscout(
+                    rt = it,
+                    factors = autoIsfFactors,
+                    ukfRawMgdl = ukf.glucose ?: 0.0,
+                    iobThEffective = iobThEffective,
+                    targetMgdl = oapsProfile.target_bg,
+                    uamCarbImpact = determineBasalAutoISF.uamCarbImpactToStore,
+                    smbDeliveryRatio = smb_delivery_ratio,
+                    acceIsfWeight = bgAccel_ISF_weight,
+                    ppIsfWeight = pp_ISF_weight,
+                    fslCalSlope = preferences.get(DoubleKey.FslCalSlope),
+                    cob = mealData.mealCOB,
+                    basal = currentTemp.rate,
+                    profile = oapsProfile,
+                )
+            }
             determineBasalAutoISF.smbStackStartToStore?.let { start ->
                 preferences.put(LongNonKey.ApsAutoIsfSmbStackStart, start)
             }
@@ -950,7 +971,7 @@ open class OpenAPSAutoISFPlugin(
                         iob = iobData.iob,
                         smbDelivered = determineBasalResult.smb,
                         ukfRawBgl = ukf.glucose ?: 0.0,
-                        iobThEffective = if (use_iobTH) iobTHvirtual / iobTHtolerance * 100.0 else oapsProfile.max_iob,
+                        iobThEffective = iobThEffective,
                         targetMgdl = oapsProfile.target_bg,
                         uamCarbImpact = determineBasalAutoISF.uamCarbImpactToStore,
                         smbDeliveryRatio = smb_delivery_ratio,
@@ -5387,6 +5408,48 @@ open class OpenAPSAutoISFPlugin(
         val minutes = (readings[0].timestamp - readings[1].timestamp) / 60_000.0
         if (minutes <= 0.0) return null
         return (readings[0].value - readings[1].value) / minutes * 5.0
+    }
+
+    /**
+     * Copies this loop's AutoISF numbers onto the result Nightscout stores.
+     * A client builds its history row from these fields and from the reason lines.
+     * Delta, SDelta and LDelta are in the phone's glucose units. bg_acce and target stay in mg/dL.
+     */
+    private fun attachAutoIsfForNightscout(
+        rt: RT,
+        factors: AutoIsfFactors,
+        ukfRawMgdl: Double,
+        iobThEffective: Double,
+        targetMgdl: Double,
+        uamCarbImpact: Double,
+        smbDeliveryRatio: Double,
+        acceIsfWeight: Double,
+        ppIsfWeight: Double,
+        fslCalSlope: Double,
+        cob: Double,
+        basal: Double,
+        profile: OapsProfileAutoIsf,
+    ) {
+        rt.autoIsfAcce = factors.acceIsf
+        rt.autoIsfBg = factors.bgIsf
+        rt.autoIsfPp = factors.ppIsf
+        rt.autoIsfDura = factors.duraIsf
+        rt.autoIsfFinal = factors.finalIsf
+        rt.autoIsfUkfRawBgl = ukfRawMgdl
+        val shown = { mgdl: Double -> round(convert_bg_to_units(mgdl, profile), 2) }
+        rt.reason.append("Delta: ${shown(factors.delta)} ;")
+        rt.reason.append("SDelta: ${shown(factors.shortAvgDelta)} ;")
+        rt.reason.append("LDelta: ${shown(factors.longAvgDelta)} ;")
+        rt.reason.append("bg_acce: ${round(factors.bgAcceleration, 2)} ;")
+        rt.reason.append("SMB delivery ratio: ${round(smbDeliveryRatio, 2)} ;")
+        rt.reason.append("iobThEffectiveU: ${round(iobThEffective, 2)} ;")
+        rt.reason.append("FslCalSlope: ${round(fslCalSlope, 2)} ;")
+        rt.reason.append("AcceIsfWeight: ${round(acceIsfWeight, 2)} ;")
+        rt.reason.append("ppIsfWeight: ${round(ppIsfWeight, 2)} ;")
+        rt.reason.append("uamCarbImpact: ${round(uamCarbImpact, 2)} ;")
+        rt.reason.append("mealCOB: ${round(cob, 1)} ;")
+        rt.reason.append("basalRate: ${round(basal, 2)} ;")
+        rt.reason.append("targetMgdl: ${round(targetMgdl, 1)} ;")
     }
 
 }
