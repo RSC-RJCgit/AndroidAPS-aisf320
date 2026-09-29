@@ -258,6 +258,9 @@ fun GraphsSection(
     // A graph moving away from it is the finger.
     val appliedScroll = remember { floatArrayOf(Float.NaN) }
     val appliedZoom = remember { floatArrayOf(Float.NaN) }
+    // The chart under the finger. scroll() on that chart waits until the finger lifts, and that
+    // wait blocks the copy to every chart listed after it. Leave this one alone.
+    val drivingScroll = remember { arrayOfNulls<VicoScrollState>(1) }
 
     // Observe BG graph scroll/zoom and sync to belt + active secondary graphs
     // Keys include ALL state objects — identical pattern to the original working sync
@@ -286,6 +289,13 @@ fun GraphsSection(
                 } else {
                     false
                 }
+                // A finger on the main graph moves every chart, including one that was just driving.
+                val skip = if (userMovedMain) {
+                    drivingScroll[0] = null
+                    null
+                } else {
+                    drivingScroll[0]
+                }
                 val count = activeCount
                 // NaN is not equal to NaN, so an unready zoom would be copied on every tick.
                 // A zoom that is not a real number is left alone. Multiplying it keeps the NaN,
@@ -309,10 +319,10 @@ fun GraphsSection(
                     lastSentScroll = scroll
                     pendingScroll[0] = Float.NaN
                     appliedScroll[0] = scroll
-                    beltScrollState.copyPixelsIfDifferent(scroll)
-                    iobScrollState.copyPixelsIfDifferent(scroll)
-                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scroll)
-                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scroll)
+                    beltScrollState.copyPixelsIfDifferent(scroll, skip)
+                    iobScrollState.copyPixelsIfDifferent(scroll, skip)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scroll, skip)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scroll, skip)
                 }
             }
     }
@@ -437,24 +447,35 @@ fun GraphsSection(
                     return@collect
                 }
                 // A drag on a lower graph moves every other graph, including the main one.
-                // The chart under the finger is already there. Vico will not move that chart until
-                // the finger lifts, so the copy must not call scroll on it.
+                // scroll() on the chart under the finger waits until the finger lifts. That wait
+                // used to stop the copy, so the other charts never moved during the drag.
                 // A jump back to the start while the main graph is still showing hours is a rebuild.
-                suspend fun shareScroll(place: Float) {
+                fun driverAt(index: Int): VicoScrollState {
+                    if (index <= 0) return iobScrollState
+                    val secondaryIndex = index - 1
+                    val count = activeCount
+                    return if (secondaryIndex < count) secScrollStates[secondaryIndex] else g5ScrollState
+                }
+                suspend fun shareScroll(place: Float, driver: VicoScrollState?) {
                     pendingScroll[0] = place
                     appliedScroll[0] = place
+                    drivingScroll[0] = driver
                     followNow = false
                     graphViewModel.onGraphInteraction()
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
-                    bgScrollState.copyPixelsIfDifferent(place)
-                    beltScrollState.copyPixelsIfDifferent(place)
-                    iobScrollState.copyPixelsIfDifferent(place)
-                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(place)
+                    bgScrollState.copyPixelsIfDifferent(place, driver)
+                    // Our copy moved the main graph. Record it now so the next tick does not
+                    // treat that move as a finger on the main graph and drop the rest of the drag.
+                    lastMainScroll = bgScrollState.value
+                    beltScrollState.copyPixelsIfDifferent(place, driver)
+                    iobScrollState.copyPixelsIfDifferent(place, driver)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(place, driver)
                     val count = activeCount
-                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(place)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(place, driver)
                 }
                 if (!pendingScroll[0].isNaN()) {
                     var newer: Float? = null
+                    var newerIndex = -1
                     for (i in states.indices) {
                         if (i >= lastFollowerScroll.size) break
                         val scroll = states[i].first
@@ -464,18 +485,20 @@ fun GraphsSection(
                         val toward = abs(scroll - pendingScroll[0]) < abs(prev - pendingScroll[0])
                         if (moved && !toward) {
                             newer = scroll
+                            newerIndex = i
                             break
                         }
                     }
                     if (newer != null) {
-                        shareScroll(newer)
+                        shareScroll(newer, driverAt(newerIndex))
                     } else {
                         val place = pendingScroll[0]
-                        shareScroll(place)
+                        shareScroll(place, drivingScroll[0])
                         pendingScroll[0] = Float.NaN
                     }
                 } else {
                     var finger: Float? = null
+                    var fingerIndex = -1
                     for (i in states.indices) {
                         if (i >= lastFollowerScroll.size) break
                         val scroll = states[i].first
@@ -487,11 +510,12 @@ fun GraphsSection(
                             abs(scroll - appliedScroll[0]) < abs(prev - appliedScroll[0])
                         if (moved && !rebuild && !towardApplied) {
                             finger = scroll
+                            fingerIndex = i
                             break
                         }
                     }
                     if (finger != null && finger.isFinite()) {
-                        shareScroll(finger)
+                        shareScroll(finger, driverAt(fingerIndex))
                     }
                 }
                 // A pinch on any graph sets the same width on every graph, including the main one.
@@ -969,9 +993,11 @@ private fun GraphSeriesBottomSheet(
     }
 }
 
-// Vico waits until the finger is off a chart before scroll() runs. A chart already at the
-// target is left alone. That includes the chart under the finger.
-private suspend fun VicoScrollState.copyPixelsIfDifferent(place: Float) {
+// Vico waits until the finger is off a chart before scroll() runs. Calling it on the chart
+// under the finger blocks every chart copied after that one, so the drag never reaches them.
+// `skip` is that chart. A chart already at the target is left alone too.
+private suspend fun VicoScrollState.copyPixelsIfDifferent(place: Float, skip: VicoScrollState? = null) {
+    if (this === skip) return
     val current = value
     if (!current.isFinite() || abs(current - place) <= 1f) return
     scroll(Scroll.Absolute.pixels(place))
