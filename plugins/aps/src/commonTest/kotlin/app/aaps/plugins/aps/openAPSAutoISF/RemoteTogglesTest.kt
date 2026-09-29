@@ -103,6 +103,7 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.STEROID_BUTTON, remoteToggleCode(mgdl(5.166)))
         assertEquals(RemoteToggleCode.LOCATION_SMS, remoteToggleCode(mgdl(5.198)))
         assertEquals(RemoteToggleCode.LOCATION_THIS_PHONE, remoteToggleCode(mgdl(5.204)))
+        assertEquals(RemoteToggleCode.LIVE_STEPS, remoteToggleCode(mgdl(5.206)))
         assertEquals(RemoteToggleCode.INSULIN_TOTALS, remoteToggleCode(mgdl(5.232)))
         assertNull(remoteToggleCode(mgdl(5.154)))
         assertNull(remoteToggleCode(mgdl(5.0)))

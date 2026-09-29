@@ -96,6 +96,7 @@ internal enum class RemoteToggleCode {
     PEAK_INSULIN_UP,
     LOCATION_SMS,
     LOCATION_THIS_PHONE,
+    LIVE_STEPS,
     INSULIN_TOTALS,
 }
 
@@ -188,6 +189,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.196, 0.0001) -> RemoteToggleCode.UKF1_DOSING
     ttNear(ttMgdl, 5.198, 0.0001) -> RemoteToggleCode.LOCATION_SMS
     ttNear(ttMgdl, 5.204, 0.0001) -> RemoteToggleCode.LOCATION_THIS_PHONE
+    ttNear(ttMgdl, 5.206, 0.0001) -> RemoteToggleCode.LIVE_STEPS
     ttNear(ttMgdl, 5.232, 0.0001) -> RemoteToggleCode.INSULIN_TOTALS
     ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
     ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP

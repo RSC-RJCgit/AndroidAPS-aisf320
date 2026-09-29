@@ -145,6 +145,7 @@ internal object RunMark {
     const val STEROID_BUTTON = "SteroidKotlinButtonToggleTT"
     const val LOCATION_SMS = "LocationSmsToggleTT"
     const val LOCATION_THIS_PHONE = "LocationSmsThisPhoneTT"
+    const val LIVE_STEPS = "LiveStepsOnVirtualToggleTT"
     const val INSULIN_TOTALS = "InsulinTotalsToggleTT"
     const val SETTINGS_EXPORT_ACCESS = "SettingsExportLocalAccessSms"
     const val ANYDESK = "AnyDeskRestartActionTT"

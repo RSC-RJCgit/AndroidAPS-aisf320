@@ -3287,6 +3287,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_BUTTON -> RunMark.STEROID_BUTTON
             RemoteToggleCode.LOCATION_SMS -> RunMark.LOCATION_SMS
             RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
+            RemoteToggleCode.LIVE_STEPS -> RunMark.LIVE_STEPS
             RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
         }
         if (!runMarks.ready(mark, 2, now)) return false
@@ -3562,6 +3563,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_BUTTON -> toggleBool(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, "Steroid buttons", "StB")
             RemoteToggleCode.LOCATION_SMS -> toggleBool(BooleanKey.AutomationCodedLocationsEnabled, "Location texts", "Loc")
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
+            RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Live steps on virtual", "LSt")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
         }
     }
@@ -3712,13 +3714,21 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // The live phone's injection note. Only the exact text "MJ active" is copied. MJ2 and the rest are not.
+    // A note this phone wrote itself is skipped. The press that wrote it already set the state.
+    // A note downloaded from the live site still sets the state.
     private suspend fun applyLiveMjNote(now: Long) {
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
         if (config.AAPSCLIENT || !preferences.get(BooleanKey.AutomationStatesEnabled)) return
         val seen = preferences.get(LongNonKey.ApsAutoIsfMjActiveNoteAt)
         val from = if (seen == 0L) now - 16L * 24 * 60 * 60 * 1000 else seen
+        val writtenHere = persistenceLayer.getUserEntryDataFromTime(from)
+            .filter { it.source == Sources.Automation && it.note.trim() == "MJ active" }
+            .map { it.timestamp }
+            .toSet()
         val hit = persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, true)
-            .filter { it.isValid && it.timestamp > seen && it.note?.trim() == "MJ active" }
+            .filter {
+                it.isValid && it.timestamp > seen && it.note?.trim() == "MJ active" && it.timestamp !in writtenHere
+            }
             .maxByOrNull { it.timestamp } ?: return
         val store = states()
         if (store.hasStateValues("MJ") && "MJ active" in store.getStateValues("MJ") && !store.inState("MJ", "MJ active")) {

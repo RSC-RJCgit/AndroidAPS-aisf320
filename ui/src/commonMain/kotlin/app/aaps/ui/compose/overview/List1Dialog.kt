@@ -16,18 +16,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
+import app.aaps.ui.compose.overview.chips.CodedProfileRole
 import app.aaps.ui.compose.overview.chips.List1Row
 
 @Composable
 fun List1Dialog(viewModel: ChipsViewModel) {
     val rows = remember(viewModel.list1Generation, viewModel.list1Open) { viewModel.list1Rows() }
+    var pickProfiles by remember { mutableStateOf(false) }
     DirectListDialog(
         open = viewModel.list1Open,
         title = "Direct AutoISF settings",
         rows = rows,
         onDismiss = viewModel::closeList1,
         onApply = viewModel::applyList1,
+        onPickProfiles = { pickProfiles = true },
     )
+    if (pickProfiles) {
+        CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false })
+    }
 }
 
 @Composable
@@ -49,6 +55,7 @@ private fun DirectListDialog(
     rows: List<List1Row>,
     onDismiss: () -> Unit,
     onApply: (Double) -> Unit,
+    onPickProfiles: () -> Unit = {},
 ) {
     if (!open) return
     var picked by remember { mutableStateOf<List1Row?>(null) }
@@ -58,7 +65,9 @@ private fun DirectListDialog(
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                 items(rows, key = { it.label }) { row ->
-                    TextButton(onClick = { picked = row }) {
+                    TextButton(onClick = {
+                        if (row.pickProfiles) onPickProfiles() else picked = row
+                    }) {
                         Column {
                             Text(row.label)
                             Text("Current: ${row.current}")
@@ -80,7 +89,9 @@ private fun DirectListDialog(
             title = { Text(row.label) },
             text = { Text("Current: ${row.current}") },
             confirmButton = {
-                if (up == null) {
+                if (row.readOnly) {
+                    TextButton(onClick = { picked = null }) { Text("Close") }
+                } else if (up == null) {
                     TextButton(onClick = {
                         onApply(row.downMmol)
                         picked = null
@@ -103,4 +114,72 @@ private fun DirectListDialog(
             }
         )
     }
+}
+
+@Composable
+private fun CodedProfileDialog(viewModel: ChipsViewModel, onDismiss: () -> Unit) {
+    var role by remember { mutableStateOf<CodedProfileRole?>(null) }
+    var refuse by remember { mutableStateOf("") }
+    val chosen = role
+    if (chosen == null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Re-pick coded profiles") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(viewModel.codedProfileRoles(), key = { it.title }) { item ->
+                        val value = viewModel.codedRoleValue(item)
+                        TextButton(onClick = {
+                            role = item
+                            refuse = ""
+                        }) {
+                            Column {
+                                Text(item.title)
+                                Text(if (value.isBlank()) "(not set)" else value)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        )
+        return
+    }
+    val names = viewModel.profileNames()
+    AlertDialog(
+        onDismissRequest = { role = null },
+        title = { Text(chosen.title) },
+        text = {
+            Column {
+                if (refuse.isNotEmpty()) Text(refuse)
+                if (names.isEmpty()) {
+                    Text("No profiles to pick.")
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                        if (chosen.optional) {
+                            item(key = "unset") {
+                                TextButton(onClick = {
+                                    viewModel.setCodedRole(chosen, "")
+                                    role = null
+                                }) { Text("(not set)") }
+                            }
+                        }
+                        items(names, key = { it }) { name ->
+                            TextButton(onClick = {
+                                val reason = viewModel.setCodedRole(chosen, name)
+                                if (reason.isEmpty()) role = null else refuse = reason
+                            }) { Text(name) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = { role = null }) { Text("Back") }
+        }
+    )
 }
