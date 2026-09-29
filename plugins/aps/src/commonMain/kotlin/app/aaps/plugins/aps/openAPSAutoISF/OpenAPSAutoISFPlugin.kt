@@ -419,10 +419,14 @@ open class OpenAPSAutoISFPlugin(
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
+        val ukf = ukfRawNow(now)
+        val liveHp2 = ukf.delta5?.let {
+            hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iobData.iob, mealData.mealCOB)
+        }
         if (autoIsfMode) {
             consoleError = mutableListOf()
             consoleLog = mutableListOf()
-            variableSensitivity = autoISF(profile, autoIsfFactors)
+            variableSensitivity = autoISF(profile, autoIsfFactors, iobData.iob, liveHp2)
         }
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
@@ -546,7 +550,6 @@ open class OpenAPSAutoISFPlugin(
         //aapsLogger.debug(LTag.APS, "AutoISF extras:     ${Json.encodeToString(OapsProfile.serializer(), oapsProfile)}")
 
         val raw5 = rawDelta5MinMgdl(now)
-        val ukf = ukfRawNow(now)
         val smb10 = smbSum(now, 10 * 60 * 1000L)
         val sub75Note = updateSub75Mark(runMarks, now, glucoseStatus.glucose, glucoseStatus.delta, smb10)
         if (sub75Note == "arm") aapsLogger.debug(LTag.APS, "sc7.5 cooldown armed, 10 min SMB $smb10")
@@ -1065,7 +1068,7 @@ open class OpenAPSAutoISFPlugin(
     fun convert_bg_to_units(value: Double, profile: OapsProfileAutoIsf): Double =
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
-    suspend fun autoISF(profile: Profile, factors: AutoIsfFactors? = null): Double {
+    suspend fun autoISF(profile: Profile, factors: AutoIsfFactors? = null, iob: Double = 0.0, hpMmol: Double? = null): Double {
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = applyUkf1DosingOverride(glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData = false))
 
@@ -1268,7 +1271,16 @@ open class OpenAPSAutoISFPlugin(
                 // fight the resistance at high levels
                 val dura05Weight = dura05 / 60
                 val avg05Weight = weightISF / target_bg
-                dura_ISF += dura05Weight * avg05Weight * (avg05 - target_bg)
+                var duraBoost = dura05Weight * avg05Weight * (avg05 - target_bg)
+                val taper = duraIobTaperFactor(iob, hpMmol)
+                if (hpMmol != null && hpMmol > 7.0) {
+                    consoleError.add("dura_ISF IOB taper disabled: HP2=${round(hpMmol, 2)} > 7.0")
+                }
+                if (taper < 1.0) {
+                    consoleError.add("dura_ISF IOB taper: IOB ${round(iob, 2)} -> x${round(taper, 2)}")
+                    duraBoost *= taper
+                }
+                dura_ISF += duraBoost
                 sens_modified = true
                 consoleError.add("dura_ISF adaptation is ${round(dura_ISF, 2)} because ISF ${round(sens, 1)} did not do it for ${round(dura05, 1)}m")
             }
@@ -2051,9 +2063,13 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("UsuIP-$usualBlock")
             aapsLogger.debug(LTag.APS, "Usual2 block $usualBlock")
         }
-        // The prediction branch stays closed: it needs the UKF raw 5 minute change.
-        // The acceleration weight is not lowered. A drop to 0.10 would stay, because the restore only raises it.
+        // HP2 uses the UKF 5 minute change. HP1 uses the plain Libre 5 minute change, so the
+        // two predictions are not the same number. A bolus or carbs in the last 20 minutes
+        // closes only this prediction branch. The acceleration weight is not lowered here.
         val acceNow = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+        val hp = rawDelta5.takeIf { it > -9000.0 }?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val hp1 = rawDelta5MinMgdl(now)?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val recentBolusOrCarbs = lastBolusMin < 20 || (minutesSinceLastCarbs(now) ?: Int.MAX_VALUE) < 20
         val hypo1 = alarmHypo1ShouldFire(
             ready = runMarks.ready(RunMark.ALARM_HYPO_1, 15, now),
             bg = bg,
@@ -2062,9 +2078,9 @@ open class OpenAPSAutoISFPlugin(
             acceWeight = acceNow,
             minuteOfDay = minuteOfDay,
             steps60 = steps60(now),
-            hp = null,
-            hp1 = null,
-            recentBolusOrCarbs = false,
+            hp = hp,
+            hp1 = hp1,
+            recentBolusOrCarbs = recentBolusOrCarbs,
         )
         val hypo2 = alarmHypo2ShouldFire(
             ready = runMarks.ready(RunMark.ALARM_HYPO_2, 15, now),
@@ -2073,9 +2089,9 @@ open class OpenAPSAutoISFPlugin(
             shortDelta = shortDelta,
             acceWeight = acceNow,
             steps30 = steps30,
-            hp = null,
-            hp1 = null,
-            recentBolusOrCarbs = false,
+            hp = hp,
+            hp1 = hp1,
+            recentBolusOrCarbs = recentBolusOrCarbs,
         )
         if (hypo1 || hypo2) {
             preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, now)

@@ -492,14 +492,28 @@ internal fun highStepsSmbCut(
     return SmbStepResult(microBolus, "")
 }
 
-// Predicted glucose in mmol/L. 3.2.1 uses a smoothed raw line. This app uses the Libre raw
-// 5 minute change until that smoother is here. Missing raw means no prediction.
+// Predicted glucose in mmol/L. The caller chooses the 5 minute change: UKF for HP2, plain
+// Libre raw for HP1. Both use this same shape.
 internal fun hypoPrediction2Mmol(bg: Double, shortDelta: Double, rawDelta5: Double, iob: Double, cob: Double): Double {
     val mmol = 18.0182
     return (bg / mmol - iob) +
         0.25 * (shortDelta / mmol) +
         0.25 * (rawDelta5 / mmol) +
         cob / 12.0
+}
+
+// Shrinks the dura boost as insulin on board rises. Full boost at 1.5 U and below, 30% of the
+// boost at 3.0 U and above. A 2 hour prediction above 7.0 mmol/L keeps the full boost.
+internal fun duraIobTaperFactor(iob: Double, hpMmol: Double?): Double {
+    val start = 1.5
+    val end = 3.0
+    val floor = 0.3
+    return when {
+        hpMmol != null && hpMmol > 7.0 -> 1.0
+        iob <= start                    -> 1.0
+        iob >= end                      -> floor
+        else                            -> 1.0 - (1.0 - floor) * (iob - start) / (end - start)
+    }
 }
 
 // Extra 25% cut in the day when FastRise already reduced the SMB, the person is walking a little,
