@@ -26,6 +26,8 @@ import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.queue.CommandQueue
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.plugins.aps.openAPS.AccelerationCalculator
 import app.aaps.plugins.aps.openAPS.DeltaCalculator
@@ -88,6 +90,7 @@ import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.plannedRemainingMinutes
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.icons.IcPluginOpenAPS
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
@@ -103,6 +106,7 @@ import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
+import dev.zacsweers.metro.Provider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -150,6 +154,9 @@ open class OpenAPSAutoISFPlugin(
     private val anyDeskFront: AnyDeskFront,
     private val importExportPrefs: ImportExportPrefs,
     private val exportPasswordDataStore: ExportPasswordDataStore,
+    private val apkInstall: ApkInstallFront,
+    private val commandQueue: CommandQueue,
+    private val bolusWizard: Provider<BolusWizard>,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -245,6 +252,11 @@ open class OpenAPSAutoISFPlugin(
             list1Job = pluginScope.launch {
                 rxBus.toFlow(EventAutoIsfDirectTtCode::class).collect { event ->
                     applyDirectListCode(event.mmol)
+                }
+            }
+            apkInstall.listenForShizukuGrant {
+                pluginScope.launch {
+                    installNewestApk("shizuku-granted")
                 }
             }
         }
@@ -595,6 +607,19 @@ open class OpenAPSAutoISFPlugin(
             tempTargetSet = isTempTarget,
         )
         if (applyRemoteToggles(now)) isTempTarget = false
+        maybeAutoInstallApk(now, isTempTarget)
+        applyVirtualPseudoWizard(
+            now = now,
+            bg = glucoseStatus.glucose,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0,
+            ukfMgdl = ukf.glucose ?: 0.0,
+            hp = liveHp2,
+            mealCob = mealData.mealCOB,
+            steps60 = stepSample?.steps60min ?: 0,
+            factors = autoIsfFactors,
+            profile = profile,
+        )
         applyLiveMjNote(now)
         applySetRoleDuration(now)
         smbBoostedThisCycle = false
@@ -3305,8 +3330,15 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
             RemoteToggleCode.LIVE_STEPS -> RunMark.LIVE_STEPS
             RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
+            RemoteToggleCode.STAGE_APK -> RunMark.STAGE_APK
+            RemoteToggleCode.INSTALL_APK -> RunMark.INSTALL_APK
+            RemoteToggleCode.ADB_START -> RunMark.ADB_START
         }
-        if (!runMarks.ready(mark, 2, now)) return false
+        val waitMin = when (code) {
+            RemoteToggleCode.STAGE_APK, RemoteToggleCode.INSTALL_APK, RemoteToggleCode.ADB_START -> 5
+            else -> 2
+        }
+        if (!runMarks.ready(mark, waitMin, now)) return false
         applyToggleAction(code)
         persistenceLayer.cancelCurrentTemporaryTargetIfAny(
             timestamp = now,
@@ -3581,6 +3613,9 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
             RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Live steps on virtual", "LSt")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
+            RemoteToggleCode.STAGE_APK -> stageNewestApk("list", notify = true)
+            RemoteToggleCode.INSTALL_APK -> installNewestApk("list")
+            RemoteToggleCode.ADB_START -> attemptAdbWirelessStart("list")
         }
     }
 
@@ -3834,6 +3869,300 @@ open class OpenAPSAutoISFPlugin(
             .map { it.replace("\\s+".toRegex(), "") }
             .filter { it.isNotEmpty() }
             .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+    }
+
+    // A client never copies or installs. Drive is not fetched here: the APK must already be on the phone.
+    private suspend fun stageNewestApk(reason: String, notify: Boolean): StageOutcome {
+        if (config.AAPSCLIENT) {
+            aapsLogger.info(LTag.APS, "APK stage skipped on a client ($reason)")
+            return StageOutcome(ok = false, copiedByApp = false, detail = "client", featureNumber = null)
+        }
+        val outcome = withContext(Dispatchers.IO) { apkInstall.stageNewest() }
+        outcome.featureNumber?.let { preferences.put(LongNonKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
+        if (notify) {
+            if (outcome.ok) {
+                carePortalNote("ApkSt")
+                sendAutoSms("APK staged: ${outcome.detail}")
+            } else {
+                carePortalNote("ApkNf")
+                sendAutoSms("APK stage failed: ${outcome.detail}")
+            }
+        }
+        return outcome
+    }
+
+    // Stage first, then Shizuku pm install -r. Replacing this app kills the process after ApkGo.
+    // The shell starts the app again. A client never installs.
+    private suspend fun installNewestApk(reason: String, alreadyStaged: StageOutcome? = null) {
+        if (config.AAPSCLIENT) {
+            aapsLogger.info(LTag.APS, "Shizuku APK install skipped on a client ($reason)")
+            return
+        }
+        val stage = alreadyStaged ?: stageNewestApk(reason, notify = true)
+        if (activePlugin.activePump is VirtualPump) {
+            val (started, detail) = withContext(Dispatchers.IO) {
+                apkInstall.attemptAdbStart(preferences.get(IntKey.ApsAutoIsfAdbConnectPort))
+            }
+            aapsLogger.info(LTag.APS, "ADB wireless start before install: started=$started $detail")
+        }
+        var shizukuUp = apkInstall.shizukuRunning()
+        if (!shizukuUp) {
+            repeat(4) {
+                try {
+                    Thread.sleep(400L)
+                } catch (_: InterruptedException) {
+                }
+                shizukuUp = apkInstall.shizukuRunning()
+                if (shizukuUp) return@repeat
+            }
+        }
+        if (!shizukuUp) {
+            carePortalNote("ApkSz")
+            val newest = apkInstall.newestStaged()
+            sendAutoSms(
+                "Shizuku APK install: binder not connected " +
+                    "(aapsStage=${stage.copiedByApp} newest=${newest?.path ?: "missing"}). " +
+                    "Shizuku has to be running."
+            )
+            return
+        }
+        if (!apkInstall.shizukuGranted()) {
+            carePortalNote("ApkNg")
+            sendAutoSms("Shizuku APK install: grant AAPS in the Shizuku prompt, then retry")
+            apkInstall.requestShizukuPermission()
+            return
+        }
+        val apk = apkInstall.newestStaged()
+        if (apk == null) {
+            carePortalNote("ApkNf")
+            sendAutoSms("Shizuku APK install: missing aapsNewestAPK.apk under AAPS3/newest or AAPS333/newest")
+            return
+        }
+        preferences.put(LongNonKey.ApsAutoIsfApkAutoLastAt, dateUtil.now())
+        apk.featureNumber?.let { preferences.put(LongNonKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
+        carePortalNote("ApkGo")
+        val incomingN = apk.featureNumber ?: apkFeatureNumber(apk.versionName)
+        val currentN = apkFeatureNumber(apkInstall.runningVersionName())
+        val nnn = when {
+            incomingN != null && currentN != null -> "aisf321UK_$incomingN (running $currentN)"
+            incomingN != null -> "aisf321UK_$incomingN"
+            else -> apk.path
+        }
+        sendAutoSms("Shizuku APK install starting: $nnn ($reason)")
+        val (ok, detail) = withContext(Dispatchers.IO) { apkInstall.installStaged() }
+        aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.path}: $detail")
+        if (ok) {
+            carePortalNote("ApkOk")
+            sendAutoSms("Shizuku APK install Success ($reason)")
+        } else {
+            carePortalNote("ApkMs")
+            sendAutoSms("Shizuku APK install failed: $detail")
+        }
+    }
+
+    // List row 5.208. Virtual pump only. A live pump and a client do not try.
+    private suspend fun attemptAdbWirelessStart(reason: String) {
+        if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
+            aapsLogger.info(LTag.APS, "ADB wireless start skipped: virtual pump only ($reason)")
+            return
+        }
+        val (ok, detail) = withContext(Dispatchers.IO) {
+            apkInstall.attemptAdbStart(preferences.get(IntKey.ApsAutoIsfAdbConnectPort))
+        }
+        aapsLogger.info(LTag.APS, "ADB wireless start ($reason): ok=$ok $detail")
+        carePortalNote(if (ok) "AdbStOk" else "AdbStNg")
+        sendAutoSms("ADB wireless start attempt: $detail")
+    }
+
+    private fun maybeAutoInstallApk(now: Long, tempTargetSet: Boolean) {
+        if (config.AAPSCLIENT) return
+        if (!runMarks.ready(RunMark.AUTO_APK, 15, now)) return
+        runMarks.mark(RunMark.AUTO_APK, now)
+        val boostActive = tempTargetSet ||
+            runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 5, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN_BG3, 5, now) ||
+            runMarks.recent(RunMark.BOLUS_GIVEN, 5, now) ||
+            runMarks.recent(RunMark.UAM_BST, 5, now)
+        pluginScope.launch {
+            tryAutoInstallNewerApk(boostActive)
+        }
+    }
+
+    private suspend fun tryAutoInstallNewerApk(boostActive: Boolean) {
+        if (config.AAPSCLIENT) return
+        val stage = if (boostActive) null else stageNewestApk("auto-15min", notify = false)
+        val staged = if (stage?.ok == true) apkInstall.newestStaged() else null
+        val incomingN = staged?.featureNumber ?: apkFeatureNumber(staged?.versionName)
+        val currentN = apkFeatureNumber(apkInstall.runningVersionName())
+        incomingN?.let { preferences.put(LongNonKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
+        val choice = autoApkChoice(
+            boostActive = boostActive,
+            stageOk = stage?.ok == true,
+            lastInstallAt = preferences.get(LongNonKey.ApsAutoIsfApkAutoLastAt),
+            now = dateUtil.now(),
+            incomingN = incomingN,
+            currentN = currentN,
+            shizukuGranted = apkInstall.shizukuGranted(),
+        )
+        when (choice) {
+            AutoApkChoice.INSTALL -> {
+                carePortalNote("ApkAuto")
+                sendAutoSms("Auto APK $currentN -> $incomingN; ${stage?.detail ?: ""}")
+                installNewestApk("auto-15min", alreadyStaged = stage)
+            }
+            AutoApkChoice.DEFER_BOOST ->
+                aapsLogger.info(LTag.APS, "Auto APK deferred: a boost is active or just fired")
+            AutoApkChoice.STAGE_MISS ->
+                aapsLogger.info(LTag.APS, "Auto APK stage miss: ${stage?.detail}")
+            AutoApkChoice.COOLDOWN ->
+                aapsLogger.debug(LTag.APS, "Auto APK cooldown")
+            AutoApkChoice.NO_NNN ->
+                aapsLogger.info(LTag.APS, "Auto APK skip: no NNN incoming=$incomingN current=$currentN")
+            AutoApkChoice.NOT_NEWER ->
+                aapsLogger.debug(LTag.APS, "Auto APK not newer $incomingN <= $currentN")
+            AutoApkChoice.NO_PERMISSION ->
+                aapsLogger.info(LTag.APS, "Auto APK $currentN -> $incomingN; Shizuku not granted")
+        }
+    }
+
+    // Correction bolus on a virtual pump only. The wizard uses carbs in the sum and records none.
+    private suspend fun applyVirtualPseudoWizard(
+        now: Long,
+        bg: Double,
+        shortDelta: Double,
+        bgAcceleration: Double,
+        ukfMgdl: Double,
+        hp: Double?,
+        mealCob: Double,
+        steps60: Int,
+        factors: AutoIsfFactors,
+        profile: Profile,
+    ) {
+        val virtualPump = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+        val noTempTarget = persistenceLayer.getTemporaryTargetActiveAt(now) == null
+        val lastNormalBolusMinutes = minutesSinceLastPositiveNormalBolus(now)
+        val allBgHigh = allRecentBgAbove90Minutes(now, 8.0 * Constants.MMOLL_TO_MGDL)
+        val duraActiveMinutes = recentAdaptationMinutes(now, factors) { it.duraIsf }
+        val acceActiveMinutes = recentAdaptationMinutes(now, factors) { it.acceIsf }
+        val cooldownReady = runMarks.ready(RunMark.VIRTUAL_PSEUDO, 90, now)
+        val ready = pseudoWizardReady(
+            virtualPump = virtualPump,
+            ukfMgdl = ukfMgdl,
+            bgAcceleration = bgAcceleration,
+            shortAvgDelta = shortDelta,
+            allBgHigh = allBgHigh,
+            duraActiveMinutes = duraActiveMinutes,
+            acceActiveMinutes = acceActiveMinutes,
+            mealCob = mealCob,
+            noTempTarget = noTempTarget,
+            steps60 = steps60,
+            bgMgdl = bg,
+            hp = hp,
+            lastNormalBolusMinutes = lastNormalBolusMinutes,
+            cooldownReady = cooldownReady,
+            bolusInQueue = commandQueue.bolusInQueue(),
+        )
+        consoleError.add(
+            "VirtualPseudoWizard ${if (ready) "READY" else "blocked"}: " +
+                "virtual=$virtualPump ukf=${decimals(ukfMgdl / Constants.MMOLL_TO_MGDL, 1)} " +
+                "acce=${decimals(bgAcceleration, 2)} SDelta=${decimals(shortDelta / Constants.MMOLL_TO_MGDL, 2)} " +
+                "allBG90>8=$allBgHigh duraMin=${decimals(duraActiveMinutes, 1)} " +
+                "acceMin=${decimals(acceActiveMinutes, 1)} COB=${decimals(mealCob, 1)} " +
+                "noTT=$noTempTarget steps60=$steps60 HP2=${hp?.let { decimals(it, 1) } ?: "--"} " +
+                "noNormalBolus120=${lastNormalBolusMinutes >= 120} cooldown90=$cooldownReady " +
+                "queueFree=${!commandQueue.bolusInQueue()}"
+        )
+        if (!ready) return
+        val calculationCarbs = pseudoWizardCalculationCarbs(bg)
+        val wizard = bolusWizard().doCalc(
+            profile = profile,
+            profileName = profileFunction.getProfileName(),
+            tempTarget = null,
+            carbs = calculationCarbs,
+            cob = 0.0,
+            bg = bg,
+            correction = 0.0,
+            useBg = true,
+            useCob = false,
+            includeBolusIOB = true,
+            includeBasalIOB = true,
+            useSuperBolus = false,
+            useTT = false,
+            useTrend = false,
+            useAlarm = false,
+            notes = "Virtual-only pseudo-wizard; calculationCarbs=${calculationCarbs}g; zero carbs recorded",
+            positiveIOBOnly = false,
+        )
+        val insulin = wizard.insulinAfterConstraints
+        if (insulin <= 0.0 || activePlugin.activePump !is VirtualPump) {
+            consoleError.add("VirtualPseudoWizard no dose: constrained Wizard result=${decimals(insulin, 2)}")
+            return
+        }
+        val bolusInfo = DetailedBolusInfo().apply {
+            this.insulin = insulin
+            carbs = 0.0
+            eventType = TE.Type.CORRECTION_BOLUS
+            mgdlGlucose = bg
+            glucoseType = TE.MeterType.SENSOR
+            bolusCalculatorResult = wizard.createBolusCalculatorResult()
+            notes = "Virtual-only pseudo-wizard; calculationCarbs=${calculationCarbs}g; zero carbs recorded"
+            bolusType = BS.Type.NORMAL
+        }
+        val result = commandQueue.bolus(bolusInfo)
+        if (result.success) {
+            runMarks.mark(RunMark.VIRTUAL_PSEUDO, now)
+            aapsLogger.info(LTag.APS, "VirtualPseudoWizard SUCCESS ${decimals(insulin, 2)}U")
+            carePortalNote("VirtualPseudoWizard SUCCESS ${decimals(insulin, 2)}U (calcCarbs=${calculationCarbs}g)")
+        } else {
+            aapsLogger.error(LTag.APS, "VirtualPseudoWizard FAILED: ${result.comment}")
+            carePortalNote("VirtualPseudoWizard FAILED: ${result.comment}")
+        }
+    }
+
+    private suspend fun allRecentBgAbove90Minutes(now: Long, minimumMgdl: Double): Boolean {
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(90).msecs(), now, ascending = true)
+        if (readings.size < 10) return false
+        if (readings.first().timestamp > now - T.mins(85).msecs()) return false
+        if (readings.last().timestamp < now - T.mins(10).msecs()) return false
+        if (readings.zipWithNext().any { (older, newer) -> newer.timestamp - older.timestamp > T.mins(10).msecs() }) return false
+        return readings.all { it.value > minimumMgdl }
+    }
+
+    // Minutes in the last 15 where that factor was above 1. A gap longer than 5 minutes does not count.
+    private suspend fun recentAdaptationMinutes(now: Long, factors: AutoIsfFactors, selector: (AIV) -> Double): Double {
+        val start = now - T.mins(15).msecs()
+        val stored = persistenceLayer.getAutoIsfValuesFromTimeToTime(start, now)
+            .filter { it.timestamp in start..now }
+            .distinctBy { it.timestamp }
+            .sortedBy { it.timestamp }
+        val current = if (factors.recorded) {
+            AIV(
+                timestamp = now,
+                acceIsf = factors.acceIsf,
+                bgIsf = factors.bgIsf,
+                ppIsf = factors.ppIsf,
+                duraIsf = factors.duraIsf,
+                finalIsf = factors.finalIsf,
+                glucose = 0.0,
+                delta = 0.0,
+                shortAvgDelta = 0.0,
+                longAvgDelta = 0.0,
+                bgAcceleration = 0.0,
+                iob = 0.0,
+                smbDelivered = 0.0,
+            )
+        } else {
+            null
+        }
+        val records = (stored + listOfNotNull(current)).distinctBy { it.timestamp }.sortedBy { it.timestamp }
+        if (records.size < 2 || records.first().timestamp > start + T.mins(5).msecs()) return 0.0
+        var activeMinutes = 0.0
+        records.zipWithNext().forEach { (previous, currentRow) ->
+            if (selector(currentRow) > 1.0) {
+                activeMinutes += ((currentRow.timestamp - previous.timestamp) / 60_000.0).coerceIn(0.0, 5.0)
+            }
+        }
+        return activeMinutes
     }
 
     // A virtual pump does not open AnyDesk. A client records the request and leaves the launch to the real pump phone.

@@ -98,6 +98,9 @@ internal enum class RemoteToggleCode {
     LOCATION_THIS_PHONE,
     LIVE_STEPS,
     INSULIN_TOTALS,
+    STAGE_APK,
+    INSTALL_APK,
+    ADB_START,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -191,6 +194,9 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.204, 0.0001) -> RemoteToggleCode.LOCATION_THIS_PHONE
     ttNear(ttMgdl, 5.206, 0.0001) -> RemoteToggleCode.LIVE_STEPS
     ttNear(ttMgdl, 5.232, 0.0001) -> RemoteToggleCode.INSULIN_TOTALS
+    ttNear(ttMgdl, 5.200, 0.0001) -> RemoteToggleCode.INSTALL_APK
+    ttNear(ttMgdl, 5.202, 0.0001) -> RemoteToggleCode.STAGE_APK
+    ttNear(ttMgdl, 5.208, 0.0001) -> RemoteToggleCode.ADB_START
     ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
     ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP
     else -> null

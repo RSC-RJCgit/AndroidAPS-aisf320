@@ -488,6 +488,16 @@ enum class IntKey(
     NsClientAlarmStaleData(key = "ns_alarm_stale_data_value", defaultValue = 16, min = 15, max = 120, title = KeysStrings.pref_title_alarm_stale_data, unitType = UnitType.MIN),
     NsClientUrgentAlarmStaleData(key = "ns_alarm_urgent_stale_data_value", defaultValue = 31, min = 30, max = 180, title = KeysStrings.pref_title_urgent_alarm_stale_data, unitType = UnitType.MIN),
 
+    ApsAutoIsfAdbConnectPort(
+        key = "autoisf_adb_connect_port",
+        defaultValue = 0,
+        min = 0,
+        max = 65535,
+        title = KeysStrings.pref_title_adb_connect_port,
+        summary = KeysStrings.pref_summary_adb_connect_port,
+        engineeringModeOnly = true,
+    ),
+
     SiteRotationUserProfile(
         key = "site_rotation_user_profile",
         defaultValue = 0,

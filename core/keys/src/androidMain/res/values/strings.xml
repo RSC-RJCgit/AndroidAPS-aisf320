@@ -568,6 +568,9 @@
     <string name="pref_title_location_slot">Location place</string>
     <string name="pref_summary_location_slot" comment="The six parts are label, place, radius in metres, arrival note, exit note, cooldown in minutes. A hyphen turns the place off. Example: Airport|@-34.90,138.50|500|Arr|Dep|30">label|place or @lat,lon|radius|arrival|exit|cooldown. Use - to turn it off.</string>
 
+    <string name="pref_title_adb_connect_port">ADB wireless port</string>
+    <string name="pref_summary_adb_connect_port" comment="Port shown in Settings, Developer options, Wireless debugging. 0 means not set. Example: 34567">Port from wireless debugging on this phone. 0 means not set. Used only by a virtual pump.</string>
+
     <!-- IntentKey preferences -->
 
     <!--    Appearance preferences-->

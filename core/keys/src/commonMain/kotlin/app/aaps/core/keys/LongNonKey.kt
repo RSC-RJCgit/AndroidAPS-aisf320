@@ -79,5 +79,11 @@ enum class LongNonKey(
 
     // Time of the last LibreSpecial step. -1 means none yet.
     FslSmoothLastTimeRaw("fsl_last_time_raw", -1L),
+
+    // Last Shizuku APK install start. Survives a restart so a bounce cannot install again for 45 minutes. Local only.
+    ApsAutoIsfApkAutoLastAt("autoisf_apk_auto_last_at", 0L, exportable = false),
+
+    // Newest pump APK number seen on this phone. 0 means none yet. Local only.
+    ApsAutoIsfApkNewestNnn("autoisf_apk_newest_nnn", 0L, exportable = false),
 }
 

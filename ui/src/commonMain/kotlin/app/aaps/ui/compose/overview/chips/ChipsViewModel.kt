@@ -34,6 +34,7 @@ import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -462,12 +463,25 @@ class ChipsViewModel(
             List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
             List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
             List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
+            List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
+            List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
+            List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null),
         ))
     }
 
     // The number is the place in the list on screen. Each row is on one list only.
     private fun numbered(rows: List<List1Row>): List<List1Row> =
         rows.mapIndexed { index, row -> row.copy(label = "${index + 1}. ${row.label}") }
+
+    private fun newestApkText(): String {
+        val newest = preferences.get(LongNonKey.ApsAutoIsfApkNewestNnn)
+        return if (newest > 0L) "Newest: $newest" else "Newest: not found yet"
+    }
+
+    private fun adbPortText(): String {
+        val port = preferences.get(IntKey.ApsAutoIsfAdbConnectPort)
+        return if (port > 0) "Port $port" else "Port not set"
+    }
 
     private fun libreLiveText(): String {
         val liveSlope = preferences.get(DoubleKey.FslCalSlope)
