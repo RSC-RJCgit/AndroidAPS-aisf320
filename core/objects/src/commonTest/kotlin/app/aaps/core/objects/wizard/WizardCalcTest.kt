@@ -59,6 +59,18 @@ class WizardCalcTest {
         assertNull(wizardRiseBoost(1.0, false, 8.1, 0.2, 0.3, 0.3))
     }
 
+    @Test
+    fun walkingSoonCutsThePercentTo70AndStartsTickedOnlyWhenMovingAndLow() {
+        assertEquals(100.0, walkingSoonImmediatePercent(false, 100.0), 0.0001)
+        assertEquals(70.0, walkingSoonImmediatePercent(true, 100.0), 0.0001)
+        assertEquals(50.0, walkingSoonImmediatePercent(true, 50.0), 0.0001)
+        assertEquals(true, walkingSoonDefault(80, 200, 100.0, 0.0))
+        assertEquals(false, walkingSoonDefault(0, 0, 100.0, 0.0))
+        assertEquals(false, walkingSoonDefault(80, 200, 120.0, 0.0))
+        assertEquals(false, walkingSoonDefault(80, 200, 100.0, 2.0))
+        assertNull(walkingSoonDefault(null, null, 100.0, 0.0))
+    }
+
     private fun halve(
         profilePercent: Int = 100,
         lowBgRecent: Boolean = true,

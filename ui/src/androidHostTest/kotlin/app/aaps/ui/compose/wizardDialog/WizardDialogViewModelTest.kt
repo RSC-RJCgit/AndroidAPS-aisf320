@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -45,6 +46,7 @@ internal class WizardDialogViewModelTest {
     @Mock private lateinit var activePlugin: ActivePlugin
     @Mock private lateinit var ch: ConcentrationHelper
     @Mock private lateinit var iobCobCalculator: IobCobCalculator
+    @Mock private lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var config: Config
@@ -71,6 +73,7 @@ internal class WizardDialogViewModelTest {
             SavedStateHandle(), bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
             profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
             rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
+            glucoseStatusProvider,
             CoroutineScope(UnconfinedTestDispatcher())
         )
     }

@@ -92,6 +92,24 @@ internal fun wizardHpCut(
     return WizardHpCut(applied = true, dose = adjusted, cobRemoved = cobRemoved)
 }
 
+internal fun walkingSoonImmediatePercent(walkingSoon: Boolean, standingPct: Double): Double {
+    if (!walkingSoon) return standingPct
+    return minOf(standingPct, 70.0)
+}
+
+/**
+ * Default for the Walking soon box. Steps over 30 minutes at 200 or more, or steps over 5 minutes
+ * at 100 or more, and glucose under 6 mmol/L, and glucose not rising fast. Null when the step
+ * counts are missing, so the box is left as it is.
+ */
+internal fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double): Boolean? {
+    if (steps5 == null || steps30 == null) return null
+    val moving = steps30 >= 200 || steps5 >= 100
+    val low = bgMgdl < 108.1
+    val notRisingFast = deltaMgdl <= 0.9
+    return moving && low && notRisingFast
+}
+
 /**
  * Multiply the dose by 1.33 when wizard glucose is above 8 mmol/L and all three deltas are above 0.2 mmol/L.
  * Returns null when the boost does not apply. A walking-soon cut blocks it.

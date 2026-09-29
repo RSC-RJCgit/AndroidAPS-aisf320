@@ -197,6 +197,7 @@ class BolusWizard(
         protein: Int = 0,
         fat: Int = 0,
         warsawDurationHours: Double = 5.0,
+        walkingSoon: Boolean = false,
     ): BolusWizard {
 
         this.profile = profile
@@ -305,7 +306,9 @@ class BolusWizard(
         val scaledComponents = insulinFromBG + insulinFromTrend + insulinFromCarbs + insulinFromCOB
         val unscaledComponents = calculatedTotalIOB + insulinFromCorrection
 
-        val percentage = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+        val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+        val percentage = walkingSoonImmediatePercent(walkingSoon, standingPct)
+        val walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
 
         totalBeforePercentageAdjustment = scaledComponents + unscaledComponents
         calculatedTotalInsulin = scaledComponents * percentage / 100.0 + unscaledComponents
@@ -354,7 +357,7 @@ class BolusWizard(
             calculatedTotalInsulin = hp.dose
             hpSafetyAdjusted = calculatedTotalInsulin
         }
-        val boosted = wizardRiseBoost(calculatedTotalInsulin, walkingSoonCut = false, bgMmol, deltaMmol, shortMmol, longMmol)
+        val boosted = wizardRiseBoost(calculatedTotalInsulin, walkingSoonCut = walkingSoonCutApplied, bgMmol, deltaMmol, shortMmol, longMmol)
         riseBoostApplied = boosted != null
         if (boosted != null) {
             riseBoostOriginal = calculatedTotalInsulin

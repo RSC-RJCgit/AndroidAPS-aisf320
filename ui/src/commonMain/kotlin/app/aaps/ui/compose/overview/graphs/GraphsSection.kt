@@ -293,11 +293,11 @@ fun GraphsSection(
                 if (zoom.isFinite() && zoom > 0f && zoom != lastZoom) {
                     lastZoom = zoom
                     appliedZoom[0] = zoom
-                    if (beltZoomState.value.isFinite()) beltZoomState.zoom(Zoom.fixed(zoom))
-                    if (iobZoomState.value.isFinite()) iobZoomState.zoom(Zoom.fixed(zoom))
-                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(Zoom.fixed(zoom))
+                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoom)
+                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoom)
+                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoom)
                     for (i in 0 until count) {
-                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(Zoom.fixed(zoom))
+                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoom)
                     }
                 }
                 // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
@@ -309,10 +309,10 @@ fun GraphsSection(
                     lastSentScroll = scroll
                     pendingScroll[0] = Float.NaN
                     appliedScroll[0] = scroll
-                    beltScrollState.scroll(Scroll.Absolute.pixels(scroll))
-                    iobScrollState.scroll(Scroll.Absolute.pixels(scroll))
-                    if (showGraph5Now.value) g5ScrollState.scroll(Scroll.Absolute.pixels(scroll))
-                    for (i in 0 until count) secScrollStates[i].scroll(Scroll.Absolute.pixels(scroll))
+                    beltScrollState.copyPixelsIfDifferent(scroll)
+                    iobScrollState.copyPixelsIfDifferent(scroll)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scroll)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scroll)
                 }
             }
     }
@@ -430,9 +430,15 @@ fun GraphsSection(
                         lastMainZoom = bgZoom
                         appliedZoom[0] = bgZoom
                     }
+                    for (i in states.indices) {
+                        if (i < lastFollowerScroll.size && states[i].first.isFinite()) lastFollowerScroll[i] = states[i].first
+                        if (i < lastFollowerZoom.size && states[i].second.isFinite()) lastFollowerZoom[i] = states[i].second
+                    }
                     return@collect
                 }
-                // A drag on a lower graph moves every graph, including the main one.
+                // A drag on a lower graph moves every other graph, including the main one.
+                // The chart under the finger is already there. Vico will not move that chart until
+                // the finger lifts, so the copy must not call scroll on it.
                 // A jump back to the start while the main graph is still showing hours is a rebuild.
                 suspend fun shareScroll(place: Float) {
                     pendingScroll[0] = place
@@ -440,13 +446,12 @@ fun GraphsSection(
                     followNow = false
                     graphViewModel.onGraphInteraction()
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
-                    val scroll = Scroll.Absolute.pixels(place)
-                    bgScrollState.scroll(scroll)
-                    beltScrollState.scroll(scroll)
-                    iobScrollState.scroll(scroll)
-                    if (showGraph5Now.value) g5ScrollState.scroll(scroll)
+                    bgScrollState.copyPixelsIfDifferent(place)
+                    beltScrollState.copyPixelsIfDifferent(place)
+                    iobScrollState.copyPixelsIfDifferent(place)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(place)
                     val count = activeCount
-                    for (i in 0 until count) secScrollStates[i].scroll(scroll)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(place)
                 }
                 if (!pendingScroll[0].isNaN()) {
                     var newer: Float? = null
@@ -516,14 +521,13 @@ fun GraphsSection(
                             followNow = false
                             graphViewModel.onGraphInteraction()
                             skipInteractionUntilMs[0] = dateUtil.now() + 1000L
-                            val fixed = Zoom.fixed(zoomFinger)
-                            bgZoomState.zoom(fixed)
-                            if (beltZoomState.value.isFinite()) beltZoomState.zoom(fixed)
-                            if (iobZoomState.value.isFinite()) iobZoomState.zoom(fixed)
-                            if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(fixed)
+                            bgZoomState.copyFactorIfDifferent(zoomFinger)
+                            if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoomFinger)
+                            if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoomFinger)
+                            if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoomFinger)
                             val zoomCount = activeCount
                             for (i in 0 until zoomCount) {
-                                if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(fixed)
+                                if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoomFinger)
                             }
                             lastMainZoom = zoomFinger
                             appliedZoom[0] = zoomFinger
@@ -542,14 +546,13 @@ fun GraphsSection(
                                     if (!movingAway) needsCopy = true
                                 }
                                 if (needsCopy || (bgZoom.isFinite() && abs(bgZoom - sharedZoom) > 0.001f)) {
-                                    val fixed = Zoom.fixed(sharedZoom)
-                                    if (abs(bgZoom - sharedZoom) > 0.001f) bgZoomState.zoom(fixed)
-                                    if (beltZoomState.value.isFinite()) beltZoomState.zoom(fixed)
-                                    if (iobZoomState.value.isFinite()) iobZoomState.zoom(fixed)
-                                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.zoom(fixed)
+                                    if (abs(bgZoom - sharedZoom) > 0.001f) bgZoomState.copyFactorIfDifferent(sharedZoom)
+                                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(sharedZoom)
+                                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(sharedZoom)
+                                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(sharedZoom)
                                     val zoomCount = activeCount
                                     for (i in 0 until zoomCount) {
-                                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].zoom(fixed)
+                                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(sharedZoom)
                                     }
                                 }
                             }
@@ -964,6 +967,20 @@ private fun GraphSeriesBottomSheet(
             }
         }
     }
+}
+
+// Vico waits until the finger is off a chart before scroll() runs. A chart already at the
+// target is left alone. That includes the chart under the finger.
+private suspend fun VicoScrollState.copyPixelsIfDifferent(place: Float) {
+    val current = value
+    if (!current.isFinite() || abs(current - place) <= 1f) return
+    scroll(Scroll.Absolute.pixels(place))
+}
+
+private suspend fun VicoZoomState.copyFactorIfDifferent(factor: Float) {
+    val current = value
+    if (!current.isFinite() || current <= 0f || factor <= 0f || abs(current - factor) <= 0.001f) return
+    zoom(Zoom.fixed(factor))
 }
 
 // Vico saves the zoom factor. A saved NaN is kept, the point position becomes NaN, and the chart crashes.

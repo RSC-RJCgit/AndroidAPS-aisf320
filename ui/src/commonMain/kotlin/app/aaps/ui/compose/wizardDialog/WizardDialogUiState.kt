@@ -36,6 +36,7 @@ data class WizardDialogUiState(
     val useTrend: Boolean = false,
     val useIOB: Boolean = true,
     val useCOB: Boolean = false,
+    val walkingSoon: Boolean = false,
     val alarmChecked: Boolean = false,
     val advancedExpanded: Boolean = false,
     val calculationExpanded: Boolean = false,

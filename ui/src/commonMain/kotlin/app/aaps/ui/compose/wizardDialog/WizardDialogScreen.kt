@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -208,6 +209,7 @@ fun WizardDialogScreen(
         onTrendToggle = viewModel::toggleTrend,
         onIOBToggle = viewModel::toggleIOB,
         onCOBToggle = viewModel::toggleCOB,
+        onWalkingSoonToggle = viewModel::toggleWalkingSoon,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
@@ -240,6 +242,7 @@ internal fun WizardDialogContent(
     onTrendToggle: (Boolean) -> Unit,
     onIOBToggle: (Boolean) -> Unit,
     onCOBToggle: (Boolean) -> Unit,
+    onWalkingSoonToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -497,6 +500,22 @@ internal fun WizardDialogContent(
                                 )
                             }
                         }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = uiState.walkingSoon,
+                            onCheckedChange = onWalkingSoonToggle
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_walking_soon),
+                            modifier = Modifier.clickable { onWalkingSoonToggle(!uiState.walkingSoon) }
+                        )
                     }
 
                     AnimatedVisibility(

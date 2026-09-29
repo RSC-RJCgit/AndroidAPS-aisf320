@@ -7,6 +7,8 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
@@ -19,6 +21,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -43,6 +46,7 @@ import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.walkingSoonDefault
 import app.aaps.core.objects.wizard.wizardMaxBolusDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
@@ -91,6 +95,7 @@ class WizardDialogViewModel(
     private val automation: Automation,
     private val wizardExecutor: WizardExecutor,
     private val rxBus: RxBus,
+    private val glucoseStatusProvider: GlucoseStatusProvider,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope
@@ -118,6 +123,7 @@ class WizardDialogViewModel(
     private var savedSafetyMaxBolus: Double? = null
     private var maxBolusOverridden = false
     private var maxBolusTouched = false
+    private var walkingSoonTouched = false
 
     override fun onCleared() {
         if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
@@ -352,6 +358,12 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    fun toggleWalkingSoon(checked: Boolean) {
+        walkingSoonTouched = true
+        _uiState.update { it.copy(walkingSoon = checked) }
+        recalculate()
+    }
+
     fun toggleCOB(checked: Boolean) {
         _uiState.update {
             it.copy(
@@ -406,6 +418,7 @@ class WizardDialogViewModel(
                 state = uiState.value
             }
         }
+        state = applyWalkingSoonDefault(state)
         val profileStore = profileRepository.profile.value ?: return
 
         // Resolve profile
@@ -470,6 +483,7 @@ class WizardDialogViewModel(
             protein = state.protein,
             fat = state.fat,
             warsawDurationHours = state.warsawDurationHours,
+            walkingSoon = state.walkingSoon,
         )
 
         wizard = w
@@ -618,6 +632,51 @@ class WizardDialogViewModel(
                 else                       -> Unit // Unconfirmed → app modal
             }
         }
+    }
+
+    private suspend fun applyWalkingSoonDefault(state: WizardDialogUiState): WizardDialogUiState {
+        if (walkingSoonTouched) return state
+        val (steps5, steps30) = stepCountsForWalkingSoon()
+        val glucose = glucoseStatusProvider.getGlucoseStatusData()
+        val bgMgdl = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else glucose?.glucose ?: 999.0
+        val want = walkingSoonDefault(steps5, steps30, bgMgdl, glucose?.delta ?: 0.0) ?: return state
+        if (want == state.walkingSoon) return state
+        _uiState.update { it.copy(walkingSoon = want) }
+        return uiState.value
+    }
+
+    // Live steps when this virtual phone is set to use them. No fresh live sample leaves the box alone.
+    // Otherwise the phone's own latest steps are used, and none means not moving.
+    private suspend fun stepCountsForWalkingSoon(): Pair<Int?, Int?> {
+        val now = dateUtil.now()
+        val useLive = config.APS && !config.AAPSCLIENT &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            activePlugin.activePump.pumpDescription.pumpType == PumpType.GENERIC_AAPS
+        if (useLive) {
+            val own = "openaps://${config.deviceModelForUpload}"
+            val sample = LiveSteps.sampleFor(
+                now,
+                persistenceLayer.getStepsCountFromTimeToTime(now - LiveSteps.MAX_AGE_MS, now),
+                fromLivePhone = true,
+                ownDevice = own,
+            )?.takeIf { row ->
+                LiveSteps.hasDosingBuckets(
+                    mapOf(
+                        5 to row.steps5min,
+                        10 to row.steps10min,
+                        15 to row.steps15min,
+                        30 to row.steps30min,
+                        60 to row.steps60min,
+                        180 to row.steps180min,
+                    )
+                )
+            }
+            if (sample == null) return null to null
+            return sample.steps5min to sample.steps30min
+        }
+        val local = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60_000L, now)
+        if (local == null) return 0 to 0
+        return local.steps5min to local.steps30min
     }
 
     /**
