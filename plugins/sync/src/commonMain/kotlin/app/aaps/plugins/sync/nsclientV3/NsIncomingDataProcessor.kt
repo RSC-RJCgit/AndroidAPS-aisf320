@@ -308,14 +308,6 @@ class NsIncomingDataProcessor(
      * A **master** is unchanged: the user's `ns_receive_profile_store` setting decides.
      * While a secondary Nightscout is on, the profile store comes from that site only.
      */
-    /** A profile switch from the secondary site. Temp basals and extended boluses are never taken from there. */
-    fun storeSecondaryProfileSwitch(treatment: NSProfileSwitch) {
-        if (!preferences.get(BooleanKey.NsClientAcceptProfileSwitch)) return
-        treatment.toProfileSwitch(profileRepository, dateUtil, fallbackICfg())?.let { profileSwitch ->
-            storeDataForDb.addToProfileSwitches(profileSwitch)
-        }
-    }
-
     suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
         val accept = when {
             fromSecondary -> true
