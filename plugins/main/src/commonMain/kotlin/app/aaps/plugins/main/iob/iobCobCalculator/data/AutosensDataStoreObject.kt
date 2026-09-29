@@ -70,12 +70,9 @@ class AutosensDataStoreObject : AutosensDataStore {
     override fun clone(): AutosensDataStore =
         AutosensDataStoreObject().also {
             dataLock.withLock {
-                // referenceTime must survive the clone. The calculation clones the live store, works on
-                // the copy and then publishes the copy back as the live store, so a dropped anchor means
-                // the 5 minute bucket grid is re-anchored to the newest reading on every load. With a
-                // 1 minute source the anchor then moves every reading, all bucket timestamps shift, and
-                // every cached autosensDataTable entry becomes unreachable (issue #5066).
-                it.referenceTime = this.referenceTime
+                // Leave referenceTime unset. This copy is published as the live store, so the next
+                // load anchors the 5 minute grid to the newest reading, as AutoISF 3.2.1 does.
+                // Bucket 0 is then that reading, and the loop runs on every new glucose value.
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
@@ -376,19 +373,17 @@ class AutosensDataStoreObject : AutosensDataStore {
 
         // Normalize bucketed data
         val oldest = bData[bData.size - 1]
-        // referenceTime now survives clone() and so lives as long as the process. A new sensor can
-        // start on a different 5 minute phase. Keeping an anchor that far off would move every reading
-        // away from the time it was really taken, so drop it and take the phase of the current data.
+        // A stale anchor can sit on another 5 minute phase. Shifting every reading onto it moves
+        // them off the time they were taken, so drop it and use this data's own phase.
         if (referenceTime != -1L && abs(adjustToReferenceTime(oldest.timestamp) - oldest.timestamp) > T.secs(90).msecs()) {
             aapsLogger.debug(LTag.AUTOSENS, "Reference time out of phase with current data. Re-anchoring.")
             referenceTime = -1
         }
         val rawOldest = oldest.timestamp
         oldest.timestamp = adjustToReferenceTime(oldest.timestamp)
-        // How far the anchor moved the oldest reading. Each `adjusted` below is measured against the
-        // already normalized entry before it, so it carries this shift as a constant offset. Add it back
-        // so the 90 second test still measures only the jitter in the data, the way it did while
-        // referenceTime was thrown away on every run.
+        // How far the anchor moved the oldest reading. Each later adjustment is measured against the
+        // entry before it, so it carries this shift. Add it back so the 90 second test measures only
+        // the jitter in the data.
         val anchorShift = (oldest.timestamp - rawOldest) / 1000
         aapsLogger.debug("Adjusted time " + dateUtil.dateAndTimeAndSecondsString(oldest.timestamp))
         for (i in bData.size - 2 downTo 0) {
