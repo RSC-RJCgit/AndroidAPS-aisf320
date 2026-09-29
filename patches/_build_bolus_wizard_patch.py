@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.7.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.8.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -27,16 +27,33 @@ FULL_COPY = [
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/ScheduledDoseSupersession.kt",
     "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/NoteTimestampAllocator.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt",
+    # Added in patch .8: these three were referenced by BolusWizard.kt/WizardDialog.kt (carb-time-from-rise /
+    # recent-entry features) but never added to FULL_COPY, so patch .7 shipped with two unresolved references
+    # (WizardRecentEntry at BolusWizard.kt:383, showConfirmationWithView at :781) -- confirmed via a real user
+    # (kebel21) build error 2026-09-29. WizardRecentEntry.kt and CarbTimeFromRise.kt are brand-new files (not in
+    # BASE at all); OKDialog.kt is an existing file whose only diff from BASE is the showConfirmationWithView
+    # addition (verified clean via `git diff a14b8c7663 -- core/ui/.../OKDialog.kt`).
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardRecentEntry.kt",
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRise.kt",
+    "core/ui/src/main/kotlin/app/aaps/core/ui/dialogs/OKDialog.kt",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .7, 2026-09-27)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .8, 2026-09-29)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.7.patch
-  git apply bolus-calculator-on-3426-aisf321.7.patch
+  git apply --check bolus-calculator-on-3426-aisf321.8.patch
+  git apply bolus-calculator-on-3426-aisf321.8.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .8 (2026-09-29):
+- Fixes patch .7 shipping with two unresolved references (WizardRecentEntry at BolusWizard.kt:383,
+  showConfirmationWithView at :781), found via a real user build error. WizardRecentEntry.kt and
+  CarbTimeFromRise.kt (both brand-new files) and OKDialog.kt's showConfirmationWithView addition were
+  referenced by BolusWizard.kt/WizardDialog.kt's carb-time-from-rise / recent-entry features but were never
+  added to the patch build script's file list. No functional change from .7 -- same code, now complete.
+- Retains all patch .7 changes below.
 
 Changes in patch .7 (2026-09-27):
 - A cancelled split/delayed/FPU dose (bolus stopped, superseded, profile switch, pump suspended, superbolus active, retry
