@@ -434,7 +434,7 @@ fun GraphsSection(
                 }
                 // A drag on a lower graph moves every graph, including the main one.
                 // A jump back to the start while the main graph is still showing hours is a rebuild.
-                fun shareScroll(place: Float) {
+                suspend fun shareScroll(place: Float) {
                     pendingScroll[0] = place
                     appliedScroll[0] = place
                     followNow = false
