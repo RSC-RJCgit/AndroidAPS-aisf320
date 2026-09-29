@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The full app on the same phone already defines this. A Client signed with
+         another key cannot define it again, or the install is refused. -->
+    <permission
+        android:name="app.aaps.weardata.permission"
+        tools:node="remove" />
+
+</manifest>
