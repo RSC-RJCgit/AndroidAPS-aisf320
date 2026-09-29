@@ -102,7 +102,7 @@ internal fun walkingSoonImmediatePercent(walkingSoon: Boolean, standingPct: Doub
  * at 100 or more, and glucose under 6 mmol/L, and glucose not rising fast. Null when the step
  * counts are missing, so the box is left as it is.
  */
-internal fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double): Boolean? {
+fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double): Boolean? {
     if (steps5 == null || steps30 == null) return null
     val moving = steps30 >= 200 || steps5 >= 100
     val low = bgMgdl < 108.1
