@@ -217,6 +217,8 @@ class LoadSecondaryTreatmentsRunner(
     }
 
     // Smoothed readings live on the second site. One day fills the graph; later polls take what changed.
+    // The first read is oldest-first and 500 at a time, so a full page is not the current glucose.
+    // Keep reading until a page is short. 0 is not a saved place. The cursor is the newest srvModified.
     private suspend fun downloadGlucose(client: NSAndroidClientImpl) {
         if (!glucoseFromSecondarySite(
                 config.AAPSCLIENT,
@@ -226,16 +228,37 @@ class LoadSecondaryTreatmentsRunner(
         ) return
         try {
             val cursor = preferences.get(LongNonKey.NsClientSecondaryGlucoseModified)
-            val from = if (cursor == 0L) dateUtil.now() - GLUCOSE_LOOKBACK_MS
+            val firstCatchUp = cursor == 0L
+            var from = if (firstCatchUp) dateUtil.now() - GLUCOSE_LOOKBACK_MS
             else (cursor - GLUCOSE_OVERLAP_MS).coerceAtLeast(0L)
-            val response = if (cursor == 0L) client.getSgvsNewerThan(from, PAGE_SIZE)
-            else client.getSgvsModifiedSince(from, PAGE_SIZE)
-            val sgvs = response.values
-            if (sgvs.isNotEmpty()) nsIncomingDataProcessor.processSgvs(sgvs, doFullSync = false)
+            var page = 0
+            var total = 0
+            var newestModified = 0L
+            var reachedNewest = false
+            while (page < MAX_PAGES) {
+                val response = if (firstCatchUp) client.getSgvsNewerThan(from, PAGE_SIZE)
+                else client.getSgvsModifiedSince(from, PAGE_SIZE)
+                val sgvs = response.values
+                if (sgvs.isNotEmpty()) {
+                    nsIncomingDataProcessor.processSgvs(sgvs.sortedBy { it.date ?: 0L }, doFullSync = false)
+                }
+                total += sgvs.size
+                val newestDate = sgvs.maxOfOrNull { it.date ?: 0L } ?: 0L
+                val pageModified = sgvs.maxOfOrNull { it.srvModified ?: 0L } ?: 0L
+                if (pageModified > newestModified) newestModified = pageModified
+                page++
+                val next = nextGlucoseFrom(firstCatchUp, from, sgvs.size, PAGE_SIZE, newestDate, pageModified)
+                if (next == null) {
+                    reachedNewest = true
+                    break
+                }
+                from = next
+            }
             storeDataForDb.storeGlucoseValuesToDb()
-            val modified = response.lastServerModified ?: dateUtil.now()
-            if (modified > cursor) preferences.put(LongNonKey.NsClientSecondaryGlucoseModified, modified)
-            nsClientRepository.addLog("◄ SEC-NS", "${sgvs.size} glucose values from secondary NS")
+            glucoseCursorToStore(cursor, newestModified, firstCatchUp, reachedNewest)?.let {
+                preferences.put(LongNonKey.NsClientSecondaryGlucoseModified, it)
+            }
+            nsClientRepository.addLog("◄ SEC-NS", "$total glucose values from secondary NS")
         } catch (error: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS glucose fetch failed", error)
             nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Glucose error")
@@ -254,4 +277,32 @@ class LoadSecondaryTreatmentsRunner(
         const val GLUCOSE_LOOKBACK_MS = 24L * 60 * 60 * 1000
         const val GLUCOSE_OVERLAP_MS = 10L * 60 * 1000
     }
+}
+
+// A full page is only the oldest slice. The next read starts after the newest time on that page.
+// A short page, or a page that does not move forward, means this read is finished.
+internal fun nextGlucoseFrom(
+    firstCatchUp: Boolean,
+    from: Long,
+    count: Int,
+    pageSize: Int,
+    newestDate: Long,
+    newestModified: Long,
+): Long? {
+    if (count < pageSize) return null
+    val next = if (firstCatchUp) newestDate else newestModified
+    if (next <= from) return null
+    return next
+}
+
+// 0 is not a saved place. The first walk stores a cursor only after the newest page is in.
+internal fun glucoseCursorToStore(
+    cursor: Long,
+    newestModified: Long,
+    firstCatchUp: Boolean,
+    reachedNewest: Boolean,
+): Long? {
+    if (newestModified <= 0L || newestModified <= cursor) return null
+    if (firstCatchUp && !reachedNewest) return null
+    return newestModified
 }
