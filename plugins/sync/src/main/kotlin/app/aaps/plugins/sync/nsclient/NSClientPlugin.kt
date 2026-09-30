@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.rx.events.EventAppExit
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventSWSyncStatus
+import app.aaps.core.interfaces.rx.events.EventXdripRawBgReceived
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.sync.Sync
@@ -51,8 +52,13 @@ import app.aaps.plugins.sync.nsclient.data.AlarmAck
 import app.aaps.plugins.sync.nsclient.extensions.toJson
 import app.aaps.plugins.sync.nsclient.services.NSClientService
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
+import com.google.common.hash.Hashing
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import io.socket.client.Ack
+import io.socket.client.IO
+import io.socket.client.Socket
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -118,13 +124,128 @@ class NSClientPlugin @Inject constructor(
                            addToLog(event)
                            aapsLogger.debug(LTag.NSCLIENT, event.action + " " + event.logText)
                        }, fabricPrivacy::logException)
+        safe("tertiaryEnsureSocketConnected") { tertiaryEnsureSocketConnected() }
+        disposable += rxBus
+            .toObservable(EventXdripRawBgReceived::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ ev ->
+                           safe("onEventXdripRawBgReceived") { uploadRawToTertiarySite(ev) }
+                       }, fabricPrivacy::logException)
     }
 
     override fun onStop() {
         nsClientService?.destroy()
         if (nsClientService != null) context.unbindService(mConnection)
         disposable.clear()
+        tertiaryDisconnectSocket()
         super.onStop()
+    }
+
+    private fun safe(label: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            aapsLogger.error(LTag.NSCLIENT, "$label failed; subscription stays alive for the next event", e)
+            fabricPrivacy.logException(e)
+        }
+    }
+
+    // Tertiary ("3y") raw-BG upload site (2026-09-30, per explicit request; moved here from
+    // NSClientV3Plugin 2026-10-01, per explicit request -- this must live in the V1 plugin specifically
+    // (not just speak the V1 socket.io protocol from inside the V3 class), since iAPS's own NS
+    // integration needs V1, and this class -- not NSClientV3Plugin -- is the one that's actually active
+    // on the phone that needs it. Confirmed via live logcat: NSClientV3Plugin's onStart() never ran
+    // there at all, so a subscription hosted only in that class never registered, even though the
+    // underlying EventXdripRawBgReceived fired every minute -- right protocol, wrong host class. A
+    // genuinely separate third connection, used ONLY to carry raw BG (from an xDrip/GDH broadcast) out
+    // as its own SGV entry -- unrelated to this plugin's own primary NS sync.
+    //
+    // Kept as ONE persistent connection, not opened per event: the broadcast this rides on fires
+    // roughly once a minute, so reconnecting per event would mean constant connect/auth churn instead
+    // of a normal long-lived socket. tertiaryEnsureSocketConnected() is idempotent -- a no-op once
+    // already connected under the same URL+secret -- and is called both eagerly from onStart() and
+    // defensively from every upload attempt (in case the connection dropped). Auth follows the exact
+    // handshake NSClientService.kt uses for the primary V1 connection: an "authorize" emit carrying a
+    // SHA1 hash of the secret (NsClientTertiaryAccessToken doubles as the API secret here, not a
+    // bearer token), then dbAdd once the ack confirms write permission.
+    private var tertiarySocket: Socket? = null
+    private var tertiarySocketKey: String? = null
+    private var tertiaryHasWriteAuth = false
+
+    private fun tertiaryDisconnectSocket() {
+        tertiarySocket?.off(Socket.EVENT_CONNECT)
+        tertiarySocket?.off(Socket.EVENT_DISCONNECT)
+        tertiarySocket?.disconnect()
+        tertiarySocket = null
+        tertiarySocketKey = null
+        tertiaryHasWriteAuth = false
+    }
+
+    private fun tertiaryEnsureSocketConnected() {
+        val url = preferences.get(StringKey.NsClientTertiaryUrl).trim()
+        val secret = preferences.get(StringKey.NsClientTertiaryAccessToken).trim()
+        if (url.isEmpty() || secret.isEmpty()) {
+            if (tertiarySocket != null) tertiaryDisconnectSocket()
+            return
+        }
+        val key = "$url|$secret"
+        if (tertiarySocketKey == key && tertiarySocket?.connected() == true) return
+        if (tertiarySocket != null) tertiaryDisconnectSocket()
+        try {
+            val secretHash = Hashing.sha1().hashString(secret, Charsets.UTF_8).toString()
+            val opt = IO.Options().also { it.forceNew = true }
+            tertiarySocket = IO.socket(url, opt).also { socket ->
+                socket.on(Socket.EVENT_CONNECT) {
+                    val authMessage = JSONObject().apply {
+                        put("client", "Android_tertiary_raw")
+                        put("history", 0)
+                        put("status", false)
+                        put("secret", secretHash)
+                    }
+                    socket.emit("authorize", authMessage, object : Ack {
+                        override fun call(vararg args: Any) {
+                            val response = args.getOrNull(0) as? JSONObject
+                            tertiaryHasWriteAuth = response?.optBoolean("write") == true
+                            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", if (tertiaryHasWriteAuth) "authorized" else "write permission not granted"))
+                        }
+                    })
+                }
+                socket.on(Socket.EVENT_DISCONNECT) { tertiaryHasWriteAuth = false }
+                socket.connect()
+            }
+            tertiarySocketKey = key
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Tertiary raw upload: connect failed: ${e.message}")
+            tertiarySocket = null
+            tertiarySocketKey = null
+        }
+    }
+
+    // "raw only" (per explicit request): sgv/unfiltered both carry the raw value itself, never AAPS's own
+    // smoothed BG. NS's own "noise" field (an integer 1-4 noise LEVEL in its schema) is left out rather
+    // than set to anything derived from our raw value, to avoid conflating this fork's GV.noise
+    // raw-piggyback convention with NS's own unrelated meaning for that field.
+    private fun uploadRawToTertiarySite(event: EventXdripRawBgReceived) {
+        tertiaryEnsureSocketConnected()
+        val socket = tertiarySocket
+        if (socket == null || !socket.connected() || !tertiaryHasWriteAuth) {
+            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "skipped raw=${event.raw}: socket not ready"))
+            return
+        }
+        val data = JSONObject().apply {
+            put("type", "sgv")
+            put("sgv", event.raw)
+            put("unfiltered", event.raw)
+            put("device", event.device)
+            put("date", event.timestamp)
+            put("dateString", dateUtil.toISOString(event.timestamp))
+        }
+        val message = JSONObject().apply {
+            put("collection", "entries")
+            put("data", data)
+        }
+        socket.emit("dbAdd", message)
+        rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "raw=${event.raw} device=${event.device}"))
     }
 
     override val hasWritePermission: Boolean get() = nsClientService?.hasWriteAuth == true
@@ -303,10 +424,9 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
             })
-            // Tertiary ("3y") raw-BG upload site settings (2026-10-01, per explicit request): shown here too,
-            // not just under the V3 client's own screen, since the actual upload transport (see
-            // NSClientV3Plugin.uploadRawToTertiarySite()) is V1 socket.io, not the V3 REST client -- the same
-            // StringKey.NsClientTertiaryUrl/NsClientTertiaryAccessToken preferences back both screens.
+            // Tertiary ("3y") raw-BG upload site settings (2026-10-01): the upload logic itself
+            // (tertiaryEnsureSocketConnected()/uploadRawToTertiarySite() above) now lives entirely in
+            // this class, not NSClientV3Plugin -- see that pair's own doc comment for why.
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_tertiary_settings"
                 title = rh.gs(R.string.ns_tertiary_settings)
