@@ -26,6 +26,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.implementation.maintenance.cloud.CloudConstants
@@ -187,6 +188,7 @@ class AutoIsfAapsLogsExporter(
         for (key in IntKey.entries) if (isAutoIsfKey(key.key)) settings += "${key.key} = ${preferences.get(key)}"
         for (key in DoubleKey.entries) if (isAutoIsfKey(key.key)) settings += "${key.key} = ${decimalFormatter.to2Decimal(preferences.get(key))}"
         for (key in StringKey.entries) if (isAutoIsfKey(key.key)) settings += "${key.key} = ${preferences.get(key)}"
+        for (key in LongNonKey.entries) if (isAutoIsfKey(key.key)) settings += "${key.key} = ${preferences.get(key)}"
         settings += "${DoubleKey.FslCalSlope.key} = ${decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalSlope))}"
         settings += "${DoubleKey.FslCalOffset.key} = ${decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalOffset))}"
         return lines.joinToString("\n") + "\n" + settings.sorted().joinToString("\n") + "\n"
