@@ -2402,6 +2402,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
     }
 
+    // Fast rise: delta and short delta above 0.2 mmol/L, long delta above 0.1 mmol/L,
+    // and either glucose above 9.5 mmol/L or a bolus or carb entry under 150 minutes old.
+    // Used so the night IOB ceiling, BMild, and tier 3 stay available on that rise.
+    private fun nightRiseHoldsIobLimit(delta: Double, shortDelta: Double, longDelta: Double, bg: Double): Boolean {
+        if (delta <= 0.2 * 18.0182) return false
+        if (shortDelta <= 0.2 * 18.0182) return false
+        if (longDelta <= 0.1 * 18.0182) return false
+        val bolusAge = minutesSinceLastPositiveNormalBolus()
+        val carbAge = minutesSinceLastCarbs()
+        val overNineFive = bg > 9.5 * 18.0182
+        val recentBolus = bolusAge != null && bolusAge < 150
+        val recentCarbs = carbAge != null && carbAge < 150
+        return overNineFive || recentBolus || recentCarbs
+    }
+
+    // Smallest whole percent whose unit value is strictly above the insulin already on board.
+    // Null when that percent would have to be 100 or more.
+    private fun iobPercentStrictlyAbove(iob: Double, maxIob: Double, reduction: Double): Int? {
+        if (iob <= 0.0 || maxIob <= 0.0 || reduction <= 0.0) return null
+        val raw = iob * 100.0 / (maxIob * reduction)
+        if (raw >= 100.0) return null
+        return (Math.floor(raw).toInt() + 1).coerceIn(1, 100)
+    }
+
     // Lowest stored BG in the requested window. The shared rebound input remains 60 minutes;
     // LoReb additionally receives 30 minutes. Null preserves the distinction from a known minimum.
     private fun recentLowBgMgdl(minutes: Long = 60, at: Long = dateUtil.now()): Double? {
@@ -3456,6 +3480,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
+            val riseHold = nightRiseHoldsIobLimit(d, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, g)
             val iobNow = totalIobAt(dateUtil.now())
             val iobChange5 = iobNow - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // Switched 2026-08-30 at explicit request from the pure raw/noise channel (rawDelta5MinMgdl/
@@ -3520,8 +3545,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // correctly covers 08:30 through 23:59 AND 00:00 through 01:59 the same night.
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour -- the day window
             // otherwise blocks a post-change high before 08:30 or after 02:00.
-            return (isTimeBetween(8, 30, 2, 0) || daytimeGateBypassOk(g))
-                && (iobRising || mealLeftoverRise) && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
+            return (isTimeBetween(8, 30, 2, 0) || daytimeGateBypassOk(g) || riseHold)
+                && (riseHold || iobRising || mealLeftoverRise) && d >= 5.4 * stackK /* 0.30 mmol; AAPS smoothed-delta confirmation — lowered from 0.35mmol for earlier detection */
                 && rawDelta5 >= 5.4 * stackK /* 0.30 mmol — lowered from 0.35mmol for earlier detection */
                 && (mealLeftoverRise || rawDelta5 < 14.4 * stackK) /* bg3 owns >= 0.80 unless leftover-meal rise and bg3 did not fire */
                 && rawDelta1FloorOk && (mealLeftoverRise || rawDelta1 < 14.4 * stackK) /* same upper band as rawDelta5 */
@@ -3548,6 +3573,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // cut, not yet device-verified against a case that needed the full-strength tier and
                 // would have been wrongly capped by this -- watch for that before trusting the number.
                 && !(g < 135.1 /* 7.5 mmol */ && iobChange5 > 0.8)
+                && (riseHold || iobNow < 2.5)
                 // IOB ceiling, added 2026-09-28: mild had no ceiling at all. Real case: Client 28 Sep fired BMild
                 // three times in 34 min (08:34/08:58/09:08) -- the third fire went out at IOB ~2.9-3.4U, and BG
                 // round-tripped down to a gentle-hypo 4.6mmol ~75-100 min later. 2.5U (not bg3's own flat 2.0U)
@@ -3555,8 +3581,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // (11:49-12:00, BGL 6.4->7.5) sitting on ~2.0-2.06U IOB with no automation re-arming at all --
                 // a flat 2.0U ceiling here would foreclose a legitimate re-arm in that kind of case too. 2.5 still
                 // blocks the 09:08 overstack (IOB was already 2.91U) while leaving BMild able to fire through the
-                // ~2.0-2.5U band a genuine ongoing rise can sit in.
-                && iobNow < 2.5
+                // ~2.0-2.5U band a genuine ongoing rise can sit in. A fast rise (see nightRiseHoldsIobLimit)
+                // keeps this open past 2.5 U and past 02:00.
         }
 
         // Extracted 2026-09-01 from BolusGiven's inline `val bg3 = ...`, same pure-query pattern as
@@ -3582,6 +3608,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ) return false
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
+            val riseHold = nightRiseHoldsIobLimit(d, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, g)
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             // Same UKF-smoothed raw channel as BMild / HP2 (ukfRawMetrics), not unsmoothed Libre .noise.
             val ukfRawForBg3 = ukfRawMetrics()
@@ -3627,7 +3654,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 2026-09-02: new pod (<2h) and BG > 9.0 mmol may fire at any hour, same bypass as BMild.
             // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
             val profileName = profileFunction.getOriginalProfileName()
-            return (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g))
+            return (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g) || riseHold)
                 && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
@@ -6747,10 +6774,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val recentGiv = (lastRunTimestamps["BolusGiven"] ?: 0L) > nowMs - T.mins(60).msecs()
             val recentBMild = (lastRunTimestamps["BolusGivenMild"] ?: 0L) > nowMs - T.mins(60).msecs() ||
                 (lastRunTimestamps["BolusGivenMildFailsafe"] ?: 0L) > nowMs - T.mins(60).msecs()
+            val riseHold = nightRiseHoldsIobLimit(
+                glucoseStatus.delta,
+                glucoseStatus.shortAvgDelta,
+                glucoseStatus.longAvgDelta,
+                glucoseStatus.glucose,
+            )
             val blockReason = when {
                 recentGiv -> "rearm60"
-                iobNow >= 2.0 -> "iob>=2"
-                recentBMild && iobNow >= 1.5 -> "bmild+iob"
+                !riseHold && iobNow >= 2.0 -> "iob>=2"
+                !riseHold && recentBMild && iobNow >= 1.5 -> "bmild+iob"
                 else -> null
             }
             if (blockReason != null) {
@@ -7977,14 +8010,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // rise (UsuIP-3's g>=8.5 / sd>=1.0 disjuncts) can still flip-flop and is deliberately left
             // for a follow-up -- this covers only the movement case the flip-flop was traced to.
             val nightActive = recentSteps60Minutes >= 100
-            if (readyToRun("NightIobCeiling", 5) && isTimeBetween(0, 0, 6, 0) && !nightActive) {
+            // A fast rise keeps the percent strictly above the insulin already on board.
+            // Check every loop while that hold is on. The ordinary drop to 22% stays on the 5 minute mark.
+            val riseHold = nightRiseHoldsIobLimit(
+                glucoseStatus.delta,
+                glucoseStatus.shortAvgDelta,
+                glucoseStatus.longAvgDelta,
+                glucoseStatus.glucose,
+            )
+            if ((riseHold || readyToRun("NightIobCeiling", 5)) && isTimeBetween(0, 0, 6, 0) && !nightActive) {
                 val nightAcceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-                val capIob = iobThresholdPercent > nightCap
+                val maxIob = oapsProfile.max_iob
+                val reduction = profile_percentage / 100.0 * sensitivityRatio
+                val capUnits = if (maxIob > 0.0 && reduction > 0.0) nightCap / 100.0 * maxIob * reduction else Double.POSITIVE_INFINITY
+                val raised = if (riseHold && capUnits <= iobData.iob) iobPercentStrictlyAbove(iobData.iob, maxIob, reduction) else null
+                val iobWrite = when {
+                    raised != null -> if (iobThresholdPercent != raised) raised else null
+                    iobThresholdPercent > nightCap -> nightCap
+                    else -> null
+                }
                 val capAcce = nightAcceW > 0.35
-                if (capIob || capAcce) {
-                    if (capIob) preferences.put(IntKey.ApsAutoIsfIobThPercent, nightCap)
+                if (iobWrite != null || capAcce) {
+                    val prevIob = iobThresholdPercent
+                    if (iobWrite != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, iobWrite)
                     if (capAcce) setBgAccelIsfWeight(0.35)
-                    sendSms("NightIobCeiling: iobTH ${iobThresholdPercent}->${if (capIob) "$nightCap" else "unchanged"}${if (cobSustainedRelax) " (COB-relaxed)" else ""} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
+                    sendSms("NightIobCeiling: iobTH $prevIob->${iobWrite ?: "unchanged"}${if (cobSustainedRelax) " (COB-relaxed)" else ""} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
                     addCarePortalNote(if (cobSustainedRelax) "NtCapR" else "NtCap")
                     markRun("NightIobCeiling")
                 }
@@ -9436,7 +9486,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // One-cycle-stale, same convention as bgAcce (this class's own equivalent carry-forward) --
             // see lastAcceIsf's own doc comment for why. Feeds the observation-only acce_ISF shadow check
             // alone, never real dosing.
-            acceIsfValue = replayAcceIsfValue
+            acceIsfValue = replayAcceIsfValue,
+            riseHold = nightRiseHoldsIobLimit(
+                glucoseStatus.delta,
+                glucoseStatus.shortAvgDelta,
+                glucoseStatus.longAvgDelta,
+                glucoseStatus.glucose,
+            ),
         ).also {
             logAutoIsfReplayTrace(now, replayTraceInputs, it)
             val determineBasalResult = apsResultProvider.get().with(it)

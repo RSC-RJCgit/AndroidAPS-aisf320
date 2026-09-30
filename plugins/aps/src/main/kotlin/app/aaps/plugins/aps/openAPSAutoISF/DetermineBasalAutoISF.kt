@@ -519,7 +519,11 @@ class DetermineBasalAutoISF @Inject constructor(
         // inside this function (fed the now-removed T3AcceISF observation block) -- left in the
         // signature since the replay/digital-twin trace schema still round-trips it by name. Default
         // 1.0 = neutral/no-adaptation, same convention as the other optional params.
-        acceIsfValue: Double = 1.0
+        acceIsfValue: Double = 1.0,
+        // Fast rise (delta and short delta above 0.2 mmol/L, long delta above 0.1 mmol/L,
+        // and glucose above 9.5 or a recent bolus or carb entry). Opens tier 3 at night and
+        // skips the cuts that would shrink that boost. Default false keeps older callers unchanged.
+        riseHold: Boolean = false,
     ): RT {
         // Reset at function entry so an early-return/non-SMB cycle can never reuse the previous result.
         uamBoostFiredThisCycle = false
@@ -1583,7 +1587,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // the code happens to run. 09:00 is inclusive; 21:00 is exclusive (last eligible
                 // minute is 20:59).
                 val tier3LocalHour = Instant.ofEpochMilli(systemTime).atZone(ZoneId.systemDefault()).hour
-                val tier3TimeAllowed = (tier3LocalHour in 9 until 21) || daytimeGateBypassOk
+                val tier3TimeAllowed = (tier3LocalHour in 9 until 21) || daytimeGateBypassOk || riseHold
                 if (boostActive && !tier3TimeAllowed) {
                     consoleError.add("Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour $tier3LocalHour)")
                     rT.reason.append("Tier 3 blocked outside 09:00-21:00; ")
@@ -1696,14 +1700,14 @@ class DetermineBasalAutoISF @Inject constructor(
                     // real protection.
                     if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
                         boost_scale < 3 && bg > 80 &&
-                        (t3Unrestricted || (iob_data.iob < boostMaxIOB && boostIobAllowance > 0.0))) {
+                        (riseHold || t3Unrestricted || (iob_data.iob < boostMaxIOB && boostIobAllowance > 0.0))) {
                         // 2026-09-21: T3-only skips. BMild/bg3 still run this cycle (SMBdel/TT unchanged).
                         // uamBoostRecent is false on the firing cycle (markRun is after determine_basal).
                         val liveSmbDel = profile.smb_delivery_ratio
-                        if (!t3Unrestricted && uamBoostRecent) {
+                        if (!riseHold && !t3Unrestricted && uamBoostRecent) {
                             consoleError.add("Tier 3 UAM Boost skipped: last UamBst <20 min")
                             rT.reason.append("T3skip<20min; ")
-                        } else if (!t3Unrestricted && liveSmbDel > 0.50) {
+                        } else if (!riseHold && !t3Unrestricted && liveSmbDel > 0.50) {
                             consoleError.add("Tier 3 UAM Boost skipped: SMBdel ${round(liveSmbDel, 2)} > 0.50")
                             rT.reason.append("T3skip SMBdel>${round(liveSmbDel, 2)}; ")
                         } else {
@@ -1781,7 +1785,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             glucose_status.delta * abs(glucose_status.longAvgDelta) else 0.0
                         val obsReversalTriggered = obsReversalScore > 30.0
                         val obsFastCarbConditions = (obsLowTriggered || obsReversalTriggered) && meal_data.mealCOB == 0.0 && bg_acce > 0.90 * 18
-                        if (obsFastCarbConditions && bg < 170.0) {
+                        if (!riseHold && obsFastCarbConditions && bg < 170.0) {
                             if (glucose_status.delta > 15 && bg > target_bg + 20) {
                                 consoleError.add("[Tier3FastCarb] conditions met but velocity override: delta ${round(glucose_status.delta, 1)} > 15, BG $bg > target+20 -- treating as genuine spike, no rebound")
                             } else {
@@ -2336,7 +2340,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // 8.9→4.1. After a recent UamBst, once IOB is already high with no COB, keep the
                 // fast-rise caps — do not give the later SMBs the early-boost waiver.
                 val iobHighNoCob = IOB >= 0.18 * profile.max_iob && COB <= 0
-                val holdFastRiseAfterUamBst = uamBoostRecent && iobHighNoCob
+                val holdFastRiseAfterUamBst = !riseHold && uamBoostRecent && iobHighNoCob
                 if ((smbBoostRecent || nightFrSkipActive) && !holdFastRiseAfterUamBst && microBolus != microBolusFullUncapped) {
                     val skipWhy = when {
                         smbBoostRecent -> "BolusGiven/Mild/Tier3 boost within 30 min"
@@ -2444,7 +2448,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // bind — 0.18*max_iob ≈ 1.71U at 9.5. Does not stack a second multiplier on top of
                 // this same block's 1.5/1.9 amount taper (the when-branch below is either/or).
                 val postUamBstLate = uamBoostRecent && !uamBoostEnhancedCandidateThisCycle
-                val laterRiseAfterBoost = postUamBstLate || iobHighNoCob
+                val laterRiseAfterBoost = !riseHold && (postUamBstLate || iobHighNoCob)
                 if ((fastRiseNow || postUamBstLate) && microBolus > 0.0) {
                     val lateFastRiseFactor = when {
                         laterRiseAfterBoost -> 0.50

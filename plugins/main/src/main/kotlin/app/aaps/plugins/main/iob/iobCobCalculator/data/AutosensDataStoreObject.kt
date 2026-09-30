@@ -41,12 +41,19 @@ class AutosensDataStoreObject : AutosensDataStore {
         @Synchronized set
         @Synchronized get
 
+    // referenceTime added to clone() 2026-09-30: IobCobOref1Worker/IobCobOrefWorker clone the live store, work on the
+    // copy, then swap it back in as the new live store every run. Without copying referenceTime here too, that swap
+    // reset it to -1 almost every cycle (this fork's clone-then-swap runs at ~1-minute cadence), so adjustToReferenceTime()
+    // never had a stable point to snap the bucketed-data grid to -- each cycle's grid just started wherever the latest
+    // raw reading landed instead of staying pinned. Same bug independently found and fixed in the KMP port
+    // (AaAPS-v4-kmp-aisf321, commit 17dd2bbd8e, 2026-09-09, citing AAPS issue #5066).
     override fun clone(): AutosensDataStore =
         AutosensDataStoreObject().also {
             synchronized(dataLock) {
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
+                it.referenceTime = this.referenceTime
             }
         }
 
