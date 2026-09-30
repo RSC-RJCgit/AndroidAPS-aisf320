@@ -94,6 +94,11 @@
     <string name="ns_secondary_token">Secondary NS access token</string>
     <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site</string>
     <string name="ns_secondary_settings">Secondary NS (bolus+carbs source)</string>
+    <string name="ns_tertiary_settings">Tertiary NS (raw BG upload)</string>
+    <string name="ns_tertiary_url">Tertiary NS URL</string>
+    <string name="ns_tertiary_url_summary">Nightscout URL to upload raw BG (from an xDrip/GDH broadcast) to, as its own SGV entry -- independent of this phone\'s normal upload and of AAPS\'s own smoothed value. Leave blank to disable.</string>
+    <string name="ns_tertiary_token">Tertiary NS access token</string>
+    <string name="ns_tertiary_token_summary">Access token for the tertiary Nightscout site</string>
     <string name="ns_receive_carbs">Receive carbs</string>
     <string name="ns_receive_carbs_summary">Accept carbs entered through NS or AAPSClient</string>
     <string name="ns_receive_therapy_events">Receive therapy events</string>

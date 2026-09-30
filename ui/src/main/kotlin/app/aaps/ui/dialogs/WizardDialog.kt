@@ -675,8 +675,13 @@ class WizardDialog : DaggerDialogFragment() {
 
         val carbTime = SafeParse.stringToInt(binding.carbTimeInput.text)
 
+        // unreliableSmbsCheckbox auto-sets wiz% to 90 for THIS calculation only (per explicit request) --
+        // does not touch the standing IntKey.OverviewBolusPercentage preference, so every other dose is
+        // unaffected. Only meaningful alongside fatProteinNowCheckbox; read regardless since the checkbox
+        // itself is the source of truth for "this calc", not a dependency on the other box's state.
+        val wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
         wizard = bolusWizardProvider.get().doCalc(
-            specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, preferences.get(IntKey.OverviewBolusPercentage),
+            specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, wizPercentForThisCalc,
             binding.bgCheckbox.isChecked,
             binding.cobCheckbox.isChecked,
             binding.iobCheckbox.isChecked,
@@ -691,7 +696,9 @@ class WizardDialog : DaggerDialogFragment() {
             totalPercentage = percentageCorrection.toDouble(),
             protein = protein,
             fat = fat,
-            walkingSoon = binding.walkingSoonCheckbox.isChecked
+            walkingSoon = binding.walkingSoonCheckbox.isChecked,
+            fatProteinNow = binding.fatProteinNowCheckbox.isChecked,
+            unreliableSmbs = binding.unreliableSmbsCheckbox.isChecked
         )
 
         wizard?.let { wizard ->

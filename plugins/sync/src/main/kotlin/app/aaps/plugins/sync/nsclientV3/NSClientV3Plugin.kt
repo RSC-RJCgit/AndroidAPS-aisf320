@@ -49,6 +49,7 @@ import app.aaps.core.interfaces.rx.events.EventRunningModeChange
 import app.aaps.core.interfaces.rx.events.EventSWSyncStatus
 import app.aaps.core.interfaces.rx.events.EventTempTargetChange
 import app.aaps.core.interfaces.rx.events.EventTherapyEventChange
+import app.aaps.core.interfaces.rx.events.EventXdripRawBgReceived
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.NsClient
@@ -66,6 +67,8 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
+import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
+import app.aaps.core.nssdk.localmodel.entry.NsUnits
 import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
@@ -80,6 +83,7 @@ import app.aaps.plugins.sync.nsShared.events.EventConnectivityOptionChanged
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsclient.ReceiverDelegate
+import kotlinx.coroutines.runBlocking
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSCarbs
@@ -254,6 +258,12 @@ class NSClientV3Plugin @Inject constructor(
                                WorkManager.getInstance(context).cancelUniqueWork(JOB_NAME)
                                WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
                            }
+                       }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventXdripRawBgReceived::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ ev ->
+                           safe("onEventXdripRawBgReceived") { uploadRawToTertiarySite(ev) }
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventConnectivityOptionChanged::class.java)
@@ -674,6 +684,59 @@ class NSClientV3Plugin @Inject constructor(
         return client
     }
 
+    // Tertiary ("3y") raw-BG upload site (2026-09-30, per explicit request): a genuinely separate third
+    // connection, used ONLY to carry raw BG (from an xDrip/GDH broadcast, see EventXdripRawBgReceived)
+    // out as its own SGV entry -- unrelated to the primary/secondary sync paths, to routeToLiveSite()
+    // below, and to whatever value AAPS's own smoothing produces. Same caching pattern as
+    // liveUploadClient() -- one client kept per URL+token.
+    private var tertiaryRawUploadClientCache: Pair<String, NSAndroidClient>? = null
+
+    private fun tertiaryRawUploadClient(): NSAndroidClient? {
+        val url = preferences.get(StringKey.NsClientTertiaryUrl).trim()
+        val token = preferences.get(StringKey.NsClientTertiaryAccessToken).trim()
+        if (url.isEmpty()) return null
+        val key = "$url|$token"
+        tertiaryRawUploadClientCache?.takeIf { it.first == key }?.let { return it.second }
+        val client = NSAndroidClientImpl(
+            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+            accessToken = token,
+            context = context,
+            logging = false,
+            logger = { msg -> aapsLogger.debug(LTag.HTTP, "Tertiary raw upload: $msg") }
+        )
+        tertiaryRawUploadClientCache = key to client
+        return client
+    }
+
+    // "raw only" (per explicit request): sgv/unfiltered both carry the raw value itself, never AAPS's own
+    // smoothed BG. identifier=null lets the site assign its own, same as any other freshly-created entry
+    // (see GlucoseValueExtension.toNSSvgV3() for the same convention on the normal sync path). NS's own
+    // "noise" field (an integer 1-4 noise LEVEL in its schema) is left null here rather than set to
+    // anything derived from our raw value, to avoid conflating this fork's GV.noise raw-piggyback
+    // convention with NS's own unrelated meaning for that field.
+    private fun uploadRawToTertiarySite(event: EventXdripRawBgReceived) {
+        val client = tertiaryRawUploadClient() ?: return
+        val sgv = NSSgvV3(
+            date = event.timestamp,
+            device = event.device,
+            identifier = null,
+            utcOffset = 0L,
+            isValid = true,
+            sgv = event.raw,
+            units = NsUnits.MG_DL,
+            direction = null,
+            noise = null,
+            filtered = null,
+            unfiltered = event.raw
+        )
+        try {
+            runBlocking { client.createSgv(sgv) }
+            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "raw=${event.raw} device=${event.device}"))
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Tertiary raw upload failed: ${e.message}")
+        }
+    }
+
     private fun routeToLiveSite(dataPair: DataSyncSelector.DataPair): Boolean =
         config.AAPSCLIENT && (
             dataPair is DataSyncSelector.PairTemporaryTarget ||
@@ -935,7 +998,7 @@ class NSClientV3Plugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced" && requiredKey != "ns_secondary_settings") return
+        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced" && requiredKey != "ns_secondary_settings" && requiredKey != "ns_tertiary_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -1011,6 +1074,12 @@ class NSClientV3Plugin @Inject constructor(
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientBgFromLiveSite, summary = R.string.ns_bg_from_live_site_summary, title = R.string.ns_bg_from_live_site_title))
+            })
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "ns_tertiary_settings"
+                title = rh.gs(R.string.ns_tertiary_settings)
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientTertiaryUrl, summary = R.string.ns_tertiary_url_summary, title = R.string.ns_tertiary_url))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientTertiaryAccessToken, summary = R.string.ns_tertiary_token_summary, title = R.string.ns_tertiary_token))
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_alarm_options"

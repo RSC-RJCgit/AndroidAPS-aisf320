@@ -155,6 +155,19 @@ class BolusWizard @Inject constructor(
         private set
     var insulinFromFatOnly = 0.0
         private set
+    // insulinFromFatProteinNow (2026-09-30, per explicit request): the "bolus fat/protein now instead of
+    // extending" checkbox's alternative to insulinFromProteinOnly/insulinFromFatOnly above. UNLIKE those two,
+    // this IS folded into calculatedTotalInsulin -- the whole point is delivering it as part of the immediate
+    // bolus, not the separate Warsaw-FPU extended series (warsawFpuPlan()/scheduleSplitProteinFatDoses() both
+    // gate on insulinFromProteinOnly/insulinFromFatOnly being > 0, so zeroing those two when fatProteinNow is
+    // on already suppresses the extended path with no other change needed). Ratios are deliberately different
+    // from Warsaw's own 0.4/0.9 (those assume slow multi-hour absorption the extended series is built to
+    // match) -- default fat×1.0/protein×1.5, or fat×1.5/protein×2.0 when unreliableSmbs is also set (current
+    // sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes in upfront). Flows through the
+    // exact same constraintChecker.applyBolusConstraints()/max-bolus-split path as everything else in
+    // calculatedTotalInsulin -- maxBolusAllowed itself is never touched by either checkbox.
+    var insulinFromFatProteinNow = 0.0
+        private set
     var insulinFromBolusIOB = 0.0
         private set
     var insulinFromBasalIOB = 0.0
@@ -258,6 +271,10 @@ class BolusWizard @Inject constructor(
     // Delayed / Wz133 follow this, not the checkbox: a seated QuickWizard "always on"
     // press must not SMB-block 85 min for a cut that never happened.
     var walkingSoonCutApplied: Boolean = false
+    // "Bolus fat/protein now instead of extending" master checkbox, and its "unreliable SMBs (current
+    // sensor/pod)" sub-toggle -- see insulinFromFatProteinNow's own doc comment for the full design.
+    var fatProteinNow: Boolean = false
+    var unreliableSmbs: Boolean = false
 
     fun doCalc(
         profile: Profile,
@@ -284,7 +301,9 @@ class BolusWizard @Inject constructor(
         positiveIOBOnly: Boolean = false,
         protein: Int = 0,
         fat: Int = 0,
-        walkingSoon: Boolean = false
+        walkingSoon: Boolean = false,
+        fatProteinNow: Boolean = false,
+        unreliableSmbs: Boolean = false
     ): BolusWizard {
 
         this.profile = profile
@@ -293,6 +312,8 @@ class BolusWizard @Inject constructor(
         this.carbs = carbs
         this.protein = protein
         this.fat = fat
+        this.fatProteinNow = fatProteinNow
+        this.unreliableSmbs = unreliableSmbs
         this.cob = cob
         this.bg = bg
         this.correction = correction
@@ -373,8 +394,17 @@ class BolusWizard @Inject constructor(
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
-        insulinFromProteinOnly = (protein * 0.4) / ic
-        insulinFromFatOnly = (fat * 0.9) / ic
+        if (fatProteinNow) {
+            insulinFromProteinOnly = 0.0
+            insulinFromFatOnly = 0.0
+            val proteinRatio = if (unreliableSmbs) 2.0 else 1.5
+            val fatRatio = if (unreliableSmbs) 1.5 else 1.0
+            insulinFromFatProteinNow = ((protein * proteinRatio) + (fat * fatRatio)) / ic
+        } else {
+            insulinFromProteinOnly = (protein * 0.4) / ic
+            insulinFromFatOnly = (fat * 0.9) / ic
+            insulinFromFatProteinNow = 0.0
+        }
         insulinFromCarbs = insulinFromCarbsOnly
         // Low-BG recent-entry rule (2026-09-24, per explicit request): see WizardRecentEntry. Only detected here;
         // the Bolus Wizard dialog and QuickWizard start their COB box unticked under it (the user can re-tick),
@@ -407,7 +437,7 @@ class BolusWizard @Inject constructor(
         }
 
         // Total
-        calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
+        calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB + insulinFromFatProteinNow
 
         // Walking soon: 70% now (or standing % if that is already lower). Does not touch
         // usePercentage/totalPercentage/percentageCorrection — delayed fullRequired still uses those.
@@ -594,8 +624,14 @@ class BolusWizard @Inject constructor(
         val recentEntryText = if (lowBgRecentEntryRule) {
             ", RecentEntry<60min@BG<6 (COB ${if (useCob) "ON" else "off"}, MaxBolus x0.8)"
         } else ""
+        val fatProteinNowText = if (!fatProteinNow) "off" else {
+            val proteinRatio = if (unreliableSmbs) 2.0 else 1.5
+            val fatRatio = if (unreliableSmbs) 1.5 else 1.0
+            "ON (fat×${decimalFormatter.to2Decimal(fatRatio)}/protein×${decimalFormatter.to2Decimal(proteinRatio)}" +
+                "${if (unreliableSmbs) ", unreliableSMBs" else ""} -> ${decimalFormatter.to2Decimal(insulinFromFatProteinNow)}U)"
+        }
         return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
-            "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel"
+            "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FatProteinNow $fatProteinNowText"
     }
 
     fun createBolusCalculatorResult(): BCR {

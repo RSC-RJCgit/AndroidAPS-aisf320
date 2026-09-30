@@ -77,6 +77,11 @@ enum class StringKey(
     NsClientAccessToken("nsclient_token", "", isPassword = true),
     NsClientSecondaryUrl("nsclient_secondary_url", ""),
     NsClientSecondaryAccessToken("nsclient_secondary_token", "", isPassword = true),
+    // Tertiary ("3y") NS site (2026-09-30, per explicit request): a genuinely separate third connection,
+    // used only to carry raw BG (from an xDrip/GDH broadcast) out as its own SGV entry -- unrelated to the
+    // primary/secondary sync paths and to whatever value AAPS's own smoothing produces.
+    NsClientTertiaryUrl("nsclient_tertiary_url", ""),
+    NsClientTertiaryAccessToken("nsclient_tertiary_token", "", isPassword = true),
 
     // Google Drive settings
     GoogleDriveStorageType("google_drive_storage_type", "local"),

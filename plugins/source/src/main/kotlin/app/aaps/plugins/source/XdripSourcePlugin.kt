@@ -28,6 +28,8 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.receivers.Intents
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventXdripRawBgReceived
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.source.BgSource
 import app.aaps.core.interfaces.source.XDripSource
@@ -143,6 +145,7 @@ class XdripSourcePlugin @Inject constructor(
         @Inject lateinit var activePlugin: ActivePlugin
         @Inject lateinit var config: Config
         @Inject lateinit var ukfSmoothing: UnscentedKalmanFilterPlugin
+        @Inject lateinit var rxBus: RxBus
 
         fun getSensorStartTime(bundle: Bundle): Long? {
             val now = dateUtil.now()
@@ -192,6 +195,17 @@ class XdripSourcePlugin @Inject constructor(
             val sourceCGM = bundle.getString(Intents.XDRIP_DATA_SOURCE) ?: ""
             val fslApply = preferences.get(BooleanKey.FslApplySmoothing)
             val isAutoLibreSource = extraRaw == 0.0 && (sourceCGM == "Libre2" || sourceCGM == "Libre2 Native" || sourceCGM == "Libre3" || sourceCGM == "G7")
+            // Temp diagnostic (2026-09-30): find out what sourceCGM a GlucoDataHandler-relayed broadcast (reading
+            // from an NS-follower connection, not a direct sensor read) actually reports, since it almost
+            // certainly isn't one of isAutoLibreSource's four recognised names above -- this is what decides
+            // whether extraRaw==0.0 ever gets rescued to extraBgEstimate for that device, i.e. whether RawMiss
+            // clears at all. Remove once confirmed.
+            aapsLogger.debug(LTag.BGSOURCE, "RawMiss diagnostic: sourceCGM='$sourceCGM' extraRaw=$extraRaw fslApply=$fslApply isAutoLibreSource=$isAutoLibreSource")
+            // Tertiary-site raw upload (2026-09-30, per explicit request): only a GENUINE raw value (same
+            // >10 threshold this fork's own RawMiss/ukfRawMetrics() already use to mean "real raw, not zero
+            // or a noise-level placeholder") is worth sending -- see NSClientV3Plugin's subscriber for the
+            // actual upload to the tertiary NS site.
+            if (extraRaw > 10.0) rxBus.send(EventXdripRawBgReceived(extraRaw, thisTimeRaw, sourceCGM.ifEmpty { "xDrip" }))
             if (fslApply || isAutoLibreSource) {
                 // If extraRaw is 0 (xDrip Libre, no separate raw), treat the estimate as raw so calibration has something to work with.
                 // If extraRaw is non-zero (Juggluco etc.), use the sensor raw directly for calibration.
