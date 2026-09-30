@@ -6,8 +6,14 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.max
 import kotlin.math.min
 
-/** Minutes between leftover parts. Same default UKF3426 used for the split interval. */
-const val SPLIT_LEFTOVER_INTERVAL_MINUTES = 7
+/** Minutes between leftover parts. Six checks spread across 2.5 hours. */
+const val SPLIT_LEFTOVER_INTERVAL_MINUTES = 25
+
+/** The leftover series stops after 2.5 hours. */
+const val SPLIT_LEFTOVER_DEADLINE_MINUTES = 150
+
+/** Stop the leftover series after this many unsafe glucose checks. */
+const val SPLIT_UNSAFE_CANCEL_COUNT = 6
 
 /**
  * Insulin still owed after the immediate bolus was cut to max bolus.

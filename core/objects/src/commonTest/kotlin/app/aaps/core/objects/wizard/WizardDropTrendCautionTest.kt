@@ -75,4 +75,14 @@ class WizardDropTrendCautionTest {
         assertEquals(50, WizardDropTrendCaution.scaledWizPercent(100))
         assertEquals(45, WizardDropTrendCaution.scaledWizPercent(90))
     }
+
+    @Test
+    fun laterUnitsStartAThreeHourPlanAndAddOntoAnExistingOne() {
+        val started = warsawPlanPlusUnits(null, 1.5)
+        assertEquals(3, started?.numDoses)
+        assertEquals(0.5, started?.perDoseInsulin ?: 0.0, 0.0001)
+        val added = warsawPlanPlusUnits(started, 1.5)
+        assertEquals(3.0, added?.totalInsulin ?: 0.0, 0.0001)
+        assertEquals(1.0, added?.perDoseInsulin ?: 0.0, 0.0001)
+    }
 }

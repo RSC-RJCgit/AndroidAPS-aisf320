@@ -39,6 +39,8 @@ data class WizardDialogUiState(
     val walkingSoon: Boolean = false,
     /** Fat and protein later, instead of extended carbs. Fat is 1 times the carb grams. Protein is 1.5 times. */
     val fpuInstead: Boolean = false,
+    /** When the fall caution holds insulin back, give that part later as hourly doses. On by default. */
+    val giveRestLater: Boolean = true,
     /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
     val unreliableSmb: Boolean = false,
     val alarmChecked: Boolean = false,

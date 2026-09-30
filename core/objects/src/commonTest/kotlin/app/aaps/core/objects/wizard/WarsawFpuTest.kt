@@ -1,5 +1,6 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.configuration.Constants
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -47,10 +48,12 @@ class WarsawFpuTest {
 
     @Test
     fun bgGateAndIobRise() {
-        assertTrue(warsawDoseBgAllows(126.1, -0.89, -0.89))
-        assertFalse(warsawDoseBgAllows(126.0, 0.0, 0.0))
-        assertFalse(warsawDoseBgAllows(140.0, -0.90, 0.0))
-        assertFalse(warsawDoseBgAllows(null, 0.0, 0.0))
+        val mmol = Constants.MMOLL_TO_MGDL
+        assertTrue(warsawDoseBgAllows(5.6 * mmol, 0.3 * mmol, 0.3 * mmol))
+        assertFalse(warsawDoseBgAllows(5.5 * mmol, 0.3 * mmol, 0.3 * mmol))
+        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.2 * mmol, 0.3 * mmol))
+        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.3 * mmol, 0.2 * mmol))
+        assertFalse(warsawDoseBgAllows(null, 0.3 * mmol, 0.3 * mmol))
         assertEquals(0.2, warsawDoseAfterIobRise(0.5, 2.0, 2.3, 0.1), 0.0001)
         assertTrue(warsawDoseAfterIobRise(0.5, 2.0, 2.6, 0.1) <= 0.0)
         assertEquals(0.5, warsawDoseAfterIobRise(0.5, 2.0, 1.5, 0.1), 0.0001)

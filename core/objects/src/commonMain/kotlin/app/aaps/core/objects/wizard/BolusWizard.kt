@@ -426,6 +426,11 @@ class BolusWizard(
         }
     }
 
+    /** Add insulin that the wizard held back, as later hourly doses. */
+    fun addLaterUnits(units: Double) {
+        warsawPlan = warsawPlanPlusUnits(warsawPlan, units)
+    }
+
     /**
      * Queue the protein and fat doses. Each one is checked again at its own hour.
      * A later confirm cancels this series. Nothing is written to the care portal.
@@ -477,8 +482,8 @@ class BolusWizard(
 
     /**
      * Schedule the insulin that was above max bolus. The immediate bolus already delivered the first part.
-     * Later parts are smaller when insulin on board has risen, and they stop if glucose is unsafe three times,
-     * the profile drops below 100%, the pump will not take a bolus, or 60 minutes pass.
+     * Later parts are smaller when insulin on board has risen, and they stop if glucose is unsafe six times,
+     * the profile drops below 100%, the pump will not take a bolus, or 2.5 hours pass.
      * A newer bolus cancels whatever is still waiting.
      */
     /** A bolus that is not a wizard confirm still replaces any leftover series that is waiting. */
@@ -501,7 +506,7 @@ class BolusWizard(
             token = token,
             source = source,
             deliverAt = now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L,
-            deadline = now + 60 * 60_000L,
+            deadline = now + SPLIT_LEFTOVER_DEADLINE_MINUTES * 60_000L,
             unsafeCount = 0,
         )
     }
@@ -537,7 +542,7 @@ class BolusWizard(
                 return@launch
             }
             if (now > deadline) {
-                aapsLogger.info(LTag.CORE, "Split leftover cancelled: 60 minutes passed with ${remaining} U left")
+                aapsLogger.info(LTag.CORE, "Split leftover cancelled: 2.5 hours passed with ${remaining} U left")
                 return@launch
             }
             val status = glucoseStatusProvider.glucoseStatusData
@@ -548,10 +553,10 @@ class BolusWizard(
                 }
                 SplitBgCheck.Unsafe  -> {
                     val count = unsafeCount + 1
-                    if (count >= 3) {
-                        aapsLogger.info(LTag.CORE, "Split leftover cancelled: glucose unsafe three times, ${remaining} U left")
+                    if (count >= SPLIT_UNSAFE_CANCEL_COUNT) {
+                        aapsLogger.info(LTag.CORE, "Split leftover cancelled: glucose unsafe $count times, ${remaining} U left")
                     } else {
-                        aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of 3, ${remaining} U left")
+                        aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of $SPLIT_UNSAFE_CANCEL_COUNT, ${remaining} U left")
                         launchSplitPart(
                             remaining, previousPart, iobBaseline, token, source,
                             now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L, deadline, count,

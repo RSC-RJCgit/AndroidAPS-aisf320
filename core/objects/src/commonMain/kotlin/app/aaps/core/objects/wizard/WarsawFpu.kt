@@ -1,5 +1,6 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.objects.profile.ProfileSealed
@@ -51,6 +52,30 @@ fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap
     )
 }
 
+/** Add [units] onto an existing hourly plan, or start a 3 hour plan when there is none. */
+fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
+    if (units <= 0.0) return plan
+    if (plan == null) {
+        val hours = 3
+        return WarsawFpuPlan(
+            fpu = 0.0,
+            durationMinutes = hours * 60,
+            numDoses = hours,
+            perDoseInsulin = units / hours,
+            totalInsulin = units,
+            fullTierInsulin = units,
+            capped = false,
+        )
+    }
+    val total = plan.totalInsulin + units
+    val perDose = total / plan.numDoses
+    return plan.copy(
+        perDoseInsulin = perDose,
+        totalInsulin = total,
+        fullTierInsulin = plan.fullTierInsulin + units,
+    )
+}
+
 /** Hour 1 is the first delay. A single dose waits the whole length. */
 fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int {
     if (numDoses <= 1) return durationMinutes.coerceAtLeast(1)
@@ -60,10 +85,11 @@ fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int
 fun profileSwitchPercent(profile: Profile): Int =
     if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
 
-/** Live glucose must be at least 7.0 mmol, and neither delta may be falling by 0.05 mmol or more. */
+/** Glucose must be above 5.5 mmol, and both delta and short delta must be above 0.2 mmol. */
 fun warsawDoseBgAllows(glucoseMgdl: Double?, delta: Double?, shortDelta: Double?): Boolean {
     if (glucoseMgdl == null || delta == null || shortDelta == null) return false
-    return glucoseMgdl >= 126.1 && delta > -0.90 && shortDelta > -0.90
+    val toMmol = Constants.MGDL_TO_MMOLL
+    return glucoseMgdl * toMmol > 5.5 && delta * toMmol > 0.2 && shortDelta * toMmol > 0.2
 }
 
 /** Subtract any insulin-on-board rise since the immediate bolus. A result of 0 or less is not delivered. */

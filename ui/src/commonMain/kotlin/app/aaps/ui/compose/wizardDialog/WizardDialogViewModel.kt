@@ -254,6 +254,11 @@ class WizardDialogViewModel(
         if (checked) enableMealExtra(unreliable = false) else disableMealExtra()
     }
 
+    fun toggleGiveRestLater(checked: Boolean) {
+        _uiState.update { it.copy(giveRestLater = checked) }
+        recalculate()
+    }
+
     fun toggleUnreliableSmb(checked: Boolean) {
         if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
     }
@@ -583,6 +588,11 @@ class WizardDialogViewModel(
         )
 
         wizard = w
+        if (state.giveRestLater && extra.percentage > percentForCalc) {
+            val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB
+            val later = scaled * (extra.percentage - percentForCalc) / 100.0
+            w.addLaterUnits(later)
+        }
 
         // Update temp target availability
         val hasTT = tempTarget != null
