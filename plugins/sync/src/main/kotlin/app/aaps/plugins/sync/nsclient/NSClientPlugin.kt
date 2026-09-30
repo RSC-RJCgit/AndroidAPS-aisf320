@@ -11,6 +11,7 @@ import androidx.preference.PreferenceScreen
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSAlarm
@@ -74,6 +75,7 @@ class NSClientPlugin @Inject constructor(
     private val receiverDelegate: ReceiverDelegate,
     private val dataSyncSelectorV1: DataSyncSelectorV1,
     private val dateUtil: DateUtil,
+    private val persistenceLayer: PersistenceLayer,
     private val profileUtil: ProfileUtil,
     private val nsSettingsStatus: NSSettingsStatus,
     private val decimalFormatter: DecimalFormatter,
@@ -157,8 +159,9 @@ class NSClientPlugin @Inject constructor(
     // on the phone that needs it. Confirmed via live logcat: NSClientV3Plugin's onStart() never ran
     // there at all, so a subscription hosted only in that class never registered, even though the
     // underlying EventXdripRawBgReceived fired every minute -- right protocol, wrong host class. A
-    // genuinely separate third connection, used ONLY to carry raw BG (from an xDrip/GDH broadcast) out
-    // as its own SGV entry -- unrelated to this plugin's own primary NS sync.
+    // genuinely separate third connection, used to carry AAPS's own live BG (see
+    // uploadRawToTertiarySite()'s own doc comment for why this is no longer the raw broadcast value)
+    // out as its own SGV entry -- unrelated to this plugin's own primary NS sync.
     //
     // Kept as ONE persistent connection, not opened per event: the broadcast this rides on fires
     // roughly once a minute, so reconnecting per event would mean constant connect/auth churn instead
@@ -221,31 +224,41 @@ class NSClientPlugin @Inject constructor(
         }
     }
 
-    // "raw only" (per explicit request): sgv/unfiltered both carry the raw value itself, never AAPS's own
-    // smoothed BG. NS's own "noise" field (an integer 1-4 noise LEVEL in its schema) is left out rather
-    // than set to anything derived from our raw value, to avoid conflating this fork's GV.noise
-    // raw-piggyback convention with NS's own unrelated meaning for that field.
+    // Switched from raw to AAPS's own live BGL (2026-10-01, per explicit request): the earlier "raw
+    // only" requirement was specifically for diagnosing the SMB/RawMiss investigation, not a standing
+    // design choice for this feature -- confirmed via a real capture that GDH's own broadcast estimate
+    // can flatline for several minutes at the source (BgEstimate/BgSlope frozen despite fresh broadcast
+    // timestamps) while AAPS's own dosing BG kept climbing, which is what actually belongs on this site.
+    // EventXdripRawBgReceived is kept only as the trigger (same ~1/min cadence the broadcast already
+    // provides) -- event.raw/event.device are no longer read; the payload comes from
+    // persistenceLayer.getLastGlucoseValue() instead, i.e. the same GV record AAPS's own graph/dosing
+    // pipeline uses.
     private fun uploadRawToTertiarySite(event: EventXdripRawBgReceived) {
         tertiaryEnsureSocketConnected()
         val socket = tertiarySocket
+        val latest = persistenceLayer.getLastGlucoseValue()
+        if (latest == null) {
+            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "skipped: no AAPS glucose value available"))
+            return
+        }
         if (socket == null || !socket.connected() || !tertiaryHasWriteAuth) {
-            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "skipped raw=${event.raw}: socket not ready"))
+            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "skipped aapsBg=${latest.value}: socket not ready"))
             return
         }
         val data = JSONObject().apply {
             put("type", "sgv")
-            put("sgv", event.raw)
-            put("unfiltered", event.raw)
-            put("device", event.device)
-            put("date", event.timestamp)
-            put("dateString", dateUtil.toISOString(event.timestamp))
+            put("sgv", latest.value)
+            put("unfiltered", latest.value)
+            put("device", "AAPS")
+            put("date", latest.timestamp)
+            put("dateString", dateUtil.toISOString(latest.timestamp))
         }
         val message = JSONObject().apply {
             put("collection", "entries")
             put("data", data)
         }
         socket.emit("dbAdd", message)
-        rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "raw=${event.raw} device=${event.device}"))
+        rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "aapsBg=${latest.value} device=AAPS"))
     }
 
     override val hasWritePermission: Boolean get() = nsClientService?.hasWriteAuth == true

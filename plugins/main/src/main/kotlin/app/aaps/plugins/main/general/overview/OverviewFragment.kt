@@ -441,6 +441,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // the full MAIN_CALCULATION chain -- deliberately does NOT re-invoke the loop/dosing algorithm
         // just because the screen turned on.
         overviewData.initRange()
+        // Temp diagnostic (2026-10-01): confirm this actually runs on resume, since real-device testing
+        // showed the graph still blank until the next natural loop cycle or a manual scale click --
+        // either this call never fires, or firing it isn't enough to redraw what's on screen. Remove
+        // once confirmed either way.
+        aapsLogger.debug(LTag.CORE, "OverviewFragment.onResume: calling runOnScaleChanged for fresh graph data")
         calculationWorkflow.runOnScaleChanged(iobCobCalculator, overviewData)
         updatePumpStatus()
         updateCalcProgress()
