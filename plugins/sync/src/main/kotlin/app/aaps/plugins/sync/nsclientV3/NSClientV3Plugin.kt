@@ -67,8 +67,6 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
-import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
-import app.aaps.core.nssdk.localmodel.entry.NsUnits
 import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
@@ -83,7 +81,6 @@ import app.aaps.plugins.sync.nsShared.events.EventConnectivityOptionChanged
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsclient.ReceiverDelegate
-import kotlinx.coroutines.runBlocking
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSCarbs
@@ -110,11 +107,16 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
+import com.google.common.hash.Hashing
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import io.socket.client.Ack
+import io.socket.client.IO
+import io.socket.client.Socket
 import kotlinx.serialization.json.Json
+import org.json.JSONObject
 import java.security.InvalidParameterException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -259,6 +261,7 @@ class NSClientV3Plugin @Inject constructor(
                                WorkManager.getInstance(context).cancelUniqueWork(SECONDARY_JOB_NAME)
                            }
                        }, fabricPrivacy::logException)
+        safe("tertiaryEnsureSocketConnected") { tertiaryEnsureSocketConnected() }
         disposable += rxBus
             .toObservable(EventXdripRawBgReceived::class.java)
             .observeOn(aapsSchedulers.io)
@@ -395,6 +398,7 @@ class NSClientV3Plugin @Inject constructor(
         handler = null
         disposable.clear()
         stopService()
+        tertiaryDisconnectSocket()
         super.onStop()
     }
 
@@ -684,57 +688,99 @@ class NSClientV3Plugin @Inject constructor(
         return client
     }
 
-    // Tertiary ("3y") raw-BG upload site (2026-09-30, per explicit request): a genuinely separate third
-    // connection, used ONLY to carry raw BG (from an xDrip/GDH broadcast, see EventXdripRawBgReceived)
-    // out as its own SGV entry -- unrelated to the primary/secondary sync paths, to routeToLiveSite()
-    // below, and to whatever value AAPS's own smoothing produces. Same caching pattern as
-    // liveUploadClient() -- one client kept per URL+token.
-    private var tertiaryRawUploadClientCache: Pair<String, NSAndroidClient>? = null
+    // Tertiary ("3y") raw-BG upload site (2026-09-30, per explicit request; switched from V3 REST to V1
+    // socket.io 2026-10-01, per explicit request -- iAPS's own NS integration reads V1/socket.io
+    // reliably, unlike the V3 REST entries endpoint the primary/secondary sync paths use). A genuinely
+    // separate third connection, used ONLY to carry raw BG (from an xDrip/GDH broadcast, see
+    // EventXdripRawBgReceived) out as its own SGV entry -- unrelated to the primary/secondary sync
+    // paths, to routeToLiveSite() below, and to whatever value AAPS's own smoothing produces.
+    //
+    // Kept as ONE persistent connection, not opened per event: the broadcast this rides on fires
+    // roughly once a minute, so reconnecting per event would mean constant connect/auth churn instead
+    // of a normal long-lived socket. tertiaryEnsureSocketConnected() is idempotent -- a no-op once
+    // already connected under the same URL+secret -- and is called both eagerly from onStart() and
+    // defensively from every upload attempt (in case the connection dropped). Auth follows the exact
+    // handshake NSClientService.kt uses for the primary V1 connection: an "authorize" emit carrying a
+    // SHA1 hash of the secret (NsClientTertiaryAccessToken doubles as the API secret here, not a
+    // bearer token), then dbAdd once the ack confirms write permission.
+    private var tertiarySocket: Socket? = null
+    private var tertiarySocketKey: String? = null
+    private var tertiaryHasWriteAuth = false
 
-    private fun tertiaryRawUploadClient(): NSAndroidClient? {
+    private fun tertiaryDisconnectSocket() {
+        tertiarySocket?.off(Socket.EVENT_CONNECT)
+        tertiarySocket?.off(Socket.EVENT_DISCONNECT)
+        tertiarySocket?.disconnect()
+        tertiarySocket = null
+        tertiarySocketKey = null
+        tertiaryHasWriteAuth = false
+    }
+
+    private fun tertiaryEnsureSocketConnected() {
         val url = preferences.get(StringKey.NsClientTertiaryUrl).trim()
-        val token = preferences.get(StringKey.NsClientTertiaryAccessToken).trim()
-        if (url.isEmpty()) return null
-        val key = "$url|$token"
-        tertiaryRawUploadClientCache?.takeIf { it.first == key }?.let { return it.second }
-        val client = NSAndroidClientImpl(
-            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
-            accessToken = token,
-            context = context,
-            logging = false,
-            logger = { msg -> aapsLogger.debug(LTag.HTTP, "Tertiary raw upload: $msg") }
-        )
-        tertiaryRawUploadClientCache = key to client
-        return client
+        val secret = preferences.get(StringKey.NsClientTertiaryAccessToken).trim()
+        if (url.isEmpty() || secret.isEmpty()) {
+            if (tertiarySocket != null) tertiaryDisconnectSocket()
+            return
+        }
+        val key = "$url|$secret"
+        if (tertiarySocketKey == key && tertiarySocket?.connected() == true) return
+        if (tertiarySocket != null) tertiaryDisconnectSocket()
+        try {
+            val secretHash = Hashing.sha1().hashString(secret, Charsets.UTF_8).toString()
+            val opt = IO.Options().also { it.forceNew = true }
+            tertiarySocket = IO.socket(url, opt).also { socket ->
+                socket.on(Socket.EVENT_CONNECT) {
+                    val authMessage = JSONObject().apply {
+                        put("client", "Android_tertiary_raw")
+                        put("history", 0)
+                        put("status", false)
+                        put("secret", secretHash)
+                    }
+                    socket.emit("authorize", authMessage, object : Ack {
+                        override fun call(vararg args: Any) {
+                            val response = args.getOrNull(0) as? JSONObject
+                            tertiaryHasWriteAuth = response?.optBoolean("write") == true
+                            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", if (tertiaryHasWriteAuth) "authorized" else "write permission not granted"))
+                        }
+                    })
+                }
+                socket.on(Socket.EVENT_DISCONNECT) { tertiaryHasWriteAuth = false }
+                socket.connect()
+            }
+            tertiarySocketKey = key
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Tertiary raw upload: connect failed: ${e.message}")
+            tertiarySocket = null
+            tertiarySocketKey = null
+        }
     }
 
     // "raw only" (per explicit request): sgv/unfiltered both carry the raw value itself, never AAPS's own
-    // smoothed BG. identifier=null lets the site assign its own, same as any other freshly-created entry
-    // (see GlucoseValueExtension.toNSSvgV3() for the same convention on the normal sync path). NS's own
-    // "noise" field (an integer 1-4 noise LEVEL in its schema) is left null here rather than set to
-    // anything derived from our raw value, to avoid conflating this fork's GV.noise raw-piggyback
-    // convention with NS's own unrelated meaning for that field.
+    // smoothed BG. NS's own "noise" field (an integer 1-4 noise LEVEL in its schema) is left out rather
+    // than set to anything derived from our raw value, to avoid conflating this fork's GV.noise
+    // raw-piggyback convention with NS's own unrelated meaning for that field.
     private fun uploadRawToTertiarySite(event: EventXdripRawBgReceived) {
-        val client = tertiaryRawUploadClient() ?: return
-        val sgv = NSSgvV3(
-            date = event.timestamp,
-            device = event.device,
-            identifier = null,
-            utcOffset = 0L,
-            isValid = true,
-            sgv = event.raw,
-            units = NsUnits.MG_DL,
-            direction = null,
-            noise = null,
-            filtered = null,
-            unfiltered = event.raw
-        )
-        try {
-            runBlocking { client.createSgv(sgv) }
-            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "raw=${event.raw} device=${event.device}"))
-        } catch (e: Exception) {
-            aapsLogger.error(LTag.NSCLIENT, "Tertiary raw upload failed: ${e.message}")
+        tertiaryEnsureSocketConnected()
+        val socket = tertiarySocket
+        if (socket == null || !socket.connected() || !tertiaryHasWriteAuth) {
+            rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "skipped raw=${event.raw}: socket not ready"))
+            return
         }
+        val data = JSONObject().apply {
+            put("type", "sgv")
+            put("sgv", event.raw)
+            put("unfiltered", event.raw)
+            put("device", event.device)
+            put("date", event.timestamp)
+            put("dateString", dateUtil.toISOString(event.timestamp))
+        }
+        val message = JSONObject().apply {
+            put("collection", "entries")
+            put("data", data)
+        }
+        socket.emit("dbAdd", message)
+        rxBus.send(EventNSClientNewLog("● TERTIARY-RAW", "raw=${event.raw} device=${event.device}"))
     }
 
     private fun routeToLiveSite(dataPair: DataSyncSelector.DataPair): Boolean =

@@ -148,25 +148,15 @@ class BolusWizard @Inject constructor(
     var insulinFromCarbsOnly = 0.0
         private set
     // insulinFromProteinOnly/insulinFromFatOnly: each component's own Warsaw-FPU carb-equivalent
-    // (protein×0.4, fat×0.9 — see doCalc()'s own doc comment) divided by IC. NOT folded into
-    // insulinFromCarbs/calculatedTotalInsulin — delivered separately as a combined extended series, see
-    // warsawFpuPlan().
+    // (protein×0.4, fat×0.9 in the usual case — see doCalc()'s own doc comment) divided by IC. NOT
+    // folded into insulinFromCarbs/calculatedTotalInsulin — always delivered separately as a combined
+    // extended series, see warsawFpuPlan(). Gated off entirely (both forced to 0) when addFpus is
+    // unchecked; boosted to protein×2.0/fat×1.5 instead of the usual 0.4/0.9 when unreliableSmbs is
+    // checked (current sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes into the
+    // same extended series) -- see addFpus/unreliableSmbs's own doc comment.
     var insulinFromProteinOnly = 0.0
         private set
     var insulinFromFatOnly = 0.0
-        private set
-    // insulinFromFatProteinNow (2026-09-30, per explicit request): the "bolus fat/protein now instead of
-    // extending" checkbox's alternative to insulinFromProteinOnly/insulinFromFatOnly above. UNLIKE those two,
-    // this IS folded into calculatedTotalInsulin -- the whole point is delivering it as part of the immediate
-    // bolus, not the separate Warsaw-FPU extended series (warsawFpuPlan()/scheduleSplitProteinFatDoses() both
-    // gate on insulinFromProteinOnly/insulinFromFatOnly being > 0, so zeroing those two when fatProteinNow is
-    // on already suppresses the extended path with no other change needed). Ratios are deliberately different
-    // from Warsaw's own 0.4/0.9 (those assume slow multi-hour absorption the extended series is built to
-    // match) -- default fat×1.0/protein×1.5, or fat×1.5/protein×2.0 when unreliableSmbs is also set (current
-    // sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes in upfront). Flows through the
-    // exact same constraintChecker.applyBolusConstraints()/max-bolus-split path as everything else in
-    // calculatedTotalInsulin -- maxBolusAllowed itself is never touched by either checkbox.
-    var insulinFromFatProteinNow = 0.0
         private set
     var insulinFromBolusIOB = 0.0
         private set
@@ -271,9 +261,17 @@ class BolusWizard @Inject constructor(
     // Delayed / Wz133 follow this, not the checkbox: a seated QuickWizard "always on"
     // press must not SMB-block 85 min for a cut that never happened.
     var walkingSoonCutApplied: Boolean = false
-    // "Bolus fat/protein now instead of extending" master checkbox, and its "unreliable SMBs (current
-    // sensor/pod)" sub-toggle -- see insulinFromFatProteinNow's own doc comment for the full design.
-    var fatProteinNow: Boolean = false
+    // "Add FPUs" checkbox (2026-10-01, per explicit request), default ON: a plain master on/off for
+    // fat/protein-driven insulin, computed and delivered exactly the usual way (Warsaw carb-equivalent
+    // divided by IC, delivered via the extended series in warsawFpuPlan()/scheduleSplitProteinFatDoses())
+    // whenever checked. Unchecked zeroes insulinFromProteinOnly/insulinFromFatOnly -- no insulin for the
+    // fat/protein grams at all this calc. Nothing here is about delivering anything "now" instead of
+    // extending -- that was a misimplementation earlier this session and has been removed.
+    var addFpus: Boolean = true
+    // "Unreliable SMBs (current sensor/pod)" sub-toggle, independent of addFpus's on/off: boosts the
+    // usual Warsaw ratios (protein×0.4, fat×0.9) to protein×2.0/fat×1.5 for the SAME extended-series
+    // delivery -- current sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes into
+    // the series, but the series itself is unaffected otherwise. No effect when addFpus is off.
     var unreliableSmbs: Boolean = false
 
     fun doCalc(
@@ -302,8 +300,8 @@ class BolusWizard @Inject constructor(
         protein: Int = 0,
         fat: Int = 0,
         walkingSoon: Boolean = false,
-        fatProteinNow: Boolean = false,
-        unreliableSmbs: Boolean = false
+        unreliableSmbs: Boolean = false,
+        addFpus: Boolean = true
     ): BolusWizard {
 
         this.profile = profile
@@ -312,8 +310,8 @@ class BolusWizard @Inject constructor(
         this.carbs = carbs
         this.protein = protein
         this.fat = fat
-        this.fatProteinNow = fatProteinNow
         this.unreliableSmbs = unreliableSmbs
+        this.addFpus = addFpus
         this.cob = cob
         this.bg = bg
         this.correction = correction
@@ -394,16 +392,14 @@ class BolusWizard @Inject constructor(
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
-        if (fatProteinNow) {
+        if (!addFpus) {
             insulinFromProteinOnly = 0.0
             insulinFromFatOnly = 0.0
-            val proteinRatio = if (unreliableSmbs) 2.0 else 1.5
-            val fatRatio = if (unreliableSmbs) 1.5 else 1.0
-            insulinFromFatProteinNow = ((protein * proteinRatio) + (fat * fatRatio)) / ic
         } else {
-            insulinFromProteinOnly = (protein * 0.4) / ic
-            insulinFromFatOnly = (fat * 0.9) / ic
-            insulinFromFatProteinNow = 0.0
+            val proteinRatio = if (unreliableSmbs) 2.0 else 0.4
+            val fatRatio = if (unreliableSmbs) 1.5 else 0.9
+            insulinFromProteinOnly = (protein * proteinRatio) / ic
+            insulinFromFatOnly = (fat * fatRatio) / ic
         }
         insulinFromCarbs = insulinFromCarbsOnly
         // Low-BG recent-entry rule (2026-09-24, per explicit request): see WizardRecentEntry. Only detected here;
@@ -437,7 +433,7 @@ class BolusWizard @Inject constructor(
         }
 
         // Total
-        calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB + insulinFromFatProteinNow
+        calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
 
         // Walking soon: 70% now (or standing % if that is already lower). Does not touch
         // usePercentage/totalPercentage/percentageCorrection — delayed fullRequired still uses those.
@@ -624,14 +620,14 @@ class BolusWizard @Inject constructor(
         val recentEntryText = if (lowBgRecentEntryRule) {
             ", RecentEntry<60min@BG<6 (COB ${if (useCob) "ON" else "off"}, MaxBolus x0.8)"
         } else ""
-        val fatProteinNowText = if (!fatProteinNow) "off" else {
-            val proteinRatio = if (unreliableSmbs) 2.0 else 1.5
-            val fatRatio = if (unreliableSmbs) 1.5 else 1.0
+        val fpuText = if (!addFpus) "off" else {
+            val proteinRatio = if (unreliableSmbs) 2.0 else 0.4
+            val fatRatio = if (unreliableSmbs) 1.5 else 0.9
             "ON (fat×${decimalFormatter.to2Decimal(fatRatio)}/protein×${decimalFormatter.to2Decimal(proteinRatio)}" +
-                "${if (unreliableSmbs) ", unreliableSMBs" else ""} -> ${decimalFormatter.to2Decimal(insulinFromFatProteinNow)}U)"
+                "${if (unreliableSmbs) ", unreliableSMBs" else ""})"
         }
         return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
-            "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FatProteinNow $fatProteinNowText"
+            "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FPU $fpuText"
     }
 
     fun createBolusCalculatorResult(): BCR {
@@ -1488,10 +1484,8 @@ class BolusWizard @Inject constructor(
     // Reduced/gated carb-split delivery. Every part is gated before delivery on: not cancelled (either by
     // an explicit stop press, OR by a newer bolus/carbs entry superseding this schedule — see
     // ScheduledDoseSupersession), profile% still >=100, pump not suspended, AND a live BG safety check
-    // (>=7.0mmol, not falling on either delta). An unsafe BG result is checked at three consecutive
-    // split intervals: the first two unsafe checks defer the part by another full configured interval;
-    // only the third consecutive unsafe check cancels all further parts. SMBs are never
-    // blocked (the old equal-parts/SplitBolusBlockSmbUntil mode is gone entirely).
+    // (>=7.0mmol, not falling on either delta). SMBs are never blocked (the old equal-parts/
+    // SplitBolusBlockSmbUntil mode is gone entirely).
     //
     // Dose sizing is IOB-delta driven: iobBaselineForNextGap is "IOB right before the previous dose was
     // given, plus that dose's own amount" (i.e. IOB right AFTER the previous dose joined the pool). At
@@ -1501,17 +1495,25 @@ class BolusWizard @Inject constructor(
     // skipped and retried at the next one (IOB may have risen only temporarily, e.g. from an SMB, and
     // decayed back down by then) rather than dropping the whole remaining residual outright.
     //
-    // retryDeadline bounds ALL soft-retry paths (missing data, IOB-rose skip) to 60 minutes from the
-    // FIRST call (computed once, threaded unchanged through every recursive call) — past that, a stale
-    // bolus intent gets abandoned for good rather than firing hours later into a very different
-    // situation. The hard-stop conditions above (explicit cancel, superseded, profile switch, pump
-    // unavailable and superbolus) end the schedule immediately. A genuinely unsafe BG reading is
-    // allowed the three interval checks described above, still bounded by the same overall deadline.
+    // Changed 2026-10-01, per explicit request, after real data showed a fixed "3 consecutive unsafe
+    // checks" cancel (~14-21min into an unsafe run at the default 7min interval) was too short to
+    // distinguish a genuine hypo-trending drop (correctly cancelled, e.g. the 14 Sep episode where BG
+    // kept falling to 3.5mmol) from a fat/protein-slowed rise that just took longer to clear the safety
+    // band (e.g. the 15 Sep episode: BG stayed under 6.0mmol for ~107min, then overshot to 8.3mmol,
+    // suggesting the cancelled residual really was still needed). A SMALL bump (e.g. 3->6 consecutive
+    // checks, only ~35-42min) doesn't bridge that gap either. So there is no more consecutive-unsafe-
+    // check counter at all: an unsafe BG reading now ALWAYS just retries next interval (delivery itself
+    // stays exactly as gated as before -- nothing unsafe is ever delivered), and retryDeadline alone
+    // (bounding every soft-retry path -- missing data, IOB-rose skip, AND now BG-unsafe -- from the
+    // FIRST call, computed once and threaded unchanged through every recursive call) decides when to
+    // finally give up. Raised from 60min to 150min (2.5h) to actually cover a slow fat/protein-driven
+    // rise like 15 Sep's, instead of writing off the residual ~20min into it. The hard-stop conditions
+    // above (explicit cancel, superseded, profile switch, pump unavailable and superbolus) still end
+    // the schedule immediately regardless of retryDeadline.
     private fun scheduleReducedPartsSplitBolus(
         remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
-        retryDeadline: Long = dateUtil.now() + T.mins(60).msecs(),
-        consecutiveUnsafeChecks: Int = 0,
+        retryDeadline: Long = dateUtil.now() + T.mins(150).msecs(),
         // Most recent skipped part (IOB rose enough that it calculated to 0U) that has NOT been written yet. Carb-split zeros
         // are deferred (2026-09-20, explicit request): only the LAST one is written, and only if the split then ends without
         // delivering anything more. Dropped when a later part is delivered.
@@ -1570,12 +1572,12 @@ class BolusWizard @Inject constructor(
             if (dateUtil.now() < deliverAt) {
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
-                    deliverAt, retryDeadline, consecutiveUnsafeChecks, lastSkippedZero
+                    deliverAt, retryDeadline, lastSkippedZero
                 )
                 return@postDelayed
             }
             if (dateUtil.now() > retryDeadline) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (60min) exhausted — cancelling remaining ${remainingResidual}U")
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (150min) exhausted — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
                 cancelDoseNote(remainingResidual, "retry timeout exceeded", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
@@ -1584,57 +1586,42 @@ class BolusWizard @Inject constructor(
             // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
             // wizard's own glucoseStatus field (that was only ever captured once, at calc time). Split
             // into two cases: missing/stale data (gs == null, e.g. a sensor gap >7min — see
-            // GlucoseStatusCalculatorAutoIsf's allowOldData cutoff) is a DATA problem, not a safety
-            // veto — retry shortly rather than losing the residual to a transient gap. An actual unsafe
-            // reading (BG low or falling) advances the consecutive interval counter below; it cancels
-            // only when it is still unsafe at the third configured split interval.
+            // GlucoseStatusCalculatorAutoIsf's allowOldData cutoff) and an actual unsafe reading (BG low
+            // or falling) are both just soft retries now (see the 2026-10-01 change in this function's
+            // own doc comment) — bounded only by the shared retryDeadline above, not by any separate
+            // consecutive-check count.
             val gs = glucoseStatusProvider.glucoseStatusData
             if (gs == null) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: no fresh glucose data — retrying in 2min, remaining ${remainingResidual}U")
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
-                    dateUtil.now() + T.mins(2).msecs(), retryDeadline, consecutiveUnsafeChecks, lastSkippedZero
+                    dateUtil.now() + T.mins(2).msecs(), retryDeadline, lastSkippedZero
                 )
                 return@postDelayed
             }
             // BG<6.0mmol is unsafe outright, regardless of trend. Between 6.0-8.0mmol a declining trend
             // is also unsafe (caution zone). At/above 8.0mmol a declining trend alone is NOT unsafe --
             // added 2026-08-15 after noticing the previous flat OR meant a tiny, noise-level negative
-            // delta (e.g. -0.06mmol) at a comfortably high BG (8.5mmol+) could trip this on its own, and
-            // if a gentle, genuinely-safe decline from a high BG held that sign for 3 consecutive checks
-            // (entirely plausible over ~21min at the default 7min interval), the whole remaining
-            // residual got cancelled despite BG never coming near a genuinely low level. Floor lowered
-            // 7.0 -> 6.0mmol same day, per explicit request.
+            // delta (e.g. -0.06mmol) at a comfortably high BG (8.5mmol+) could trip this on its own.
+            // Floor lowered 7.0 -> 6.0mmol same day, per explicit request.
             val bgUnsafe = gs.glucose < 108.1 /* 6.0 mmol */ ||
                 (gs.glucose < 144.1 /* 8.0 mmol */ && (gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */))
             if (bgUnsafe) {
-                val unsafeCheckNumber = consecutiveUnsafeChecks + 1
-                if (unsafeCheckNumber < 3) {
-                    aapsLogger.info(
-                        LTag.CORE,
-                        "ReducedSplitBolus: BG unsafe check $unsafeCheckNumber/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
-                    )
-                    scheduleReducedPartsSplitBolus(
-                        remainingResidual,
-                        previousPartDose,
-                        iobBaselineForNextGap,
-                        intervalMins,
-                        schedulingPct,
-                        myScheduleToken,
-                        dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
-                        retryDeadline,
-                        unsafeCheckNumber,
-                        lastSkippedZero
-                    )
-                    return@postDelayed
-                }
                 aapsLogger.info(
                     LTag.CORE,
-                    "ReducedSplitBolus: BG unsafe check 3/3 (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — cancelling remaining ${remainingResidual}U"
+                    "ReducedSplitBolus: BG unsafe (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
                 )
-                writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "BG safety check failed 3 consecutive intervals", "Carb split", iobBaselineForNextGap)
-                setSplitPendingRemaining(0.0)
+                scheduleReducedPartsSplitBolus(
+                    remainingResidual,
+                    previousPartDose,
+                    iobBaselineForNextGap,
+                    intervalMins,
+                    schedulingPct,
+                    myScheduleToken,
+                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
+                    retryDeadline,
+                    lastSkippedZero
+                )
                 return@postDelayed
             }
             val liveIob = currentTotalIob()

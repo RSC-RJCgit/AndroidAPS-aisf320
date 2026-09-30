@@ -707,8 +707,7 @@ class WizardDialog : DaggerDialogFragment() {
 
         // unreliableSmbsCheckbox auto-sets wiz% to 90 for THIS calculation only (per explicit request) --
         // does not touch the standing IntKey.OverviewBolusPercentage preference, so every other dose is
-        // unaffected. Only meaningful alongside fatProteinNowCheckbox; read regardless since the checkbox
-        // itself is the source of truth for "this calc", not a dependency on the other box's state.
+        // unaffected.
         var wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
         // WizardDropTrendCaution (2026-09-30): same calc-scoped-only override, takes whichever of the two
         // is MORE conservative (lower) rather than replacing the checkbox's own value.
@@ -731,8 +730,8 @@ class WizardDialog : DaggerDialogFragment() {
             protein = protein,
             fat = fat,
             walkingSoon = binding.walkingSoonCheckbox.isChecked,
-            fatProteinNow = binding.fatProteinNowCheckbox.isChecked,
-            unreliableSmbs = binding.unreliableSmbsCheckbox.isChecked
+            unreliableSmbs = binding.unreliableSmbsCheckbox.isChecked,
+            addFpus = binding.addFpusCheckbox.isChecked
         )
 
         wizard?.let { wizard ->

@@ -373,10 +373,11 @@
                     android:paddingEnd="10dp">
 
                     <CheckBox
-                        android:id="@+id/fat_protein_now_checkbox"
+                        android:id="@+id/add_fpus_checkbox"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Bolus fat/protein now instead of extending (fat×1.0/protein×1.5)"
+                        android:checked="true"
+                        android:text="Add FPUs (fat/protein insulin, fat×0.9/protein×0.4, extended)"
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText" />
 
@@ -385,7 +386,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:paddingStart="20dp"
-                        android:text="Unreliable SMBs (current sensor/pod): fat×1.5/protein×2.0, sets wiz% to 90"
+                        android:text="Unreliable SMBs (current sensor/pod): boost to fat×1.5/protein×2.0, sets wiz% to 90"
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
