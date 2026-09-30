@@ -141,13 +141,22 @@ class DelayedBolusWorker(
         pendingSplit: Double,
         pendingWarsaw: Double,
         multiplier: Double,
-        dbLabel: String
+        dbLabel: String,
+        insReqLimited: Boolean,
+        residualAfter: Double
     ) {
         val profile = profileFunction.getProfile()
         val multiplierPct = (multiplier * 100).toInt()
         val capNote = if (liveInsulinReqCap != null && cappedRawDose < rawDose)
             " (capped to InsReq -> ${Round.roundTo(cappedRawDose, 0.01)}U)"
         else ""
+        // insReqLimited (2026-09-30, per explicit request): InsReq is a this-cycle delivery-rate ceiling, not a
+        // re-assessment of how much is really still owed -- unlike cobFraction/multiplier, which DO legitimately
+        // shrink the true remaining need over time, InsReq capping a check must not discard the undelivered
+        // portion. When InsReq was the binding constraint this check, the sequence continues (residualAfter carried
+        // to the next attempt via deliveredSoFar) instead of declaring completion.
+        val trailer = if (insReqLimited) "Still ${Round.roundTo(residualAfter, 0.01)}U pending (InsReq-limited this check) -- continuing"
+            else "Delayed sequence complete; no residual pending"
         val note = "$dbLabel delayed bolus: ${Round.roundTo(delayedDose, 0.01)}U delivered\n" +
             "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
             "SD ${Round.roundTo(gs.shortAvgDelta / 18.0182, 0.01)}, LD ${Round.roundTo(gs.longAvgDelta / 18.0182, 0.01)} mmol/L\n" +
@@ -157,7 +166,7 @@ class DelayedBolusWorker(
             "(x${Round.roundTo(cobFraction, 0.01)}) -> ${Round.roundTo(rawDose, 0.01)}U$capNote; " +
             "${if (multiplier < 1.0) "still moving" else "seated"} $multiplierPct%\n" +
             "${pendingSourcesLine(liveInsulinReqCap, pendingSplit, pendingWarsaw)}\n" +
-            "Delayed sequence complete; no residual pending"
+            trailer
         persistenceLayer.insertOrUpdateBolusCalculatorResult(
             BCR(
                 timestamp = dateUtil.now(),
@@ -265,6 +274,10 @@ class DelayedBolusWorker(
         const val KEY_ORIGINAL_TIME = "originalTime"
         const val KEY_ORIGINAL_CARBS = "originalCarbs"
         const val KEY_ORIGINAL_IOB = "originalIob"
+        // Added 2026-09-30: cumulative amount actually delivered via THIS delayed sequence so far (across
+        // InsReq-limited re-checks). Subtracted from fullRequired-originalDose to get the true raw remainder --
+        // never decremented by an InsReq-denied portion, only by what was physically delivered.
+        const val KEY_DELIVERED_SO_FAR = "deliveredSoFar"
         const val POLL_MINUTES = 5
         const val MAX_ATTEMPTS = 16
 
@@ -295,7 +308,8 @@ class DelayedBolusWorker(
             attempt: Int,
             originalTime: Long = System.currentTimeMillis(),
             originalCarbs: Double = 0.0,
-            originalIob: Double = 0.0
+            originalIob: Double = 0.0,
+            deliveredSoFar: Double = 0.0
         ) {
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
@@ -309,7 +323,8 @@ class DelayedBolusWorker(
                             KEY_ATTEMPT to attempt,
                             KEY_ORIGINAL_TIME to originalTime,
                             KEY_ORIGINAL_CARBS to originalCarbs,
-                            KEY_ORIGINAL_IOB to originalIob
+                            KEY_ORIGINAL_IOB to originalIob,
+                            KEY_DELIVERED_SO_FAR to deliveredSoFar
                         ))
                         .build()
                 )
@@ -323,6 +338,7 @@ class DelayedBolusWorker(
         val originalTime = inputData.getLong(KEY_ORIGINAL_TIME, dateUtil.now())
         val originalCarbs = inputData.getDouble(KEY_ORIGINAL_CARBS, 0.0)
         val originalIob = inputData.getDouble(KEY_ORIGINAL_IOB, 0.0)
+        val deliveredSoFar = inputData.getDouble(KEY_DELIVERED_SO_FAR, 0.0)
 
         if (BolusProgressData.followUpBolusCancelled) {
             aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: cancelled by user")
@@ -348,7 +364,11 @@ class DelayedBolusWorker(
             val currentCob = iobCobCalculator.getCobInfo("DelayedBolusWorker").displayCob ?: 0.0
             val cobFraction = if (originalCarbs > 0) (currentCob / originalCarbs).coerceIn(0.0, 1.0) else 1.0
 
-            val remainder = (fullRequired - originalDose).coerceAtLeast(0.0)
+            // remainder is decremented ONLY by what has actually been delivered so far (deliveredSoFar) --
+            // never by an InsReq-denied portion. cobFraction is applied fresh each check against this raw
+            // figure, so a shrinking COB legitimately reduces the true remaining need over time; only InsReq
+            // capping a check must not discard the undelivered rest (see insReqLimited below).
+            val remainder = (fullRequired - originalDose - deliveredSoFar).coerceAtLeast(0.0)
             val rawDose = remainder * cobFraction
 
             // Live InsReq cap (see class doc comment): only trust it while the loop has actually run
@@ -359,6 +379,10 @@ class DelayedBolusWorker(
                     preferences.get(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU) / 1000.0
                 else null
             val cappedRawDose = if (liveInsulinReqCap != null) min(rawDose, max(0.0, liveInsulinReqCap)) else rawDose
+            // True when InsReq (not cobFraction/multiplier) is the reason this check's delivery falls short
+            // of the raw remainder -- 2026-09-30, per explicit request: this is the ONLY case that should
+            // keep the sequence alive for another check rather than ending it.
+            val insReqLimited = liveInsulinReqCap != null && cappedRawDose < rawDose
 
             // Other pending amounts from BolusWizard's own carb-split/Warsaw-FPU series -- see
             // LongKey.ApsAutoIsfPending{Split,Warsaw}RemainingMilliU's own doc comment. Shown, not
@@ -378,6 +402,15 @@ class DelayedBolusWorker(
             val multiplier = if (movingNow) DELAYED_MOVING_PERCENT / 100.0 else 1.0
             val delayedDose = Round.roundTo(max(0.0, cappedRawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
+                // InsReq floored this check to zero (not cobFraction/multiplier) and there's still a real raw
+                // remainder outstanding -- keep polling instead of declaring covered; nothing was delivered so
+                // deliveredSoFar carries forward unchanged.
+                if (insReqLimited && attempt < MAX_ATTEMPTS) {
+                    aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but InsReq-limited to 0U this check — remainder=${Round.roundTo(remainder, 0.01)}U still pending, scheduling attempt ${attempt + 1} in $POLL_MINUTES min")
+                    addCheckNote("$dbLabel InsReq-limited, wait")
+                    enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar)
+                    return Result.success()
+                }
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
                 addCheckNote("$dbLabel covered")
                 addCoveredCalcTreatment(
@@ -397,9 +430,16 @@ class DelayedBolusWorker(
                 unblockSmb("covered by COB check")
                 return Result.success()
             }
-            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"})")
+            // willContinue (2026-09-30): whether this check's delivery is InsReq-limited AND real remainder
+            // is still outstanding after it AND attempts remain -- the only case where the sequence should
+            // stay alive rather than end here. SMBs stay blocked (not unblocked yet) while it's true, since
+            // the delayed top-up decision is still pending, not resolved.
+            val newDeliveredSoFar = deliveredSoFar + delayedDose
+            val residualAfter = (fullRequired - originalDose - newDeliveredSoFar).coerceAtLeast(0.0)
+            val willContinue = insReqLimited && attempt < MAX_ATTEMPTS && residualAfter > 0.0
+            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"}${if (willContinue) " -- InsReq-limited, ${Round.roundTo(residualAfter, 0.01)}U will remain pending" else ""})")
             addCheckNote("$dbLabel ${delayedDose}U")
-            unblockSmb("delivering")
+            if (!willContinue) unblockSmb("delivering")
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = delayedDose
@@ -418,9 +458,12 @@ class DelayedBolusWorker(
                         // A request, waiting note, or failed zero-dose attempt must not arm slow-rise.
                         if (result.bolusDelivered > 0.0)
                             preferences.put(LongNonKey.LastDelayedBolusDeliveredAt, dateUtil.now())
-                        if (!result.success)
+                        if (!result.success) {
+                            // willContinue deferred unblocking above on the assumption of success -- a failed
+                            // delivery must not leave SMBs stuck blocked with no retry of this same check.
+                            if (willContinue) unblockSmb("delivery failed")
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                        else
+                        } else {
                             addDeliveredCalcTreatment(
                                 gs = gs,
                                 delayedDose = delayedDose,
@@ -436,8 +479,13 @@ class DelayedBolusWorker(
                                 pendingSplit = pendingSplit,
                                 pendingWarsaw = pendingWarsaw,
                                 multiplier = multiplier,
-                                dbLabel = dbLabel
+                                dbLabel = dbLabel,
+                                insReqLimited = willContinue,
+                                residualAfter = residualAfter
                             )
+                            if (willContinue)
+                                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, newDeliveredSoFar)
+                        }
                     }
                 })
             }
@@ -451,7 +499,7 @@ class DelayedBolusWorker(
             if (attempt < MAX_ATTEMPTS) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in $POLL_MINUTES min")
                 addCheckNote("$dbLabel wait")
-                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob)
+                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar)
             } else {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
                 addCheckNote("$dbLabel end")
