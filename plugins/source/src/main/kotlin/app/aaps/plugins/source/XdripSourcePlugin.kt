@@ -195,11 +195,18 @@ class XdripSourcePlugin @Inject constructor(
             val sourceCGM = bundle.getString(Intents.XDRIP_DATA_SOURCE) ?: ""
             val fslApply = preferences.get(BooleanKey.FslApplySmoothing)
             val isAutoLibreSource = extraRaw == 0.0 && (sourceCGM == "Libre2" || sourceCGM == "Libre2 Native" || sourceCGM == "Libre3" || sourceCGM == "G7")
-            // Temp diagnostic (2026-09-30): find out what sourceCGM a GlucoDataHandler-relayed broadcast (reading
-            // from an NS-follower connection, not a direct sensor read) actually reports, since it almost
-            // certainly isn't one of isAutoLibreSource's four recognised names above -- this is what decides
-            // whether extraRaw==0.0 ever gets rescued to extraBgEstimate for that device, i.e. whether RawMiss
-            // clears at all. Remove once confirmed.
+            // Confirmed 2026-10-01 via a live broadcast capture: a GlucoDataHandler-relayed broadcast
+            // (reading from a Nightscout-follower connection, not a direct sensor read) sends ONLY
+            // BgSlope/Time/BgSlopeName/BgEstimate/SourceDesc/SourceInfo -- no separate Raw field exists
+            // in the bundle at all, and sourceCGM there is a device serial (e.g. "301URW4AD8W"), not one
+            // of isAutoLibreSource's four recognised sensor-type names, so that check alone never
+            // rescues it. Moved this fallback UP (was previously only applied a few lines below, inside
+            // the calibration block) so the tertiary-upload check right after this also sees the rescued
+            // value instead of a stale extraRaw==0.0 -- previously the calibration block would rescue it
+            // moments too late to help that check. Still gated on fslApply||isAutoLibreSource (the same
+            // signal the calibration path already trusted for "this source's BgEstimate stands in for an
+            // unfiltered reading"), not applied unconditionally to every source.
+            if (extraRaw == 0.0 && (fslApply || isAutoLibreSource)) extraRaw = extraBgEstimate
             aapsLogger.debug(LTag.BGSOURCE, "RawMiss diagnostic: sourceCGM='$sourceCGM' extraRaw=$extraRaw fslApply=$fslApply isAutoLibreSource=$isAutoLibreSource")
             // Tertiary-site raw upload (2026-09-30, per explicit request): only a GENUINE raw value (same
             // >10 threshold this fork's own RawMiss/ukfRawMetrics() already use to mean "real raw, not zero
@@ -207,9 +214,7 @@ class XdripSourcePlugin @Inject constructor(
             // actual upload to the tertiary NS site.
             if (extraRaw > 10.0) rxBus.send(EventXdripRawBgReceived(extraRaw, thisTimeRaw, sourceCGM.ifEmpty { "xDrip" }))
             if (fslApply || isAutoLibreSource) {
-                // If extraRaw is 0 (xDrip Libre, no separate raw), treat the estimate as raw so calibration has something to work with.
-                // If extraRaw is non-zero (Juggluco etc.), use the sensor raw directly for calibration.
-                if (extraRaw == 0.0) extraRaw = extraBgEstimate
+                // extraRaw already resolved above (rescued to extraBgEstimate if it was 0) -- nothing left to do here.
                 extraBgEstimate = max(40.0, extraRaw * slope + offset * (if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0))
                 val useRawUkfLive = preferences.get(BooleanKey.FslUseUkfSmoothing) &&
                     !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) &&
