@@ -3688,6 +3688,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
         }
 
+        // Live HP1 cache (2026-09-30, per explicit request): lets BolusWizard's new WizardDropTrendCaution
+        // read a recent HP1 value without duplicating hypoPrediction1Mmol()'s own formula outside this
+        // plugin -- same cross-module "cache into a preference" pattern already used for
+        // ApsAutoIsfLastCycleInsulinReqMilliU (DelayedBolusWorker's own InsReq cap). Unconditional, every
+        // cycle, regardless of what any automation below decides.
+        run {
+            val hp1Now = hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB)
+            if (hp1Now != null) preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000).toLong())
+        }
+
         // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
         // relay the warning to the Virtual Pump phone without putting anything on the pump graph.
         // The Virtual Pump does not inspect its own storage here; it reacts once to each relayed Note

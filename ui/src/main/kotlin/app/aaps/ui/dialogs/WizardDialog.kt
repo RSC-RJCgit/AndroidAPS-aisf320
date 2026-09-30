@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.formatColor
@@ -52,6 +53,7 @@ import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardActivitySteps
 import app.aaps.core.objects.wizard.CarbTimeFromRise
 import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
 import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
@@ -610,14 +612,42 @@ class WizardDialog : DaggerDialogFragment() {
         if (maxBolusLowBgUserOverride || applyingMaxBolusLowBgDefault) return
         val bgMgdl = lowBgRuleMgdl(bgInput)
         val lowBgMax = if (bgMgdl < 108.1 /* 6.0 mmol */) min(originalSafetyMaxBolus, 2.0) else originalSafetyMaxBolus
-        val want = if (WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl))
+        var want = if (WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl))
             WizardRecentEntry.scaledMaxBolus(lowBgMax, bolusStep)
         else lowBgMax
+        // WizardDropTrendCaution (2026-09-30): a separate, narrower caution than the recent-entry rule
+        // above -- takes whichever of the two is MORE conservative rather than replacing either.
+        if (dropTrendCautionApplies(bgMgdl)) want = min(want, WizardDropTrendCaution.scaledMaxBolus(lowBgMax, bolusStep))
         if (abs(binding.maxBolusOverrideInput.value - want) < 0.001) return
         applyingMaxBolusLowBgDefault = true
         binding.maxBolusOverrideInput.value = want
         preferences.put(DoubleKey.SafetyMaxBolus, want)
         applyingMaxBolusLowBgDefault = false
+    }
+
+    // How much [currentBgMgdl] has actually risen from its own recent low -- WizardDropTrendCaution's path 2
+    // (IOB-vs-rise). Same 60-min lookback window as WizardRecentEntry.WINDOW_MINUTES, same
+    // getBgReadingsDataFromTimeToTime pattern that class already uses. <= 0 (or no readings at all) means
+    // "not risen" -- WizardDropTrendCaution.iobDisproportionateToRise() floors that to 0.1 mmol itself.
+    private fun recentBgRiseMgdl(currentBgMgdl: Double): Double {
+        val from = dateUtil.now() - T.mins(WizardRecentEntry.WINDOW_MINUTES).msecs()
+        val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true)
+            .minOfOrNull { it.value } ?: return 0.0
+        return currentBgMgdl - recentMin
+    }
+
+    // Shared trigger check for WizardDropTrendCaution -- see that object's own doc comment for the full
+    // rule and the real episode that motivated it. Reads live glucoseStatus fresh each call (same pattern
+    // as lowBgRuleMgdl above), the HP1 value OpenAPSAutoISFPlugin caches every cycle, and current total IOB
+    // (same calculateIobFromBolus/calculateIobFromTempBasalsIncludingConvertedExtended pair already used
+    // a few lines below in calculateInsulin() -- recomputed independently here since this check runs first).
+    private fun dropTrendCautionApplies(bgMgdl: Double): Boolean {
+        val gs = glucoseStatusProvider.getGlucoseStatusData() ?: return false
+        val hp1Cached = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
+        val iobUnits = iobCobCalculator.calculateIobFromBolus().round().iob +
+            iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+        return WizardDropTrendCaution.applies(gs.delta, gs.shortAvgDelta, gs.longAvgDelta, bgMgdl, hp1Mmol, iobUnits, recentBgRiseMgdl(bgMgdl))
     }
 
     @SuppressLint("SetTextI18n")
@@ -679,7 +709,11 @@ class WizardDialog : DaggerDialogFragment() {
         // does not touch the standing IntKey.OverviewBolusPercentage preference, so every other dose is
         // unaffected. Only meaningful alongside fatProteinNowCheckbox; read regardless since the checkbox
         // itself is the source of truth for "this calc", not a dependency on the other box's state.
-        val wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
+        var wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
+        // WizardDropTrendCaution (2026-09-30): same calc-scoped-only override, takes whichever of the two
+        // is MORE conservative (lower) rather than replacing the checkbox's own value.
+        if (dropTrendCautionApplies(lowBgRuleMgdl(bg)))
+            wizPercentForThisCalc = min(wizPercentForThisCalc, WizardDropTrendCaution.scaledWizPercent(wizPercentForThisCalc))
         wizard = bolusWizardProvider.get().doCalc(
             specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, wizPercentForThisCalc,
             binding.bgCheckbox.isChecked,
