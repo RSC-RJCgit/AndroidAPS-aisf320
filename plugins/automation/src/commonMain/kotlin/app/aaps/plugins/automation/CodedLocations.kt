@@ -35,7 +35,7 @@ import kotlinx.serialization.json.Json
 /**
  * Arrival and exit texts for a few saved places.
  * Places start as "-", which means off. No home address is stored here.
- * Only airport places send a text and a note. Other places are remembered but stay quiet.
+ * Only airport places send a text. Every place writes its own Care Portal note: L1in, L1out, A1in, A1out, and so on.
  * A virtual pump does nothing. A phone sends texts only when its model matches the saved model.
  */
 @Inject
@@ -97,7 +97,7 @@ class CodedLocations(
             if (inside && thisPhoneSends()) {
                 states[spec.id] = initial.copy(lastArrival = dateUtil.now())
                 persist()
-                if (spec.arrivalNote.isNotBlank()) send(spec, spec.arrivalNote, arriving = true)
+                send(spec, spec.arrivalNote, arriving = true)
             } else {
                 persist()
             }
@@ -117,7 +117,7 @@ class CodedLocations(
         persist()
         if (!thisPhoneSends()) return
         val note = if (nowInside) spec.arrivalNote else spec.exitNote
-        if (note.isNotBlank()) send(spec, note, nowInside)
+        send(spec, note, nowInside)
     }
 
     private fun thisPhoneSends(): Boolean {
@@ -128,22 +128,25 @@ class CodedLocations(
     }
 
     private suspend fun send(spec: LocationSpec, note: String, arriving: Boolean) {
-        if (!spec.id.startsWith("automation_airport_")) return
-        val movement = if (arriving) "arrival" else "exit"
-        val text = "$note: ${spec.label} $movement"
-        smsCommunicator.sendNotificationToAllNumbers(text)
-        preferences.get(StringKey.AutomationLocationSmsNumbers)
-            .split(';')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+        val code = codedLocationNoteCode(spec.id, arriving) ?: return
+        if (spec.id.startsWith("automation_airport_") && note.isNotBlank()) {
+            val movement = if (arriving) "arrival" else "exit"
+            val text = "$note: ${spec.label} $movement"
+            smsCommunicator.sendNotificationToAllNumbers(text)
+            preferences.get(StringKey.AutomationLocationSmsNumbers)
+                .split(';')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+            aapsLogger.info(LTag.AUTOMATION, "Coded location text: $text")
+        }
         val units = runCatching { profileFunction.getUnits() }.getOrDefault(GlucoseUnit.MGDL)
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = dateUtil.now(),
                 type = TE.Type.NOTE,
-                note = note,
+                note = code,
                 duration = 60_000L,
                 glucoseUnit = units,
             ),
@@ -151,9 +154,9 @@ class CodedLocations(
             action = Action.CAREPORTAL,
             source = Sources.Automation,
             note = "Coded location: ${spec.label}",
-            listValues = listOf(ValueWithUnit.SimpleString(note)),
+            listValues = listOf(ValueWithUnit.SimpleString(code)),
         )
-        aapsLogger.info(LTag.AUTOMATION, "Coded location fired: $text")
+        aapsLogger.info(LTag.AUTOMATION, "Coded location note: $code")
         rxBus.send(EventRefreshOverview("Coded location note", true))
     }
 
@@ -200,6 +203,18 @@ private data class SlotState(
     val lastArrival: Long = 0,
     val lastExit: Long = 0,
 )
+
+/** Address 1 arriving is L1in. Airport 1 leaving is A1out. The number is the slot, 1 to 5. */
+internal fun codedLocationNoteCode(id: String, arriving: Boolean): String? {
+    val kind = when {
+        id.startsWith("automation_address_") -> "L"
+        id.startsWith("automation_airport_") -> "A"
+        else -> return null
+    }
+    val number = id.substringAfterLast('_').toIntOrNull() ?: return null
+    if (number !in 1..5) return null
+    return kind + number + if (arriving) "in" else "out"
+}
 
 internal fun parseCodedLocation(id: String, raw: String): LocationSpec? {
     if (raw.isBlank() || raw.trim() == "-") return null
