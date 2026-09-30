@@ -531,7 +531,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         // confused Re-pick into showing Client-local Profile70 while Live still had
                         // Profile90. Client still emits the SetRole Note and the coded 51-57 min
                         // duration (fast follower->loop path).
-                        steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
+                        val roleHandled = steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
                             if (!config.AAPSCLIENT) preferences.put(steroidKey, profileName)
                             emitSetRoleNote(steroidKey, profileName)
                         } ?: roleOption.key?.let { roleKey ->
@@ -542,7 +542,8 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                                 lockstepPartnerCurrent(roleKey, profileName)
                             }
                             emitSetRoleNote(roleKey, profileName)
-                        } ?: if (!config.AAPSCLIENT) claimStandardTierAAndFill(profileName)
+                        }
+                        if (roleHandled == null && !config.AAPSCLIENT) claimStandardTierAAndFill(profileName)
                         if (isTT) {
                             disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
                                 TT(
