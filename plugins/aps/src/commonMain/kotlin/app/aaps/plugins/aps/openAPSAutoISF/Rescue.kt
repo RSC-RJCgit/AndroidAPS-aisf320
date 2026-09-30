@@ -105,7 +105,8 @@ internal fun offHighBlock(
 internal fun offHighShouldAct(minuteOfDay: Int, hp: Double?): Boolean =
     minuteInWindow(minuteOfDay, 22 * 60, 6 * 60) || hp == null || hp < 5.0
 
-// 08:00 until 01:00. No temp target, steroids off, and a delayed bolus in the last hour.
+// 08:00 until 01:00. No temp target, and steroids off.
+// Either a delayed dose was delivered in the last hour, or any bolus is more than 60 minutes old.
 // The caller sets 4.2 mmol for 5 minutes.
 internal fun stuckRisingShouldRequest(
     ready: Boolean,
@@ -122,21 +123,21 @@ internal fun stuckRisingShouldRequest(
     steps60: Int,
     steps180: Int,
     bolusAgeMinutes: Int,
-    carbAgeMinutes: Int?,
 ): Boolean {
-    if (!ready || ttActive || !steroidsOff || !recentDelayedBolus) return false
+    if (!ready || ttActive || !steroidsOff) return false
     if (!minuteInWindow(minuteOfDay, 8 * 60, 60)) return false
     return slowRiseCriteriaMet(
-        bg, delta, shortDelta, longDelta, cob, iob, steps60, steps180, bolusAgeMinutes, carbAgeMinutes,
+        bg, delta, shortDelta, longDelta, cob, iob, steps60, steps180, bolusAgeMinutes, recentDelayedBolus,
     )
 }
 
-// True when a delayed bolus was delivered in the last hour.
+// True when a delayed dose was delivered in the last hour.
 internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long): Boolean =
     delayedDeliveredAt > 0L && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L
 
-// 08:00 until 01:00, glucose 6.5 to 9.0 mmol, small carbs, IOB 1.2 to 5.5.
-// All three deltas must sit in one shared band. A bolus or a carb entry must be at least 40 minutes old.
+// Glucose 6.5 to 9.0 mmol, small carbs, IOB 1.2 to 5.5.
+// All three deltas must be above 0 and under 0.15 mmol.
+// Opens when a delayed dose is under an hour old, or when any bolus is more than 60 minutes old.
 internal fun slowRiseCriteriaMet(
     bg: Double,
     delta: Double,
@@ -147,15 +148,12 @@ internal fun slowRiseCriteriaMet(
     steps60: Int,
     steps180: Int,
     bolusAgeMinutes: Int,
-    carbAgeMinutes: Int?,
+    recentDelayedBolus: Boolean,
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
     if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
     if (steps60 !in 0 until 600 || steps180 !in 0 until 1000) return false
-    val bolusOld = bolusAgeMinutes >= 40
-    val carbsOld = carbAgeMinutes != null && carbAgeMinutes >= 40
-    if (!bolusOld && !carbsOld) return false
-    return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
-        listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
-    }
+    if (!recentDelayedBolus && bolusAgeMinutes <= 60) return false
+    val slowCeiling = 0.15 * 18.0
+    return listOf(delta, shortDelta, longDelta).all { it > 0.0 && it < slowCeiling }
 }

@@ -40,6 +40,7 @@ import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -483,6 +484,7 @@ class BolusWizard(
             source = source,
             onError = { failure -> aapsLogger.info(LTag.CORE, "Warsaw dose not delivered: ${failure.comment}") },
             treatmentNote = rh.gs(InterfacesStrings.wizard_warsaw_dose),
+            onSuccess = { preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now()) },
         )
     }
 
@@ -624,6 +626,7 @@ class BolusWizard(
                         onError = { failure -> aapsLogger.info(LTag.CORE, "Split leftover part not delivered: ${failure.comment}") },
                         treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, remaining - dose, intervalMinutes),
                         onSuccess = {
+                            preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
                             val left = Round.roundTo(remaining - dose, 0.001)
                             if (left >= step / 2.0) {
                                 launchSplitPart(

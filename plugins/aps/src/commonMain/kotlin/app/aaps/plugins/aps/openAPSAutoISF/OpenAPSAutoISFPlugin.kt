@@ -4476,8 +4476,7 @@ open class OpenAPSAutoISFPlugin(
                 minuteOfDay = minuteOfDay,
                 ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
                 steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
-                // This repo does not store a delayed-bolus delivery time, so the request stays closed.
-                recentDelayedBolus = false,
+                recentDelayedBolus = slowRiseRecentEvents(now, preferences.get(LongNonKey.ApsAutoIsfLastDelayedBolusAt)),
                 bg = bg,
                 delta = delta,
                 shortDelta = shortDelta,
@@ -4486,14 +4485,13 @@ open class OpenAPSAutoISFPlugin(
                 iob = iob,
                 steps60 = steps60,
                 steps180 = steps180,
-                bolusAgeMinutes = minutesSinceLastPositiveNormalBolus(now),
-                carbAgeMinutes = minutesSinceLastCarbs(now),
+                bolusAgeMinutes = minutesSinceLastPositiveBolus(now),
             )
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
             runMarks.mark(RunMark.STUCK_RISING, now)
             sendAutoSms("StuckRisingSlowly Acce")
-            aapsLogger.debug(LTag.APS, "Stuck rising 4.2 mmol for 5 min (delayed-bolus stamp is not written yet)")
+            aapsLogger.debug(LTag.APS, "Stuck rising 4.2 mmol for 5 min")
         }
         if (earlyDawnShouldFire(
                 ready = runMarks.ready(RunMark.EARLY_DAWN, 5, now),
@@ -5708,6 +5706,13 @@ open class OpenAPSAutoISFPlugin(
     private suspend fun iobAt(time: Long): Double {
         val profile = profileFunction.getProfile(time) ?: return 0.0
         return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
+    }
+
+    private suspend fun minutesSinceLastPositiveBolus(now: Long): Int {
+        val last = persistenceLayer.getBolusesFromTimeToTime(now - 24 * 60 * 60_000L, now, ascending = false)
+            .firstOrNull { it.amount > 0.0 }
+            ?.timestamp ?: return Int.MAX_VALUE
+        return ((now - last).toDouble() / 60_000.0).toInt()
     }
 
     private suspend fun minutesSinceLastPositiveNormalBolus(now: Long): Int {

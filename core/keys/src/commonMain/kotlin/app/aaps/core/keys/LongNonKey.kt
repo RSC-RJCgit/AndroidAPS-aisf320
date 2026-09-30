@@ -88,5 +88,8 @@ enum class LongNonKey(
 
     // Latest loop HP1 in milli-mmol. 0 means none yet. Local only.
     ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0L, exportable = false),
+
+    // When a delayed carb or fat-protein dose was delivered. 0 means none yet. Local only.
+    ApsAutoIsfLastDelayedBolusAt("autoisf_last_delayed_bolus_at", 0L, exportable = false),
 }
 
