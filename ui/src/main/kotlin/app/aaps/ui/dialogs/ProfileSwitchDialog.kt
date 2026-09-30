@@ -32,6 +32,10 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.profile.claimStandardTierA
+import app.aaps.core.objects.profile.planTierFill
+import app.aaps.core.objects.profile.scaledTierProfile
+import app.aaps.core.objects.profile.tierProfileSpecs
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -423,6 +427,37 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         ).subscribe({}, { e -> aapsLogger.error(LTag.APS, "SetRole note insert failed", e) })
     }
 
+    // Auto-claim + auto-fill (2026-09-30, ported from the KMP fork's CodedProfileRolesLogic.kt): when no
+    // role was chosen for a plain (non-tiered, non-steroid) profile and Standard tier A is still empty,
+    // that profile becomes tier A -- and the live Standard role too, if that one is also empty, since
+    // the loop reads it -- then any STILL-empty tier slots get a freshly scaled copy generated from it.
+    // A tier that already has a real profile assigned is left alone entirely; this never replaces one
+    // (see CodedProfileRolesLogic.kt's own doc comment for the scope this was deliberately trimmed to
+    // versus the KMP reference, which also has a manual replace-with-confirmation flow, not ported here).
+    private fun claimStandardTierAAndFill(profileName: String) {
+        val store = activePlugin.activeProfileSource.profile ?: return
+        val profileNames = store.getProfileList().map { it.toString() }.toSet()
+        val claim = claimStandardTierA(
+            profileName = profileName,
+            chosenKey = null,
+            tierAName = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName),
+            currentStandardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName),
+            profileNames = profileNames,
+        ) ?: return
+        preferences.put(StringKey.ApsAutoIsfStandard100ProfileName, claim.tierA)
+        claim.currentStandard?.let { preferences.put(StringKey.ApsAutoIsfStandardProfileName, it) }
+        val roleValues = (tierProfileSpecs().map { it.key } + StringKey.ApsAutoIsfStandard100ProfileName)
+            .associateWith { preferences.get(it) }
+        val fill = planTierFill(roleValues, profileNames)
+        if (fill.sourceMissing || fill.creates.isEmpty()) return
+        val pureSource = store.getSpecificProfile(fill.sourceName) ?: return
+        val source = activePlugin.activeProfileSource.copyFrom(pureSource, fill.sourceName)
+        fill.creates.forEach { write ->
+            activePlugin.activeProfileSource.addProfileKeepingIndex(scaledTierProfile(source, write.percent, write.name, write.key))
+            preferences.put(write.key, write.name)
+        }
+    }
+
     override fun submit(): Boolean {
         if (_binding == null) return false
         val profileStore = activePlugin.activeProfileSource.profile
@@ -507,7 +542,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                                 lockstepPartnerCurrent(roleKey, profileName)
                             }
                             emitSetRoleNote(roleKey, profileName)
-                        }
+                        } ?: if (!config.AAPSCLIENT) claimStandardTierAAndFill(profileName)
                         if (isTT) {
                             disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
                                 TT(

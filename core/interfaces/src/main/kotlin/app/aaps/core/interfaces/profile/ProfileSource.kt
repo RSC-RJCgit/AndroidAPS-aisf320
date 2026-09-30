@@ -37,6 +37,13 @@ interface ProfileSource {
     fun addProfile(p: SingleProfile)
 
     /**
+     * Same write as [addProfile], but leaves [currentProfileIndex] pointing at whatever it already was --
+     * added 2026-09-30 for CodedProfileRolesLogic's tier auto-fill, which can add several profiles in one
+     * pass and must not leave the Profile tab's editor jumping to whichever one was added last.
+     */
+    fun addProfileKeepingIndex(p: SingleProfile)
+
+    /**
      * Convert [PureProfile] to [SingleProfile]
      *
      * @param pureProfile PureProfile

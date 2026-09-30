@@ -386,6 +386,15 @@ class ProfilePlugin @Inject constructor(
         isEdited = false
     }
 
+    override fun addProfileKeepingIndex(p: ProfileSource.SingleProfile) {
+        val previousIndex = currentProfileIndex
+        profiles.add(p)
+        currentProfileIndex = previousIndex
+        createAndStoreConvertedProfile()
+        storeSettings(timestamp = dateUtil.now())
+        isEdited = false
+    }
+
     fun removeCurrentProfile() {
         profiles.removeAt(currentProfileIndex)
         if (profiles.isEmpty()) addNewProfile()

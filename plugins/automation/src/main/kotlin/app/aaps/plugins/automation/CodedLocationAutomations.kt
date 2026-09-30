@@ -189,21 +189,23 @@ class CodedLocationAutomations @Inject constructor(
         rxBus.send(EventAnyDeskLaunchRequested(reason))
     }
 
-    // Airport slots only (automation_airport_1..5). Home/Netball/Cheer etc. (automation_address_*) no
-    // longer send the SMS or write the Nightscout CarePortal note (2026-09-19, explicit request) -- the
-    // local AnyDesk restart is a separate call in evaluate() (requestAnyDesk) and does not depend on
-    // either, so it still fires for every slot.
+    // SMS stays airport slots only (automation_airport_1..5) -- unchanged since 2026-09-19. The
+    // CarePortal note was ALSO airport-only from that same change; re-split 2026-09-30, per explicit
+    // request, so Home/Netball/Cheer etc. (automation_address_*) get their own configured arrival/exit
+    // note (HmEnt/HmLve etc.) again too, just without the SMS. The local AnyDesk restart is a separate
+    // call in evaluate() (requestAnyDesk) and does not depend on either, so it still fires for every slot.
     private fun send(spec: Spec, note: String, arriving: Boolean) {
-        if (!spec.id.startsWith("automation_airport_")) return
         val movement = if (arriving) "arrival" else "exit"
         val text = "$note: ${spec.label} $movement"
-        smsCommunicator.sendNotificationToAllNumbers(text)
-        preferences.get(StringKey.AutomationLocationSmsNumbers)
-            .split(';')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+        if (spec.id.startsWith("automation_airport_")) {
+            smsCommunicator.sendNotificationToAllNumbers(text)
+            preferences.get(StringKey.AutomationLocationSmsNumbers)
+                .split(';')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct()
+                .forEach { number -> smsCommunicator.sendSMS(Sms(number, text)) }
+        }
 
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
