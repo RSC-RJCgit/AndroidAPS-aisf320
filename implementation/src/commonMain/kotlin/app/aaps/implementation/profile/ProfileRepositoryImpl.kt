@@ -117,6 +117,11 @@ class ProfileRepositoryImpl(
     // other coroutine can observe. Never expose directly; callers see snapshots via the
     // StateFlows below.
     private var profilesList: ArrayList<SingleProfile> = ArrayList()
+
+    @Volatile
+    private var showAppended: Boolean = true
+
+    override val showAppendedProfile: Boolean get() = showAppended
     private var rawProfile: ProfileStore? = null
 
     // Last payload this instance wrote to (or adopted from) [StringNonKey.LocalProfileData].
@@ -204,6 +209,7 @@ class ProfileRepositoryImpl(
         runCatching {
             withContext(aapsIoDispatcher) {
                 val original = profilesList[index]
+                showAppended = true
                 profilesList.add(original.copy(name = original.name + " copy"))
                 storeSettingsInternal(timestamp = dateUtil.now())
             }
@@ -227,10 +233,18 @@ class ProfileRepositoryImpl(
         }
     }
 
-    override suspend fun add(profile: SingleProfile): Result<Unit> = mutex.withLock {
+    override suspend fun add(profile: SingleProfile): Result<Unit> = append(listOf(profile), show = true)
+
+    override suspend fun addAll(profiles: List<SingleProfile>): Result<Unit> {
+        if (profiles.isEmpty()) return Result.success(Unit)
+        return append(profiles, show = false)
+    }
+
+    private suspend fun append(profiles: List<SingleProfile>, show: Boolean): Result<Unit> = mutex.withLock {
         runCatching {
             withContext(aapsIoDispatcher) {
-                profilesList.add(profile)
+                showAppended = show
+                profiles.forEach { profilesList.add(it) }
                 storeSettingsInternal(timestamp = dateUtil.now())
             }
             snapshot()

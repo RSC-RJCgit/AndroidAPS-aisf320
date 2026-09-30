@@ -178,7 +178,8 @@ class ProfileManagementViewModel(
         profileRepository.profiles
             .onEach { profiles ->
                 val names = profiles.map { it.name }
-                if (names.size == previousNames.size + 1 && names.dropLast(1) == previousNames) {
+                val oneNewProfile = names.size == previousNames.size + 1 && names.dropLast(1) == previousNames
+                if (oneNewProfile && profileRepository.showAppendedProfile) {
                     _selectedIndex.value = names.size - 1
                 }
                 previousNames = names
@@ -807,19 +808,33 @@ class ProfileManagementViewModel(
         }
         val writes = plan.creates + if (replaceExisting) plan.replaces else emptyList()
         if (writes.isEmpty()) return
+        val quietAdds = mutableListOf<Pair<TierWrite, SingleProfile>>()
         for (write in writes) {
             val scaled = scaledTierProfile(source, write.percent, write.name, write.key)
-            val result = if (write.replaceInPlace) {
+            if (write.replaceInPlace) {
                 val index = profileRepository.profiles.value.indexOfFirst { it.name == write.name }
-                if (index < 0) profileRepository.add(scaled) else profileRepository.replace(index, scaled)
+                val result = if (index < 0) {
+                    quietAdds += write to scaled
+                    Result.success(Unit)
+                } else {
+                    profileRepository.replace(index, scaled)
+                }
+                if (result.isFailure) {
+                    _snackbarEvent.tryEmit(rh.gs(UiStrings.profile_no_longer_exists))
+                    return
+                }
+                if (index >= 0) preferences.put(stringKeyForCodedRole(write.key), write.name)
             } else {
-                profileRepository.add(scaled)
+                quietAdds += write to scaled
             }
+        }
+        if (quietAdds.isNotEmpty()) {
+            val result = profileRepository.addAll(quietAdds.map { it.second })
             if (result.isFailure) {
                 _snackbarEvent.tryEmit(rh.gs(UiStrings.profile_no_longer_exists))
                 return
             }
-            preferences.put(stringKeyForCodedRole(write.key), write.name)
+            quietAdds.forEach { (write, _) -> preferences.put(stringKeyForCodedRole(write.key), write.name) }
         }
         _tierFillNonce.value = _tierFillNonce.value + 1
         _snackbarEvent.tryEmit(rh.gs(UiStrings.fill_tiers_done))
