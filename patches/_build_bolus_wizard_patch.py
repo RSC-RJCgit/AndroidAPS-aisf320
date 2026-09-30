@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.8.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.9.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -36,16 +36,50 @@ FULL_COPY = [
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardRecentEntry.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRise.kt",
     "core/ui/src/main/kotlin/app/aaps/core/ui/dialogs/OKDialog.kt",
+    # Added in patch .9: brand-new file (not in BASE), referenced by WizardDialog.kt's new
+    # WizardDropTrendCaution checks. The new ApsAutoIsfLastCycleHp1MilliMmol key and its per-cycle write
+    # are added via the existing surgical LongKey/OpenAPSAutoISFPlugin edits further down instead (both
+    # files are surgical, not FULL_COPY, since OpenAPSAutoISFPlugin.kt carries many unrelated automations
+    # this patch must not bundle in).
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .8, 2026-09-29)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .9, 2026-09-30)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.8.patch
-  git apply bolus-calculator-on-3426-aisf321.8.patch
+  git apply --check bolus-calculator-on-3426-aisf321.9.patch
+  git apply bolus-calculator-on-3426-aisf321.9.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .9 (2026-09-30):
+- Two new wizard checkboxes: "Bolus fat/protein now instead of extending" (default fat x1.0/protein x1.5
+  carb-equivalent, folded into the immediate bolus instead of the Warsaw-FPU extended series) and its
+  "Unreliable SMBs (current sensor/pod)" sub-toggle (fat x1.5/protein x2.0, auto-sets wiz% to 90 for that
+  one calculation). Turning either on suppresses the extended series entirely for that dose (reuses the
+  existing insulinFromProteinOnly/insulinFromFatOnly==0 gate, no separate "off" switch needed). Max bolus
+  is never altered by either -- both flow through the same constraintChecker.applyBolusConstraints() path
+  as every other component.
+- DelayedBolusWorker fix: the live-InsReq cap used to permanently end the whole delayed sequence the
+  moment InsReq capped one check below the real remaining need (or floored a check to exactly 0), silently
+  discarding the undelivered rest. It now only caps that ONE check's delivery and keeps polling (same
+  5-min/16-attempt cadence) for whatever's still genuinely owed, tracked via a new cumulative
+  deliveredSoFar carried through each re-enqueue -- cobFraction is still recomputed fresh from live COB
+  every check, so genuine absorption still legitimately shrinks what's left; only InsReq's own denial no
+  longer discards it. Also fixed the plain "wait" re-enqueue path, which wasn't passing deliveredSoFar at
+  all and would have silently reset progress on every ordinary wait cycle.
+- New WizardDropTrendCaution safety layer: scales max bolus AND wiz% to 50% for one calculation when
+  EITHER (a) Delta<=-0.15mmol, SDelta<=-0.10mmol, AND LDelta<=-0.10mmol (an established three-way downtrend)
+  together with current BG<6.0mmol or the live cached HP1 hypo-prediction reading below 5.0mmol, OR (b)
+  current IOB exceeds 3x however much BG has actually risen (mmol) from its own recent 60-min low. Path (b)
+  is the one that matters on a clean base without the fork's full automations layer: path (a)'s HP1 half of
+  its OR reads a preference (ApsAutoIsfLastCycleHp1MilliMmol) that only OpenAPSAutoISFPlugin's full coded-
+  automations layer ever writes -- absent here, it just stays at its default and degrades safely to the
+  plain BG<6.0mmol check -- see WizardDropTrendCaution.kt's own doc comment for the real episode this was
+  built from and both thresholds' full reasoning. Neither path touches DelayedBolusWorker, which keeps
+  working from its own independent rising-trend criteria regardless.
+- Retains all patch .8 changes below.
 
 Changes in patch .8 (2026-09-29):
 - Fixes patch .7 shipping with two unresolved references (WizardRecentEntry at BolusWizard.kt:383,
@@ -248,7 +282,8 @@ def apply_surgical(staging: Path) -> None:
         '    SplitBolusBlockSmbUntil("split_bolus_block_smb_until", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),\n'
-        '    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),\n',
+        '    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),\n',
         "LongKey",
     )
     write(staging, p, t)
@@ -422,6 +457,12 @@ def apply_surgical(staging: Path) -> None:
         "            preferences.put(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU, Math.round((it.insulinReq ?: 0.0) * 1000))\n",
         "OpenAPSAutoISFPlugin insulinReq mirror",
     )
+    # NOTE (2026-09-30): NOT adding a surgical hp1-cache mirror here, unlike the insulinReq one above --
+    # hypoPrediction1Mmol() is a fork-only function (confirmed absent from a clean tobias/3.4.2.6+aisf3.2.1
+    # checkout) that only exists once this repo's full coded-automations layer is also present, which this
+    # patch does not carry. ApsAutoIsfLastCycleHp1MilliMmol (added to LongKey above) simply stays at its
+    # default 0 on a clean base -- WizardDropTrendCaution.applies() already treats that as hp1Mmol=null and
+    # just falls back to its BGL<6 / IOB-vs-rise checks, so this degrades safely rather than failing to compile.
     write(staging, p, t)
 
     # OverviewFragment
