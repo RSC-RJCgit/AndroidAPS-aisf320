@@ -70,6 +70,7 @@ import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class WizardDialog : DaggerDialogFragment() {
 
@@ -133,6 +134,13 @@ class WizardDialog : DaggerDialogFragment() {
     // unticking it puts the carb time back to 0.
     private var carbTimeRiseEstimate: CarbTimeFromRise.Estimate? = null
     private var applyingCarbTimeRise = false
+    // Fat/Protein auto-fill from carbs (2026-10-02, per explicit request, matching KMP's fpuInstead/
+    // unreliableSmb): whenever carbs changes, Fat/Protein auto-populate from it (fat=carbs×1.0,
+    // protein=carbs×1.5, or ×1.5/×2.0 if Unreliable SMBs) -- same pattern as the other pre-fill defaults
+    // above. A manual edit to either box wins and sticks until carbs itself changes again, at which
+    // point a fresh suggestion overwrites it (see autoFillProteinFatFromCarbs()).
+    private var proteinFatManuallyOverridden = false
+    private var applyingAutoFpu = false
 
     // This property is only valid between onCreateView and onDestroyView.
     private val binding get() = _binding!!
@@ -258,6 +266,19 @@ class WizardDialog : DaggerDialogFragment() {
             savedInstanceState?.getDouble("warsaw_duration_input")
                 ?: 5.0, 0.0, 24.0, 0.5, DecimalFormat("0.0"), false, binding.okcancel.ok, textWatcher
         )
+        // Fat/Protein auto-fill from carbs (see proteinFatManuallyOverridden's own doc comment above):
+        // carbsInput changing resets the override and re-runs the suggestion; proteinInput/fatInput
+        // changing (while NOT applyingAutoFpu, i.e. a real user edit) marks it overridden so a later
+        // carbs-driven recompute doesn't clobber it. unreliableSmbsCheckbox re-runs the suggestion with
+        // its boosted ratio (only takes effect if not already manually overridden) and also auto-sets
+        // wiz% to 90 (see calculateInsulin()'s own wizPercentForThisCalc).
+        binding.carbsInput.setOnValueChangedListener {
+            proteinFatManuallyOverridden = false
+            autoFillProteinFatFromCarbs()
+        }
+        binding.proteinInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
+        binding.fatInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
+        binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
 
         // If there is no BG using % lower that 100% leads to high BGs
         // because loop doesn't add missing insulin
@@ -636,6 +657,24 @@ class WizardDialog : DaggerDialogFragment() {
         return currentBgMgdl - recentMin
     }
 
+    // Fat/Protein auto-fill from carbs (2026-10-02, per explicit request, matching KMP's fpuInstead/
+    // unreliableSmb ratios applied directly against the FULL entered carbs -- no meal-type/extended-
+    // carb-percentage concept ported, parked for later per that same discussion). No-op once the user
+    // has directly edited either box (proteinFatManuallyOverridden) -- see that field's own doc comment.
+    private fun autoFillProteinFatFromCarbs() {
+        if (proteinFatManuallyOverridden) return
+        val carbsValue = binding.carbsInput.value
+        val unreliable = binding.unreliableSmbsCheckbox.isChecked
+        val fatRatio = if (unreliable) 1.5 else 1.0
+        val proteinRatio = if (unreliable) 2.0 else 1.5
+        val newFat = (carbsValue * fatRatio).roundToInt().coerceIn(0, 200)
+        val newProtein = (carbsValue * proteinRatio).roundToInt().coerceIn(0, 200)
+        applyingAutoFpu = true
+        binding.fatInput.value = newFat.toDouble()
+        binding.proteinInput.value = newProtein.toDouble()
+        applyingAutoFpu = false
+    }
+
     // Shared trigger check for WizardDropTrendCaution -- see that object's own doc comment for the full
     // rule and the real episode that motivated it. Reads live glucoseStatus fresh each call (same pattern
     // as lowBgRuleMgdl above), the HP1 value OpenAPSAutoISFPlugin caches every cycle, and current total IOB
@@ -711,7 +750,8 @@ class WizardDialog : DaggerDialogFragment() {
         var wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
         // WizardDropTrendCaution (2026-09-30): same calc-scoped-only override, takes whichever of the two
         // is MORE conservative (lower) rather than replacing the checkbox's own value.
-        if (dropTrendCautionApplies(lowBgRuleMgdl(bg)))
+        val dropTrendCautionActive = dropTrendCautionApplies(lowBgRuleMgdl(bg))
+        if (dropTrendCautionActive)
             wizPercentForThisCalc = min(wizPercentForThisCalc, WizardDropTrendCaution.scaledWizPercent(wizPercentForThisCalc))
         wizard = bolusWizardProvider.get().doCalc(
             specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, wizPercentForThisCalc,
@@ -729,15 +769,15 @@ class WizardDialog : DaggerDialogFragment() {
             totalPercentage = percentageCorrection.toDouble(),
             protein = protein,
             fat = fat,
-            walkingSoon = binding.walkingSoonCheckbox.isChecked,
-            unreliableSmbs = binding.unreliableSmbsCheckbox.isChecked,
-            addFpus = binding.addFpusCheckbox.isChecked
+            walkingSoon = binding.walkingSoonCheckbox.isChecked
         )
 
         wizard?.let { wizard ->
             // Set before anything below reads warsawFpuPlan() (the live preview does, further down) --
             // see BolusWizard.warsawDurationHours's own doc comment.
             wizard.warsawDurationHours = binding.warsawDurationInput.value
+            // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.
+            wizard.dropTrendCautionApplied = dropTrendCautionActive
             binding.bg.text = rh.gs(R.string.format_bg_isf, valueToUnitsToString(profileUtil.convertToMgdl(bg, profileFunction.getUnits()), profileFunction.getUnits().asText), wizard.sens)
             binding.bgInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromBG)
 

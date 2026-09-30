@@ -148,12 +148,12 @@ class BolusWizard @Inject constructor(
     var insulinFromCarbsOnly = 0.0
         private set
     // insulinFromProteinOnly/insulinFromFatOnly: each component's own Warsaw-FPU carb-equivalent
-    // (protein×0.4, fat×0.9 in the usual case — see doCalc()'s own doc comment) divided by IC. NOT
-    // folded into insulinFromCarbs/calculatedTotalInsulin — always delivered separately as a combined
-    // extended series, see warsawFpuPlan(). Gated off entirely (both forced to 0) when addFpus is
-    // unchecked; boosted to protein×2.0/fat×1.5 instead of the usual 0.4/0.9 when unreliableSmbs is
-    // checked (current sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes into the
-    // same extended series) -- see addFpus/unreliableSmbs's own doc comment.
+    // (protein×0.4, fat×0.9) divided by IC, from whatever grams are in the protein/fat fields --
+    // WizardDialog auto-fills those from carbs (see its own doc comment) unless manually overridden, but
+    // this class doesn't need to know or care which; it just converts whatever grams it's given, plain
+    // and unconditional, same as before any of this session's checkbox experiments. NOT folded into
+    // insulinFromCarbs/calculatedTotalInsulin -- always delivered separately as a combined extended
+    // series, see warsawFpuPlan().
     var insulinFromProteinOnly = 0.0
         private set
     var insulinFromFatOnly = 0.0
@@ -261,19 +261,11 @@ class BolusWizard @Inject constructor(
     // Delayed / Wz133 follow this, not the checkbox: a seated QuickWizard "always on"
     // press must not SMB-block 85 min for a cut that never happened.
     var walkingSoonCutApplied: Boolean = false
-    // "Add FPUs" checkbox (2026-10-01, per explicit request), default ON: a plain master on/off for
-    // fat/protein-driven insulin, computed and delivered exactly the usual way (Warsaw carb-equivalent
-    // divided by IC, delivered via the extended series in warsawFpuPlan()/scheduleSplitProteinFatDoses())
-    // whenever checked. Unchecked zeroes insulinFromProteinOnly/insulinFromFatOnly -- no insulin for the
-    // fat/protein grams at all this calc. Nothing here is about delivering anything "now" instead of
-    // extending -- that was a misimplementation earlier this session and has been removed.
-    var addFpus: Boolean = true
-    // "Unreliable SMBs (current sensor/pod)" sub-toggle, independent of addFpus's on/off: boosts the
-    // usual Warsaw ratios (protein×0.4, fat×0.9) to protein×2.0/fat×1.5 for the SAME extended-series
-    // delivery -- current sensor/pod can't be trusted to catch a slow rise via SMBs, so more goes into
-    // the series, but the series itself is unaffected otherwise. No effect when addFpus is off.
-    var unreliableSmbs: Boolean = false
-
+    // True when WizardDropTrendCaution scaled this calc's wiz%/max bolus (2026-10-02, per explicit
+    // request) -- a fourth reason for DelayedBolusWorker to catch up the withheld amount later,
+    // alongside profile=50%/recent50Triggered/walkingSoonCutApplied. See WizardDropTrendCaution's own
+    // doc comment for why this now feeds that existing mechanism instead of staying untouched by it.
+    var dropTrendCautionApplied: Boolean = false
     fun doCalc(
         profile: Profile,
         profileName: String,
@@ -299,9 +291,7 @@ class BolusWizard @Inject constructor(
         positiveIOBOnly: Boolean = false,
         protein: Int = 0,
         fat: Int = 0,
-        walkingSoon: Boolean = false,
-        unreliableSmbs: Boolean = false,
-        addFpus: Boolean = true
+        walkingSoon: Boolean = false
     ): BolusWizard {
 
         this.profile = profile
@@ -310,8 +300,6 @@ class BolusWizard @Inject constructor(
         this.carbs = carbs
         this.protein = protein
         this.fat = fat
-        this.unreliableSmbs = unreliableSmbs
-        this.addFpus = addFpus
         this.cob = cob
         this.bg = bg
         this.correction = correction
@@ -392,15 +380,8 @@ class BolusWizard @Inject constructor(
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
-        if (!addFpus) {
-            insulinFromProteinOnly = 0.0
-            insulinFromFatOnly = 0.0
-        } else {
-            val proteinRatio = if (unreliableSmbs) 2.0 else 0.4
-            val fatRatio = if (unreliableSmbs) 1.5 else 0.9
-            insulinFromProteinOnly = (protein * proteinRatio) / ic
-            insulinFromFatOnly = (fat * fatRatio) / ic
-        }
+        insulinFromProteinOnly = (protein * 0.4) / ic
+        insulinFromFatOnly = (fat * 0.9) / ic
         insulinFromCarbs = insulinFromCarbsOnly
         // Low-BG recent-entry rule (2026-09-24, per explicit request): see WizardRecentEntry. Only detected here;
         // the Bolus Wizard dialog and QuickWizard start their COB box unticked under it (the user can re-tick),
@@ -594,18 +575,24 @@ class BolusWizard @Inject constructor(
         val recent50TriggeredPreview = recent50ShouldReduceWizard()
         val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
             preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied)
+            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied || dropTrendCautionApplied)
         val delayedLabel = if (!delayedWillFire) {
             "none"
         } else {
             // fullRequired mirrors DelayedBolusWorker's own formula exactly (see the real
             // determination in commonProcessing()'s success callback) -- on the profile-50% path IC
             // itself is already halved by the profile switch, so normal IC = 2x ic; on the other two
-            // paths ic was never touched. Schedule (5min x 16 attempts, up to 80min) is
-            // DelayedBolusWorker's own fixed poll -- see its companion object.
-            val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else "walkingSoon"
+            // paths ic was never touched. dropTrendCautionApplied's own fullRequired is computed
+            // separately (WizardDropTrendCaution.fullRequiredFromScaled -- undoes THAT rule's own
+            // wiz%/max-bolus scaling, not IC), and the larger of the two wins so either trigger's real
+            // shortfall gets caught (see the real determination's own comment for why max(), not a
+            // branch, handles the rare case of both firing together). Schedule (5min x 16 attempts, up
+            // to 80min) is DelayedBolusWorker's own fixed poll -- see its companion object.
+            val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else if (walkingSoonCutApplied) "walkingSoon" else "dropTrendCaution"
             val normalIc = if (delayedProfilePctPreview == 50) ic / 2.0 else ic
-            val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+            val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+            val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
+            val fullRequired = max(profileFullRequired, cautionFullRequired)
             "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 5min up to 80min)"
         }
         // IC/Profile% reporting -- added 2026-08-30 per explicit request: ic itself (set in doCalc()) is
@@ -620,12 +607,10 @@ class BolusWizard @Inject constructor(
         val recentEntryText = if (lowBgRecentEntryRule) {
             ", RecentEntry<60min@BG<6 (COB ${if (useCob) "ON" else "off"}, MaxBolus x0.8)"
         } else ""
-        val fpuText = if (!addFpus) "off" else {
-            val proteinRatio = if (unreliableSmbs) 2.0 else 0.4
-            val fatRatio = if (unreliableSmbs) 1.5 else 0.9
-            "ON (fat×${decimalFormatter.to2Decimal(fatRatio)}/protein×${decimalFormatter.to2Decimal(proteinRatio)}" +
-                "${if (unreliableSmbs) ", unreliableSMBs" else ""})"
-        }
+        // Plain reflection of whatever's in the protein/fat fields -- no checkbox gates this any more
+        // (see insulinFromProteinOnly/insulinFromFatOnly's own doc comment); WizardDialog may have
+        // auto-filled these from carbs, or the user may have typed/overridden them directly.
+        val fpuText = if (protein <= 0 && fat <= 0) "off" else "on (fat=${fat}g/protein=${protein}g)"
         return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
             "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FPU $fpuText"
     }
@@ -743,6 +728,19 @@ class BolusWizard @Inject constructor(
             actions.add(
                 ("Wz133: ${decimalFormatter.to2Decimal(wizardRiseBoostOriginal)}U x1.33 -> " +
                     "${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U (BGL>8, D/SD/LD>0.2)")
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor)
+            )
+        }
+        // Added 2026-10-01, per explicit request: this confirm dialog had NO mention of the FPU
+        // (protein+fat) extended series at all, unlike the dialog's own live proteinFatDelayInfo preview
+        // and the persisted Calc note's splitProjectionNote() -- someone confirming a bolus with real
+        // protein/fat entered had no way to see it was about to schedule an extended series. Reuses
+        // warsawFpuPlan() as the single source of truth, same as those other two.
+        warsawFpuPlan()?.let { plan ->
+            val cappedNote = if (plan.capped) " [CAPPED, full tier=${decimalFormatter.to2Decimal(plan.fullTierInsulin)}U/8h]" else ""
+            actions.add(
+                ("Protein+Fat: ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
+                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})$cappedNote")
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor)
             )
         }
@@ -1040,23 +1038,37 @@ class BolusWizard @Inject constructor(
                                     val recent50Triggered = recent50ShouldReduceWizard()
                                     // walkingSoonCutApplied: delayed only if the immediate % was actually
                                     // reduced. Seated QuickWizard always-on must not arm this path.
+                                    // dropTrendCautionApplied (2026-10-02, per explicit request): a fourth
+                                    // reason -- see WizardDropTrendCaution's own doc comment for why this
+                                    // rule now feeds this existing mechanism instead of staying untouched by
+                                    // it, and dropTrendCautionApplied's own doc comment for where it's set.
                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
-                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied)
+                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied || dropTrendCautionApplied)
                                     ) {
                                         // FullRequired uses normal IC. On the profile-50% path, ic itself is
                                         // already halved by the profile switch, so normal IC = 2x ic. On the
                                         // recent50Triggered path, ic was never touched (only insulinFromCarbsOnly
                                         // was manually halved above), so ic is already the normal one.
                                         val normalIc = if (delayedProfilePct == 50) ic / 2.0 else ic
-                                        val fullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+                                        val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+                                        // dropTrendCautionApplied's own fullRequired undoes THAT rule's wiz%/
+                                        // max-bolus scaling directly (WizardDropTrendCaution.SCALE), unrelated
+                                        // to IC -- when it's the ONLY trigger, profileFullRequired above still
+                                        // comes out close to insulinAfterConstraints itself (percentageCorrection
+                                        // already carries this rule's own reduction, so undoing IC alone doesn't
+                                        // recover it), so max() correctly picks this one instead. When BOTH fire
+                                        // together (rare), max() is a simple, conservative combination rather
+                                        // than modelling the exact compounding.
+                                        val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
+                                        val fullRequired = max(profileFullRequired, cautionFullRequired)
                                         // Block SMBs for the whole delayed-check window (16 × 5 min + margin).
                                         // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
                                         // Must stay in lock-step with DelayedBolusWorker's own max-attempts (MAX_ATTEMPTS = 16 x POLL_MINUTES = 5):
                                         // if this were shorter, SMBs would resume mid-window while the delayed
                                         // dose could still land later, risking a double-dose neither side accounts for.
                                         preferences.put(LongKey.DelayedBolusBlockSmbUntil, dateUtil.now() + T.mins(85).msecs())
-                                        val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else if (recent50Triggered) "recent50Triggered" else "walkingSoon"
+                                        val triggerLabel = if (delayedProfilePct == 50) "profile=50%" else if (recent50Triggered) "recent50Triggered" else if (walkingSoonCutApplied) "walkingSoon" else "dropTrendCaution"
                                         // originalCarbs (added 2026-08-26): captured HERE so DelayedBolusWorker can scale the
                                         // remainder by leftover COB. originalIob is still passed for in-flight jobs and is
                                         // not subtracted from the remainder (2026-09-15; see DelayedBolusWorker).

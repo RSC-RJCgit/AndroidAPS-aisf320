@@ -41,12 +41,17 @@ import kotlin.math.min
  * in this dialog to show it, and no reason to touch the standing IntKey.OverviewBolusPercentage
  * preference for every future dose -- same reasoning as unreliableSmbsCheckbox's wiz%-90 override).
  *
- * Deliberately does NOT touch DelayedBolusWorker: that mechanism only ever delivers MORE later when its
- * own criteria (BG>5.0, Delta/SDelta/LDelta all RISING) are met -- the exact opposite of path 1's downtrend
- * trigger, and orthogonal to path 2. So this rule and DelayedBolusWorker work together without needing to
- * know about each other: this rule makes the immediate delivery more conservative; if BG genuinely reverses
- * and starts climbing later, DelayedBolusWorker's own rising-trend gate catches that independently and
- * tops up the difference then.
+ * Changed 2026-10-02, per explicit request: DOES now feed DelayedBolusWorker (reversing this class's
+ * original "deliberately does NOT touch DelayedBolusWorker" design) -- the withheld amount is a real,
+ * separate insulin need that was otherwise just being permanently discarded, with nothing else in the
+ * pipeline aware it was ever owed. BolusWizard's existing DelayedBolusWorker trigger (profile=50%/
+ * recent50/walkingSoon, each computing their own "true fullRequired vs what was actually given") gets
+ * this rule's own scaling added as a fourth reason via fullRequiredFromScaled() below, reusing that
+ * mechanism's entire existing machinery (5min polling up to 80min, requires a CONFIRMED RISE to release
+ * -- BG>5.0 and Delta/SDelta/LDelta all rising, not just "not unsafe") rather than building a parallel
+ * system. That rising-BG bar is actually a better fit here than a looser "not unsafe" gate would be,
+ * since this rule only ever fires because BG looked risky in the first place -- the withheld amount
+ * should only come back once that's genuinely confirmed to have turned around.
  */
 object WizardDropTrendCaution {
     const val SCALE = 0.5
@@ -84,4 +89,10 @@ object WizardDropTrendCaution {
 
     /** Wiz% scaled to 50%, rounded to the nearest whole percent, floor 1. */
     fun scaledWizPercent(basePercent: Int): Int = (basePercent * SCALE).toInt().coerceAtLeast(1)
+
+    /** The true full amount, given what was actually delivered after this rule's scaling (2026-10-02,
+     *  per explicit request -- feeds BolusWizard's existing DelayedBolusWorker trigger as a fourth
+     *  reason, alongside profile=50%/recent50/walkingSoon, instead of a separate mechanism). If
+     *  [scaledAmount] = X*SCALE was actually given, the true full amount is X = scaledAmount/SCALE. */
+    fun fullRequiredFromScaled(scaledAmount: Double): Double = scaledAmount / SCALE
 }

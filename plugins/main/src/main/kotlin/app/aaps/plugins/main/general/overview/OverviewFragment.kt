@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
+import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -169,6 +170,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var loop: Loop
     @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var iobCobCalculator: IobCobCalculator
+    @Inject lateinit var calculationWorkflow: CalculationWorkflow
     @Inject lateinit var dexcomBoyda: DexcomBoyda
     @Inject lateinit var xDripSource: XDripSource
     @Inject lateinit var notificationStore: NotificationStore
@@ -426,6 +428,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         handler.postDelayed(refreshLoop, 60 * 1000L)
 
         handler.post { refreshAll() }
+        // Force a genuine fresh BG-data + graph recompute on resume (2026-10-01, per explicit request),
+        // not just a redraw of whatever overviewData.bgReadingGraphSeries was last set to. Without this,
+        // refreshAll() above only redraws the LAST result PrepareBgDataWorker produced -- that worker
+        // itself only re-runs on its own background-triggered cadence (new BG arriving), never in
+        // response to the screen turning on, so a phone that was asleep/backgrounded a while (e.g. a
+        // folded flip phone) could show stale data right after opening until the next natural cycle.
+        // Mirrors what the KMP repo's MainViewModel.uiState gets for free via
+        // stateIn(SharingStarted.WhileSubscribed(5_000)) + collectAsStateWithLifecycle() -- its data
+        // pipeline actually restarts fresh every time the screen becomes visible again, not just redraws.
+        // Reuses runOnScaleChanged() (PrepareBucketedData -> PrepareBgData -> graph redraw) rather than
+        // the full MAIN_CALCULATION chain -- deliberately does NOT re-invoke the loop/dosing algorithm
+        // just because the screen turned on.
+        overviewData.initRange()
+        calculationWorkflow.runOnScaleChanged(iobCobCalculator, overviewData)
         updatePumpStatus()
         updateCalcProgress()
         if (config.AAPSCLIENT) tryFlushPendingRelayTts()
