@@ -141,6 +141,10 @@ class BolusWizard(
     private var hpSafetyCobRemoved: Double = 0.0
     private var riseBoostApplied: Boolean = false
     private var riseBoostOriginal: Double = 0.0
+    var walkingSoonHeldUnits: Double = 0.0
+        private set
+    var rapidFallForSplit: Boolean = false
+        private set
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
@@ -244,6 +248,7 @@ class BolusWizard(
 
         // Insulin from 15 min trend
         glucoseStatus = glucoseStatusProvider.glucoseStatusData
+        rapidFallForSplit = splitRapidFall(glucoseStatus?.delta, glucoseStatus?.shortAvgDelta, glucoseStatus?.longAvgDelta)
         glucoseStatus?.let {
             if (useTrend) {
                 trend = it.shortAvgDelta
@@ -309,6 +314,7 @@ class BolusWizard(
         val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
         val percentage = walkingSoonImmediatePercent(walkingSoon, standingPct)
         val walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
+        this.walkingSoonHeldUnits = walkingSoonHeldUnits(walkingSoon, standingPct, scaledComponents)
 
         totalBeforePercentageAdjustment = scaledComponents + unscaledComponents
         calculatedTotalInsulin = scaledComponents * percentage / 100.0 + unscaledComponents
@@ -481,9 +487,13 @@ class BolusWizard(
     }
 
     /**
-     * Schedule the insulin that was above max bolus. The immediate bolus already delivered the first part.
-     * Later parts are smaller when insulin on board has risen, and they stop if glucose is unsafe six times,
-     * the profile drops below 100%, the pump will not take a bolus, or 2.5 hours pass.
+     * Schedule the insulin that was above max bolus, and the insulin walking soon held back.
+     * The immediate bolus already delivered the first part.
+     * Later parts are smaller when insulin on board has risen. They stop if glucose is unsafe,
+     * the profile drops below 100%, or the pump will not take a bolus.
+     * The usual checks are 7 minutes apart and stop after 3 unsafe checks or 60 minutes.
+     * When all three deltas are under -0.1 mmol/L, the max-bolus leftover uses 25 minute checks
+     * for 2.5 hours. Walking soon always uses the usual checks.
      * A newer bolus cancels whatever is still waiting.
      */
     /** A bolus that is not a wizard confirm still replaces any leftover series that is waiting. */
@@ -491,24 +501,55 @@ class BolusWizard(
         SplitScheduleGate.next()
     }
 
-    suspend fun scheduleLeftoverSplit(requested: Double, delivered: Double, iobBaseline: Double, source: Sources) {
+    suspend fun scheduleLeftoverSplit(
+        requested: Double,
+        delivered: Double,
+        iobBaseline: Double,
+        source: Sources,
+        rapidFall: Boolean = false,
+        walkingSoonHeld: Double = 0.0,
+    ) {
         val token = SplitScheduleGate.next()
         val profile = profileFunction.getProfile() ?: return
         if (profileSwitchPercent(profile) < 100) return
-        val step = ch.bolusStep(delivered)
-        val residual = splitLeftover(requested, delivered, step) ?: return
-        aapsLogger.info(LTag.CORE, "Split leftover ${residual} U every $SPLIT_LEFTOVER_INTERVAL_MINUTES min")
+        val step = ch.bolusStep(max(delivered, walkingSoonHeld).coerceAtLeast(0.05))
+        val aboveMax = splitLeftover(requested, delivered, step) ?: 0.0
+        val walkLeft = Round.roundTo(walkingSoonHeld, 0.001).let { held ->
+            if (held >= step / 2.0) held else 0.0
+        }
+        val usualLeft = Round.roundTo(if (rapidFall) walkLeft else walkLeft + aboveMax, 0.001)
+        val rapidLeft = if (rapidFall) aboveMax else 0.0
         val now = dateUtil.now()
-        launchSplitPart(
-            remaining = residual,
-            previousPart = delivered,
-            iobBaseline = iobBaseline,
-            token = token,
-            source = source,
-            deliverAt = now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L,
-            deadline = now + SPLIT_LEFTOVER_DEADLINE_MINUTES * 60_000L,
-            unsafeCount = 0,
-        )
+        if (usualLeft >= step / 2.0) {
+            aapsLogger.info(LTag.CORE, "Split leftover ${usualLeft} U every $SPLIT_LEFTOVER_INTERVAL_MINUTES min")
+            launchSplitPart(
+                remaining = usualLeft,
+                previousPart = if (delivered > 0.0) delivered else usualLeft,
+                iobBaseline = iobBaseline,
+                token = token,
+                source = source,
+                deliverAt = now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L,
+                deadline = now + SPLIT_LEFTOVER_DEADLINE_MINUTES * 60_000L,
+                unsafeCount = 0,
+                intervalMinutes = SPLIT_LEFTOVER_INTERVAL_MINUTES,
+                unsafeLimit = SPLIT_UNSAFE_CANCEL_COUNT,
+            )
+        }
+        if (rapidLeft >= step / 2.0) {
+            aapsLogger.info(LTag.CORE, "Split leftover ${rapidLeft} U every $SPLIT_RAPID_FALL_INTERVAL_MINUTES min")
+            launchSplitPart(
+                remaining = rapidLeft,
+                previousPart = delivered,
+                iobBaseline = iobBaseline,
+                token = token,
+                source = source,
+                deliverAt = now + SPLIT_RAPID_FALL_INTERVAL_MINUTES * 60_000L,
+                deadline = now + SPLIT_RAPID_FALL_DEADLINE_MINUTES * 60_000L,
+                unsafeCount = 0,
+                intervalMinutes = SPLIT_RAPID_FALL_INTERVAL_MINUTES,
+                unsafeLimit = SPLIT_RAPID_FALL_UNSAFE_CANCEL_COUNT,
+            )
+        }
     }
 
     private fun launchSplitPart(
@@ -520,6 +561,8 @@ class BolusWizard(
         deliverAt: Long,
         deadline: Long,
         unsafeCount: Int,
+        intervalMinutes: Int,
+        unsafeLimit: Int,
     ) {
         val step = ch.bolusStep(previousPart)
         if (remaining < step / 2.0) return
@@ -538,28 +581,28 @@ class BolusWizard(
             }
             val now = dateUtil.now()
             if (now < deliverAt) {
-                launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount)
+                launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit)
                 return@launch
             }
             if (now > deadline) {
-                aapsLogger.info(LTag.CORE, "Split leftover cancelled: 2.5 hours passed with ${remaining} U left")
+                aapsLogger.info(LTag.CORE, "Split leftover cancelled: time limit passed with ${remaining} U left")
                 return@launch
             }
             val status = glucoseStatusProvider.glucoseStatusData
             when (splitBgCheck(status?.glucose, status?.delta, status?.shortAvgDelta)) {
                 SplitBgCheck.Missing -> {
                     aapsLogger.info(LTag.CORE, "Split leftover waiting: no fresh glucose, ${remaining} U left")
-                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount)
+                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit)
                 }
                 SplitBgCheck.Unsafe  -> {
                     val count = unsafeCount + 1
-                    if (count >= SPLIT_UNSAFE_CANCEL_COUNT) {
+                    if (count >= unsafeLimit) {
                         aapsLogger.info(LTag.CORE, "Split leftover cancelled: glucose unsafe $count times, ${remaining} U left")
                     } else {
-                        aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of $SPLIT_UNSAFE_CANCEL_COUNT, ${remaining} U left")
+                        aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of $unsafeLimit, ${remaining} U left")
                         launchSplitPart(
                             remaining, previousPart, iobBaseline, token, source,
-                            now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L, deadline, count,
+                            now + intervalMinutes * 60_000L, deadline, count, intervalMinutes, unsafeLimit,
                         )
                     }
                 }
@@ -570,7 +613,7 @@ class BolusWizard(
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: insulin on board covers the next part, ${remaining} U left")
                         launchSplitPart(
                             remaining, previousPart, iobBaseline, token, source,
-                            now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L, deadline, 0,
+                            now + intervalMinutes * 60_000L, deadline, 0, intervalMinutes, unsafeLimit,
                         )
                         return@launch
                     }
@@ -579,7 +622,7 @@ class BolusWizard(
                         note = null,
                         source = source,
                         onError = { failure -> aapsLogger.info(LTag.CORE, "Split leftover part not delivered: ${failure.comment}") },
-                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, remaining - dose, SPLIT_LEFTOVER_INTERVAL_MINUTES),
+                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, remaining - dose, intervalMinutes),
                         onSuccess = {
                             val left = Round.roundTo(remaining - dose, 0.001)
                             if (left >= step / 2.0) {
@@ -589,9 +632,11 @@ class BolusWizard(
                                     iobBaseline = liveIob + dose,
                                     token = token,
                                     source = source,
-                                    deliverAt = dateUtil.now() + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L,
+                                    deliverAt = dateUtil.now() + intervalMinutes * 60_000L,
                                     deadline = deadline,
                                     unsafeCount = 0,
+                                    intervalMinutes = intervalMinutes,
+                                    unsafeLimit = unsafeLimit,
                                 )
                             }
                         },
@@ -740,10 +785,21 @@ class BolusWizard(
                 )
             }
             if (!useSuperBolus && profileSwitchPercent(profile) >= 100) {
-                splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, ch.bolusStep(insulinAfterConstraints))?.let { residual ->
+                val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
+                val aboveMax = splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0
+                val walkLeft = if (walkingSoonHeldUnits >= step / 2.0) walkingSoonHeldUnits else 0.0
+                val usualLeft = if (rapidFallForSplit) walkLeft else walkLeft + aboveMax
+                val rapidLeft = if (rapidFallForSplit) aboveMax else 0.0
+                if (usualLeft >= step / 2.0) {
                     line(
                         ConfirmationRole.INFO,
-                        rh.gs(InterfacesStrings.wizard_split_leftover, residual, SPLIT_LEFTOVER_INTERVAL_MINUTES)
+                        rh.gs(InterfacesStrings.wizard_split_leftover, usualLeft, SPLIT_LEFTOVER_INTERVAL_MINUTES)
+                    )
+                }
+                if (rapidLeft >= step / 2.0) {
+                    line(
+                        ConfirmationRole.INFO,
+                        rh.gs(InterfacesStrings.wizard_split_leftover, rapidLeft, SPLIT_RAPID_FALL_INTERVAL_MINUTES)
                     )
                 }
             }

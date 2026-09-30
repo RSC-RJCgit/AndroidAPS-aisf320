@@ -1,8 +1,11 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.configuration.Constants
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SplitBolusTest {
 
@@ -35,5 +38,16 @@ class SplitBolusTest {
         assertEquals(SplitBgCheck.Unsafe, splitBgCheck(130.0, -1.0, 0.0))
         assertEquals(SplitBgCheck.Allowed, splitBgCheck(160.0, -1.0, -1.0))
         assertEquals(SplitBgCheck.Allowed, splitBgCheck(130.0, 0.0, 0.0))
+    }
+
+    @Test
+    fun rapidFallNeedsAllThreeDeltasUnderPointOne() {
+        val under = -0.2 * Constants.MMOLL_TO_MGDL
+        val over = -0.05 * Constants.MMOLL_TO_MGDL
+        val exact = -0.1 * Constants.MMOLL_TO_MGDL
+        assertTrue(splitRapidFall(under, under, under))
+        assertFalse(splitRapidFall(under, under, over))
+        assertFalse(splitRapidFall(exact, exact, exact))
+        assertFalse(splitRapidFall(null, under, under))
     }
 }

@@ -707,6 +707,7 @@ class WizardDialogViewModel(
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
             profileName = profileName, protein = state.protein, fat = state.fat,
             warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
+            walkingSoon = state.walkingSoon,
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         appScope.launch {

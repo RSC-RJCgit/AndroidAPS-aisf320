@@ -98,6 +98,17 @@ internal fun walkingSoonImmediatePercent(walkingSoon: Boolean, standingPct: Doub
 }
 
 /**
+ * Insulin the walking-soon cut holds back from the first bolus.
+ * It is given later by the usual delayed-carb checks. [scaledComponents] is units, before the percent.
+ */
+internal fun walkingSoonHeldUnits(walkingSoon: Boolean, standingPct: Double, scaledComponents: Double): Double {
+    if (!walkingSoon || scaledComponents <= 0.0) return 0.0
+    val percentCut = standingPct - walkingSoonImmediatePercent(true, standingPct)
+    if (percentCut <= 0.5) return 0.0
+    return scaledComponents * percentCut / 100.0
+}
+
+/**
  * Default for the Walking soon box. Steps over 30 minutes at 200 or more, or steps over 5 minutes
  * at 100 or more, and glucose under 6 mmol/L, and glucose not rising fast. Null when the step
  * counts are missing, so the box is left as it is.

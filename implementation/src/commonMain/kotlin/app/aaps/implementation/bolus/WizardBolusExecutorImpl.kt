@@ -150,6 +150,8 @@ class WizardBolusExecutorImpl(
         val warsawPlan: WarsawFpuPlan? = null,
         val warsawIobBaseline: Double = 0.0,
         val wizardMaxBolus: Double? = null,
+        val walkingSoonHeld: Double = 0.0,
+        val splitRapidFall: Boolean = false,
     )
 
     // Consume-once slots keyed by bolusId — a map, NOT a single var, so prepares from different actors (the
@@ -275,6 +277,8 @@ class WizardBolusExecutorImpl(
             warsawPlan = wizard.warsawPlan,
             warsawIobBaseline = wizard.warsawIobBaseline,
             wizardMaxBolus = buttonMax,
+            walkingSoonHeld = wizard.walkingSoonHeldUnits,
+            splitRapidFall = wizard.rapidFallForSplit,
         ))
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
@@ -334,6 +338,7 @@ class WizardBolusExecutorImpl(
                 profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
                 inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
                 protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
+                walkingSoon = inputs.walkingSoon,
             )
         } finally {
             if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
@@ -366,6 +371,8 @@ class WizardBolusExecutorImpl(
                 warsawPlan = wizard.warsawPlan,
                 warsawIobBaseline = wizard.warsawIobBaseline,
                 wizardMaxBolus = inputs.maxBolus,
+                walkingSoonHeld = wizard.walkingSoonHeldUnits,
+                splitRapidFall = wizard.rapidFallForSplit,
             )
         )
         val advisorApplies = wizard.needsBolusAdvisor()
@@ -723,7 +730,14 @@ class WizardBolusExecutorImpl(
         deliverWizardBolus(correctedInsulin, p.carbs, carbTimeOffset.toInt(), p.bcr?.glucoseValue, correctedBcr, notes, source, onError)
         if (p.bcr != null) {
             val requested = p.insulin + correctionU
-            bolusWizardProvider().scheduleLeftoverSplit(requested, correctedInsulin, p.warsawIobBaseline + correctionU, source)
+            bolusWizardProvider().scheduleLeftoverSplit(
+                requested,
+                correctedInsulin,
+                p.warsawIobBaseline + correctionU,
+                source,
+                rapidFall = p.splitRapidFall,
+                walkingSoonHeld = p.walkingSoonHeld,
+            )
         } else {
             bolusWizardProvider().cancelLeftoverSplit()
         }

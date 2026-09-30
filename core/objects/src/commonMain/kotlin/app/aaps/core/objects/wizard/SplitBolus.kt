@@ -1,19 +1,39 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.utils.Round
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.max
 import kotlin.math.min
 
-/** Minutes between leftover parts. Six checks spread across 2.5 hours. */
-const val SPLIT_LEFTOVER_INTERVAL_MINUTES = 25
+/** Minutes between leftover parts. The usual delayed-carb checks. */
+const val SPLIT_LEFTOVER_INTERVAL_MINUTES = 7
 
-/** The leftover series stops after 2.5 hours. */
-const val SPLIT_LEFTOVER_DEADLINE_MINUTES = 150
+/** The usual leftover series stops after 60 minutes. */
+const val SPLIT_LEFTOVER_DEADLINE_MINUTES = 60
 
-/** Stop the leftover series after this many unsafe glucose checks. */
-const val SPLIT_UNSAFE_CANCEL_COUNT = 6
+/** Stop the usual leftover series after this many unsafe glucose checks. */
+const val SPLIT_UNSAFE_CANCEL_COUNT = 3
+
+/** Minutes between checks when all three deltas are falling faster than 0.1 mmol/L. Six checks cover 2.5 hours. */
+const val SPLIT_RAPID_FALL_INTERVAL_MINUTES = 25
+
+/** The rapid-fall leftover series stops after 2.5 hours. */
+const val SPLIT_RAPID_FALL_DEADLINE_MINUTES = 150
+
+/** Stop the rapid-fall leftover series after this many unsafe glucose checks. */
+const val SPLIT_RAPID_FALL_UNSAFE_CANCEL_COUNT = 6
+
+/**
+ * True when delta, short delta, and long delta are all under -0.1 mmol/L.
+ * A fall steeper than -0.2 mmol/L is included. Values are mg/dL.
+ */
+fun splitRapidFall(delta: Double?, shortDelta: Double?, longDelta: Double?): Boolean {
+    if (delta == null || shortDelta == null || longDelta == null) return false
+    val limit = -0.1 * Constants.MMOLL_TO_MGDL
+    return delta < limit && shortDelta < limit && longDelta < limit
+}
 
 /**
  * Insulin still owed after the immediate bolus was cut to max bolus.
