@@ -28,6 +28,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
@@ -679,6 +680,12 @@ class AutoIsfHistoryExporter @Inject constructor(
         DoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
         UnitDoubleKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${df2.format(preferences.get(it))}") }
         StringKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
+        // Added 2026-09-30: this local export was missing LongKey entries entirely (unlike
+        // OpenAPSAutoISFPlugin.autoIsfSettingsSnapshot(), the AAPSCLIENT-mirrored equivalent, which already
+        // includes them) -- e.g. ApsAutoIsfLastAlarmHypoAt could only ever be seen via a follower's mirrored
+        // settings.txt, never a device's own local one, which caused real confusion diagnosing a stale
+        // AlarmHypo state on Virtual (a non-AAPSCLIENT device) that this key would have explained directly.
+        LongKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
         lines.add("${DoubleKey.FslCalSlope.key} = ${df2.format(preferences.get(DoubleKey.FslCalSlope))}")
         lines.add("${DoubleKey.FslCalOffset.key} = ${df2.format(preferences.get(DoubleKey.FslCalOffset))}")
         return lines.take(6).joinToString("\n") + "\n" + lines.drop(6).sorted().joinToString("\n") + "\n"

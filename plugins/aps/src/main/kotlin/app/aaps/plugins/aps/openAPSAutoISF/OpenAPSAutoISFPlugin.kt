@@ -848,8 +848,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // (already-escalated) state.
     // True while a hypo alarm is recent AND an MJ cycle is still active -- exactly AlarmHypoRoleRevert's own trigger.
     // Shared so the escalation below and that revert can never disagree about it.
+    // 24h staleness bound added 2026-09-30, per explicit request: the AlarmHypo state has no other expiry of its own
+    // (only Not50Recently clears it, and only when profile is back at 100%, BGL>=5.5mmol, delta>=0.1mmol all line up
+    // at once -- real case found on Virtual where none of those ever coincided, so a stale "AlarmRecent" from days
+    // earlier sat dormant and fired a TierA revert the next time an unrelated MJ cycle started). 24h rather than a
+    // short window: reverting to TierA is never a dosing-safety risk on its own (only more conservative dosing
+    // persists a bit longer if this fires a bit late), so there's no benefit to cutting the window tight -- a longer
+    // bound still closes off multi-day-stale artifacts while not blocking a same-day, still-relevant combination.
     private fun hypoRoleRevertConditionActive(): Boolean =
         checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")
+            && (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.hours(24).msecs()
 
     private fun escalateToStuckHighTierC() {
         if (preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return
