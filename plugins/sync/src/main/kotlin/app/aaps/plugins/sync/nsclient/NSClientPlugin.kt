@@ -253,7 +253,7 @@ class NSClientPlugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced" && requiredKey != "ns_secondary_settings") return
+        if (requiredKey != null && requiredKey != "ns_client_synchronization" && requiredKey != "ns_client_alarm_options" && requiredKey != "ns_client_connection_options" && requiredKey != "ns_client_advanced" && requiredKey != "ns_secondary_settings" && requiredKey != "ns_tertiary_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -302,6 +302,16 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryAcceptTherapyEvent, summary = R.string.ns_secondary_receive_therapy_events_summary, title = R.string.ns_secondary_receive_therapy_events))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
+            })
+            // Tertiary ("3y") raw-BG upload site settings (2026-10-01, per explicit request): shown here too,
+            // not just under the V3 client's own screen, since the actual upload transport (see
+            // NSClientV3Plugin.uploadRawToTertiarySite()) is V1 socket.io, not the V3 REST client -- the same
+            // StringKey.NsClientTertiaryUrl/NsClientTertiaryAccessToken preferences back both screens.
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "ns_tertiary_settings"
+                title = rh.gs(R.string.ns_tertiary_settings)
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientTertiaryUrl, summary = R.string.ns_tertiary_url_summary, title = R.string.ns_tertiary_url))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientTertiaryAccessToken, summary = R.string.ns_tertiary_token_summary, title = R.string.ns_tertiary_token))
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "ns_client_alarm_options"
