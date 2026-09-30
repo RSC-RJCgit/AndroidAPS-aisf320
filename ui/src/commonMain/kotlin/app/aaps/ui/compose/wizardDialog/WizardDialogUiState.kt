@@ -37,6 +37,10 @@ data class WizardDialogUiState(
     val useIOB: Boolean = true,
     val useCOB: Boolean = false,
     val walkingSoon: Boolean = false,
+    /** Fat and protein later, instead of extended carbs. Fat is 1 times the carb grams. Protein is 1.5 times. */
+    val fpuInstead: Boolean = false,
+    /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
+    val unreliableSmb: Boolean = false,
     val alarmChecked: Boolean = false,
     val advancedExpanded: Boolean = false,
     val calculationExpanded: Boolean = false,

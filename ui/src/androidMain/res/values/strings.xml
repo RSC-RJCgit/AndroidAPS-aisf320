@@ -182,6 +182,8 @@
     <string name="wizard_carbs_type_desc">Carbs reduced by %1$d%%, added eCarbs %2$d%% delayed %3$dmin for %4$dh</string>
     <string name="wizard_include_info">Tap to include/exclude from calculation:\n• BG — blood glucose (ON at start)\n• TT — temp target (ON at start)\n• Trend — BG trend (last state remembered)\n• IOB — insulin on board (ON at start)\n• COB — carbs on board (last state remembered)</string>
     <string name="wizard_walking_soon" comment="Checkbox on the bolus calculator. Ticked means the user will walk soon, so the immediate dose is cut to 70 percent.">Walking soon</string>
+    <string name="wizard_fpu_instead" comment="Checkbox. Fat grams equal the carb grams. Protein grams are 1.5 times the carb grams. These are later doses. Extended carbs are off.">Fat and protein later</string>
+    <string name="wizard_unreliable_smb" comment="Checkbox. Used when SMB cannot be trusted. Wizard percent is 90. Fat grams are 1.5 times the carb grams. Protein grams are 2 times the carb grams. Later doses. Max bolus stays at the saved limit.">Sensor or pod unreliable</string>
 
     <!-- Treatments -->
     <string name="no_records_available">No records available</string>

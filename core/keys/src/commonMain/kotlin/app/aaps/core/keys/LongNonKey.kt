@@ -85,5 +85,8 @@ enum class LongNonKey(
 
     // Newest pump APK number seen on this phone. 0 means none yet. Local only.
     ApsAutoIsfApkNewestNnn("autoisf_apk_newest_nnn", 0L, exportable = false),
+
+    // Latest loop HP1 in milli-mmol. 0 means none yet. Local only.
+    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0L, exportable = false),
 }
 

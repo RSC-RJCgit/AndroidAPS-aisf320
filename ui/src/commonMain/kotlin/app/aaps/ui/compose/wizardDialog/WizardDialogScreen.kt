@@ -210,6 +210,8 @@ fun WizardDialogScreen(
         onIOBToggle = viewModel::toggleIOB,
         onCOBToggle = viewModel::toggleCOB,
         onWalkingSoonToggle = viewModel::toggleWalkingSoon,
+        onFpuInsteadToggle = viewModel::toggleFpuInstead,
+        onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
@@ -243,6 +245,8 @@ internal fun WizardDialogContent(
     onIOBToggle: (Boolean) -> Unit,
     onCOBToggle: (Boolean) -> Unit,
     onWalkingSoonToggle: (Boolean) -> Unit = {},
+    onFpuInsteadToggle: (Boolean) -> Unit = {},
+    onUnreliableSmbToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -688,6 +692,34 @@ internal fun WizardDialogContent(
                             unitLabel = TextRef.Literal("h"),
                             decimalPlaces = 1
                         )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.fpuInstead,
+                                onCheckedChange = onFpuInsteadToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_fpu_instead),
+                                modifier = Modifier.clickable { onFpuInsteadToggle(!uiState.fpuInstead) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.unreliableSmb,
+                                onCheckedChange = onUnreliableSmbToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_unreliable_smb),
+                                modifier = Modifier.clickable { onUnreliableSmbToggle(!uiState.unreliableSmb) }
+                            )
+                        }
 
                         // Carbs type selector
                         Row(

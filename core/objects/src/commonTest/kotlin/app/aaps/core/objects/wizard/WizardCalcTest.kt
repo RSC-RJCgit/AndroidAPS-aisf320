@@ -9,6 +9,56 @@ import kotlin.test.assertTrue
 class WizardCalcTest {
 
     @Test
+    fun mealExtraTurnsExtendedCarbsIntoLaterFatAndProtein() {
+        val plain = mealExtra(
+            fpuInstead = false,
+            unreliableSmb = false,
+            carbs = 40,
+            typedFat = 3,
+            typedProtein = 4,
+            percentage = 100,
+            extendedCarbPercent = 35,
+        )
+        assertEquals(3, plain.fatGrams)
+        assertEquals(4, plain.proteinGrams)
+        assertEquals(14, plain.extendedCarbs)
+        assertFalse(plain.useSavedMaxBolus)
+
+        val later = mealExtra(
+            fpuInstead = true,
+            unreliableSmb = false,
+            carbs = 40,
+            typedFat = 3,
+            typedProtein = 4,
+            percentage = 80,
+            extendedCarbPercent = 35,
+        )
+        assertEquals(40, later.fatGrams)
+        assertEquals(60, later.proteinGrams)
+        assertEquals(0, later.extendedCarbs)
+        assertEquals(80, later.percentage)
+        assertFalse(later.useSavedMaxBolus)
+
+        val unreliable = mealExtra(
+            fpuInstead = true,
+            unreliableSmb = true,
+            carbs = 40,
+            typedFat = 3,
+            typedProtein = 4,
+            percentage = 100,
+            extendedCarbPercent = 20,
+        )
+        assertEquals(60, unreliable.fatGrams)
+        assertEquals(80, unreliable.proteinGrams)
+        assertEquals(90, unreliable.percentage)
+        assertEquals(0, unreliable.extendedCarbs)
+        assertTrue(unreliable.useSavedMaxBolus)
+        assertEquals(100, unreliable.immediateCarbPercent)
+        assertEquals(null, later.immediateCarbPercent)
+    }
+
+
+    @Test
     fun aProfileAbove100UsesTheBaseRates() {
         assertEquals(1.3, wizardProfileBaseScale(130), 0.0001)
         assertEquals(1.0, wizardProfileBaseScale(100), 0.0001)

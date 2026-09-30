@@ -37,6 +37,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.round
@@ -45,7 +46,9 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
 import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.mealExtra
 import app.aaps.core.objects.wizard.walkingSoonDefault
 import app.aaps.core.objects.wizard.wizardMaxBolusDefault
 import app.aaps.core.ui.CoreUiStrings
@@ -61,6 +64,7 @@ import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactoryKey
 import kotlin.math.abs
+import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -124,6 +128,7 @@ class WizardDialogViewModel(
     private var maxBolusOverridden = false
     private var maxBolusTouched = false
     private var walkingSoonTouched = false
+    private var mealBeforeExtra: Triple<Int, Int, Int>? = null
 
     override fun onCleared() {
         if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
@@ -245,6 +250,50 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    fun toggleFpuInstead(checked: Boolean) {
+        if (checked) enableMealExtra(unreliable = false) else disableMealExtra()
+    }
+
+    fun toggleUnreliableSmb(checked: Boolean) {
+        if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
+    }
+
+    private fun enableMealExtra(unreliable: Boolean) {
+        val state = uiState.value
+        if (!state.fpuInstead && !state.unreliableSmb) {
+            mealBeforeExtra = Triple(state.fat, state.protein, state.percentage)
+        }
+        var maxBolus = state.maxBolus
+        if (unreliable && !maxBolusTouched) {
+            val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
+            applyWizardMaxBolus(saved)
+            maxBolus = saved
+        }
+        _uiState.update {
+            it.copy(
+                fpuInstead = !unreliable,
+                unreliableSmb = unreliable,
+                maxBolus = maxBolus,
+            )
+        }
+        recalculate()
+    }
+
+    private fun disableMealExtra() {
+        val saved = mealBeforeExtra
+        mealBeforeExtra = null
+        _uiState.update {
+            it.copy(
+                fpuInstead = false,
+                unreliableSmb = false,
+                fat = saved?.first ?: it.fat,
+                protein = saved?.second ?: it.protein,
+                percentage = saved?.third ?: it.percentage,
+            )
+        }
+        recalculate()
+    }
+
     fun updateProtein(value: Int) {
         _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
         recalculate()
@@ -268,12 +317,39 @@ class WizardDialogViewModel(
         recalculate()
     }
 
-    private suspend fun suggestedMaxBolus(bg: Double, units: GlucoseUnit, bolusStep: Double): Double {
+    private suspend fun suggestedMaxBolus(bg: Double, units: GlucoseUnit, bolusStep: Double, keepSavedMax: Boolean = false): Double {
         val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
         val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, units)
         else iobCobCalculator.ads.actualBg()?.value ?: 999.0
+        val lowBgMax = if (bgMgdl < WizardRecentEntry.LOW_BG_MGDL) min(saved, 2.0) else saved
         val recent = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl)
-        return wizardMaxBolusDefault(saved, bgMgdl, recent, bolusStep)
+        var want = if (keepSavedMax) saved else wizardMaxBolusDefault(saved, bgMgdl, recent, bolusStep)
+        if (dropTrendCautionApplies(bgMgdl)) want = min(want, WizardDropTrendCaution.scaledMaxBolus(lowBgMax, bolusStep))
+        return want
+    }
+
+    private suspend fun dropTrendCautionApplies(bgMgdl: Double): Boolean {
+        val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return false
+        val hp1Cached = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
+        val bolusIob = iobCobCalculator.calculateIobFromBolus().round().iob
+        val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+        return WizardDropTrendCaution.applies(
+            delta = glucose.delta,
+            shortAvgDelta = glucose.shortAvgDelta,
+            longAvgDelta = glucose.longAvgDelta,
+            bgMgdl = bgMgdl,
+            hp1Mmol = hp1Mmol,
+            iobUnits = bolusIob + basalIob,
+            bgRiseMgdl = recentBgRiseMgdl(bgMgdl),
+        )
+    }
+
+    private suspend fun recentBgRiseMgdl(currentBgMgdl: Double): Double {
+        val from = dateUtil.now() - T.mins(WizardRecentEntry.WINDOW_MINUTES).msecs()
+        val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true)
+            .minOfOrNull { it.value } ?: return 0.0
+        return currentBgMgdl - recentMin
     }
 
     private fun applyWizardMaxBolus(value: Double) {
@@ -411,7 +487,7 @@ class WizardDialogViewModel(
     private suspend fun recalculateSuspend() {
         var state = uiState.value
         if (!maxBolusTouched) {
-            val suggested = suggestedMaxBolus(state.bg, state.units, state.bolusStep)
+            val suggested = suggestedMaxBolus(state.bg, state.units, state.bolusStep, keepSavedMax = state.unreliableSmb)
             if (abs(state.maxBolus - suggested) >= 0.001) {
                 applyWizardMaxBolus(suggested)
                 _uiState.update { it.copy(maxBolus = suggested) }
@@ -447,19 +523,39 @@ class WizardDialogViewModel(
             cobInfo.displayCob?.let { cob = it }
         }
 
-        // Carbs type split: effective carbs for wizard, eCarbs for later scheduling
+        // Carbs now stay at the meal type's share. Extended carbs are off when a meal extra
+        // sends fat and protein as later doses instead.
         val carbsType = state.carbsType
-        val effectiveCarbs = state.carbs * carbsType.carbsPercent / 100
-        val eCarbs = state.carbs * carbsType.eCarbsPercent / 100
+        val extra = mealExtra(
+            fpuInstead = state.fpuInstead,
+            unreliableSmb = state.unreliableSmb,
+            carbs = state.carbs,
+            typedFat = state.fat,
+            typedProtein = state.protein,
+            percentage = state.percentage,
+            extendedCarbPercent = carbsType.eCarbsPercent,
+        )
+        val immediatePercent = extra.immediateCarbPercent ?: carbsType.carbsPercent
+        val effectiveCarbs = state.carbs * immediatePercent / 100
+        val eCarbs = extra.extendedCarbs
+        val liveBg = glucoseStatusProvider.getGlucoseStatusData()?.glucose
+        val bgMgdlForCaution = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else liveBg ?: 999.0
+        val percentForCalc = if (dropTrendCautionApplies(bgMgdlForCaution)) {
+            min(extra.percentage, WizardDropTrendCaution.scaledWizPercent(extra.percentage))
+        } else {
+            extra.percentage
+        }
+        if (state.fat != extra.fatGrams || state.protein != extra.proteinGrams || state.percentage != extra.percentage) {
+            _uiState.update {
+                it.copy(fat = extra.fatGrams, protein = extra.proteinGrams, percentage = extra.percentage)
+            }
+        }
 
         // Carbs constraint check (on effective carbs only)
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(effectiveCarbs, aapsLogger)).value()
 
         // Direct correction value
         val correctionValue = state.directCorrection
-
-        // Percentage is always applied
-        val percentageCorrection = state.percentage
 
         val w = bolusWizardProvider().doCalc(
             specificProfile,
@@ -469,7 +565,7 @@ class WizardDialogViewModel(
             cob,
             bgInput,
             correctionValue,
-            percentageCorrection,
+            percentForCalc,
             state.useBg,
             state.useCOB,
             state.useIOB,
@@ -480,8 +576,8 @@ class WizardDialogViewModel(
             state.alarmChecked,
             state.notes,
             state.carbTime,
-            protein = state.protein,
-            fat = state.fat,
+            protein = extra.proteinGrams,
+            fat = extra.fatGrams,
             warsawDurationHours = state.warsawDurationHours,
             walkingSoon = state.walkingSoon,
         )
