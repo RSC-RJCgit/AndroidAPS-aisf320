@@ -114,6 +114,46 @@ fun planSwitchRole(profileName: String, chosenKey: String?): CodedProfileSave {
     return CodedProfileSave(mapOf(key to profileName), blocked = 0, steroidsOff = steroidsOff)
 }
 
+/**
+ * What to write when a plain profile is activated and Standard tier A is empty.
+ * [currentStandard] is set only when that role is also empty. Null means leave it.
+ */
+data class StandardTierAClaim(
+    val tierA: String,
+    val currentStandard: String?,
+)
+
+/** 105 and 110 are checked before 100, then the Low numbers. A steroid name matches none. */
+fun tierNumberInName(name: String): Int? {
+    if (isSteroidMarkedProfileName(name)) return null
+    fun has(number: Int) = Regex("(?<!\\d)$number(?!\\d)").containsMatchIn(name)
+    return listOf(105, 110, 70, 80, 90, 100).firstOrNull { has(it) }
+}
+
+fun rolePointsAtStoredProfile(storedName: String, profileNames: Set<String>): Boolean {
+    val name = storedName.trim()
+    return name.isNotEmpty() && name in profileNames
+}
+
+/**
+ * A plain activated name can become Standard tier A when no role was chosen and tier A is empty.
+ * A name that already says 70, 80, 90, 100, 105, 110, or steroid, is left to that rule.
+ */
+fun claimStandardTierA(
+    profileName: String,
+    chosenKey: String?,
+    tierAName: String,
+    currentStandardName: String,
+    profileNames: Set<String>,
+): StandardTierAClaim? {
+    val name = profileName.trim()
+    if (name.isEmpty() || chosenKey != null) return null
+    if (steroidSlotKeyForName(name) != null || tierNumberInName(name) != null) return null
+    if (rolePointsAtStoredProfile(tierAName, profileNames)) return null
+    val current = if (rolePointsAtStoredProfile(currentStandardName, profileNames)) null else name
+    return StandardTierAClaim(tierA = name, currentStandard = current)
+}
+
 /** Preference that holds the profile every other tier is scaled from. */
 const val STANDARD_TIER_A_KEY = "autoisf_standard100_profile_name"
 
@@ -190,15 +230,27 @@ fun planTierFill(roleValues: Map<String, String>, profileNames: Set<String>): Ti
     return TierFillPlan(sourceMissing = false, sourceName = sourceName, creates = creates, replaces = replaces)
 }
 
-/** Basal is multiplied by the percent. Sensitivity and the carb ratio are divided by it. Targets are copied. */
-fun scaledTierProfile(source: SingleProfile, percent: Int, name: String): SingleProfile {
+/**
+ * Basal is multiplied by the percent, then rounded to 0.05 U/h.
+ * A Low tier uses 0.10 U/h instead.
+ * Sensitivity and the carb ratio are divided by the percent.
+ * Those, and both targets, are rounded to one decimal place.
+ */
+fun scaledTierProfile(source: SingleProfile, percent: Int, name: String, roleKey: String = ""): SingleProfile {
     val up = percent / 100.0
     val down = 100.0 / percent
+    val basalStep = if (roleKey.startsWith("autoisf_low")) 0.10 else 0.05
     return source.copy(
         name = name,
-        basal = source.basal.map { it.copy(amount = Round.roundTo(it.amount * up, 0.001)) },
-        isf = source.isf.map { it.copy(amount = Round.roundTo(it.amount * down, 0.001)) },
-        ic = source.ic.map { it.copy(amount = Round.roundTo(it.amount * down, 0.001)) },
+        basal = source.basal.map { it.copy(amount = Round.roundTo(it.amount * up, basalStep)) },
+        isf = source.isf.map { it.copy(amount = Round.roundTo(it.amount * down, 0.1)) },
+        ic = source.ic.map { it.copy(amount = Round.roundTo(it.amount * down, 0.1)) },
+        target = source.target.map {
+            it.copy(
+                lowTarget = Round.roundTo(it.lowTarget, 0.1),
+                highTarget = Round.roundTo(it.highTarget, 0.1),
+            )
+        },
     )
 }
 

@@ -93,6 +93,52 @@ class CodedProfileRolesLogicTest {
     }
 
     @Test
+    fun aPlainActivationClaimsEmptyStandardTierAAndTheBlankCurrentStandard() {
+        val claim = claimStandardTierA(
+            profileName = "Day",
+            chosenKey = null,
+            tierAName = "",
+            currentStandardName = "",
+            profileNames = setOf("Day"),
+        )
+        assertEquals("Day", claim?.tierA)
+        assertEquals("Day", claim?.currentStandard)
+    }
+
+    @Test
+    fun aPlainActivationDoesNotReplaceAStoredStandardTierA() {
+        val claim = claimStandardTierA(
+            profileName = "Day",
+            chosenKey = null,
+            tierAName = "Kept",
+            currentStandardName = "",
+            profileNames = setOf("Day", "Kept"),
+        )
+        assertNull(claim)
+    }
+
+    @Test
+    fun aNumberedOrChosenNameIsNotClaimedAsStandardTierA() {
+        assertNull(claimStandardTierA("Profile110", null, "", "", setOf("Profile110")))
+        assertNull(claimStandardTierA("Evening 80", null, "", "", setOf("Evening 80")))
+        assertNull(claimStandardTierA("Steroid100", null, "", "", setOf("Steroid100")))
+        assertNull(claimStandardTierA("Day", "autoisf_low_profile_name", "", "", setOf("Day")))
+    }
+
+    @Test
+    fun aPlainActivationLeavesAnExistingCurrentStandardAlone() {
+        val claim = claimStandardTierA(
+            profileName = "Day",
+            chosenKey = null,
+            tierAName = "Missing",
+            currentStandardName = "Kept",
+            profileNames = setOf("Day", "Kept"),
+        )
+        assertEquals("Day", claim?.tierA)
+        assertNull(claim?.currentStandard)
+    }
+
+    @Test
     fun switchScreenWritesNothingWhenNoRoleIsChosen() {
         val plan = planSwitchRole("Day", null)
         assertTrue(plan.writes.isEmpty())
@@ -158,9 +204,31 @@ class CodedProfileRolesLogicTest {
         val scaled = scaledTierProfile(source, 130, "Standard tier B")
         assertEquals("Standard tier B", scaled.name)
         assertEquals(1.3, scaled.basal.single().amount)
-        assertEquals(38.462, scaled.isf.single().amount)
-        assertEquals(7.692, scaled.ic.single().amount)
+        assertEquals(38.5, scaled.isf.single().amount)
+        assertEquals(7.7, scaled.ic.single().amount)
         assertEquals(source.target, scaled.target)
         assertEquals(source.mgdl, scaled.mgdl)
+    }
+
+    @Test
+    fun scaleRoundsBasalToThePumpStepAndTheRestToOneDecimal() {
+        val day = T.hours(24).msecs()
+        val source = SingleProfile(
+            name = "Day",
+            mgdl = false,
+            ic = listOf(Block(day, 10.04)),
+            isf = listOf(Block(day, 5.26)),
+            basal = listOf(Block(day, 1.03)),
+            target = listOf(TargetBlock(day, 5.24, 5.26)),
+        )
+        val standard = scaledTierProfile(source, 130, "Standard tier B", "autoisf_standard105_profile_name")
+        assertEquals(1.35, standard.basal.single().amount)
+        assertEquals(4.0, standard.isf.single().amount)
+        assertEquals(7.7, standard.ic.single().amount)
+        assertEquals(5.2, standard.target.single().lowTarget)
+        assertEquals(5.3, standard.target.single().highTarget)
+
+        val low = scaledTierProfile(source, 80, "Low tier A", "autoisf_low70_profile_name")
+        assertEquals(0.8, low.basal.single().amount)
     }
 }

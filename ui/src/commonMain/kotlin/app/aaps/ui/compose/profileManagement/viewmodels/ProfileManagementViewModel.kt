@@ -51,8 +51,10 @@ import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.ScreenMode
 import app.aaps.core.ui.compose.icons.IcProfile
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.profileManagement.STANDARD_TIER_A_KEY
 import app.aaps.ui.compose.profileManagement.TierFillPlan
 import app.aaps.ui.compose.profileManagement.TierWrite
+import app.aaps.ui.compose.profileManagement.claimStandardTierA
 import app.aaps.ui.compose.profileManagement.codedProfileSlots
 import app.aaps.ui.compose.profileManagement.planCodedProfileSave
 import app.aaps.ui.compose.profileManagement.planSwitchRole
@@ -726,6 +728,20 @@ class ProfileManagementViewModel(
         val plan = planSwitchRole(profileName, chosenKey)
         plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
         if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
+        if (plan.writes.isNotEmpty()) return
+        val names = profileRepository.profiles.value.map { it.name }.toSet()
+        val claim = claimStandardTierA(
+            profileName = profileName,
+            chosenKey = chosenKey,
+            tierAName = codedRoleValue(STANDARD_TIER_A_KEY),
+            currentStandardName = codedRoleValue("autoisf_standard_profile_name"),
+            profileNames = names,
+        ) ?: return
+        preferences.put(stringKeyForCodedRole(STANDARD_TIER_A_KEY), claim.tierA)
+        claim.currentStandard?.let { preferences.put(stringKeyForCodedRole("autoisf_standard_profile_name"), it) }
+        val roles = codedProfileSlots().associate { it.key to codedRoleValue(it.key) }
+        val fill = planTierFill(roles, names)
+        viewModelScope.launch { applyTierFill(fill, replaceExisting = false) }
     }
 
     private var pendingTierFill: TierFillPlan? = null
@@ -792,7 +808,7 @@ class ProfileManagementViewModel(
         val writes = plan.creates + if (replaceExisting) plan.replaces else emptyList()
         if (writes.isEmpty()) return
         for (write in writes) {
-            val scaled = scaledTierProfile(source, write.percent, write.name)
+            val scaled = scaledTierProfile(source, write.percent, write.name, write.key)
             val result = if (write.replaceInPlace) {
                 val index = profileRepository.profiles.value.indexOfFirst { it.name == write.name }
                 if (index < 0) profileRepository.add(scaled) else profileRepository.replace(index, scaled)
