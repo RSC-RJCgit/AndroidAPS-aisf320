@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.10.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.11.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,32 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .10, 2026-10-01)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .11, 2026-10-01)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.10.patch
-  git apply bolus-calculator-on-3426-aisf321.10.patch
+  git apply --check bolus-calculator-on-3426-aisf321.11.patch
+  git apply bolus-calculator-on-3426-aisf321.11.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .11 (2026-10-01):
+- Corrects patch .10's "Add FPUs"/"Unreliable SMBs" checkboxes -- manual checkbox gating of FPU was
+  itself never actually agreed either. Removed entirely. BolusWizard.kt now computes FPU unconditionally
+  from whatever's in the protein/fat fields (plain protein x0.4/fat x0.9, exactly the pre-checkbox
+  original), no toggle logic inside the wizard at all. WizardDialog.kt instead AUTO-FILLS the Fat/Protein
+  boxes from carbs the moment carbs changes (fat = carbs x1.0, protein = carbs x1.5 -- or x1.5/x2.0 with
+  "Unreliable SMBs", matching the KMP reference repo's fpuInstead/unreliableSmb ratios applied to the
+  full entered carbs). A manual edit to either box sticks until carbs itself changes again
+  (proteinFatManuallyOverridden), rather than being silently overwritten every recalculation.
+- New fourth trigger for the existing DelayedBolusWorker catch-up mechanism (profile=50%/recent50/
+  walkingSoon already triggered it): WizardDropTrendCaution scaling a dose down now ALSO arms it.
+  WizardDropTrendCaution.fullRequiredFromScaled() recovers the true full amount from what was actually
+  delivered after that rule's scaling, feeding the SAME existing 5-min-poll/80-min-window/confirmed-rise
+  mechanism DelayedBolusWorker already provides for the other three triggers -- no new delivery
+  mechanism built, since a real "give the withheld amount later" catch-up was worth having (previously
+  that shortfall was just permanently discarded with nothing else aware it was ever owed).
+- Retains all patch .10 changes below (its "Add FPUs"/"Unreliable SMBs" checkbox bullet is superseded by
+  the correction above).
 
 Changes in patch .10 (2026-10-01):
 - Corrects patch .9's "Bolus fat/protein now instead of extending" checkbox -- that "now" behavior (a
