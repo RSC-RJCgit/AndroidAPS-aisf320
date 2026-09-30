@@ -42,10 +42,11 @@ internal fun tier3BoostMicroBolus(
     bgAcceleration: Double,
     recentLowBg: Double,
     roundSmbTo: Double,
+    riseHold: Boolean = false,
 ): Tier3Result {
     val unchanged = Tier3Result(microBolus, false, null, false, "")
     if (!enabled) return unchanged
-    val timeAllowed = hour in 9 until 21 || daytimeBypass
+    val timeAllowed = hour in 9 until 21 || daytimeBypass || riseHold
     if (!timeAllowed) return Tier3Result(microBolus, false, null, false, "Tier 3 blocked outside 09:00-21:00; ")
     if (!mildThisCycle && !bg3ThisCycle) return unchanged
 
@@ -54,9 +55,9 @@ internal fun tier3BoostMicroBolus(
     val allowance = (boostMaxIob - iob).coerceAtLeast(0.0)
     val scale = scaleSetting * (profilePercent / 100.0)
     if (scale >= 3.0 || bg <= 80.0) return unchanged
-    if (!unrestricted && (iob >= boostMaxIob || allowance <= 0.0)) return unchanged
-    if (!unrestricted && uamBoostRecent) return Tier3Result(microBolus, false, null, false, "T3skip<20min; ")
-    if (!unrestricted && smbDeliveryRatio > 0.50) return Tier3Result(microBolus, false, null, false, "T3skip SMBdel>$smbDeliveryRatio; ")
+    if (!riseHold && !unrestricted && (iob >= boostMaxIob || allowance <= 0.0)) return unchanged
+    if (!riseHold && !unrestricted && uamBoostRecent) return Tier3Result(microBolus, false, null, false, "T3skip<20min; ")
+    if (!riseHold && !unrestricted && smbDeliveryRatio > 0.50) return Tier3Result(microBolus, false, null, false, "T3skip SMBdel>$smbDeliveryRatio; ")
 
     val ratio = smbDeliveryRatio.coerceAtLeast(0.05)
     val insulinDivisor = 1.0 / ratio
@@ -70,7 +71,7 @@ internal fun tier3BoostMicroBolus(
     } else {
         max(basalScaleCandidate, baselineRatioCandidate)
     }
-    val capped = if (unrestricted) uncapped else min(uncapped, allowance)
+    val capped = if (unrestricted || riseHold) uncapped else min(uncapped, allowance)
     val rounded = if (roundSmbTo > 0.0) floor(capped * roundSmbTo) / roundSmbTo else capped
     val notes = StringBuilder()
     var smb = microBolus
@@ -87,7 +88,7 @@ internal fun tier3BoostMicroBolus(
     val reversalScore = if (longAvgDelta < 0.0 && delta > 0.0) delta * abs(longAvgDelta) else 0.0
     val lowTriggered = recentLowBg < 100.0
     val reversalTriggered = reversalScore > 30.0
-    if ((lowTriggered || reversalTriggered) && cob == 0.0 && bgAcceleration > 0.90 * 18.0 && bg < 170.0) {
+    if (!riseHold && (lowTriggered || reversalTriggered) && cob == 0.0 && bgAcceleration > 0.90 * 18.0 && bg < 170.0) {
         val genuineSpike = delta > 15.0 && bg > targetBg + 20.0
         if (!genuineSpike) {
             fastCarb = true

@@ -809,6 +809,8 @@ open class OpenAPSAutoISFPlugin(
             profilePercent = profile_percentage,
             cob = mealData.mealCOB,
             iob = iobData.iob,
+            maxIob = oapsProfile.max_iob,
+            iobReduction = profile_percentage / 100.0 * exerciseRatio,
             statesOn = statesOn,
             steps60 = stepSample?.steps60min ?: 0,
             steps180 = stepSample?.steps180min ?: 0,
@@ -928,6 +930,7 @@ open class OpenAPSAutoISFPlugin(
             mildThisCycle = mildThisCycle,
             bg3ThisCycle = bg3ThisCycle,
             hiBrkQuietUamBlock = hiBrkQuiet,
+            riseHold = riseHoldThisCycle,
             mildFailsafeThisCycle = mildFailsafeThisCycle,
             uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled),
             uamBoostUnrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled),
@@ -1843,6 +1846,7 @@ open class OpenAPSAutoISFPlugin(
     private var mildThisCycle = false
     private var bg3ThisCycle = false
     private var mildFailsafeThisCycle = false
+    private var riseHoldThisCycle = false
 
     // A strong mark raises the IOB threshold to 71 and, unless caution applies, the profile percent to 110 for 2 minutes.
     // Both marks raise the post-meal weight. A value that is not above its baseline is left alone.
@@ -1870,6 +1874,15 @@ open class OpenAPSAutoISFPlugin(
         mildThisCycle = false
         bg3ThisCycle = false
         mildFailsafeThisCycle = false
+        val lastBolusMinForHold = minutesSinceLastPositiveNormalBolus(now)
+        riseHoldThisCycle = nightRiseHoldsIobLimit(
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            bg = bg,
+            bolusAgeMinutes = lastBolusMinForHold,
+            carbAgeMinutes = minutesSinceLastCarbs(now),
+        )
         seedBaselines(profilePercent)
         val boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
         val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
@@ -1880,7 +1893,7 @@ open class OpenAPSAutoISFPlugin(
         val rawDelta1 = ukfDelta1
         val interval = smbInterval5Sec(now)
         val iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L)
-        val lastBolusMin = minutesSinceLastPositiveNormalBolus(now)
+        val lastBolusMin = lastBolusMinForHold
         val recentAlarm = now - preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt) <= 60 * 60_000L
         val bypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now)
         val readyMild = runMarks.ready(RunMark.BOLUS_GIVEN_MILD, 5, now)
@@ -1908,6 +1921,7 @@ open class OpenAPSAutoISFPlugin(
             steps60 = steps60(now),
             smbIntervalSec = interval,
             deliveryBaseline = baseline,
+            riseHold = riseHoldThisCycle,
         )
         val mild = mildBoostShouldFire(
             readyMild = readyMild,
@@ -1933,12 +1947,14 @@ open class OpenAPSAutoISFPlugin(
             smbIntervalSec = interval,
             deliveryBaseline = baseline,
             iob = iob,
+            riseHold = riseHoldThisCycle,
         )
         val blocked = bg3 && bg3BoostBlocked(
             recentBolusGiven = runMarks.recent(RunMark.BOLUS_GIVEN, 60, now),
             recentMild = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 60, now),
             recentMildFailsafe = runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 60, now),
             iob = iob,
+            riseHold = riseHoldThisCycle,
         )
         val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
         val caution = (statesOn && !states().inState("MJ", "NOMJremains")) ||
@@ -4369,6 +4385,8 @@ open class OpenAPSAutoISFPlugin(
         profilePercent: Int,
         cob: Double,
         iob: Double,
+        maxIob: Double,
+        iobReduction: Double,
         statesOn: Boolean,
         steps60: Int,
         steps180: Int,
@@ -4418,13 +4436,28 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote(if (carbsHeld) "EvCapR" else "EvCap")
             aapsLogger.debug(LTag.APS, "Evening IOB ceiling -> $cap")
         }
+        val holdAboveIob = nightRiseHoldsIobLimit(
+            delta = delta,
+            shortDelta = shortDelta,
+            longDelta = longDelta,
+            bg = bg,
+            bolusAgeMinutes = minutesSinceLastPositiveNormalBolus(now),
+            carbAgeMinutes = minutesSinceLastCarbs(now),
+        )
+        // While the rise holds the limit up, check every loop. Insulin on board moves, and a
+        // five minute wait would let it pass the percent again. The ordinary drop to 22% stays
+        // on the five minute mark.
         val nightCap = nightIobCeiling(
-            ready = runMarks.ready(RunMark.NIGHT_IOB_CEILING, 5, now),
+            ready = holdAboveIob || runMarks.ready(RunMark.NIGHT_IOB_CEILING, 5, now),
             minuteOfDay = minuteOfDay,
             steps60 = steps60,
             iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
             acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
             cobSustained = carbsHeld,
+            holdAboveIob = holdAboveIob,
+            iob = iob,
+            maxIob = maxIob,
+            reduction = iobReduction,
         )
         if (nightCap != null) {
             if (nightCap.iob != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, nightCap.iob)

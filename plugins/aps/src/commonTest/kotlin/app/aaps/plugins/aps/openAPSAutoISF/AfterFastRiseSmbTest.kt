@@ -91,6 +91,20 @@ class AfterFastRiseSmbTest {
     }
 
     @Test
+    fun aHighRiseDoesNotHalveTheLaterSmb() {
+        val result = lateFastRiseTaper(
+            microBolus = 1.0,
+            fastRiseNow = true,
+            iob = 1.8,
+            maxIob = 10.0,
+            cob = 0.0,
+            smbSum30 = 0.0,
+            riseHold = true,
+        )
+        assertEquals(1.0, result.microBolus, 0.001)
+    }
+
+    @Test
     fun lateTaperUsesTheThirtyMinuteSumWhenIobIsLow() {
         val result = lateFastRiseTaper(
             microBolus = 1.0,

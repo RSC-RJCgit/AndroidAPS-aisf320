@@ -49,6 +49,126 @@ class NightTest {
     }
 
     @Test
+    fun nightCeilingStaysAboveIobOnAHighRise() {
+        val cap = nightIobCeiling(
+            ready = true,
+            minuteOfDay = 30,
+            steps60 = 0,
+            iobTh = 45,
+            acce = 0.50,
+            cobSustained = false,
+            holdAboveIob = nightRiseHoldsIobLimit(
+                delta = 0.66 * 18.0182,
+                shortDelta = 0.61 * 18.0182,
+                longDelta = 0.42 * 18.0182,
+                bg = 10.0 * 18.0182,
+                bolusAgeMinutes = 400,
+                carbAgeMinutes = 400,
+            ),
+            iob = 5.05,
+            maxIob = 9.49,
+            reduction = 1.0,
+        )
+        assertEquals(54, cap?.iob)
+        assertEquals(0.35, cap?.acce)
+        val units = 54 / 100.0 * 9.49
+        assertTrue(units > 5.05)
+    }
+
+    @Test
+    fun nightCeilingStillDropsWhenTheRiseHasStopped() {
+        val cap = nightIobCeiling(
+            ready = true,
+            minuteOfDay = 30,
+            steps60 = 0,
+            iobTh = 45,
+            acce = 0.50,
+            cobSustained = false,
+            holdAboveIob = nightRiseHoldsIobLimit(
+                delta = -0.2 * 18.0182,
+                shortDelta = 0.3 * 18.0182,
+                longDelta = 0.3 * 18.0182,
+                bg = 11.0 * 18.0182,
+                bolusAgeMinutes = 20,
+                carbAgeMinutes = 20,
+            ),
+            iob = 5.05,
+            maxIob = 9.49,
+            reduction = 1.0,
+        )
+        assertEquals(22, cap?.iob)
+    }
+
+    @Test
+    fun nightRiseHoldOpensForARecentBolusUnderNineFive() {
+        assertTrue(
+            nightRiseHoldsIobLimit(
+                delta = 0.3 * 18.0182,
+                shortDelta = 0.3 * 18.0182,
+                longDelta = 0.2 * 18.0182,
+                bg = 8.0 * 18.0182,
+                bolusAgeMinutes = 149,
+                carbAgeMinutes = null,
+            )
+        )
+        assertFalse(
+            nightRiseHoldsIobLimit(
+                delta = 0.3 * 18.0182,
+                shortDelta = 0.3 * 18.0182,
+                longDelta = 0.2 * 18.0182,
+                bg = 8.0 * 18.0182,
+                bolusAgeMinutes = 150,
+                carbAgeMinutes = 150,
+            )
+        )
+    }
+
+    @Test
+    fun nightRiseHoldNeedsAllThreeDeltas() {
+        val bg = 10.5 * 18.0182
+        assertFalse(
+            nightRiseHoldsIobLimit(
+                delta = 0.16 * 18.0182,
+                shortDelta = 0.23 * 18.0182,
+                longDelta = 0.29 * 18.0182,
+                bg = bg,
+                bolusAgeMinutes = 400,
+                carbAgeMinutes = null,
+            )
+        )
+        assertTrue(
+            nightRiseHoldsIobLimit(
+                delta = 0.24 * 18.0182,
+                shortDelta = 0.23 * 18.0182,
+                longDelta = 0.30 * 18.0182,
+                bg = bg,
+                bolusAgeMinutes = 400,
+                carbAgeMinutes = null,
+            )
+        )
+        assertFalse(
+            nightRiseHoldsIobLimit(
+                delta = 0.4 * 18.0182,
+                shortDelta = 0.2 * 18.0182,
+                longDelta = 0.3 * 18.0182,
+                bg = bg,
+                bolusAgeMinutes = 400,
+                carbAgeMinutes = null,
+            )
+        )
+        assertFalse(
+            nightRiseHoldsIobLimit(
+                delta = 0.4 * 18.0182,
+                shortDelta = 0.4 * 18.0182,
+                longDelta = 0.1 * 18.0182,
+                bg = bg,
+                bolusAgeMinutes = 400,
+                carbAgeMinutes = null,
+            )
+        )
+    }
+
+    @Test
     fun nightCeilingYieldsToSteps() {
         assertNull(
             nightIobCeiling(

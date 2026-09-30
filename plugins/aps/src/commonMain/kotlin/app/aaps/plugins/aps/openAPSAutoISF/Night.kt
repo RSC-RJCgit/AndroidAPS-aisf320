@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import kotlin.math.floor
+
 // Daytime only, 08:00 until 22:00. Raises the acceleration weight to its high value.
 // Overnight back-off rules stay in force because this window does not cover them.
 internal fun acceUpShouldFire(
@@ -22,7 +24,36 @@ internal fun exerciseLimitShouldFire(ready: Boolean, bg: Double, delta: Double, 
 // Midnight until 06:00. Lowers the IOB threshold to 22%, or 35% after sustained carbs.
 // The acceleration cap stays 0.35 either way. Steps of 100 or more keep this closed.
 // A value already at or under the cap is left alone.
+// A fast rise, and either over 9.5 mmol/L or within 150 minutes of a bolus or a carb entry,
+// is not pushed under the insulin already on board. The percent is then the smallest one
+// whose unit limit sits strictly above that insulin.
+// Fast means delta and short delta above 0.2 mmol/L, and long delta above 0.1 mmol/L.
 internal data class NightCeiling(val iob: Int?, val acce: Double?)
+
+internal fun nightRiseHoldsIobLimit(
+    delta: Double,
+    shortDelta: Double,
+    longDelta: Double,
+    bg: Double,
+    bolusAgeMinutes: Int,
+    carbAgeMinutes: Int?,
+): Boolean {
+    if (delta <= 0.2 * 18.0182) return false
+    if (shortDelta <= 0.2 * 18.0182) return false
+    if (longDelta <= 0.1 * 18.0182) return false
+    val overNineFive = bg > 9.5 * 18.0182
+    val recentBolus = bolusAgeMinutes < 150
+    val recentCarbs = carbAgeMinutes != null && carbAgeMinutes < 150
+    return overNineFive || recentBolus || recentCarbs
+}
+
+// Smallest whole percent whose unit value is strictly above [iob]. Null when that is impossible.
+internal fun iobPercentStrictlyAbove(iob: Double, maxIob: Double, reduction: Double): Int? {
+    if (iob <= 0.0 || maxIob <= 0.0 || reduction <= 0.0) return null
+    val raw = iob * 100.0 / (maxIob * reduction)
+    if (raw >= 100.0) return null
+    return (floor(raw).toInt() + 1).coerceIn(1, 100)
+}
 
 internal fun nightIobCeiling(
     ready: Boolean,
@@ -31,13 +62,23 @@ internal fun nightIobCeiling(
     iobTh: Int,
     acce: Double,
     cobSustained: Boolean,
+    holdAboveIob: Boolean = false,
+    iob: Double = 0.0,
+    maxIob: Double = 0.0,
+    reduction: Double = 1.0,
 ): NightCeiling? {
     if (!ready || steps60 >= 100 || !minuteInWindow(minuteOfDay, 0, 6 * 60)) return null
     val cap = if (cobSustained) 35 else 22
-    val lowerIob = if (iobTh > cap) cap else null
+    val capUnits = if (maxIob > 0.0 && reduction > 0.0) cap / 100.0 * maxIob * reduction else Double.POSITIVE_INFINITY
+    val raised = if (holdAboveIob && capUnits <= iob) iobPercentStrictlyAbove(iob, maxIob, reduction) else null
+    val iobWrite = when {
+        raised != null -> if (iobTh != raised) raised else null
+        iobTh > cap -> cap
+        else -> null
+    }
     val lowerAcce = if (acce > 0.35) 0.35 else null
-    if (lowerIob == null && lowerAcce == null) return null
-    return NightCeiling(lowerIob, lowerAcce)
+    if (iobWrite == null && lowerAcce == null) return null
+    return NightCeiling(iobWrite, lowerAcce)
 }
 
 // 06:00 until 08:00, quiet, flat or falling, IOB threshold in the 17% to 39% band.

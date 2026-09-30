@@ -550,11 +550,12 @@ internal fun fastRiseBoostRestore(
     iob: Double,
     maxIob: Double,
     cob: Double,
+    riseHold: Boolean = false,
 ): SmbStepResult {
     if ((!smbBoostRecent && !nightFrSkipActive) || microBolus == uncappedMicroBolus) {
         return SmbStepResult(microBolus, "")
     }
-    val hold = uamBoostRecent && iob >= 0.18 * maxIob && cob <= 0.0
+    val hold = !riseHold && uamBoostRecent && iob >= 0.18 * maxIob && cob <= 0.0
     if (!hold) {
         return SmbStepResult(uncappedMicroBolus, "Boost restore SMB ${twoDecimals(uncappedMicroBolus)}. ")
     }
@@ -649,9 +650,10 @@ internal fun lateFastRiseTaper(
     cob: Double,
     smbSum30: Double,
     uamBoostRecent: Boolean = false,
+    riseHold: Boolean = false,
 ): SmbStepResult {
     val iobHighNoCob = iob >= 0.18 * maxIob && cob <= 0.0
-    val laterRise = uamBoostRecent || iobHighNoCob
+    val laterRise = !riseHold && (uamBoostRecent || iobHighNoCob)
     if ((!fastRiseNow && !uamBoostRecent) || microBolus <= 0.0) return SmbStepResult(microBolus, "")
     val factor = when {
         laterRise -> 0.50
@@ -719,6 +721,7 @@ internal data class AfterFastRiseInput(
     val uamBoostRecent: Boolean,
     val uamBstMinutesAgo: Int,
     val sub75Cooldown: Boolean,
+    val riseHold: Boolean = false,
 )
 
 // Order matches 3.2.1 after the size tiers: early morning, high steps, little walking,
@@ -756,6 +759,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
         iob = input.iob,
         maxIob = input.maxIob,
         cob = input.cob,
+        riseHold = input.riseHold,
     )
     smb = restored.microBolus
     reason.append(restored.reason)
@@ -763,7 +767,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     smb = loReb.microBolus
     reason.append(loReb.reason)
     val taper = lateFastRiseTaper(
-        smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30, input.uamBoostRecent
+        smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30, input.uamBoostRecent, input.riseHold
     )
     smb = taper.microBolus
     reason.append(taper.reason)
@@ -1057,6 +1061,7 @@ class DetermineBasalAutoISF(
         todOffsetMgdl: Double = 0.0,
         smbOffsetOverrideMmol: Double? = null,
         hiBrkQuietUamBlock: Boolean = false,
+        riseHold: Boolean = false,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -2038,6 +2043,7 @@ class DetermineBasalAutoISF(
                     bgAcceleration = bgAcceleration,
                     recentLowBg = recentLowBg,
                     roundSmbTo = roundSMBTo,
+                    riseHold = riseHold,
                 )
                 microBolus = tier3.microBolus
                 val tier3Enhanced = tier3.enhanced
@@ -2172,6 +2178,7 @@ class DetermineBasalAutoISF(
                             uamBoostRecent = uamBoostRecent,
                             uamBstMinutesAgo = uamBstMinutesAgo,
                             sub75Cooldown = sub75Cooldown,
+                            riseHold = riseHold,
                         )
                     )
                     microBolus = after.microBolus

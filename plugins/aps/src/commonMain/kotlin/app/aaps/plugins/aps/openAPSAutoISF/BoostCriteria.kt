@@ -44,6 +44,7 @@ internal fun mildBoostShouldFire(
     smbIntervalSec: Double,
     deliveryBaseline: Double,
     iob: Double,
+    riseHold: Boolean = false,
 ): Boolean {
     if (!(profilePercent == 100 && !tempTargetSet && boostAutomationsOn && readyMild)) return false
     val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
@@ -52,9 +53,10 @@ internal fun mildBoostShouldFire(
     val mealFloor = if (recentAlarmHypo) 126.1 else 108.1
     val mealLeftover = bg >= mealFloor && (cob >= 4.0 || minutesSinceNormalBolus < 180) && shortDelta >= 2.7
     val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
-    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 2, 0) || daytimeBypass
+    // A high rise, or a recent bolus or carb entry, keeps this open past 02:00 and past 2.5 U.
+    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 2, 0) || daytimeBypass || riseHold
     return inWindow &&
-        (iobRising || mealLeftover) &&
+        (riseHold || iobRising || mealLeftover) &&
         delta >= 5.4 * stackK &&
         rawDelta5 >= 5.4 * stackK &&
         (mealLeftover || rawDelta5 < 14.4 * stackK) &&
@@ -66,7 +68,7 @@ internal fun mildBoostShouldFire(
         steps5 <= 100 &&
         steps30 <= 200 &&
         !(bg < 135.1 && iobChange5 > 0.8) &&
-        iob < 2.5
+        (riseHold || iob < 2.5)
 }
 
 /**
@@ -95,13 +97,14 @@ internal fun bg3BoostShouldFire(
     steps60: Int,
     smbIntervalSec: Double,
     deliveryBaseline: Double,
+    riseHold: Boolean = false,
 ): Boolean {
     if (!(profilePercent == 100 && boostAutomationsOn && readyBolusGiven && readyBg3)) return false
     val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
     val thresholdScale = deliveryBaseline / 0.17
     val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
     val deliverySuppressed = smbCount5 <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4 && bg >= 117.1 && delta >= 0.0
-    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 0, 0) || daytimeBypass
+    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 0, 0) || daytimeBypass || riseHold
     return inWindow &&
         ((iobChange5 > 0.85 * stackK * thresholdScale && delta >= 10.8 * stackK) || deliverySuppressed) &&
         rawDelta5 >= 14.4 * stackK &&
@@ -152,8 +155,15 @@ internal fun mildFailsafeShouldFire(
 }
 
 /** True when a bg3 fire must not be marked. Matches the 60 minute re-arm and the IOB ceilings. */
-internal fun bg3BoostBlocked(recentBolusGiven: Boolean, recentMild: Boolean, recentMildFailsafe: Boolean, iob: Double): Boolean {
+internal fun bg3BoostBlocked(
+    recentBolusGiven: Boolean,
+    recentMild: Boolean,
+    recentMildFailsafe: Boolean,
+    iob: Double,
+    riseHold: Boolean = false,
+): Boolean {
     if (recentBolusGiven) return true
+    if (riseHold) return false
     if (iob >= 2.0) return true
     if ((recentMild || recentMildFailsafe) && iob >= 1.5) return true
     return false

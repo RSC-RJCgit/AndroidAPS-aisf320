@@ -87,6 +87,42 @@ class BoostCriteriaTest {
     }
 
     @Test
+    fun aHighRiseKeepsMildOpenPastTheIobCeilingAndPast0200() {
+        assertTrue(
+            mild(
+                minuteOfDay = 3 * 60,
+                iob = 5.0,
+                iobChange5 = 0.0,
+                cob = 0.0,
+                riseHold = true,
+            )
+        )
+        assertFalse(mild(minuteOfDay = 3 * 60, iob = 5.0, iobChange5 = 0.0, cob = 0.0))
+    }
+
+    @Test
+    fun aHighRiseDoesNotUseTheBg3IobCeiling() {
+        assertFalse(
+            bg3BoostBlocked(
+                recentBolusGiven = false,
+                recentMild = false,
+                recentMildFailsafe = false,
+                iob = 4.5,
+                riseHold = true,
+            )
+        )
+        assertTrue(
+            bg3BoostBlocked(
+                recentBolusGiven = true,
+                recentMild = false,
+                recentMildFailsafe = false,
+                iob = 0.4,
+                riseHold = true,
+            )
+        )
+    }
+
+    @Test
     fun strongBoostIsBlockedByARecentMarkOrHighIob() {
         assertTrue(bg3BoostBlocked(recentBolusGiven = true, recentMild = false, recentMildFailsafe = false, iob = 0.4))
         assertTrue(bg3BoostBlocked(recentBolusGiven = false, recentMild = false, recentMildFailsafe = false, iob = 2.0))
@@ -112,6 +148,7 @@ class BoostCriteriaTest {
         cob: Double = 0.0,
         smbIntervalSec: Double = 9999.0,
         iob: Double = 1.0,
+        riseHold: Boolean = false,
     ) = mildBoostShouldFire(
         readyMild = true,
         readyBg3 = true,
@@ -136,6 +173,7 @@ class BoostCriteriaTest {
         smbIntervalSec = smbIntervalSec,
         deliveryBaseline = 0.14,
         iob = iob,
+        riseHold = riseHold,
     )
 
     private fun strong(
