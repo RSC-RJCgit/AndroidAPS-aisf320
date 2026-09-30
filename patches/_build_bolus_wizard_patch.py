@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.9.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.10.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,22 +45,35 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .9, 2026-09-30)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .10, 2026-10-01)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.9.patch
-  git apply bolus-calculator-on-3426-aisf321.9.patch
+  git apply --check bolus-calculator-on-3426-aisf321.10.patch
+  git apply bolus-calculator-on-3426-aisf321.10.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
 
+Changes in patch .10 (2026-10-01):
+- Corrects patch .9's "Bolus fat/protein now instead of extending" checkbox -- that "now" behavior (a
+  boosted ratio folded straight into the immediate bolus, insulinFromFatProteinNow) was a
+  misimplementation that was never actually agreed, and has been removed entirely. In its place, one
+  plain "Add FPUs" checkbox (default checked) just gates whether the existing Warsaw-FPU extended series
+  (protein x0.4/fat x0.9, delivered via warsawFpuPlan()/scheduleSplitProteinFatDoses() exactly as
+  before) computes at all for this calc -- nothing about "now" vs later. The "Unreliable SMBs" sub-toggle
+  is kept, but now boosts that SAME extended-series ratio (protein x0.4->x2.0, fat x0.9->x1.5) instead of
+  only mattering under the deleted now-path; still auto-sets wiz% to 90 for that one calculation.
+- Carb-split (BolusWizard.scheduleReducedPartsSplitBolus) cancellation redesigned: dropped the "3
+  consecutive unsafe BG checks" cancel entirely -- delivery itself stays exactly as gated as before
+  (nothing unsafe is ever delivered), only the "give up on the residual" decision changes. Now relies
+  solely on the existing overall retryDeadline, raised from 60min to 150min (2.5h). Real log data showed
+  a fixed 3-check cancel (~14-21min into an unsafe run) was too short to distinguish a genuine
+  hypo-trending drop (correctly cancelled) from a fat/protein-slowed rise that took ~107min to clear the
+  safety band (looked like real under-dosing) -- and a small bump to 6 checks (~35-42min) didn't close
+  that gap either, hence the switch to a real elapsed-time cap instead of a consecutive-check count.
+- Retains all patch .9 changes below (its "Bolus fat/protein now" bullet is superseded by the correction
+  above -- that checkbox's behavior as originally described never actually shipped in working form).
+
 Changes in patch .9 (2026-09-30):
-- Two new wizard checkboxes: "Bolus fat/protein now instead of extending" (default fat x1.0/protein x1.5
-  carb-equivalent, folded into the immediate bolus instead of the Warsaw-FPU extended series) and its
-  "Unreliable SMBs (current sensor/pod)" sub-toggle (fat x1.5/protein x2.0, auto-sets wiz% to 90 for that
-  one calculation). Turning either on suppresses the extended series entirely for that dose (reuses the
-  existing insulinFromProteinOnly/insulinFromFatOnly==0 gate, no separate "off" switch needed). Max bolus
-  is never altered by either -- both flow through the same constraintChecker.applyBolusConstraints() path
-  as every other component.
 - DelayedBolusWorker fix: the live-InsReq cap used to permanently end the whole delayed sequence the
   moment InsReq capped one check below the real remaining need (or floored a check to exactly 0), silently
   discarding the undelivered rest. It now only caps that ONE check's delivery and keeps polling (same
