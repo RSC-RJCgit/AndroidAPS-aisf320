@@ -11,6 +11,8 @@ on:
         options:
           - fullRelease
           - fullDebug
+          - full2Release
+          - full2Debug
           - aapsclientRelease
           - aapsclientDebug
           - aapsclient2Release
