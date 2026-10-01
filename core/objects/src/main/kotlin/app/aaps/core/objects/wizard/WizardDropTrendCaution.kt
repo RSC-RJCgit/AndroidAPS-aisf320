@@ -61,6 +61,7 @@ object WizardDropTrendCaution {
     const val SDELTA_THRESHOLD_MGDL = -1.8 // -0.10 mmol
     const val LDELTA_THRESHOLD_MGDL = -1.8 // -0.10 mmol
     const val IOB_PER_MMOL_RISE = 3.0
+    const val PATH2_BGL_CEILING_MGDL = 99.1 // 5.5 mmol
     private const val MMOL_TO_MGDL = 18.0182
 
     /** Path 2 -- see class doc comment. [bgRiseMgdl] may be <= 0 (BG flat or falling, not risen at all);
@@ -75,7 +76,11 @@ object WizardDropTrendCaution {
         val allStronglyDropping = delta <= DELTA_THRESHOLD_MGDL && shortAvgDelta <= SDELTA_THRESHOLD_MGDL && longAvgDelta <= LDELTA_THRESHOLD_MGDL
         val lowOrPredictedLow = bgMgdl < BGL_THRESHOLD_MGDL || (hp1Mmol != null && hp1Mmol < HP1_THRESHOLD_MMOL)
         val path1 = allStronglyDropping && lowOrPredictedLow
-        val path2 = iobDisproportionateToRise(iobUnits, bgRiseMgdl)
+        // 2026-10-02: path 2 had no BG ceiling at all, so a large FPU-driven correction bolus
+        // started from an already-elevated BG (big IOB, only a small recent "rise" to compare
+        // against) could trip this and get halved even though BG was high, not low -- gated to the
+        // same low-BG territory path 1 already lives in, per explicit request.
+        val path2 = bgMgdl < PATH2_BGL_CEILING_MGDL && iobDisproportionateToRise(iobUnits, bgRiseMgdl)
         return path1 || path2
     }
 

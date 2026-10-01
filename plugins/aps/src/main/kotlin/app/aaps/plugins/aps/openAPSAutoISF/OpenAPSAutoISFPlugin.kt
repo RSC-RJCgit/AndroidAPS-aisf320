@@ -7630,10 +7630,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // during MJ3.
             val cannulaOrStateOk = (podH != null && (podH >= 72.0 || podH <= 6.0)) ||
                 checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3") || isTimeBetween(12, 0, 18, 0)
+            // 2026-10-01: S60 alone used to block this for a while after a walk ended, even once
+            // steps had genuinely dropped off (confirmed from real Client data: S60 was still 1914
+            // at 01:17 PM off an 11:43 AM-12:30 PM walk, while S5/S30 had already returned to near
+            // zero and BG/delta both cleared the rise bar). S60 is now ignored once the same
+            // "activity stopped" idiom used elsewhere in this file (recentSteps5Minutes<=100 &&
+            // recentSteps30Minutes<=200 -- see e.g. the movementOk/activeMovement checks above) is
+            // true. recentSteps30Minutes<=600 stays as the outer floor either way.
+            val stepsOk = recentSteps30Minutes <= 600 &&
+                (recentSteps60Minutes <= 1000 || (recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200))
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
-                && recentSteps60Minutes <= 1000
-                && recentSteps30Minutes <= 600
+                && stepsOk
                 && profile_percentage == 100
                 && d >= 3.6 /* 0.2 mmol */
                 && isTimeBetween(7, 0, 0, 0)
