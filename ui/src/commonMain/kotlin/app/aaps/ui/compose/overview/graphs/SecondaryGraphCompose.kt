@@ -742,8 +742,9 @@ fun SecondaryGraphCompose(
             )
         }
     }
-    val smbNumbers = remember(smbStack, smbText) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f)
+    val smbLabelSize = rememberSmbLabelSize()
+    val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f, labelSize = smbLabelSize)
     }
     val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText) {
         if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null

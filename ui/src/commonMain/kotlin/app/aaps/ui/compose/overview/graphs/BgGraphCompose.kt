@@ -786,8 +786,9 @@ fun BgGraphCompose(
             )
         }
     }
-    val smbNumbers = remember(smbStack, smbText) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = false)
+    val smbLabelSize = rememberSmbLabelSize()
+    val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = false, labelSize = smbLabelSize)
     }
     val smbBaseArrows = remember(treatments, bgReadings, minTimestamp, lowMark) {
         treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { smb ->

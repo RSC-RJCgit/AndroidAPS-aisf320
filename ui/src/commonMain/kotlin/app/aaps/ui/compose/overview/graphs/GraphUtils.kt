@@ -14,7 +14,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
@@ -569,11 +572,36 @@ class SmbArrows(
     }
 }
 
+/** Full SMB label size. Used when the window is 500 dp tall or taller. */
+internal const val SMB_LABEL_FULL_SP = 12f
+
+/** Window height where SMB labels are full size. Shorter windows use a smaller label. */
+internal const val SMB_LABEL_REFERENCE_HEIGHT_DP = 500f
+
+/**
+ * SMB label size for the main graph and graph 2.
+ * At a window height of 500 dp the size is 12 sp. A shorter window scales it down by the same
+ * fraction. A taller window stays at 12 sp.
+ */
+internal fun smbLabelSize(screenHeightDp: Float): TextUnit {
+    if (screenHeightDp <= 0f) return SMB_LABEL_FULL_SP.sp
+    val scale = (screenHeightDp / SMB_LABEL_REFERENCE_HEIGHT_DP).coerceAtMost(1f)
+    return (SMB_LABEL_FULL_SP * scale).sp
+}
+
+@Composable
+internal fun rememberSmbLabelSize(): TextUnit {
+    val heightPx = LocalWindowInfo.current.containerSize.height
+    val heightDp = with(LocalDensity.current) { heightPx.toDp().value }
+    return smbLabelSize(heightDp)
+}
+
 class SmbStackLabels(
     private val items: List<SmbStackItem>,
     private val textMeasurer: TextMeasurer,
     private val pinToBottom: Boolean,
     private val stackStepFraction: Float = 0.6f,
+    private val labelSize: TextUnit = 12.sp,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
@@ -582,7 +610,7 @@ class SmbStackLabels(
             if (xStep == 0.0) return
             for (item in items) {
                 if (item.label.isEmpty()) continue
-                val style = TextStyle(color = item.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val style = TextStyle(color = item.color, fontSize = labelSize, fontWeight = FontWeight.Bold)
                 val xValue = item.columnX ?: item.x
                 val canvasX = layerBounds.left +
                     layerDimensions.startPadding +
