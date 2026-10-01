@@ -2275,6 +2275,8 @@ open class OpenAPSAutoISFPlugin(
                 delta = delta,
                 profilePercent = profilePercent,
                 minuteOfDay = minuteOfDay,
+                steps5 = steps5(now),
+                steps15 = steps15(now),
                 steps60 = steps60(now),
                 steps30 = steps30(now),
                 podHours = podHours,

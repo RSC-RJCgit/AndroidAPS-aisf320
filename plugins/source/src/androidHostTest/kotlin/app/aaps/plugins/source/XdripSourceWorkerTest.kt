@@ -10,6 +10,9 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.receivers.Intents
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.utils.receivers.DataInbox
 import app.aaps.shared.tests.BundleMock
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -37,7 +40,7 @@ class XdripSourceWorkerTest : TestBaseWithProfile() {
     @BeforeEach
     fun setupMock() {
         whenever(workerParameters.inputData).thenReturn(workDataOf())
-        worker = XdripSourcePlugin.XdripSourceWorker(context, workerParameters, aapsLogger, fabricPrivacy, xdripSourcePlugin, persistenceLayer, preferences, dateUtil, dataInbox)
+        worker = XdripSourcePlugin.XdripSourceWorker(context, workerParameters, aapsLogger, fabricPrivacy, xdripSourcePlugin, persistenceLayer, preferences, dateUtil, dataInbox, profileFunction)
     }
 
     @Test
@@ -99,6 +102,42 @@ class XdripSourceWorkerTest : TestBaseWithProfile() {
                 sourceSensor = SourceSensor.DEXCOM_G6_NATIVE_XDRIP
             )
             verify(persistenceLayer).insertCgmSourceData(Sources.Xdrip, listOf(expectedGv), emptyList(), timestamp)
+        }
+    }
+
+    @Test
+    fun `When Libre slope is on a serial source uses the estimate as raw`() {
+        val timestamp = now - 60000
+        runTest {
+            whenever(xdripSourcePlugin.isEnabled()).thenReturn(true)
+            whenever(preferences.get(BooleanKey.BgSourceCreateSensorChange)).thenReturn(false)
+            whenever(preferences.get(BooleanKey.FslApplySmoothing)).thenReturn(true)
+            whenever(preferences.get(DoubleKey.FslCalSlope)).thenReturn(1.2)
+            whenever(preferences.get(DoubleKey.FslCalOffset)).thenReturn(0.0)
+            whenever(preferences.get(DoubleKey.FslSmoothAlpha)).thenReturn(0.3)
+            whenever(preferences.get(DoubleNonKey.FslLastSmooth)).thenReturn(0.0)
+            whenever(preferences.get(LongNonKey.FslSmoothLastTimeRaw)).thenReturn(-1L)
+            whenever(persistenceLayer.insertCgmSourceData(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(PersistenceLayer.TransactionResult())
+            val bundle = BundleMock.mocked().apply {
+                putString(Intents.XDRIP_DATA_SOURCE, "301URW4AD8W")
+                putLong(Intents.EXTRA_TIMESTAMP, timestamp)
+                putDouble(Intents.EXTRA_BG_ESTIMATE, 100.0)
+                putString(Intents.EXTRA_BG_SLOPE_NAME, "Flat")
+            }
+            whenever(dataInbox.drain(eq(XdripInbox))).thenReturn(listOf(bundle))
+
+            val result = worker.doWork()
+
+            Assertions.assertEquals(ListenableWorker.Result.success(), result)
+            val expectedGv = GV(
+                timestamp = timestamp,
+                value = 120.0,
+                raw = 120.0,
+                noise = 100.0,
+                trendArrow = TrendArrow.FLAT,
+                sourceSensor = SourceSensor.UNKNOWN
+            )
+            verify(persistenceLayer).insertCgmSourceData(Sources.Xdrip, listOf(expectedGv), emptyList(), null)
         }
     }
 

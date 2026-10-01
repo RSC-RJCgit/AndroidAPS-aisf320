@@ -188,13 +188,15 @@ class XdripSourcePlugin(
                 val offset = preferences.get(DoubleKey.FslCalOffset)
                 val alpha = preferences.get(DoubleKey.FslSmoothAlpha)
                 val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
-                val calibrated = calibratedLibre(value, slope, offset, unitFactor)
+                // A relay often sends no raw field. The estimate is that raw reading.
+                val sensor = if (raw == 0.0) value else raw
+                val calibrated = calibratedLibre(sensor, slope, offset, unitFactor)
                 val lastSmooth = preferences.get(DoubleNonKey.FslLastSmooth)
                 val lastTime = preferences.get(LongNonKey.FslSmoothLastTimeRaw)
                 val elapsed = if (lastTime < 0L) 0.0 else (timestamp - lastTime) / 60000.0
                 val smooth = libreSpecial(calibrated, lastSmooth, elapsed, alpha)
                 aapsLogger.debug(LTag.BGSOURCE, "Libre slope applied: slope=$slope offset=$offset value=$smooth")
-                noise = value
+                noise = sensor
                 raw = calibrated
                 value = smooth
                 smoothed = smooth
@@ -245,9 +247,10 @@ class XdripSourcePlugin(
             xdripSourcePlugin.sensorBatteryLevel = bundle.getInt(Intents.EXTRA_SENSOR_BATTERY, -1)
         }
 
-        // Same Libre packets UK 3.4.26 rewrites: no raw value, and the source is Libre 2, Libre 3, or G7.
+        // Apply Libre slope is enough on its own. A relay source name is often a device serial, not Libre2.
+        // With the switch off, the old packets still apply: no raw value, and Libre 2, Libre 3, or G7.
         private fun applyLibreSlope(raw: Double, sourceCgm: String): Boolean {
-            if (!preferences.get(BooleanKey.FslApplySmoothing)) return false
+            if (preferences.get(BooleanKey.FslApplySmoothing)) return true
             if (raw != 0.0) return false
             return sourceCgm == "Libre2" || sourceCgm == "Libre2 Native" || sourceCgm == "Libre3" || sourceCgm == "G7"
         }

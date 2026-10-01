@@ -8,16 +8,27 @@ import kotlin.test.assertTrue
 class WizardDropTrendCautionTest {
 
     @Test
-    fun anEstablishedFallUnder6HalvesTheDose() {
+    fun anEstablishedFallUnderFivePointFiveHalvesTheDose() {
         assertTrue(
             WizardDropTrendCaution.applies(
                 delta = -2.8,
                 shortAvgDelta = -1.9,
                 longAvgDelta = -1.9,
-                bgMgdl = 100.0,
+                bgMgdl = 90.0,
                 hp1Mmol = 6.0,
                 iobUnits = 0.0,
                 bgRiseMgdl = 40.0,
+            )
+        )
+        assertFalse(
+            WizardDropTrendCaution.applies(
+                delta = -2.8,
+                shortAvgDelta = -1.9,
+                longAvgDelta = -1.9,
+                bgMgdl = 100.0,
+                hp1Mmol = 4.0,
+                iobUnits = 4.2,
+                bgRiseMgdl = 9.0,
             )
         )
     }
@@ -38,8 +49,8 @@ class WizardDropTrendCautionTest {
     }
 
     @Test
-    fun anEstablishedFallWithHp1Under5CountsAbove6() {
-        assertTrue(
+    fun anEstablishedFallWithHp1Under5DoesNotCountAtFivePointFiveOrAbove() {
+        assertFalse(
             WizardDropTrendCaution.applies(
                 delta = -2.8,
                 shortAvgDelta = -1.9,
@@ -55,12 +66,23 @@ class WizardDropTrendCautionTest {
     @Test
     fun tooMuchInsulinForTheRiseCountsWhileDeltasAreStillUp() {
         assertTrue(WizardDropTrendCaution.iobDisproportionateToRise(4.2, 9.0))
-        assertTrue(
+        assertFalse(
             WizardDropTrendCaution.applies(
                 delta = 4.0,
                 shortAvgDelta = 4.0,
                 longAvgDelta = 4.0,
                 bgMgdl = 106.0,
+                hp1Mmol = 7.0,
+                iobUnits = 4.2,
+                bgRiseMgdl = 9.0,
+            )
+        )
+        assertTrue(
+            WizardDropTrendCaution.applies(
+                delta = 4.0,
+                shortAvgDelta = 4.0,
+                longAvgDelta = 4.0,
+                bgMgdl = 90.0,
                 hp1Mmol = 7.0,
                 iobUnits = 4.2,
                 bgRiseMgdl = 9.0,
