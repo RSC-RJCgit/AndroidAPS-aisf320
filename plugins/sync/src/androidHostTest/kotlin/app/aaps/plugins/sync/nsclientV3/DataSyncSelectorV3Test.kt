@@ -257,10 +257,32 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
     }
 
     @Test
+    fun virtualPumpSelectedBeforeInitDoesNotReadThePump() {
+        whenever(config.appInitialized).thenReturn(false)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        whenever(activePlugin.activePump).thenThrow(IllegalStateException("No pump selected"))
+
+        assertThat(sut.virtualPumpSelected()).isFalse()
+    }
+
+    @Test
+    fun virtualPumpSelectedAfterInitOnVirtualPump() {
+        whenever(config.appInitialized).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val virtualPump = mock<Pump>(extraInterfaces = arrayOf(VirtualPump::class))
+        val pump = mock<PumpWithConcentration>()
+        whenever(pump.selectedActivePump()).thenReturn(virtualPump)
+        whenever(activePlugin.activePump).thenReturn(pump)
+
+        assertThat(sut.virtualPumpSelected()).isTrue()
+    }
+
+    @Test
     fun doUploadOnVirtualPumpRunsAndWarns() = runTest {
         whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
         whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(true)
         whenever(config.AAPSCLIENT).thenReturn(false)
+        whenever(config.appInitialized).thenReturn(true)
         val virtualPump = mock<Pump>(extraInterfaces = arrayOf(VirtualPump::class))
         val pump = mock<PumpWithConcentration>()
         whenever(pump.selectedActivePump()).thenReturn(virtualPump)

@@ -106,6 +106,22 @@ class XdripSourceWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun `When the live site supplies BG xDrip does not store`() {
+        runTest {
+            whenever(xdripSourcePlugin.isEnabled()).thenReturn(true)
+            whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+            whenever(preferences.get(BooleanKey.NsClientBgFromLiveSite)).thenReturn(true)
+            val bundle = validBundle(now - 60000, 150.0)
+            whenever(dataInbox.drain(eq(XdripInbox))).thenReturn(listOf(bundle))
+
+            val result = worker.doWork()
+
+            Assertions.assertEquals(ListenableWorker.Result.success(), result)
+            verify(persistenceLayer, never()).insertCgmSourceData(any(), any(), any(), any())
+        }
+    }
+
+    @Test
     fun `When Libre slope is on a serial source uses the estimate as raw`() {
         val timestamp = now - 60000
         runTest {

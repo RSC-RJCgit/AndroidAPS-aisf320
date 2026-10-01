@@ -367,7 +367,8 @@ enum class BooleanKey(
         KeysStrings.ns_secondary_receive_therapy_events_summary,
         dependency = NsClientSecondaryEnabled
     ),
-    // On by default. A client then takes glucose from the second site. Turn off to leave glucose on the main site.
+    // On by default. The full app and a client then take glucose from the second site.
+    // Turn off to leave glucose on this phone's main site.
     NsClientBgFromLiveSite(
         "ns_bg_from_live_site",
         true,

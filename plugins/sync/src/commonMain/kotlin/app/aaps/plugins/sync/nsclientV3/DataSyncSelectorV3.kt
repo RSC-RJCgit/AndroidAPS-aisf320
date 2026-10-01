@@ -86,9 +86,15 @@ class DataSyncSelectorV3(
     /**
      * True on a full phone whose pump is the virtual pump.
      * Upload is allowed. The Nightscout screen warns to check the site.
+     *
+     * NSClient starts before ConfigBuilder has elected a pump. Asking then hits
+     * [app.aaps.core.interfaces.plugin.ActivePlugin.activePumpInternal] and the plugin fails to start.
+     * Until the app is initialized this is false, so start can finish. The warning appears on the next status read.
      */
-    internal fun virtualPumpSelected(): Boolean =
-        !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+    internal fun virtualPumpSelected(): Boolean {
+        if (!config.appInitialized) return false
+        return !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+    }
 
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)

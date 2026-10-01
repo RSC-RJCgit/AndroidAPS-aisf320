@@ -109,10 +109,9 @@ class NsFrameHandler(
             "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()), live = true)
 
             "entries"      -> {
-                // A client that takes glucose from the second Nightscout ignores frames from the
-                // main site. Those frames would put the raw value back.
+                // The full app and a client ignore main-site glucose when the second site supplies it.
+                // Those frames would put the other value back.
                 if (!glucoseFromSecondarySite(
-                        config.AAPSCLIENT,
                         preferences.get(BooleanKey.NsClientSecondaryEnabled),
                         preferences.get(BooleanKey.NsClientBgFromLiveSite)
                     )

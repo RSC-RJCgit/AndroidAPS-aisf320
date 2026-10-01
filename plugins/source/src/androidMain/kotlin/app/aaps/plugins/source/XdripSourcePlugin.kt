@@ -177,6 +177,14 @@ class XdripSourcePlugin(
 
         private suspend fun processBundle(bundle: Bundle) {
             aapsLogger.debug(LTag.BGSOURCE, "Received xDrip data: $bundle")
+            // The second Nightscout is the only glucose source while that switch is on.
+            // A full app and a client both use it. Storing this packet would put xDrip back on top.
+            if (preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            ) {
+                aapsLogger.debug(LTag.BGSOURCE, "xDrip skipped: BG comes from the Live Nightscout connection")
+                return
+            }
             val timestamp = bundle.getLong(Intents.EXTRA_TIMESTAMP, 0)
             val sourceCgm = bundle.getString(Intents.XDRIP_DATA_SOURCE) ?: ""
             var value = bundle.getDouble(Intents.EXTRA_BG_ESTIMATE, 0.0)

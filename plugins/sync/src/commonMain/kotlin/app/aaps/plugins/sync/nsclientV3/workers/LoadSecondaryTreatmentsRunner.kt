@@ -35,8 +35,8 @@ import dev.zacsweers.metro.Inject
  * Runs when that site is turned on. The two addresses are not compared. Manual boluses and carbs
  * follow the receive switches. Temp basals and extended boluses are never taken. Notes stay on
  * the short keep-list, including the one note "MJ active". The profile store and the live step
- * counts come from this site as well. A client takes its glucose from this site only when
- * "Get BG from this connection" is on.
+ * counts come from this site as well. The full app and a client take glucose from this site
+ * when "Get BG from this connection" is on.
  */
 @Inject
 class LoadSecondaryTreatmentsRunner(
@@ -221,7 +221,6 @@ class LoadSecondaryTreatmentsRunner(
     // Keep reading until a page is short. 0 is not a saved place. The cursor is the newest srvModified.
     private suspend fun downloadGlucose(client: NSAndroidClientImpl) {
         if (!glucoseFromSecondarySite(
-                config.AAPSCLIENT,
                 secondaryEnabled = true,
                 preferences.get(BooleanKey.NsClientBgFromLiveSite)
             )
@@ -240,7 +239,11 @@ class LoadSecondaryTreatmentsRunner(
                 else client.getSgvsModifiedSince(from, PAGE_SIZE)
                 val sgvs = response.values
                 if (sgvs.isNotEmpty()) {
-                    nsIncomingDataProcessor.processSgvs(sgvs.sortedBy { it.date ?: 0L }, doFullSync = false)
+                    nsIncomingDataProcessor.processSgvs(
+                        sgvs.sortedBy { it.date ?: 0L },
+                        doFullSync = false,
+                        fromLiveSite = true,
+                    )
                 }
                 total += sgvs.size
                 val newestDate = sgvs.maxOfOrNull { it.date ?: 0L } ?: 0L

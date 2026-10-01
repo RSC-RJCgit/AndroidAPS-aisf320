@@ -32,12 +32,13 @@ internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?): Boolea
 internal fun stepsFromPrimarySite(secondaryEnabled: Boolean): Boolean = !secondaryEnabled
 
 /**
- * A client reads glucose from the second Nightscout only when "Get BG from this connection" is on.
- * The second site can stay on for treatments and the profile without also supplying glucose.
- * The main site stays the one used for pairing.
+ * Glucose comes from the second Nightscout when "Get BG from this connection" is on.
+ * This is the full app and a client. The second site can stay on for treatments and the
+ * profile without also supplying glucose. The main site stays the one used for pairing.
+ * One glucose source: the main site and xDrip do not write at the same time.
  */
-internal fun glucoseFromSecondarySite(isClient: Boolean, secondaryEnabled: Boolean, bgFromThisConnection: Boolean): Boolean =
-    isClient && secondaryEnabled && bgFromThisConnection
+internal fun glucoseFromSecondarySite(secondaryEnabled: Boolean, bgFromThisConnection: Boolean): Boolean =
+    secondaryEnabled && bgFromThisConnection
 
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,

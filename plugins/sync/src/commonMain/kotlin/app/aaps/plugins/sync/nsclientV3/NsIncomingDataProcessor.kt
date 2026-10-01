@@ -51,6 +51,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.extensions.toCAL
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toEffectiveProfileSwitch
@@ -105,11 +106,15 @@ class NsIncomingDataProcessor(
      *
      * @return true if there was an accepted SGV
      */
-    fun processSgvs(sgvs: Any, doFullSync: Boolean): Boolean {
+    fun processSgvs(sgvs: Any, doFullSync: Boolean, fromLiveSite: Boolean = false): Boolean {
         // Objective0
         preferences.put(BooleanNonKey.ObjectivesBgIsAvailableInNs, true)
 
-        if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !doFullSync) return false
+        // The second site is the glucose source. Main-site readings are dropped.
+        // A full app often has xDrip selected and "Receive CGM" off, so a live-site
+        // batch must still be stored. Otherwise the switch downloads glucose and throws it away.
+        if (!fromLiveSite && !doFullSync && bgFromLiveSite()) return false
+        if (!fromLiveSite && !nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !doFullSync) return false
 
         var latestDateInReceivedData: Long = 0
         aapsLogger.debug(LTag.NSCLIENT, "Received NS Data: $sgvs")
@@ -138,6 +143,11 @@ class NsIncomingDataProcessor(
         }
         return glucoseValues.isNotEmpty()
     }
+
+    private fun bgFromLiveSite(): Boolean = glucoseFromSecondarySite(
+        preferences.get(BooleanKey.NsClientSecondaryEnabled),
+        preferences.get(BooleanKey.NsClientBgFromLiveSite),
+    )
 
     // Raw Libre becomes slope * value + offset, then LibreSpecial. UKF set 1 replaces that when the batch has two points.
     private fun applyLibre(values: MutableList<GV>) {
