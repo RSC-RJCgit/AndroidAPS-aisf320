@@ -810,7 +810,10 @@ class ReplayApsResultsTest @Inject constructor() {
             activity_consoleLog = "Activity Monitor ...",
             auto_isf_consoleLog = mutableListOf<String>("end AutoISF"),
             auto_isf_consoleError = mutableListOf<String>("start AutoISF"),
-            bg_acce = 0.0
+            bg_acce = 0.0,
+            steps180M = 0,
+            steps15M = 0,
+            steps5M = 0
         )
         val endKt = System.currentTimeMillis()
         ktTime += (endKt - startKt)
