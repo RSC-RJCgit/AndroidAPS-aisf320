@@ -5,7 +5,6 @@ import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
-import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.BS
@@ -990,6 +989,25 @@ open class OpenAPSAutoISFPlugin(
             lastCycleSmb = determineBasalResult.smb
             lastCycleSmbAt = now
             lastCycleInsulinReq = it.insulinReq
+            if (determineBasalAutoISF.uamBoostFiredThisCycle) {
+                val calc = uamTier3PseudoWizardEntry(
+                    timestamp = now,
+                    smbDelivered = determineBasalResult.smb,
+                    glucoseMgdl = glucoseStatus.glucose,
+                    targetLowMgdl = profile.getTargetLowMgdl(),
+                    targetHighMgdl = profile.getTargetHighMgdl(),
+                    isfMgdl = profile.getIsfMgdl("UamTier3PseudoWizard"),
+                    ic = profile.getIc(),
+                    profileName = profileFunction.getProfileName(),
+                )
+                if (calc != null) {
+                    try {
+                        persistenceLayer.insertOrUpdateBolusCalculatorResult(calc)
+                    } catch (error: Exception) {
+                        aapsLogger.error(LTag.APS, "Failed to save UAM Tier 3 pseudo-wizard calc", error)
+                    }
+                }
+            }
             if (autoIsfFactors.recorded) {
                 persistenceLayer.insertAutoIsfValue(
                     AIV(
