@@ -809,7 +809,8 @@ class ReplayApsResultsTest @Inject constructor() {
             loop_wanted_smb = "dummy",
             activity_consoleLog = "Activity Monitor ...",
             auto_isf_consoleLog = mutableListOf<String>("end AutoISF"),
-            auto_isf_consoleError = mutableListOf<String>("start AutoISF")
+            auto_isf_consoleError = mutableListOf<String>("start AutoISF"),
+            bg_acce = 0.0
         )
         val endKt = System.currentTimeMillis()
         ktTime += (endKt - startKt)

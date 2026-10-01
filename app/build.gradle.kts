@@ -134,6 +134,21 @@ android {
             manifestPlaceholders["appIcon"] = "@mipmap/ic_blueowl"
             manifestPlaceholders["appIconRound"] = "@mipmap/ic_blueowl"
         }
+        // 2026-10-04, per explicit request: a second FULL closed-loop flavor under its own
+        // applicationId, so it can be installed side by side with another AAPS build (any flavor,
+        // including another "full") on the same phone -- same mechanism that already lets
+        // aapsclient/aapsclient2/pumpcontrol coexist with "full" today. Unlike those three, this is
+        // NOT named "aapsclient"/"aapsclient2"/"pumpcontrol", so ConfigImpl.kt's AAPSCLIENT/
+        // PUMPCONTROL flavor-name checks don't match it -- it runs the real closed-loop/AutoISF
+        // dosing exactly like "full", just under a different package name and app-drawer label.
+        create("full2") {
+            applicationId = "info.nightscout.androidaps.uk3426"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS UK3426")
+            versionName = Versions.appVersion + "-uk3426"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
+        }
     }
 
     useLibrary("org.apache.http.legacy")
